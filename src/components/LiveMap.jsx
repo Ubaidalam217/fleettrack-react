@@ -1,5 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+
+// Forces Leaflet to recalculate its container size after mount.
+// Needed when the map initializes inside a CSS display:none parent (lg:hidden / hidden lg:block).
+function MapResizer() {
+  const map = useMap()
+  useEffect(() => {
+    const t = setTimeout(() => map.invalidateSize(), 150)
+    return () => clearTimeout(t)
+  }, [map])
+  return null
+}
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -98,6 +109,7 @@ export default function LiveMap({ fleetData }) {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
+          <MapResizer />
           {positions.length > 0 && <AutoFit positions={positions} />}
 
           {located.map(v => (

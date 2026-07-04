@@ -1,7 +1,7 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun']
-const data = MONTHS.map((m, i) => ({ month: m, cost: [7800,8200,7600,8900,8700,9420][i] }))
+const data = MONTHS.map((m, i) => ({ month: m, cost: [8200,7800,9100,8500,9800,9420][i] }))
 
 const COSTS = [
   { label: 'Fuel',         color: '#3b82f6', amt: '$4,710', pct: '50%' },
@@ -36,7 +36,8 @@ export default function CostSummary({ isDark }) {
         <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Cost Summary</h3>
         <span className="text-sm font-bold" style={{ color: 'var(--c-text1)' }}>$9,420</span>
       </div>
-      <p className="text-xs mb-3" style={{ color: 'var(--c-text3)' }}>Monthly expenditure</p>
+      <p className="text-xs mb-1" style={{ color: 'var(--c-text3)' }}>Monthly expenditure</p>
+      <p className="text-[10px] mb-3 italic" style={{ color: 'var(--c-text2)' }}>* Estimated based on industry averages. Real cost tracking available with backend integration (Phase 2).</p>
 
       <div className="h-[65px] md:h-[85px] mb-4">
         <ResponsiveContainer width="100%" height="100%">

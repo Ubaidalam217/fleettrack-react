@@ -1,31 +1,45 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import Sidebar           from '../components/Sidebar'
-import Header            from '../components/Header'
-import StatCards         from '../components/StatCards'
-import FleetHealthScore  from '../components/FleetHealthScore'
-import VehicleActivity   from '../components/VehicleActivity'
-import LiveMap           from '../components/LiveMap'
-import AIInsights        from '../components/AIInsights'
-import VehicleStatus     from '../components/VehicleStatus'
-import DriverPerformance from '../components/DriverPerformance'
-import AlertsOverview    from '../components/AlertsOverview'
-import FuelEnergy        from '../components/FuelEnergy'
-import TripAnalysis      from '../components/TripAnalysis'
-import CostSummary       from '../components/CostSummary'
-import { useFlespiData } from '../hooks/useFlespiData'
+import Sidebar               from '../components/Sidebar'
+import Header                from '../components/Header'
+import FleetHealthScore      from '../components/FleetHealthScore'
+import FleetHealthGauge      from '../components/FleetHealthGauge'
+import FleetPerformanceRadar  from '../components/FleetPerformanceRadar'
+import FleetHealthTrend       from '../components/FleetHealthTrend'
+import FleetScoreCard         from '../components/FleetScoreCard'
+import AlertMarkersCard      from '../components/AlertMarkersCard'
+import FleetCompositionCard  from '../components/FleetCompositionCard'
+import MaintenanceScoreCard  from '../components/MaintenanceScoreCard'
+import TopDriversPanel       from '../components/TopDriversPanel'
+import VehicleActivity       from '../components/VehicleActivity'
+import LiveMap               from '../components/LiveMap'
+import AIInsights            from '../components/AIInsights'
+import VehicleStatus         from '../components/VehicleStatus'
+import DriverPerformance     from '../components/DriverPerformance'
+import AlertsOverview        from '../components/AlertsOverview'
+import FuelEnergy            from '../components/FuelEnergy'
+import TripAnalysis          from '../components/TripAnalysis'
+import CostSummary           from '../components/CostSummary'
+import { useFlespiData }     from '../hooks/useFlespiData'
+import { computeHealthScore } from '../utils/healthScore'
 
 // ── Widget registry ────────────────────────────────────────────────────────
 const WIDGET_LIST = [
-  { id: 'fleetHealth',     label: 'Fleet Status Gauge' },
-  { id: 'vehicleActivity', label: 'Vehicle Activity Chart' },
-  { id: 'liveMap',         label: 'Live Fleet Map' },
-  { id: 'aiInsights',      label: 'AI Insights' },
-  { id: 'vehicleStatus',   label: 'Vehicle Status Table' },
-  { id: 'driverPerf',      label: 'Driver Performance' },
-  { id: 'alertsOverview',  label: 'Alerts Overview' },
-  { id: 'fuelEnergy',      label: 'Fuel & Energy' },
-  { id: 'tripAnalysis',    label: 'Trip Analysis' },
-  { id: 'costSummary',     label: 'Cost Summary' },
+  { id: 'fleetHealth',       label: 'Fleet Health Gauge'     },
+  { id: 'fleetRadar',        label: 'Fleet Performance Radar'},
+  { id: 'fleetTrend',        label: 'Fleet Health Trend'     },
+  { id: 'fleetScore',        label: 'Fleet Score Card'       },
+  { id: 'alertMarkers',      label: 'Alert Markers'          },
+  { id: 'fleetComposition',  label: 'Fleet Composition'      },
+  { id: 'maintenanceScore',  label: 'Fleet Reliability'      },
+  { id: 'vehicleActivity',   label: 'Vehicle Activity Chart' },
+  { id: 'liveMap',           label: 'Live Fleet Map'         },
+  { id: 'aiInsights',        label: 'AI Insights'            },
+  { id: 'vehicleStatus',     label: 'Vehicle Status Table'   },
+  { id: 'driverPerf',        label: 'Driver Performance'     },
+  { id: 'alertsOverview',    label: 'Alerts Overview'        },
+  { id: 'fuelEnergy',        label: 'Fuel & Energy'          },
+  { id: 'tripAnalysis',      label: 'Trip Analysis'          },
+  { id: 'costSummary',       label: 'Cost Summary'           },
 ]
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -50,12 +64,11 @@ function recomputeData(data, vehicleIds) {
   const inactive    = vehicles.filter(v => v.status === 'Inactive').length
   const noData      = vehicles.filter(v => v.status === 'NoData').length
   const active      = running + idle
-  const healthScore = total > 0 ? Math.round((active / total) * 100) : 0
-  return {
-    total, active, running, idle, stopped, inactive, noData, healthScore, vehicles,
+  const partial     = { total, active, running, idle, stopped, inactive, noData, vehicles,
     totalTrips: running * 3 + stopped,
     totalDistance: running * 85 + stopped * 12,
   }
+  return { ...partial, healthScore: computeHealthScore(partial) }
 }
 
 // ── Inline SVGs ────────────────────────────────────────────────────────────
@@ -87,8 +100,8 @@ const IcoChevron = ({ open }) => (
   </svg>
 )
 
-// ── WidgetWrapper — adds gear overlay to any card ──────────────────────────
-function WidgetWrapper({ id, hidden, onHide, onRefresh, children }) {
+// ── WidgetWrapper ──────────────────────────────────────────────────────────
+function WidgetWrapper({ id, hidden, onHide, onRefresh, children, className = '', noGear = false }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
 
@@ -102,9 +115,9 @@ function WidgetWrapper({ id, hidden, onHide, onRefresh, children }) {
   if (hidden) return null
 
   return (
-    <div className="widget-wrapper" style={{ position: 'relative' }}>
+    <div className={`widget-wrapper${className ? ' ' + className : ''}`} style={{ position: 'relative' }}>
       {children}
-      <div ref={menuRef} style={{ position: 'absolute', top: 10, right: 10, zIndex: 20 }}>
+      {!noGear && <div ref={menuRef} style={{ position: 'absolute', top: 10, right: 10, zIndex: 20 }}>
         <button
           className="widget-gear-btn"
           onClick={e => { e.stopPropagation(); setMenuOpen(s => !s) }}
@@ -157,7 +170,7 @@ function WidgetWrapper({ id, hidden, onHide, onRefresh, children }) {
             ))}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
@@ -198,19 +211,18 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
     setRefreshing(false)
   }
 
-  // ── Feature 2: widget visibility ───────────────────────────────────────
+  // Widget visibility
   const [hiddenWidgets, setHiddenWidgets] = useState(loadHiddenWidgets)
   const [customizeOpen, setCustomizeOpen] = useState(false)
 
-  // ── Feature 1: right filter panel ─────────────────────────────────────
-  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
-  const [filterSearch,    setFilterSearch]    = useState('')
-  const [vehicleGroupOpen,setVehicleGroupOpen]= useState(true)
-  const [filterCompany,   setFilterCompany]   = useState('All')
-  const [filterBranch,    setFilterBranch]    = useState('All')
+  // Filter panel
+  const [filterPanelOpen, setFilterPanelOpen]       = useState(false)
+  const [filterSearch,    setFilterSearch]           = useState('')
+  const [vehicleGroupOpen,setVehicleGroupOpen]       = useState(true)
+  const [filterCompany,   setFilterCompany]          = useState('All')
+  const [filterBranch,    setFilterBranch]           = useState('All')
   const [filterVehicleGroup, setFilterVehicleGroup] = useState('All')
   const [filterVehicleType,  setFilterVehicleType]  = useState('All')
-  // null = all selected; array = specific IDs
   const [pendingIds, setPendingIds] = useState(null)
   const [appliedIds, setAppliedIds] = useState(null)
 
@@ -233,14 +245,12 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  // Filtered data used by all widgets
   const filteredData = useMemo(
     () => recomputeData(data, appliedIds),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, appliedIds ? appliedIds.join(',') : null]
   )
 
-  // Vehicles shown in the panel list (search-filtered)
   const panelVehicles = useMemo(() => {
     if (!data?.vehicles) return []
     const q = filterSearch.trim().toLowerCase()
@@ -249,8 +259,8 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
       : data.vehicles
   }, [data?.vehicles, filterSearch])
 
-  const allIds     = data?.vehicles?.map(v => v.id) ?? []
-  const isChecked  = id => pendingIds === null || pendingIds.includes(id)
+  const allIds    = data?.vehicles?.map(v => v.id) ?? []
+  const isChecked = id => pendingIds === null || pendingIds.includes(id)
 
   const toggleVehicle = id => {
     if (pendingIds === null) {
@@ -263,23 +273,18 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
     }
   }
 
-  const handleApply = () => {
-    setAppliedIds(pendingIds)
-  }
-
+  const handleApply = () => { setAppliedIds(pendingIds) }
   const handleSaveFilter = () => {
     localStorage.setItem('ft-saved-filter', JSON.stringify({
       pendingIds, filterCompany, filterBranch, filterVehicleGroup, filterVehicleType,
     }))
   }
-
   const handleDeleteFilter = () => {
     localStorage.removeItem('ft-saved-filter')
     setAppliedIds(null)
     setPendingIds(null)
   }
 
-  // Widget visibility helpers
   const toggleWidget = useCallback(id => {
     setHiddenWidgets(prev => {
       const next = prev.includes(id) ? prev.filter(w => w !== id) : [...prev, id]
@@ -288,13 +293,13 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
     })
   }, [])
 
-  const W = (id, node) => (
-    <WidgetWrapper id={id} hidden={hiddenWidgets.includes(id)} onHide={toggleWidget} onRefresh={refresh}>
+  // Widget wrapper helper — cls applies Tailwind grid span etc., noGear suppresses the settings button
+  const W = (id, node, cls = '', noGear = false) => (
+    <WidgetWrapper id={id} hidden={hiddenWidgets.includes(id)} onHide={toggleWidget} onRefresh={refresh} className={cls} noGear={noGear}>
       {node}
     </WidgetWrapper>
   )
 
-  // Active filter count for badge
   const activeFilterCount = appliedIds !== null ? appliedIds.length : null
 
   return (
@@ -302,7 +307,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
       <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
       <div className="relative flex flex-col flex-1 overflow-hidden min-w-0" style={{ backgroundColor: 'var(--c-page)' }}>
-        {/* Mobile sidebar backdrop */}
         {sidebarOpen && (
           <div
             className="fixed inset-0 z-40 lg:hidden"
@@ -320,13 +324,12 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
           searchVehicles={data?.vehicles}
         />
 
-        <main className="flex-1 overflow-y-auto no-scrollbar">
+        <main className="flex-1 overflow-y-auto no-scrollbar" style={{ overflowX: 'hidden' }}>
           <div className="p-3 md:p-5 xl:p-6 space-y-4">
 
             {/* ── Status + action bar ───────────────────────────────── */}
             <div className="flex items-center justify-between flex-wrap gap-2">
 
-              {/* Left: Customize Dashboard */}
               <button
                 onClick={() => setCustomizeOpen(true)}
                 style={{
@@ -344,29 +347,24 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                 <span className="hidden sm:inline">Customize Dashboard</span>
                 <span className="sm:hidden">Customize</span>
                 {hiddenWidgets.length > 0 && (
-                  <span style={{
-                    background: '#3b82f6', color: '#fff',
-                    borderRadius: 10, padding: '1px 6px',
-                    fontSize: 10, fontWeight: 700,
-                  }}>
+                  <span style={{ background: '#3b82f6', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
                     {hiddenWidgets.length} hidden
                   </span>
                 )}
               </button>
 
-              {/* Right: status + filter toggle */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {loading && !data && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--c-text3)' }}>
                     <div style={{ width: 12, height: 12, border: '2px solid var(--c-border2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'db-spin 0.75s linear infinite' }} />
-                    <span className="hidden sm:inline">Fetching fleet data…</span>
-                    <span className="sm:hidden">Loading…</span>
+                    <span className="hidden sm:inline">Fetching fleet data...</span>
+                    <span className="sm:hidden">Loading...</span>
                   </div>
                 )}
                 {lastUpdated && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--c-text3)', background: 'var(--c-card)', border: '1px solid var(--c-border2)', borderRadius: 20, padding: '3px 10px' }}>
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span className="hidden sm:inline">{fmtUpdated(lastUpdated)} · auto-refresh 60s</span>
+                    <span className="hidden sm:inline">{fmtUpdated(lastUpdated)} &middot; auto-refresh 60s</span>
                     <span className="sm:hidden">{fmtUpdated(lastUpdated)}</span>
                     <button onClick={handleRefresh} title="Refresh now" disabled={refreshing} style={{ background: 'none', border: 'none', cursor: refreshing ? 'default' : 'pointer', color: '#3b82f6', padding: 0, display: 'flex', alignItems: 'center' }}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: refreshing ? 'db-spin 0.7s linear infinite' : 'none' }}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
@@ -374,7 +372,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                   </div>
                 )}
 
-                {/* Filter panel toggle */}
                 <button
                   onClick={() => setFilterPanelOpen(s => !s)}
                   title="Toggle filter panel"
@@ -399,29 +396,108 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               </div>
             </div>
 
-            {/* ── Row 1: Stat Cards ─────────────────────────────────── */}
-            <StatCards isDark={isDark} fleetData={filteredData} loading={loading} />
+            {/* ════════════════════════════════════════════════════════
+                MOBILE layout  (< 1024 px)
+            ════════════════════════════════════════════════════════ */}
+            <div className="lg:hidden space-y-4">
 
-            {/* ── Row 2 ─────────────────────────────────────────────── */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {W('fleetHealth',     <FleetHealthScore isDark={isDark} fleetData={filteredData} loading={loading} />)}
-              {W('vehicleActivity', <VehicleActivity  isDark={isDark} vehicleCount={filteredData?.total ?? 0} />)}
-              {W('liveMap',         <LiveMap fleetData={filteredData} />)}
-              {W('aiInsights',      <AIInsights />)}
+              {/* Row 2 */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {W('fleetHealth',     <FleetHealthScore isDark={isDark} fleetData={filteredData} loading={loading} />)}
+                {W('vehicleActivity', <VehicleActivity  isDark={isDark} vehicleCount={filteredData?.total ?? 0} />)}
+                {W('liveMap',         <LiveMap fleetData={filteredData} />)}
+                {W('aiInsights',      <AIInsights fleetData={filteredData} />)}
+              </div>
+
+              {/* Row 3 */}
+              <div className="grid grid-cols-1 gap-4">
+                {W('vehicleStatus',  <VehicleStatus vehicles={filteredData?.vehicles} loading={loading} />)}
+                {W('driverPerf',     <DriverPerformance />)}
+                {W('alertsOverview', <AlertsOverview fleetData={filteredData} />)}
+              </div>
+
+              {/* Row 4 */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {W('fuelEnergy',   <FuelEnergy   isDark={isDark} />)}
+                {W('tripAnalysis', <TripAnalysis isDark={isDark} />)}
+                {W('costSummary',  <CostSummary  isDark={isDark} />)}
+              </div>
             </div>
 
-            {/* ── Row 3 ─────────────────────────────────────────────── */}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              {W('vehicleStatus',  <VehicleStatus vehicles={filteredData?.vehicles} loading={loading} />)}
-              {W('driverPerf',     <DriverPerformance />)}
-              {W('alertsOverview', <AlertsOverview fleetData={filteredData} />)}
-            </div>
+            {/* ════════════════════════════════════════════════════════
+                DESKTOP layout  (>= 1024 px)  — ClyHealth style
+            ════════════════════════════════════════════════════════ */}
+            <div className="hidden lg:block space-y-6">
 
-            {/* ── Row 4 ─────────────────────────────────────────────── */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {W('fuelEnergy',   <FuelEnergy   isDark={isDark} />)}
-              {W('tripAnalysis', <TripAnalysis isDark={isDark} />)}
-              {W('costSummary',  <CostSummary  isDark={isDark} />)}
+              {/* ── ClyHealth-style dark frame ── */}
+              <div style={{
+                background: 'linear-gradient(to bottom right, #0a1f4a, #0e2a5e, #143a7a)',
+                borderRadius: 28,
+                padding: '28px 32px 0',
+                position: 'relative',
+                overflow: 'hidden',
+              }}>
+                {/* Glow orbs */}
+                <div style={{
+                  position: 'absolute', top: -80, right: -80, width: 380, height: 380,
+                  background: 'radial-gradient(circle, rgba(59,130,246,0.3) 0%, transparent 70%)',
+                  pointerEvents: 'none', borderRadius: '50%',
+                  animation: 'hero-glow-float 6s ease-in-out infinite',
+                }} />
+                <div style={{
+                  position: 'absolute', bottom: -100, left: -60, width: 320, height: 320,
+                  background: 'radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 70%)',
+                  pointerEvents: 'none', borderRadius: '50%',
+                }} />
+
+                {/* Row 1: Radar | Gauge | Trend — top-aligned, each card natural height */}
+                <div className="grid gap-5 items-start" style={{ position: 'relative', zIndex: 1, marginBottom: 20, gridTemplateColumns: 'minmax(260px, 1fr) minmax(420px, 1.6fr) minmax(260px, 1fr)' }}>
+                  <div className="min-w-0" style={{ alignSelf: 'flex-end' }}>
+                    {W('fleetRadar', <FleetPerformanceRadar fleetData={filteredData} heroMode />, '', true)}
+                  </div>
+                  <div className="min-w-0" style={{ overflow: 'visible' }}>
+                    {W('fleetHealth', <FleetHealthGauge isDark={isDark} fleetData={filteredData} loading={loading} heroMode />, '', true)}
+                  </div>
+                  <div className="min-w-0" style={{ alignSelf: 'flex-end' }}>
+                    {W('fleetTrend', <FleetHealthTrend fleetData={filteredData} heroMode />, '', true)}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Score+Alerts (4) | Composition (4) | Maintenance (4) — light theme, outside dark frame */}
+              <div className="grid grid-cols-12 gap-4">
+                <div className="col-span-4 min-w-0 flex flex-col gap-4">
+                  {W('fleetScore',   <FleetScoreCard fleetData={filteredData} loading={loading} />)}
+                  {W('alertMarkers', <AlertMarkersCard />)}
+                </div>
+                <div className="col-span-4 min-w-0">
+                  {W('fleetComposition', <FleetCompositionCard fleetData={filteredData} loading={loading} />)}
+                </div>
+                <div className="col-span-4 min-w-0">
+                  {W('maintenanceScore', <MaintenanceScoreCard fleetData={filteredData} loading={loading} />)}
+                </div>
+              </div>
+
+              {/* Top Drivers | Live Map */}
+              <div className="grid grid-cols-2 gap-6">
+                <div className="min-w-0">{W('driverPerf', <TopDriversPanel />)}</div>
+                <div className="min-w-0">{W('liveMap',    <LiveMap fleetData={filteredData} />)}</div>
+              </div>
+
+              {/* Vehicle Status | AI Insights | Alerts Overview */}
+              <div className="grid grid-cols-3 gap-6">
+                {W('vehicleStatus',  <VehicleStatus vehicles={filteredData?.vehicles} loading={loading} />)}
+                {W('aiInsights',     <AIInsights fleetData={filteredData} />)}
+                {W('alertsOverview', <AlertsOverview fleetData={filteredData} />)}
+              </div>
+
+              {/* Trip Analysis | Cost Summary | Fuel & Energy */}
+              <div className="grid grid-cols-3 gap-6">
+                {W('tripAnalysis', <TripAnalysis isDark={isDark} />)}
+                {W('costSummary',  <CostSummary  isDark={isDark} />)}
+                {W('fuelEnergy',   <FuelEnergy   isDark={isDark} />)}
+              </div>
             </div>
 
           </div>
@@ -429,10 +505,8 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-          FEATURE 1 — Right Filter Panel
+          Right Filter Panel
       ══════════════════════════════════════════════════════════════ */}
-
-      {/* Backdrop */}
       {filterPanelOpen && (
         <div
           style={{ position: 'fixed', inset: 0, zIndex: 45, background: 'rgba(0,0,0,0.3)' }}
@@ -440,7 +514,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
         />
       )}
 
-      {/* Slide-in panel */}
       <div
         style={{
           position: 'fixed', top: 0, right: 0, height: '100vh',
@@ -454,7 +527,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
           pointerEvents: filterPanelOpen ? 'auto' : 'none',
         }}
       >
-        {/* Panel header */}
         <div style={{
           padding: '14px 16px', display: 'flex', alignItems: 'center',
           justifyContent: 'space-between',
@@ -475,28 +547,24 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
           </button>
         </div>
 
-        {/* Scrollable body */}
         <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
-
           <FilterSelect label="Company"       value={filterCompany}      options={['All', 'AI Tracking']} onChange={setFilterCompany} />
           <FilterSelect label="Branch"        value={filterBranch}       options={['All']}                onChange={setFilterBranch} />
           <FilterSelect label="Vehicle Group" value={filterVehicleGroup} options={['All']}                onChange={setFilterVehicleGroup} />
           <FilterSelect label="Vehicle Type"  value={filterVehicleType}  options={['All']}                onChange={setFilterVehicleType} />
 
-          {/* ── Object Selection ─────────────────────────────── */}
           <div style={{ marginTop: 16 }}>
             <div style={{ fontSize: 11, letterSpacing: '0.05em', color: 'var(--c-text3)', fontWeight: 600, marginBottom: 10 }}>
               OBJECT SELECTION
             </div>
 
-            {/* Search */}
             <div style={{ position: 'relative', marginBottom: 8 }}>
               <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-text3)', display: 'flex' }}>
                 <IcoSearch />
               </span>
               <input
                 type="text"
-                placeholder="Search vehicles…"
+                placeholder="Search vehicles..."
                 value={filterSearch}
                 onChange={e => setFilterSearch(e.target.value)}
                 style={{
@@ -508,7 +576,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               />
             </div>
 
-            {/* Select / Deselect all */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
               {[
                 { label: 'Select All',   action: () => setPendingIds(null) },
@@ -530,9 +597,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               ))}
             </div>
 
-            {/* AI Tracking group */}
             <div style={{ border: '1px solid var(--c-border2)', borderRadius: 8, overflow: 'hidden' }}>
-              {/* Group header */}
               <button
                 onClick={() => setVehicleGroupOpen(s => !s)}
                 style={{
@@ -548,12 +613,11 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                 <IcoChevron open={vehicleGroupOpen} />
               </button>
 
-              {/* Vehicle list */}
               {vehicleGroupOpen && (
                 <div className="no-scrollbar" style={{ maxHeight: 240, overflowY: 'auto' }}>
                   {loading && !data && (
                     <div style={{ padding: '12px 10px', fontSize: 12, color: 'var(--c-text3)', textAlign: 'center' }}>
-                      Loading vehicles…
+                      Loading vehicles...
                     </div>
                   )}
                   {!loading && panelVehicles.length === 0 && (
@@ -596,7 +660,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
           </div>
         </div>
 
-        {/* Panel footer */}
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--c-border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
             onClick={handleApply}
@@ -641,7 +704,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-          FEATURE 2 — Customize Dashboard Modal
+          Customize Dashboard Modal
       ══════════════════════════════════════════════════════════════ */}
       {customizeOpen && (
         <div
@@ -664,7 +727,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               animation: 'scaleIn 0.18s ease',
             }}
           >
-            {/* Modal header */}
             <div style={{
               padding: '16px 20px', borderBottom: '1px solid var(--c-border)',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -686,7 +748,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               </button>
             </div>
 
-            {/* Widget toggles */}
             <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '8px 20px' }}>
               {WIDGET_LIST.map((widget, i) => {
                 const hidden = hiddenWidgets.includes(widget.id)
@@ -714,7 +775,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                       </span>
                     </div>
 
-                    {/* Toggle switch */}
                     <button
                       onClick={() => toggleWidget(widget.id)}
                       style={{
@@ -737,7 +797,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               })}
             </div>
 
-            {/* Modal footer */}
             <div style={{
               padding: '12px 20px', borderTop: '1px solid var(--c-border)',
               display: 'flex', gap: 8, justifyContent: 'space-between',
@@ -776,6 +835,10 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
 
       <style>{`
         @keyframes db-spin { to { transform: rotate(360deg) } }
+        @keyframes hero-glow-float {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(-20px, 20px) scale(1.08); }
+        }
         .widget-wrapper:hover .widget-gear-btn { opacity: 1 !important; }
         @media (hover: none) {
           .widget-gear-btn { opacity: 1 !important; }

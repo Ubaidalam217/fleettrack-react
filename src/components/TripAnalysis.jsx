@@ -63,7 +63,7 @@ export default function TripAnalysis({ isDark }) {
               {t.label}
             </span>
             <span className="font-bold" style={{ color: 'var(--c-text1)' }}>
-              {t.value} <span className="font-normal text-[10px]" style={{ color: 'var(--c-text3)' }}>{t.pct}</span>
+              {t.value} <span className="font-normal text-[10px]" style={{ color: 'var(--c-text3)' }}>({t.pct})</span>
             </span>
           </div>
         ))}

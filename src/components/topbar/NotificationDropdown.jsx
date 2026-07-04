@@ -229,7 +229,7 @@ export default function NotificationDropdown() {
           color: 'var(--c-text2)',
           background: open ? 'rgba(59,130,246,0.08)' : 'transparent',
         }}
-        title="Notifications"
+        title={totalUnread > 0 ? `${totalUnread} alert${totalUnread !== 1 ? 's' : ''} in last 24 hours` : 'Notifications'}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
           <path fillRule="evenodd" clipRule="evenodd" d="M10.75 2.29a.75.75 0 00-1.5 0v.54A6.92 6.92 0 003.62 9.17v5.29H3.33a.75.75 0 000 1.5h17.34a.75.75 0 000-1.5h-.29V9.17A6.92 6.92 0 0014.75 2.83v-.54a.75.75 0 00-1.5 0v.28c-.41-.07-.83-.11-1.25-.11-.42 0-.84.04-1.25.11v-.28zM5.12 9.17a5.38 5.38 0 0113.76 0v5.29H5.12V9.17zM8 18.46a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 018 18.46z" fill="currentColor"/>

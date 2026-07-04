@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { computeHealthScore } from '../utils/healthScore'
 
 // In dev the Vite proxy forwards /flespi → https://flespi.io (avoids CORS).
 // In production the browser calls Flespi directly (Flespi supports CORS).
@@ -81,7 +82,7 @@ export function useFlespiData() {
       // Active = Running + Idle only (Stopped vehicles are not considered active)
       const active   = running + idle
 
-      const healthScore = total > 0 ? Math.round((active / total) * 100) : 0
+      const healthScore = computeHealthScore({ total, running, idle, stopped, inactive, noData, active })
 
       // Trips API not available on free plan — estimate from live status counts
       const totalTrips    = running * 3 + stopped * 1

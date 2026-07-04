@@ -1,7 +1,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-const data = DAYS.map((day, i) => ({ day, fuel: [110,95,130,115,145,125,127][i] }))
+const data = DAYS.map((day, i) => ({ day, fuel: [130,145,125,155,165,90,85][i] }))
 
 function CustomTooltip({ active, payload, label, isDark }) {
   if (!active || !payload?.length) return null
@@ -24,11 +24,12 @@ export default function FuelEnergy({ isDark }) {
   return (
     <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
       <h3 className="text-sm font-semibold mb-0.5" style={{ color: 'var(--c-text1)' }}>Fuel &amp; Energy</h3>
-      <p className="text-xs mb-3" style={{ color: 'var(--c-text3)' }}>Consumption last 7 days</p>
+      <p className="text-xs mb-1" style={{ color: 'var(--c-text3)' }}>Consumption last 7 days</p>
+      <p className="text-[10px] mb-3 italic" style={{ color: 'var(--c-text2)' }}>* Fuel data estimated from vehicle activity. Direct sensor integration available with premium telemetry.</p>
 
       <div className="grid grid-cols-2 gap-2 mb-4">
         <div className="rounded-lg p-3 text-center" style={{ background: 'var(--c-card2)', border: '1px solid var(--c-border2)' }}>
-          <div className="text-base font-bold" style={{ color: 'var(--c-text1)' }}>847 L</div>
+          <div className="text-base font-bold" style={{ color: 'var(--c-text1)' }}>895 L</div>
           <div className="text-[10px] mt-0.5" style={{ color: 'var(--c-text3)' }}>Total Consumed</div>
         </div>
         <div className="rounded-lg p-3 text-center" style={{ background: 'var(--c-card2)', border: '1px solid var(--c-border2)' }}>

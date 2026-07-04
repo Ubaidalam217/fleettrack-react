@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import Login               from './pages/Login'
 import Dashboard           from './pages/Dashboard'
 import Tracking            from './pages/Tracking'
+import Charts              from './pages/Charts'
+import Reports             from './pages/Reports'
+import SettingsPage        from './pages/Settings'
 import Notifications       from './pages/Notifications'
 import Announcements       from './pages/Announcements'
 import PushPermissionModal from './components/PushPermissionModal'
@@ -83,6 +86,9 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/login"          element={<Login />} />
         <Route path="/dashboard"      element={<Dashboard      {...themeProps} />} />
         <Route path="/tracking"       element={<Tracking       {...themeProps} />} />
+        <Route path="/charts"         element={<Charts         {...themeProps} />} />
+        <Route path="/reports"        element={<Reports        {...themeProps} />} />
+        <Route path="/settings"       element={<SettingsPage   {...themeProps} />} />
         <Route path="/notifications"  element={<Notifications  {...themeProps} />} />
         <Route path="/announcements"  element={<Announcements  {...themeProps} />} />
         <Route path="*"               element={<Navigate to="/login" replace />} />
@@ -116,7 +122,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className={isDark ? 'dark' : ''} style={{ minHeight: '100vh', backgroundColor: 'var(--c-page)' }}>
+      <div className={isDark ? 'dark' : ''} style={{ minHeight: '100vh', backgroundColor: 'var(--c-page)', overflowX: 'hidden' }}>
         <BrowserRouter>
           <AppInner
             isDark={isDark}

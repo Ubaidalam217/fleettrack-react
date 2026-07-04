@@ -13,7 +13,7 @@ const STATUS_ORDER = { Running: 0, Idle: 1, Stopped: 2, Inactive: 3, NoData: 4 }
 function relTime(ts) {
   if (!ts) return 'No data'
   const secs = Date.now() / 1000 - ts
-  if (secs < 60)   return 'Just now'
+  if (secs < 60)   return 'just now'
   if (secs < 3600) return `${Math.round(secs / 60)} min ago`
   if (secs < 86400) return `${Math.round(secs / 3600)}h ago`
   return `${Math.round(secs / 86400)}d ago`
