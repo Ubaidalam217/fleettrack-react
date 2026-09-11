@@ -1,3 +1,5 @@
+import EstimatedBadge from './EstimatedBadge'
+
 const DRIVERS = [
   { initials: 'AK', name: 'Ahmed Khan',  sub: 'TRK-041 · 48 trips', bg: 'bg-blue-500/20',   text: 'text-blue-600',   score: 98, scoreColor: 'text-emerald-600', stars: 4.5 },
   { initials: 'SA', name: 'Sara Ali',    sub: 'TRK-017 · 41 trips', bg: 'bg-purple-500/20', text: 'text-purple-600', score: 94, scoreColor: 'text-blue-600',    stars: 4.5 },
@@ -40,7 +42,10 @@ export default function DriverPerformance() {
     <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
       <div className="flex items-start justify-between mb-3 md:mb-4">
         <div>
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Driver Performance</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Driver Performance</h3>
+            <EstimatedBadge />
+          </div>
           <p className="text-xs mt-0.5" style={{ color: 'var(--c-text3)' }}>Top performers this month</p>
         </div>
         <a href="#" className="text-xs text-blue-500 hover:text-blue-400">View all</a>

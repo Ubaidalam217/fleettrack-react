@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { generateNotifications } from '../services/notificationEngine'
 import * as store from '../services/notificationStore'
 import { sendPushNotification } from '../services/pushNotifications'
-import { BASE_URL, HEADERS } from './useFlespiData'
+import { useFlespiMQTT } from './useFlespiMQTT'
 
 const PREV_KEY = 'ft_eng_prev_snap'
 const TIME_KEY = 'ft_eng_time_tracking'
@@ -15,42 +15,17 @@ function writeSession(key, val) {
   try { sessionStorage.setItem(key, JSON.stringify(val)) } catch {}
 }
 
-async function fetchEngineSnapshot() {
-  const [devRes, telRes] = await Promise.all([
-    fetch(`${BASE_URL}/gw/devices/all`, { headers: HEADERS }),
-    fetch(
-      `${BASE_URL}/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,engine.ignition.status,timestamp`,
-      { headers: HEADERS }
-    ),
-  ])
-
-  if (!devRes.ok) throw new Error(`devices ${devRes.status}`)
-  if (!telRes.ok) throw new Error(`telemetry ${telRes.status}`)
-
-  const [dd, td] = await Promise.all([devRes.json(), telRes.json()])
-  const devices = dd.result || []
-
-  // Build telemetry lookup by device id
-  const telMap = {}
-  ;(td.result || []).forEach(r => { telMap[r.id] = r.telemetry || {} })
-
-  return devices.map(d => {
-    const tel = telMap[d.id] || {}
-
-    // Use the highest .ts value across all telemetry fields as "server saw this device at"
-    const tss = Object.values(tel).map(p => p?.ts).filter(Boolean)
-    const serverTs = tss.length ? Math.max(...tss) : null
-
-    return {
-      id:       d.id,
-      name:     d.name || d.ident || `Device ${d.id}`,
-      speed:    tel['position.speed']?.value ?? 0,
-      ignition: tel['engine.ignition.status']?.value ?? false,
-      lat:      tel['position.latitude']?.value ?? null,
-      lng:      tel['position.longitude']?.value ?? null,
-      serverTs, // unix seconds
-    }
-  })
+// Map live MQTT vehicles onto the snapshot shape generateNotifications expects.
+function toSnapshot(vehicles) {
+  return vehicles.map(v => ({
+    id:       v.id,
+    name:     v.name,
+    speed:    v.speed ?? 0,
+    ignition: v.ignition ?? false,
+    lat:      v.lat ?? null,
+    lng:      v.lng ?? null,
+    serverTs: v.lastTs ?? null,
+  }))
 }
 
 // ── Dev logging ────────────────────────────────────────────────────────────
@@ -60,7 +35,7 @@ function devLog(snap, ruleResults, newNotifs) {
   const now = Date.now()
   console.group(`[NotifEngine] Tick at ${new Date().toLocaleTimeString()}`)
 
-  console.log('Vehicles fetched from Flespi:', snap.length)
+  console.log('Vehicles from MQTT snapshot:', snap.length)
 
   console.table(snap.map(v => ({
     id:                  v.id,
@@ -93,13 +68,16 @@ function devLog(snap, ruleResults, newNotifs) {
 
 // ── Engine hook ────────────────────────────────────────────────────────────
 export function useNotificationEngine() {
+  const { vehicles } = useFlespiMQTT()
   const running = useRef(false)
 
-  const tick = async () => {
+  useEffect(() => {
+    if (!vehicles.length) return
     if (running.current) return
     running.current = true
+
     try {
-      const currentSnap    = await fetchEngineSnapshot()
+      const currentSnap    = toSnapshot(vehicles)
       const previousSnap   = readSession(PREV_KEY)
       const timeTracking   = readSession(TIME_KEY) || {}
       const existingNotifs = store.getAll()
@@ -124,16 +102,10 @@ export function useNotificationEngine() {
 
       devLog(currentSnap, ruleResults ?? [], newNotifs)
     } catch (err) {
-      // Silent failure — existing notifications persist, engine retries next tick
+      // Silent failure — existing notifications persist, engine re-evaluates on next message
       if (import.meta.env.DEV) console.warn('[NotifEngine] Error (silent):', err.message)
     } finally {
       running.current = false
     }
-  }
-
-  useEffect(() => {
-    tick() // run immediately on mount
-    const id = setInterval(tick, 60_000)
-    return () => clearInterval(id)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [vehicles])
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNotifications } from '../hooks/useNotifications'
 
 const ICON = {
   critical: (
@@ -55,11 +56,24 @@ function useCountUp(target, duration = 1200) {
   return count
 }
 
-export default function AlertsOverview({ fleetData }) {
-  const c0 = useCountUp(fleetData?.stopped ?? 0,  900)
-  const c1 = useCountUp(fleetData?.idle    ?? 0, 1000)
-  const c2 = useCountUp(fleetData?.active  ?? 0, 1100)
-  const c3 = useCountUp(fleetData?.total   ?? 0, 1300)
+const LAST_24H = 24 * 60 * 60 * 1000
+const LAST_7D  = 7  * 24 * 60 * 60 * 1000
+
+export default function AlertsOverview() {
+  const { alerts } = useNotifications()
+  const now = Date.now()
+
+  // Critical/Warning/Information map to the notification engine's real
+  // severities; Resolved counts alerts the team has acknowledged (read).
+  const criticalCount = alerts.filter(n => n.severity === 'critical' && now - n.timestamp < LAST_24H).length
+  const warningCount  = alerts.filter(n => n.severity === 'warning'  && now - n.timestamp < LAST_24H).length
+  const infoCount     = alerts.filter(n => n.severity === 'info'     && now - n.timestamp < LAST_24H).length
+  const resolvedCount = alerts.filter(n => n.read && now - n.timestamp < LAST_7D).length
+
+  const c0 = useCountUp(criticalCount,  900)
+  const c1 = useCountUp(warningCount,  1000)
+  const c2 = useCountUp(infoCount,     1100)
+  const c3 = useCountUp(resolvedCount, 1300)
   const counts = [c0, c1, c2, c3]
 
   return (

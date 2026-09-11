@@ -24,16 +24,6 @@ function locationStr(v) {
   return 'No GPS data'
 }
 
-// Fallback mock shown until API data arrives
-const MOCK_VEHICLES = [
-  { id: 0, name: 'TRK-041', status: 'Running',  speed: 72, lat: 24.86, lng: 67.01, lastTs: Date.now()/1000 - 10   },
-  { id: 1, name: 'TRK-017', status: 'Idle',     speed: 0,  lat: 31.52, lng: 74.35, lastTs: Date.now()/1000 - 120  },
-  { id: 2, name: 'TRK-009', status: 'Running',  speed: 55, lat: 33.72, lng: 73.04, lastTs: Date.now()/1000 - 60   },
-  { id: 3, name: 'TRK-033', status: 'Inactive', speed: null, lat: null, lng: null,  lastTs: Date.now()/1000 - 10800 },
-  { id: 4, name: 'TRK-022', status: 'Stopped',  speed: 0,  lat: 30.20, lng: 71.45, lastTs: Date.now()/1000 - 900  },
-  { id: 5, name: 'TRK-015', status: 'Idle',     speed: 0,  lat: 31.42, lng: 73.09, lastTs: Date.now()/1000 - 300  },
-]
-
 function Skel() {
   return (
     <div style={{ height: 13, borderRadius: 4, background: 'var(--c-border2)', animation: 'skel-pulse 1.4s ease-in-out infinite', width: '70%' }}/>
@@ -43,11 +33,12 @@ function Skel() {
 export default function VehicleStatus({ vehicles, loading }) {
   const [hovered, setHovered] = useState(null)
 
-  // Use real data if available, otherwise fallback to mock
-  const source = vehicles && vehicles.length > 0 ? vehicles : MOCK_VEHICLES
-  const sorted = [...source].sort((a, b) => (STATUS_ORDER[a.status] ?? 5) - (STATUS_ORDER[b.status] ?? 5))
-  const rows   = sorted.slice(0, 6)
-  const isLive = !!(vehicles && vehicles.length > 0)
+  const source  = vehicles ?? []
+  const sorted  = [...source].sort((a, b) => (STATUS_ORDER[a.status] ?? 5) - (STATUS_ORDER[b.status] ?? 5))
+  const rows    = sorted.slice(0, 6)
+  const isLive  = source.length > 0
+  const showSkeleton = loading && !isLive
+  const showEmpty    = !loading && !isLive
 
   return (
     <div className="rounded-xl" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
@@ -59,7 +50,7 @@ export default function VehicleStatus({ vehicles, loading }) {
           <p className="text-xs mt-0.5" style={{ color: 'var(--c-text3)' }}>
             {isLive
               ? `${source.length} vehicles · live data`
-              : loading ? 'Fetching live data…' : 'Real-time positions'}
+              : loading ? 'Fetching live data…' : 'No vehicles reporting'}
           </p>
         </div>
         <a href="/tracking" className="text-xs text-blue-500 hover:text-blue-400 transition-colors">View all →</a>
@@ -75,30 +66,44 @@ export default function VehicleStatus({ vehicles, loading }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(v => {
-              const st  = STATUS_STYLE[v.status] ?? STATUS_STYLE.NoData
-              const key = v.id ?? v.name
+            {showSkeleton ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid var(--c-border2)' }}>
+                  {Array.from({ length: 5 }).map((__, c) => (
+                    <td key={c} className="px-3 py-2.5"><Skel/></td>
+                  ))}
+                </tr>
+              ))
+            ) : showEmpty ? (
+              <tr>
+                <td colSpan={5} style={{ padding: '32px 12px', textAlign: 'center', color: 'var(--c-text3)', fontSize: 12 }}>
+                  No vehicles reporting
+                </td>
+              </tr>
+            ) : (
+              rows.map(v => {
+                const st  = STATUS_STYLE[v.status] ?? STATUS_STYLE.NoData
+                const key = v.id ?? v.name
 
-              return (
-                <tr
-                  key={key}
-                  style={{
-                    borderBottom: '1px solid var(--c-border2)',
-                    background: hovered === key ? 'var(--c-hover)' : 'transparent',
-                    transition: 'background 0.1s',
-                    cursor: 'default',
-                  }}
-                  onMouseEnter={() => setHovered(key)}
-                  onMouseLeave={() => setHovered(null)}
-                >
-                  {/* Vehicle name */}
-                  <td className="px-3 py-2.5 font-bold" style={{ color: 'var(--c-text1)', whiteSpace: 'nowrap' }}>
-                    {loading && !isLive ? <Skel/> : (v.name || v.ident || `Device ${v.id}`)}
-                  </td>
+                return (
+                  <tr
+                    key={key}
+                    style={{
+                      borderBottom: '1px solid var(--c-border2)',
+                      background: hovered === key ? 'var(--c-hover)' : 'transparent',
+                      transition: 'background 0.1s',
+                      cursor: 'default',
+                    }}
+                    onMouseEnter={() => setHovered(key)}
+                    onMouseLeave={() => setHovered(null)}
+                  >
+                    {/* Vehicle name */}
+                    <td className="px-3 py-2.5 font-bold" style={{ color: 'var(--c-text1)', whiteSpace: 'nowrap' }}>
+                      {v.name || v.ident || `Device ${v.id}`}
+                    </td>
 
-                  {/* Status badge */}
-                  <td className="px-3 py-2.5" style={{ whiteSpace: 'nowrap' }}>
-                    {loading && !isLive ? <Skel/> : (
+                    {/* Status badge */}
+                    <td className="px-3 py-2.5" style={{ whiteSpace: 'nowrap' }}>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${st.textColor}`}
                         style={{ background: st.bg, border: `1px solid ${st.border}` }}
@@ -106,26 +111,26 @@ export default function VehicleStatus({ vehicles, loading }) {
                         <span className={`h-1.5 w-1.5 rounded-full ${st.blink ? 'live-blink' : ''}`} style={{ background: st.dot }}/>
                         {st.label}
                       </span>
-                    )}
-                  </td>
+                    </td>
 
-                  {/* Location */}
-                  <td className="px-3 py-2.5" style={{ color: 'var(--c-text2)', whiteSpace: 'nowrap' }}>
-                    {loading && !isLive ? <Skel/> : locationStr(v)}
-                  </td>
+                    {/* Location */}
+                    <td className="px-3 py-2.5" style={{ color: 'var(--c-text2)', whiteSpace: 'nowrap' }}>
+                      {locationStr(v)}
+                    </td>
 
-                  {/* Speed */}
-                  <td className="px-3 py-2.5 font-semibold" style={{ color: v.status === 'Running' ? '#22c55e' : 'var(--c-text1)', whiteSpace: 'nowrap' }}>
-                    {loading && !isLive ? <Skel/> : (v.speed != null ? `${v.speed} km/h` : '—')}
-                  </td>
+                    {/* Speed */}
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: v.status === 'Running' ? '#22c55e' : 'var(--c-text1)', whiteSpace: 'nowrap' }}>
+                      {v.speed != null ? `${v.speed} km/h` : '—'}
+                    </td>
 
-                  {/* Last updated */}
-                  <td className="px-3 py-2.5" style={{ color: 'var(--c-text3)', whiteSpace: 'nowrap' }}>
-                    {loading && !isLive ? <Skel/> : relTime(v.lastTs)}
-                  </td>
-                </tr>
-              )
-            })}
+                    {/* Last updated */}
+                    <td className="px-3 py-2.5" style={{ color: 'var(--c-text3)', whiteSpace: 'nowrap' }}>
+                      {relTime(v.lastTs)}
+                    </td>
+                  </tr>
+                )
+              })
+            )}
           </tbody>
         </table>
       </div>

@@ -100,7 +100,7 @@ function SearchResults({ query, results, onClose }) {
 }
 
 // ── Header ─────────────────────────────────────────────────────────────────
-export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMenuClick, searchVehicles }) {
+export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMenuClick, searchVehicles, isConnected = true }) {
   const [time,        setTime]        = useState('')
   const [date,        setDate]        = useState('')
   const [searchOpen,  setSearchOpen]  = useState(false)
@@ -270,10 +270,18 @@ export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMen
             <span className="text-[10px]" style={{ color: 'var(--c-text3)' }}>{date}</span>
           </div>
 
-          {/* Live badge */}
-          <div className="hidden sm:flex items-center gap-1.5 rounded-full px-2 md:px-2.5 py-1" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)' }}>
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 live-blink"></span>
-            <span className="text-[10px] md:text-[11px] font-bold text-emerald-400 tracking-wide">LIVE</span>
+          {/* MQTT connection status badge */}
+          <div
+            className="hidden sm:flex items-center gap-1.5 rounded-full px-2 md:px-2.5 py-1"
+            style={{
+              background: isConnected ? 'rgba(16,185,129,0.1)' : 'rgba(234,179,8,0.1)',
+              border: `1px solid ${isConnected ? 'rgba(16,185,129,0.2)' : 'rgba(234,179,8,0.2)'}`,
+            }}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full live-blink ${isConnected ? 'bg-emerald-400' : 'bg-yellow-400'}`}></span>
+            <span className={`text-[10px] md:text-[11px] font-bold tracking-wide ${isConnected ? 'text-emerald-400' : 'text-yellow-400'}`}>
+              {isConnected ? 'LIVE' : 'Reconnecting...'}
+            </span>
           </div>
 
           {/* User dropdown */}

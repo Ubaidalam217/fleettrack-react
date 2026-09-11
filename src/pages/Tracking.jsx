@@ -4,6 +4,12 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
+import VehicleDetailPanel from '../components/tracking/VehicleDetailPanel'
+import { useFlespiMQTT } from '../hooks/useFlespiMQTT'
+import {
+  ALL, FILTERS, statusColor, statusLabel,
+  filterLabel, filterColor, countByFilter, matchesFilter,
+} from '../utils/vehicleStatus'
 
 // Fix Leaflet default icon broken by bundlers
 delete L.Icon.Default.prototype._getIconUrl
@@ -12,32 +18,6 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
-
-const BASE_URL = import.meta.env.DEV ? '/flespi' : 'https://flespi.io'
-
-const FLESPI_TOKEN = import.meta.env.VITE_FLESPI_TOKEN
-const HEADERS = {
-  'Authorization': `FlespiToken ${FLESPI_TOKEN}`,
-  'Content-Type': 'application/json',
-}
-const TABS = ['Running', 'Idle', 'Stopped', 'Inactive', 'NoData', 'Total']
-
-const STATUS_COLORS = {
-  Running: '#22c55e',
-  Idle:    '#eab308',
-  Stopped: '#ef4444',
-  Inactive:'#6b7280',
-  NoData:  '#6b7280',
-}
-
-const TAB_COLORS = {
-  Running: '#22c55e',
-  Idle:    '#eab308',
-  Stopped: '#ef4444',
-  Inactive:'#6b7280',
-  NoData:  '#6b7280',
-  Total:   '#3b82f6',
-}
 
 function makeIcon(color, delay = 0) {
   return L.divIcon({
@@ -49,33 +29,15 @@ function makeIcon(color, delay = 0) {
   })
 }
 
-function getStatus(tel) {
-  if (!tel) return 'NoData'
-  const timestamps = Object.values(tel).map(v => v?.ts).filter(Boolean)
-  if (!timestamps.length) return 'NoData'
-  const lastTs = Math.max(...timestamps)
-  if (Date.now() / 1000 - lastTs > 86400) return 'Inactive'
-  const ignition = tel['engine.ignition.status']?.value
-  const speed = tel['position.speed']?.value ?? 0
-  if (ignition === true && speed > 0) return 'Running'
-  if (ignition === true && speed === 0) return 'Idle'
-  if (ignition === false) return 'Stopped'
-  return 'NoData'
-}
-
-function getLastTs(tel) {
-  if (!tel) return null
-  const tss = Object.values(tel).map(v => v?.ts).filter(Boolean)
-  return tss.length ? Math.max(...tss) : null
-}
-
 function fmt(ts) {
   if (!ts) return 'N/A'
   return new Date(ts * 1000).toLocaleString()
 }
 
+// Plate number is the spec's primary identifier; fall back to the Flespi
+// device name until vehicle master data has been filled in.
 function vehicleName(v) {
-  return v.name || v.configuration?.name || v.ident || `Device ${v.id}`
+  return v.master?.plateNo || v.name || v.ident || `Device ${v.id}`
 }
 
 function MapFlyTo({ target }) {
@@ -87,17 +49,16 @@ function MapFlyTo({ target }) {
   return null
 }
 
-function Spinner({ size = 28 }) {
-  return (
-    <div style={{
-      width: size, height: size,
-      border: `${size > 20 ? 4 : 3}px solid var(--c-border2)`,
-      borderTopColor: '#3b82f6',
-      borderRadius: '50%',
-      animation: 'fleet-spin 0.75s linear infinite',
-      flexShrink: 0,
-    }} />
-  )
+// Leaflet caches its container size, so any layout change that resizes the map
+// box leaves grey gutters until invalidateSize() runs. The delay lets the CSS
+// transition settle before we measure.
+function MapResizer({ trigger }) {
+  const map = useMap()
+  useEffect(() => {
+    const t = setTimeout(() => map.invalidateSize(), 250)
+    return () => clearTimeout(t)
+  }, [trigger]) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
 }
 
 export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
@@ -108,17 +69,17 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // Vehicle panel: always hidden by default; CSS keeps it visible on desktop
   const [panelOpen, setPanelOpen] = useState(false)
 
-  const [vehicles, setVehicles]     = useState([])
-  const [telemetry, setTelemetry]   = useState({})
-  const [loading, setLoading]       = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError]           = useState(null)
-  const [activeTab, setActiveTab]   = useState('Total')
+  // Live vehicle data, shared MQTT session, no REST polling. The map and shell
+  // render immediately — nothing here gates the UI. Vehicles appear as MQTT
+  // messages arrive; the hook's background REST bootstrap only fills in names
+  // and last-known positions if and when it returns.
+  const { vehicles, isConnected, error } = useFlespiMQTT()
+
+  const [activeTab, setActiveTab]   = useState(ALL)
   const [search, setSearch]         = useState('')
   const [focusId, setFocusId]       = useState(null)
   const [flyTarget, setFlyTarget]   = useState(null)
   const flyCount                    = useRef(0)
-  const isFirstLoad                 = useRef(true)
 
   // Auto-close sidebar on resize to mobile; reset panel state when entering desktop
   // so returning to mobile starts with panel closed (CSS handles desktop visibility)
@@ -131,84 +92,42 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  const fetchData = useCallback(async () => {
-    if (!isFirstLoad.current) setRefreshing(true)
-    try {
-      const [devRes, telRes] = await Promise.all([
-        fetch(`${BASE_URL}/gw/devices/all`, { headers: HEADERS }),
-        fetch(`${BASE_URL}/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,engine.ignition.status,timestamp`, { headers: HEADERS }),
-      ])
-      if (!devRes.ok) throw new Error(`Devices API ${devRes.status}: ${devRes.statusText}`)
-      if (!telRes.ok) throw new Error(`Telemetry API ${telRes.status}: ${telRes.statusText}`)
-      const [devData, telData] = await Promise.all([devRes.json(), telRes.json()])
-      setVehicles(devData.result || [])
-      const telMap = {}
-      ;(telData.result || []).forEach(item => { telMap[item.id] = item.telemetry })
-      setTelemetry(telMap)
-      setError(null)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      isFirstLoad.current = false
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [])
+  const counts = countByFilter(vehicles)
 
-  useEffect(() => {
-    fetchData()
-    const id = setInterval(fetchData, 30000)
-    return () => clearInterval(id)
-  }, [fetchData])
-
-  const enriched = vehicles.map(v => ({
-    ...v,
-    tel: telemetry[v.id] || null,
-    status: getStatus(telemetry[v.id] || null),
-  }))
-
-  const counts = {
-    Running:  enriched.filter(v => v.status === 'Running').length,
-    Idle:     enriched.filter(v => v.status === 'Idle').length,
-    Stopped:  enriched.filter(v => v.status === 'Stopped').length,
-    Inactive: enriched.filter(v => v.status === 'Inactive').length,
-    NoData:   enriched.filter(v => v.status === 'NoData').length,
-    Total:    enriched.length,
-  }
-
-  const filtered = enriched
-    .filter(v => activeTab === 'Total' || v.status === activeTab)
+  const filtered = vehicles
+    .filter(v => matchesFilter(v, activeTab))
     .filter(v => {
       const q = search.trim().toLowerCase()
       if (!q) return true
       return (
         String(v.id).includes(q) ||
-        (v.name  || '').toLowerCase().includes(q) ||
-        (v.ident || '').toLowerCase().includes(q) ||
-        (v.configuration?.name || '').toLowerCase().includes(q)
+        (v.name             || '').toLowerCase().includes(q) ||
+        (v.ident            || '').toLowerCase().includes(q) ||
+        (v.master?.plateNo  || '').toLowerCase().includes(q) ||
+        (v.master?.fleetNo  || '').toLowerCase().includes(q) ||
+        (v.master?.driver?.name || '').toLowerCase().includes(q)
       )
     })
 
-  const mapped = enriched.filter(v =>
-    v.tel?.['position.latitude']?.value != null &&
-    v.tel?.['position.longitude']?.value != null
-  )
+  const mapped   = vehicles.filter(v => v.lat != null && v.lng != null)
+  const selected = vehicles.find(v => v.id === focusId) ?? null
 
   const handleSelect = useCallback((v) => {
     setFocusId(v.id)
-    const lat = v.tel?.['position.latitude']?.value
-    const lng = v.tel?.['position.longitude']?.value
-    if (lat != null && lng != null) {
-      setFlyTarget({ lat, lng, n: ++flyCount.current })
+    if (v.lat != null && v.lng != null) {
+      setFlyTarget({ lat: v.lat, lng: v.lng, n: ++flyCount.current })
     }
     // On mobile: close panel after selecting a vehicle so map is visible
     if (window.innerWidth < 1024) setPanelOpen(false)
   }, [])
 
+  // Only live-connection failures reach the UI. Background REST bootstrap
+  // failures are swallowed by the hook by design.
+  const statusMessage = error
+
   return (
     <>
       <style>{`
-        @keyframes fleet-spin { to { transform: rotate(360deg) } }
         @keyframes markerDrop {
           0%   { opacity: 0; transform: scale(0) translateY(-10px); }
           60%  { opacity: 1; transform: scale(1.25) translateY(0); }
@@ -241,6 +160,33 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
             z-index: 1 !important;
           }
         }
+
+        /* Right column: map on top, detail tabs beneath. min-height:0 on both
+           the column and the map is what lets the flex children actually
+           shrink instead of overflowing the viewport. */
+        .track-split {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+          min-height: 0;
+          z-index: 1;
+        }
+        .track-map {
+          position: relative;
+          flex: 1 1 auto;
+          min-height: 0;
+        }
+        /* Mobile: hidden until a vehicle is selected (inline style overrides).
+           Desktop: always visible, roughly the bottom half per the spec. */
+        .track-detail {
+          display: none;
+          flex: 0 0 46%;
+          min-height: 0;
+        }
+        @media (min-width: 1024px) {
+          .track-detail { display: block; }
+        }
       `}</style>
 
       <div className="flex h-screen overflow-hidden" style={{ backgroundColor: 'var(--c-page)' }}>
@@ -262,6 +208,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
             themeMode={themeMode}
             setTheme={setTheme}
             onMenuClick={() => setSidebarOpen(s => !s)}
+            isConnected={isConnected}
           />
 
           {/* Tracking body */}
@@ -308,10 +255,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                 flexShrink: 0,
                 backgroundColor: 'var(--c-card)',
               }}>
-                {TABS.map(tab => (
+                {FILTERS.map(key => (
                   <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
+                    key={key}
+                    onClick={() => setActiveTab(key)}
                     style={{
                       flex: 1,
                       padding: '10px 2px 8px',
@@ -320,8 +267,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       cursor: 'pointer',
                       background: 'none',
                       border: 'none',
-                      borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent',
-                      color: activeTab === tab ? '#3b82f6' : 'var(--c-text3)',
+                      borderBottom: activeTab === key ? '2px solid #3b82f6' : '2px solid transparent',
+                      color: activeTab === key ? '#3b82f6' : 'var(--c-text3)',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
@@ -330,10 +277,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       letterSpacing: '0.01em',
                     }}
                   >
-                    <span style={{ fontSize: 15, fontWeight: 700, color: TAB_COLORS[tab], lineHeight: 1 }}>
-                      {counts[tab]}
+                    <span style={{ fontSize: 15, fontWeight: 700, color: filterColor(key), lineHeight: 1 }}>
+                      {counts[key]}
                     </span>
-                    {tab}
+                    {filterLabel(key)}
                   </button>
                 ))}
               </div>
@@ -352,7 +299,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   <input
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    placeholder="Search by name, IMEI..."
+                    placeholder="Search plate, fleet no, driver, IMEI..."
                     style={{
                       width: '100%',
                       boxSizing: 'border-box',
@@ -370,26 +317,17 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
 
               {/* Vehicle list */}
               <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-                {loading ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 48, color: 'var(--c-text2)', fontSize: 13 }}>
-                    <Spinner />
-                    Loading vehicles…
-                  </div>
-                ) : error ? (
+                {statusMessage ? (
                   <div style={{ padding: '16px 14px', color: '#ef4444', fontSize: 12, lineHeight: 1.6 }}>
-                    <strong>Error:</strong> {error}
+                    <strong>Error:</strong> {statusMessage}
                   </div>
                 ) : filtered.length === 0 ? (
-                  <div style={{ padding: 32, color: 'var(--c-text3)', fontSize: 12, textAlign: 'center' }}>
-                    No vehicles found
+                  <div style={{ padding: 32, color: 'var(--c-text3)', fontSize: 12, textAlign: 'center', lineHeight: 1.7 }}>
+                    {vehicles.length === 0 ? 'Waiting for live data…' : 'No vehicles found'}
                   </div>
                 ) : (
                   filtered.map((v, idx) => {
-                    const lat    = v.tel?.['position.latitude']?.value
-                    const lng    = v.tel?.['position.longitude']?.value
-                    const speed  = v.tel?.['position.speed']?.value
-                    const lastTs = getLastTs(v.tel)
-                    const sel    = focusId === v.id
+                    const sel = focusId === v.id
 
                     return (
                       <div
@@ -408,23 +346,25 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
                           <div style={{
                             width: 9, height: 9, borderRadius: '50%',
-                            backgroundColor: STATUS_COLORS[v.status],
+                            backgroundColor: statusColor(v.status),
                             flexShrink: 0,
-                            boxShadow: `0 0 0 2.5px ${STATUS_COLORS[v.status]}30`,
+                            boxShadow: `0 0 0 2.5px ${statusColor(v.status)}30`,
                           }} />
                           <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {vehicleName(v)}
                           </span>
-                          <span style={{ fontSize: 10, color: STATUS_COLORS[v.status], fontWeight: 700, flexShrink: 0 }}>
-                            {v.status}
+                          <span style={{ fontSize: 10, color: statusColor(v.status), fontWeight: 700, flexShrink: 0 }}>
+                            {statusLabel(v.status)}
                           </span>
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--c-text2)', paddingLeft: 17, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <span>Last seen: {fmt(lastTs)}</span>
-                          <span>Speed: {speed != null ? `${speed} km/h` : 'N/A'}</span>
-                          {lat != null && lng != null && (
+                          {v.master?.fleetNo && <span>Fleet: {v.master.fleetNo}</span>}
+                          <span>Driver: {v.master?.driver?.name || 'Unassigned'}</span>
+                          <span>Speed: {v.speed != null ? `${v.speed} km/h` : 'N/A'}</span>
+                          <span>Last update: {fmt(v.lastTs)}</span>
+                          {v.lat != null && v.lng != null && (
                             <span style={{ color: 'var(--c-text3)' }}>
-                              {lat.toFixed(5)}, {lng.toFixed(5)}
+                              {v.lat.toFixed(5)}, {v.lng.toFixed(5)}
                             </span>
                           )}
                         </div>
@@ -432,24 +372,11 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     )
                   })
                 )}
-
-                {refreshing && !loading && (
-                  <div style={{
-                    position: 'absolute', bottom: 12, right: 12,
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    backgroundColor: 'var(--c-card)', border: '1px solid var(--c-border2)',
-                    borderRadius: 20, padding: '4px 10px', fontSize: 11, color: 'var(--c-text3)',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                  }}>
-                    <Spinner size={12} />
-                    Refreshing…
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* ── Map ── */}
-            <div style={{ flex: 1, position: 'relative', minWidth: 0, zIndex: 1 }}>
+            {/* ── Right column: map on top, detail tabs beneath (spec layout) ── */}
+            <div className="track-split">
 
               {/* Mobile: fixed toggle button bottom-left — hidden on desktop via lg:hidden */}
               <button
@@ -468,74 +395,74 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                 {panelOpen ? '✕ Close' : '☰ Vehicles'}
               </button>
 
-              {/* Initial load overlay */}
-              {loading && (
-                <div style={{
-                  position: 'absolute', inset: 0, zIndex: 10,
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: 'var(--c-card)', gap: 14, color: 'var(--c-text2)', fontSize: 14,
-                }}>
-                  <Spinner size={36} />
-                  Loading map…
-                </div>
-              )}
+              {/* Map */}
+              <div className="track-map">
+                {/* Status banner — live connection errors only. Non-blocking:
+                    the map stays interactive underneath. */}
+                {statusMessage && (
+                  <div style={{
+                    position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
+                    zIndex: 500, backgroundColor: '#ef4444', color: '#fff',
+                    padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {statusMessage}
+                  </div>
+                )}
 
-              {/* API error banner */}
-              {error && !loading && (
-                <div style={{
-                  position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
-                  zIndex: 500, backgroundColor: '#ef4444', color: '#fff',
-                  padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {error}
-                </div>
-              )}
+                <MapContainer
+                  center={[24.4539, 54.3773]}
+                  zoom={11}
+                  style={{ height: '100%', width: '100%' }}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
 
-              <MapContainer
-                center={[24.4539, 54.3773]}
-                zoom={11}
-                style={{ height: '100%', width: '100%' }}
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
+                  <MapFlyTo target={flyTarget} />
+                  {/* The detail panel appearing on mobile shrinks the map box;
+                      Leaflet needs telling or it renders grey tiles. */}
+                  <MapResizer trigger={!!selected} />
 
-                <MapFlyTo target={flyTarget} />
-
-                {mapped.map((v, idx) => (
-                  <Marker
-                    key={v.id}
-                    position={[
-                      v.tel['position.latitude'].value,
-                      v.tel['position.longitude'].value,
-                    ]}
-                    icon={makeIcon(STATUS_COLORS[v.status], Math.min(idx * 60, 600))}
-                    eventHandlers={{ click: () => handleSelect(v) }}
-                  >
-                    <Popup>
-                      <div style={{ fontSize: 13, lineHeight: 1.75, minWidth: 180 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: '#111' }}>
-                          {vehicleName(v)}
-                        </div>
-                        <div style={{ color: STATUS_COLORS[v.status], fontWeight: 600, marginBottom: 4 }}>
-                          ● {v.status}
-                        </div>
-                        <div style={{ color: '#444' }}>Speed: {v.tel['position.speed']?.value != null ? `${v.tel['position.speed'].value} km/h` : 'N/A'}</div>
-                        <div style={{ color: '#444' }}>Last seen: {fmt(getLastTs(v.tel))}</div>
-                        {v.ident && <div style={{ color: '#444' }}>IMEI: {v.ident}</div>}
-                        {v.tel['position.latitude']?.value != null && (
-                          <div style={{ color: '#888', fontSize: 11, marginTop: 3 }}>
-                            {v.tel['position.latitude'].value.toFixed(5)}, {v.tel['position.longitude'].value.toFixed(5)}
+                  {mapped.map((v, idx) => (
+                    <Marker
+                      key={v.id}
+                      position={[v.lat, v.lng]}
+                      icon={makeIcon(statusColor(v.status), Math.min(idx * 60, 600))}
+                      eventHandlers={{ click: () => handleSelect(v) }}
+                    >
+                      <Popup>
+                        <div style={{ fontSize: 13, lineHeight: 1.75, minWidth: 190 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: '#111' }}>
+                            {vehicleName(v)}
                           </div>
-                        )}
-                      </div>
-                    </Popup>
-                  </Marker>
-                ))}
-              </MapContainer>
+                          <div style={{ color: statusColor(v.status), fontWeight: 600, marginBottom: 4 }}>
+                            ● {statusLabel(v.status)}
+                          </div>
+                          {v.master?.fleetNo && <div style={{ color: '#444' }}>Fleet No: {v.master.fleetNo}</div>}
+                          <div style={{ color: '#444' }}>Driver: {v.master?.driver?.name || 'Unassigned'}</div>
+                          <div style={{ color: '#444' }}>Speed: {v.speed != null ? `${v.speed} km/h` : 'N/A'}</div>
+                          <div style={{ color: '#444' }}>Last Updated: {fmt(v.lastTs)}</div>
+                          {v.ident && <div style={{ color: '#444' }}>IMEI: {v.ident}</div>}
+                          {v.lat != null && (
+                            <div style={{ color: '#888', fontSize: 11, marginTop: 3 }}>
+                              {v.lat.toFixed(5)}, {v.lng.toFixed(5)}
+                            </div>
+                          )}
+                        </div>
+                      </Popup>
+                    </Marker>
+                  ))}
+                </MapContainer>
+              </div>
+
+              {/* Detail tabs — always present on desktop, revealed on mobile
+                  once a vehicle is selected (inline style overrides the class). */}
+              <div className="track-detail" style={selected ? { display: 'block' } : undefined}>
+                <VehicleDetailPanel vehicle={selected} />
+              </div>
             </div>
           </div>
         </div>

@@ -67,9 +67,10 @@ function AutoFit({ positions }) {
   return null
 }
 
-export default function LiveMap({ fleetData }) {
+export default function LiveMap({ fleetData, loading }) {
   const located = (fleetData?.vehicles ?? []).filter(v => v.lat != null && v.lng != null)
   const positions = located.map(v => [v.lat, v.lng])
+  const showEmpty = !loading && located.length === 0
 
   return (
     <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
@@ -92,7 +93,22 @@ export default function LiveMap({ fleetData }) {
       </div>
 
       {/* Map — no pointer-events override, no blocking overlay */}
-      <div style={{ height: 260, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--c-border2)' }}>
+      <div style={{ height: 260, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--c-border2)', position: 'relative' }}>
+        {showEmpty && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 500,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            pointerEvents: 'none',
+          }}>
+            <span style={{
+              background: 'var(--c-card)', border: '1px solid var(--c-border2)',
+              borderRadius: 8, padding: '6px 14px', fontSize: 12,
+              color: 'var(--c-text3)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            }}>
+              {fleetData?.total > 0 ? 'No vehicles positioned yet' : 'No vehicles reporting'}
+            </span>
+          </div>
+        )}
         <MapContainer
           center={DEFAULT_CENTER}
           zoom={10}

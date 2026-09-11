@@ -1,0 +1,57 @@
+{
+  "_comment": "Seed data for the Documents tab, keyed by Flespi device id. Entries with source 'permit-management' represent records the spec says are auto-synced from Permit Management and are read-only in this module. User edits are layered over this seed in localStorage by documentStore.js; this file is never written to at runtime.",
+  "documents": {
+    "8414546": [
+      {
+        "id": "seed-8414546-permit",
+        "name": "Vehicle Permit",
+        "expiryDate": "2027-02-28",
+        "notifyBeforeDays": 60,
+        "attachment": null,
+        "source": "permit-management"
+      },
+      {
+        "id": "seed-8414546-cert",
+        "name": "Certificate of Installation",
+        "expiryDate": "2028-01-15",
+        "notifyBeforeDays": 90,
+        "attachment": null,
+        "source": "permit-management"
+      },
+      {
+        "id": "seed-8414546-insurance",
+        "name": "Insurance",
+        "expiryDate": "2026-11-30",
+        "notifyBeforeDays": 30,
+        "attachment": null,
+        "source": "local"
+      },
+      {
+        "id": "seed-8414546-registration",
+        "name": "Registration (Mulkiya)",
+        "expiryDate": "2026-10-05",
+        "notifyBeforeDays": 30,
+        "attachment": null,
+        "source": "local"
+      }
+    ],
+    "8414548": [
+      {
+        "id": "seed-8414548-permit",
+        "name": "Vehicle Permit",
+        "expiryDate": "2026-09-25",
+        "notifyBeforeDays": 30,
+        "attachment": null,
+        "source": "permit-management"
+      },
+      {
+        "id": "seed-8414548-insurance",
+        "name": "Insurance",
+        "expiryDate": "2027-05-14",
+        "notifyBeforeDays": 45,
+        "attachment": null,
+        "source": "local"
+      }
+    ]
+  }
+}

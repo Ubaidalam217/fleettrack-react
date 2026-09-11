@@ -43,39 +43,47 @@ export default function FleetCompositionCard({ fleetData, loading }) {
         <span className="text-slate-400 text-xs">Total vehicles</span>
       </div>
 
-      <div className="bg-white rounded-xl divide-y divide-slate-100 overflow-hidden mb-4">
-        {STATUS_ROWS.map(r => {
-          const count = fleetData?.[r.key] ?? 0
-          return (
-            <div key={r.key} className="flex items-center justify-between px-3 py-2.5 gap-3">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: r.color }} />
-                <span className="text-slate-600 text-xs">{r.label}</span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-slate-900 text-sm font-semibold">{loading && !fleetData ? '—' : count}</span>
-                {total > 0 && (
-                  <span className="text-slate-400 text-[10px]">({Math.round((count / total) * 100)}%)</span>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="mt-auto divide-y divide-slate-200">
-        {ratios.map(r => (
-          <div key={r.num} className="flex items-center gap-2 py-3">
-            <span className="w-4 h-4 rounded-full bg-sky-500 text-white text-[10px] flex items-center justify-center font-semibold shrink-0">
-              {r.num}
-            </span>
-            <span className="text-slate-700 text-sm font-medium">{r.name}</span>
-            <span className={`ml-auto text-sm ${r.statusColor}`}>{r.status}</span>
-            <span className="text-slate-900 text-sm font-semibold">{r.value}</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${r.statusColor === 'text-emerald-500' ? 'bg-emerald-500' : r.statusColor === 'text-amber-500' ? 'bg-amber-500' : 'bg-rose-500'}`} />
+      {!loading && total === 0 ? (
+        <div className="bg-white rounded-xl flex-1 flex items-center justify-center py-10">
+          <span className="text-slate-400 text-xs">No vehicles reporting</span>
+        </div>
+      ) : (
+        <>
+          <div className="bg-white rounded-xl divide-y divide-slate-100 overflow-hidden mb-4">
+            {STATUS_ROWS.map(r => {
+              const count = fleetData?.[r.key] ?? 0
+              return (
+                <div key={r.key} className="flex items-center justify-between px-3 py-2.5 gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: r.color }} />
+                    <span className="text-slate-600 text-xs">{r.label}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-slate-900 text-sm font-semibold">{loading && !fleetData ? '—' : count}</span>
+                    {total > 0 && (
+                      <span className="text-slate-400 text-[10px]">({Math.round((count / total) * 100)}%)</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        ))}
-      </div>
+
+          <div className="mt-auto divide-y divide-slate-200">
+            {ratios.map(r => (
+              <div key={r.num} className="flex items-center gap-2 py-3">
+                <span className="w-4 h-4 rounded-full bg-sky-500 text-white text-[10px] flex items-center justify-center font-semibold shrink-0">
+                  {r.num}
+                </span>
+                <span className="text-slate-700 text-sm font-medium">{r.name}</span>
+                <span className={`ml-auto text-sm ${r.statusColor}`}>{r.status}</span>
+                <span className="text-slate-900 text-sm font-semibold">{r.value}</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${r.statusColor === 'text-emerald-500' ? 'bg-emerald-500' : r.statusColor === 'text-amber-500' ? 'bg-amber-500' : 'bg-rose-500'}`} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

@@ -1,5 +1,6 @@
 // 5-driver vertical list for the desktop hero row.
 // Separate from DriverPerformance.jsx (which remains unchanged for mobile).
+import EstimatedBadge from './EstimatedBadge'
 
 const DRIVERS = [
   { initials: 'AK', name: 'Ahmed Khan',    assignment: 'TRK-041', trips: 48, score: 98, online: true,  color: '#3b82f6', bg: 'rgba(59,130,246,0.14)' },
@@ -25,7 +26,10 @@ export default function TopDriversPanel() {
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Top Drivers</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Top Drivers</h3>
+            <EstimatedBadge />
+          </div>
           <p className="text-xs mt-0.5" style={{ color: 'var(--c-text3)' }}>Ranked by performance score</p>
         </div>
         <a

@@ -4,7 +4,7 @@ import Header                from '../components/Header'
 import FleetHealthScore      from '../components/FleetHealthScore'
 import FleetHealthGauge      from '../components/FleetHealthGauge'
 import FleetPerformanceRadar  from '../components/FleetPerformanceRadar'
-import FleetHealthTrend       from '../components/FleetHealthTrend'
+import FleetTripsCard         from '../components/FleetTripsCard'
 import FleetScoreCard         from '../components/FleetScoreCard'
 import AlertMarkersCard      from '../components/AlertMarkersCard'
 import FleetCompositionCard  from '../components/FleetCompositionCard'
@@ -26,7 +26,7 @@ import { computeHealthScore } from '../utils/healthScore'
 const WIDGET_LIST = [
   { id: 'fleetHealth',       label: 'Fleet Health Gauge'     },
   { id: 'fleetRadar',        label: 'Fleet Performance Radar'},
-  { id: 'fleetTrend',        label: 'Fleet Health Trend'     },
+  { id: 'fleetTrend',        label: 'Trips & Distance'       },
   { id: 'fleetScore',        label: 'Fleet Score Card'       },
   { id: 'alertMarkers',      label: 'Alert Markers'          },
   { id: 'fleetComposition',  label: 'Fleet Composition'      },
@@ -202,7 +202,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   )
-  const { data, loading, error, lastUpdated, refresh } = useFlespiData()
+  const { data, loading, error, mqttFatalError, lastUpdated, refresh, isConnected } = useFlespiData()
   const [refreshing, setRefreshing] = useState(false)
 
   const handleRefresh = async () => {
@@ -322,6 +322,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
           setTheme={setTheme}
           onMenuClick={() => setSidebarOpen(s => !s)}
           searchVehicles={data?.vehicles}
+          isConnected={isConnected}
         />
 
         <main className="flex-1 overflow-y-auto no-scrollbar" style={{ overflowX: 'hidden' }}>
@@ -364,7 +365,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                 {lastUpdated && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--c-text3)', background: 'var(--c-card)', border: '1px solid var(--c-border2)', borderRadius: 20, padding: '3px 10px' }}>
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span className="hidden sm:inline">{fmtUpdated(lastUpdated)} &middot; auto-refresh 60s</span>
+                    <span className="hidden sm:inline">{fmtUpdated(lastUpdated)} &middot; live via MQTT</span>
                     <span className="sm:hidden">{fmtUpdated(lastUpdated)}</span>
                     <button onClick={handleRefresh} title="Refresh now" disabled={refreshing} style={{ background: 'none', border: 'none', cursor: refreshing ? 'default' : 'pointer', color: '#3b82f6', padding: 0, display: 'flex', alignItems: 'center' }}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: refreshing ? 'db-spin 0.7s linear infinite' : 'none' }}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
@@ -396,6 +397,19 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               </div>
             </div>
 
+            {mqttFatalError && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+                borderRadius: 8, padding: '8px 14px', fontSize: 12, color: '#dc2626',
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                {mqttFatalError} Showing last known positions from the fleet API instead.
+              </div>
+            )}
+
             {/* ════════════════════════════════════════════════════════
                 MOBILE layout  (< 1024 px)
             ════════════════════════════════════════════════════════ */}
@@ -405,7 +419,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {W('fleetHealth',     <FleetHealthScore isDark={isDark} fleetData={filteredData} loading={loading} />)}
                 {W('vehicleActivity', <VehicleActivity  isDark={isDark} vehicleCount={filteredData?.total ?? 0} />)}
-                {W('liveMap',         <LiveMap fleetData={filteredData} />)}
+                {W('liveMap',         <LiveMap fleetData={filteredData} loading={loading} />)}
                 {W('aiInsights',      <AIInsights fleetData={filteredData} />)}
               </div>
 
@@ -413,7 +427,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               <div className="grid grid-cols-1 gap-4">
                 {W('vehicleStatus',  <VehicleStatus vehicles={filteredData?.vehicles} loading={loading} />)}
                 {W('driverPerf',     <DriverPerformance />)}
-                {W('alertsOverview', <AlertsOverview fleetData={filteredData} />)}
+                {W('alertsOverview', <AlertsOverview />)}
               </div>
 
               {/* Row 4 */}
@@ -431,7 +445,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
 
               {/* ── ClyHealth-style dark frame ── */}
               <div style={{
-                background: 'linear-gradient(to bottom right, #0a1f4a, #0e2a5e, #143a7a)',
+                background: 'radial-gradient(ellipse at 50% 30%, #2454b5 0%, #1a3d8f 55%, #122f73 100%)',
                 borderRadius: 28,
                 padding: '28px 32px 0',
                 position: 'relative',
@@ -450,16 +464,16 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                   pointerEvents: 'none', borderRadius: '50%',
                 }} />
 
-                {/* Row 1: Radar | Gauge | Trend — top-aligned, each card natural height */}
-                <div className="grid gap-5 items-start" style={{ position: 'relative', zIndex: 1, marginBottom: 20, gridTemplateColumns: 'minmax(260px, 1fr) minmax(420px, 1.6fr) minmax(260px, 1fr)' }}>
-                  <div className="min-w-0" style={{ alignSelf: 'flex-end' }}>
+                {/* Row 1: Radar | Gauge | Trips & Distance - all vertically centered */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr)', alignItems: 'center', gap: 20, position: 'relative', zIndex: 1, marginBottom: 20 }}>
+                  <div className="min-w-0">
                     {W('fleetRadar', <FleetPerformanceRadar fleetData={filteredData} heroMode />, '', true)}
                   </div>
                   <div className="min-w-0" style={{ overflow: 'visible' }}>
                     {W('fleetHealth', <FleetHealthGauge isDark={isDark} fleetData={filteredData} loading={loading} heroMode />, '', true)}
                   </div>
-                  <div className="min-w-0" style={{ alignSelf: 'flex-end' }}>
-                    {W('fleetTrend', <FleetHealthTrend fleetData={filteredData} heroMode />, '', true)}
+                  <div className="min-w-0">
+                    {W('fleetTrend', <FleetTripsCard fleetData={filteredData} />, '', true)}
                   </div>
                 </div>
 
@@ -482,14 +496,14 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               {/* Top Drivers | Live Map */}
               <div className="grid grid-cols-2 gap-6">
                 <div className="min-w-0">{W('driverPerf', <TopDriversPanel />)}</div>
-                <div className="min-w-0">{W('liveMap',    <LiveMap fleetData={filteredData} />)}</div>
+                <div className="min-w-0">{W('liveMap',    <LiveMap fleetData={filteredData} loading={loading} />)}</div>
               </div>
 
               {/* Vehicle Status | AI Insights | Alerts Overview */}
               <div className="grid grid-cols-3 gap-6">
                 {W('vehicleStatus',  <VehicleStatus vehicles={filteredData?.vehicles} loading={loading} />)}
                 {W('aiInsights',     <AIInsights fleetData={filteredData} />)}
-                {W('alertsOverview', <AlertsOverview fleetData={filteredData} />)}
+                {W('alertsOverview', <AlertsOverview />)}
               </div>
 
               {/* Trip Analysis | Cost Summary | Fuel & Energy */}

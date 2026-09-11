@@ -1,4 +1,5 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import EstimatedBadge from './EstimatedBadge'
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const data = DAYS.map((day, i) => ({ day, fuel: [130,145,125,155,165,90,85][i] }))
@@ -23,7 +24,10 @@ export default function FuelEnergy({ isDark }) {
 
   return (
     <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
-      <h3 className="text-sm font-semibold mb-0.5" style={{ color: 'var(--c-text1)' }}>Fuel &amp; Energy</h3>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Fuel &amp; Energy</h3>
+        <EstimatedBadge />
+      </div>
       <p className="text-xs mb-1" style={{ color: 'var(--c-text3)' }}>Consumption last 7 days</p>
       <p className="text-[10px] mb-3 italic" style={{ color: 'var(--c-text2)' }}>* Fuel data estimated from vehicle activity. Direct sensor integration available with premium telemetry.</p>
 

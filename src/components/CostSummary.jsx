@@ -1,4 +1,5 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import EstimatedBadge from './EstimatedBadge'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun']
 const data = MONTHS.map((m, i) => ({ month: m, cost: [8200,7800,9100,8500,9800,9420][i] }))
@@ -33,7 +34,10 @@ export default function CostSummary({ isDark }) {
   return (
     <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
       <div className="flex items-start justify-between mb-0.5">
-        <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Cost Summary</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Cost Summary</h3>
+          <EstimatedBadge />
+        </div>
         <span className="text-sm font-bold" style={{ color: 'var(--c-text1)' }}>$9,420</span>
       </div>
       <p className="text-xs mb-1" style={{ color: 'var(--c-text3)' }}>Monthly expenditure</p>

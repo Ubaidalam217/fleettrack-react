@@ -1,4 +1,5 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
+import EstimatedBadge from './EstimatedBadge'
 
 const TRIPS = [
   { label: 'Completed',   value: 714, pct: '80%', color: '#10b981' },
@@ -24,8 +25,12 @@ export default function TripAnalysis({ isDark }) {
 
   return (
     <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
-      <h3 className="text-sm font-semibold mb-0.5" style={{ color: 'var(--c-text1)' }}>Trip Analysis</h3>
-      <p className="text-xs mb-4" style={{ color: 'var(--c-text3)' }}>This month's breakdown</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Trip Analysis</h3>
+        <EstimatedBadge />
+      </div>
+      <p className="text-xs mb-1" style={{ color: 'var(--c-text3)' }}>This month's breakdown</p>
+      <p className="text-[10px] mb-3 italic" style={{ color: 'var(--c-text2)' }}>* Trip completion data not available from Flespi telemetry. Real trip tracking available with backend integration (Phase 2).</p>
 
       {/* Donut */}
       <div className="flex items-center justify-center mb-4">

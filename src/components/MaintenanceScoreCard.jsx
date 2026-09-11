@@ -47,6 +47,12 @@ export default function MaintenanceScoreCard({ fleetData, loading }) {
         </svg>
       </div>
 
+      {!loading && (!fleetData || fleetData.total === 0) ? (
+        <div className="bg-white rounded-xl flex-1 flex items-center justify-center py-10 mb-4">
+          <span className="text-slate-400 text-xs">No vehicles reporting</span>
+        </div>
+      ) : (
+      <>
       {/* Metrics row */}
       <div className="bg-white rounded-xl p-4 mb-4">
         <div className="flex items-center gap-10 mb-3">
@@ -98,6 +104,8 @@ export default function MaintenanceScoreCard({ fleetData, loading }) {
               : '— below target. Investigate flagged vehicles.'}
         </p>
       </div>
+      </>
+      )}
 
       <div className="border-t border-slate-200 my-3" />
 
