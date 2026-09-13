@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -25,14 +25,27 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
 
+// Icons are cached by (color, delay) and reused. A fresh L.divIcon per render
+// makes react-leaflet call setIcon(), which replaces the marker's DOM node and
+// re-triggers the markerDrop animation — so during replay playback (a state
+// change every 400ms) every marker in the fleet would visibly re-drop 2.5x a
+// second. Identity stability is what stops that.
+const iconCache = new Map()
+
 function makeIcon(color, delay = 0) {
-  return L.divIcon({
+  const key = `${color}|${delay}`
+  const cached = iconCache.get(key)
+  if (cached) return cached
+
+  const icon = L.divIcon({
     className: '',
     html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);animation:markerDrop 0.45s cubic-bezier(0.175,0.885,0.32,1.275) ${delay}ms both"></div>`,
     iconSize: [14, 14],
     iconAnchor: [7, 7],
     popupAnchor: [0, -10],
   })
+  iconCache.set(key, icon)
+  return icon
 }
 
 function fmt(ts) {
@@ -192,7 +205,22 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     .filter(v => v.lat != null && v.lng != null)
     .filter(v => !(replayShowing && v.id === focusId))
   const selected = vehicles.find(v => v.id === focusId) ?? null
-  const replaySegments = replayShowing ? buildSegments(replay.points) : []
+  // Keyed on the points array only. Rebuilding this inline meant every playback
+  // tick (replayIndex changes every 400ms) produced new positions arrays for
+  // every segment, so react-leaflet re-ran setLatLngs()/setStyle() on the whole
+  // track 2.5x a second. The track itself never changes during playback.
+  // pathOptions is built here rather than inline in the JSX for the same
+  // reason: a fresh object literal per render is a prop change to react-leaflet
+  // and costs a setStyle() call on every segment.
+  const replaySegments = useMemo(
+    () => (replayShowing
+      ? buildSegments(replay.points).map(s => ({
+          ...s,
+          pathOptions: { color: s.color, weight: 4, opacity: 0.85 },
+        }))
+      : []),
+    [replayShowing, replay.points]
+  )
   const replayPoint    = replayShowing ? replay.points[replay.index] : null
 
   const handleSelect = useCallback((v) => {
@@ -543,7 +571,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     <Polyline
                       key={seg.key}
                       positions={seg.positions}
-                      pathOptions={{ color: seg.color, weight: 4, opacity: 0.85 }}
+                      pathOptions={seg.pathOptions}
                     />
                   ))}
 

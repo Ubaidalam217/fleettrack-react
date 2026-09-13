@@ -1,7 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { hasDriver, SENSOR_KEYS } from '../../services/vehicleMaster'
 import { listDocuments, expiryState, daysUntilExpiry, isReadOnly } from '../../services/documentStore'
+import { fetchTodayMessages, computeUsage } from '../../utils/usageData'
+import { reverseGeocode } from '../../utils/geocode'
 import ReplayPanel from './ReplayPanel'
 
 const DETAIL_TABS = [
@@ -74,11 +76,65 @@ function Pending({ note }) {
   )
 }
 
+function fmtDuration(sec) {
+  if (sec == null) return '—'
+  const h = Math.floor(sec / 3600)
+  const min = Math.round((sec % 3600) / 60)
+  return `${h}h ${min}m`
+}
+
+// Shared by the Usage and Vehicle Info tabs — both read today's messages for
+// the same device, and fetchTodayMessages() caches the request itself, so
+// switching between the two tabs never issues a second fetch within the TTL.
+function useUsageData(vehicleId) {
+  const [state, setState] = useState({ loading: true, error: null, status: null, usage: null })
+
+  useEffect(() => {
+    let cancelled = false
+    setState({ loading: true, error: null, status: null, usage: null })
+
+    fetchTodayMessages(vehicleId, status => {
+      if (!cancelled) setState(s => ({ ...s, status }))
+    })
+      .then(messages => {
+        if (!cancelled) setState({ loading: false, error: null, status: null, usage: computeUsage(messages) })
+      })
+      .catch(err => {
+        if (!cancelled) setState({ loading: false, error: err.message, status: null, usage: null })
+      })
+
+    return () => { cancelled = true }
+  }, [vehicleId])
+
+  return state
+}
+
+// Rounded to the same precision geocode.js caches on, so small GPS jitter
+// while the vehicle is parked doesn't refire a lookup for a coordinate we
+// already resolved.
+function useAddress(lat, lng) {
+  const [address, setAddress] = useState(null)
+
+  useEffect(() => {
+    if (lat == null || lng == null) { setAddress(null); return }
+    let cancelled = false
+    reverseGeocode(lat, lng).then(a => { if (!cancelled) setAddress(a) })
+    return () => { cancelled = true }
+  }, [lat, lng])
+
+  return address
+}
+
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
 function VehicleInfo({ v }) {
   const m = v.master
   const docs = useMemo(() => listDocuments(v.id), [v.id])
+  const { loading: usageLoading, usage } = useUsageData(v.id)
+
+  const latR = v.lat != null ? Math.round(v.lat * 10000) / 10000 : null
+  const lngR = v.lng != null ? Math.round(v.lng * 10000) / 10000 : null
+  const address = useAddress(latR, lngR)
 
   return (
     <>
@@ -97,14 +153,23 @@ function VehicleInfo({ v }) {
         <Grid>
           <Field
             label="Location"
-            value={v.lat != null && v.lng != null ? `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}` : null}
+            value={address ?? (v.lat != null && v.lng != null ? `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}` : null)}
           />
           <Field label="Speed"       value={v.speed != null ? `${v.speed} km/h` : null} />
           <Field label="Last Update" value={fmtTs(v.lastTs)} />
+          <Field
+            label="Odometer"
+            value={usageLoading ? '…' : usage?.odometerKm != null ? `${usage.odometerKm.toFixed(1)} km` : null}
+          />
+          <Field
+            label="Max Speed Today"
+            value={usageLoading ? '…' : usage ? `${usage.maxSpeed} km/h` : null}
+          />
+          <Field
+            label="Avg Speed Today"
+            value={usageLoading ? '…' : usage?.avgSpeed != null ? `${usage.avgSpeed.toFixed(0)} km/h` : null}
+          />
         </Grid>
-        <div style={{ marginTop: 12 }}>
-          <Pending note="Street address needs reverse geocoding; odometer and today's max/avg speed come from Flespi message history — both land in Phase 2." />
-        </div>
       </Section>
 
       <Section title="Document Expiry">
@@ -171,9 +236,40 @@ function DriverInfo({ v }) {
   )
 }
 
-function Usage() {
+function Usage({ v }) {
+  const { loading, error, status, usage } = useUsageData(v.id)
+
+  if (loading) {
+    return (
+      <div style={{ padding: '28px 4px', textAlign: 'center', fontSize: 12.5, fontWeight: 600 }}>
+        <span style={{ color: status?.startsWith('Rate limit') ? '#eab308' : 'var(--c-text3)' }}>
+          {status || "Loading today's usage…"}
+        </span>
+      </div>
+    )
+  }
+
+  if (error) {
+    return <Pending note={`Could not load today's usage: ${error}`} />
+  }
+
   return (
-    <Pending note="Total Odometer, Distance Today, Running/Idle/Stop Time and Trip Count are all derivable from Flespi's gw/devices/{id}/messages history. This is Phase 1 — the next thing to be built." />
+    <Section title="Today">
+      <Grid>
+        <Field
+          label="Distance Today"
+          value={usage.distanceKm != null ? `${usage.distanceKm.toFixed(1)} km` : null}
+        />
+        <Field label="Running Time" value={fmtDuration(usage.runningSec)} color={statusColor('Running')} />
+        <Field label="Idle Time"    value={fmtDuration(usage.idleSec)}    color={statusColor('Idle')} />
+        <Field label="Stop Time"    value={fmtDuration(usage.stopSec)}    color={statusColor('Stopped')} />
+        <Field label="Trip Count"   value={usage.tripCount} />
+        <Field
+          label="Total Odometer"
+          value={usage.odometerKm != null ? `${usage.odometerKm.toFixed(1)} km` : null}
+        />
+      </Grid>
+    </Section>
   )
 }
 
@@ -311,7 +407,7 @@ export default function VehicleDetailPanel({ vehicle, replay }) {
 
             {tab === 'Vehicle Info' && <VehicleInfo v={vehicle} />}
             {tab === 'Driver Info'  && <DriverInfo  v={vehicle} />}
-            {tab === 'Usage'        && <Usage />}
+            {tab === 'Usage'        && <Usage       v={vehicle} />}
             {tab === 'Replay'       && <ReplayPanel vehicleId={vehicle.id} replay={replay} />}
             {tab === 'Sensors'      && <Sensors     v={vehicle} />}
             {tab === 'Alerts'       && <Alerts />}

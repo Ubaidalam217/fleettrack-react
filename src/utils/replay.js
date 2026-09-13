@@ -9,6 +9,17 @@ import { statusColor } from './vehicleStatus'
 // `truncated` rather than assume they got everything.
 const MAX_MESSAGES = 3000
 
+// Only the fields the track actually needs. Flespi otherwise returns every
+// parameter the device reports (~29-34 per message) — on a 6h range that is
+// 247KB of JSON to deliver 51KB of useful data.
+const FIELDS = [
+  'position.latitude',
+  'position.longitude',
+  'position.speed',
+  'engine.ignition.status',
+  'timestamp',
+].join(',')
+
 // Flespi's REST rate limit is per-account/per-minute, not per-endpoint, so a
 // wide range can trip it purely from the number of chunk requests below. Fixed
 // backoff schedule rather than a computed one — predictable wait times are
@@ -77,7 +88,17 @@ export async function fetchDeviceTrack(deviceId, fromTs, toTs, onStatus) {
     const [chunkFrom, chunkTo] = chunks[i]
     if (chunks.length > 1) onStatus?.(`Loading ${i + 1}/${chunks.length}...`)
 
-    const url = `${BASE_URL}/gw/devices/${deviceId}/messages?from=${chunkFrom}&to=${chunkTo}&count=${MAX_MESSAGES}`
+    // Flespi takes from/to/count/fields inside a JSON `data` object. Passed as
+    // top-level query params they are silently ignored — HTTP 200 with the
+    // device's entire stored history (167 days / 37MB on this account), which
+    // is what made every range behave identically and always look truncated.
+    const data = JSON.stringify({
+      from:   chunkFrom,
+      to:     chunkTo,
+      count:  MAX_MESSAGES,
+      fields: FIELDS,
+    })
+    const url = `${BASE_URL}/gw/devices/${deviceId}/messages?data=${encodeURIComponent(data)}`
     const json = await fetchWithRetry(url, onStatus)
     const msgs = json.result || []
     if (msgs.length >= MAX_MESSAGES) truncated = true
@@ -102,17 +123,43 @@ export async function fetchDeviceTrack(deviceId, fromTs, toTs, onStatus) {
   return { points, truncated }
 }
 
-// One Polyline segment per consecutive pair, colored by the status at the
-// start of that segment — react-leaflet has no multi-color single Polyline,
-// so a colored trail means one <Polyline> per run.
+// react-leaflet has no multi-color single Polyline, so a colored trail means
+// one <Polyline> per color run. One per *point pair* would also work but costs
+// a Leaflet layer and an SVG path per pair — 385 of them on a routine 6h
+// track. Merging consecutive same-status points into a single run drops that
+// to 65 for identical output, and keeps the per-tick re-render cheap.
+//
+// Runs overlap by one point (each run ends on the first point of the next) so
+// the trail has no visual gaps at the color boundaries.
 export function buildSegments(points) {
+  if (points.length < 2) return []
+
   const segments = []
-  for (let i = 0; i < points.length - 1; i++) {
+  let start = 0
+
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].status !== points[start].status) {
+      // Pairs start..i-1 all carry points[start].status, so the run spans
+      // points start..i — ending on i (not i-1) is what closes the gap.
+      segments.push({
+        key: start,
+        positions: points.slice(start, i + 1).map(p => [p.lat, p.lng]),
+        color: statusColor(points[start].status),
+      })
+      start = i
+    }
+  }
+
+  // Trailing run. Skipped when start is already the last point, which happens
+  // when the final point's status differs — that pair was emitted above, and a
+  // one-point Polyline would be an invisible layer.
+  if (start < points.length - 1) {
     segments.push({
-      key: i,
-      positions: [[points[i].lat, points[i].lng], [points[i + 1].lat, points[i + 1].lng]],
-      color: statusColor(points[i].status),
+      key: start,
+      positions: points.slice(start).map(p => [p.lat, p.lng]),
+      color: statusColor(points[start].status),
     })
   }
+
   return segments
 }
