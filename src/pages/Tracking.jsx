@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import Sidebar from '../components/Sidebar'
@@ -10,6 +10,12 @@ import {
   ALL, FILTERS, statusColor, statusLabel,
   filterLabel, filterColor, countByFilter, matchesFilter,
 } from '../utils/vehicleStatus'
+import { fetchDeviceTrack, buildSegments } from '../utils/replay'
+
+// One step per tick while playing — fixed pace regardless of the actual time
+// gap between consecutive messages, so playback speed doesn't depend on how
+// densely a device reported.
+const REPLAY_STEP_MS = 400
 
 // Fix Leaflet default icon broken by bundlers
 delete L.Icon.Default.prototype._getIconUrl
@@ -81,6 +87,76 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const [flyTarget, setFlyTarget]   = useState(null)
   const flyCount                    = useRef(0)
 
+  // Replay/History: scoped to whichever vehicle is currently selected. Reset
+  // whenever the selection changes so a stale route never survives a switch.
+  const [replayVehicleId, setReplayVehicleId] = useState(null)
+  const [replayPoints, setReplayPoints]       = useState([])
+  const [replayIndex, setReplayIndex]         = useState(0)
+  const [replayPlaying, setReplayPlaying]     = useState(false)
+  const [replayLoading, setReplayLoading]     = useState(false)
+  const [replayError, setReplayError]         = useState(null)
+  const [replayTruncated, setReplayTruncated] = useState(false)
+  const [replayStatus, setReplayStatus]       = useState(null)
+
+  useEffect(() => {
+    setReplayVehicleId(null)
+    setReplayPoints([])
+    setReplayIndex(0)
+    setReplayPlaying(false)
+    setReplayError(null)
+    setReplayTruncated(false)
+    setReplayStatus(null)
+  }, [focusId])
+
+  // Fixed-pace playback: advance one point per tick, auto-pausing at the end.
+  useEffect(() => {
+    if (!replayPlaying || replayPoints.length === 0) return
+    if (replayIndex >= replayPoints.length - 1) { setReplayPlaying(false); return }
+    const t = setTimeout(() => setReplayIndex(i => Math.min(i + 1, replayPoints.length - 1)), REPLAY_STEP_MS)
+    return () => clearTimeout(t)
+  }, [replayPlaying, replayIndex, replayPoints.length])
+
+  const handleReplayLoad = useCallback(async (fromTs, toTs) => {
+    if (!focusId) return
+    setReplayLoading(true)
+    setReplayError(null)
+    setReplayStatus(null)
+    try {
+      const { points, truncated } = await fetchDeviceTrack(focusId, fromTs, toTs, setReplayStatus)
+      setReplayPoints(points)
+      setReplayIndex(0)
+      setReplayPlaying(false)
+      setReplayTruncated(truncated)
+      if (points.length === 0) {
+        setReplayError('No GPS points in this range.')
+      } else {
+        setFlyTarget({ lat: points[0].lat, lng: points[0].lng, n: ++flyCount.current })
+      }
+    } catch (e) {
+      setReplayError(e.message)
+      setReplayPoints([])
+    } finally {
+      setReplayLoading(false)
+      setReplayStatus(null)
+    }
+  }, [focusId])
+
+  const replay = {
+    active:    replayVehicleId === focusId && focusId != null,
+    points:    replayPoints,
+    index:     replayIndex,
+    playing:   replayPlaying,
+    loading:   replayLoading,
+    error:     replayError,
+    truncated: replayTruncated,
+    status:    replayStatus,
+    onStart:   () => setReplayVehicleId(focusId),
+    onStop:    () => { setReplayVehicleId(null); setReplayPoints([]); setReplayPlaying(false) },
+    onLoad:    handleReplayLoad,
+    onPlayToggle: () => setReplayPlaying(p => !p),
+    onSeek:    (idx) => { setReplayPlaying(false); setReplayIndex(idx) },
+  }
+
   // Auto-close sidebar on resize to mobile; reset panel state when entering desktop
   // so returning to mobile starts with panel closed (CSS handles desktop visibility)
   useEffect(() => {
@@ -109,8 +185,15 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       )
     })
 
-  const mapped   = vehicles.filter(v => v.lat != null && v.lng != null)
+  // While a vehicle's route is loaded, its live marker is replaced by the
+  // replay marker below so there's only ever one dot for that vehicle.
+  const replayShowing = replay.active && replay.points.length > 0
+  const mapped   = vehicles
+    .filter(v => v.lat != null && v.lng != null)
+    .filter(v => !(replayShowing && v.id === focusId))
   const selected = vehicles.find(v => v.id === focusId) ?? null
+  const replaySegments = replayShowing ? buildSegments(replay.points) : []
+  const replayPoint    = replayShowing ? replay.points[replay.index] : null
 
   const handleSelect = useCallback((v) => {
     setFocusId(v.id)
@@ -455,13 +538,41 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       </Popup>
                     </Marker>
                   ))}
+
+                  {replaySegments.map(seg => (
+                    <Polyline
+                      key={seg.key}
+                      positions={seg.positions}
+                      pathOptions={{ color: seg.color, weight: 4, opacity: 0.85 }}
+                    />
+                  ))}
+
+                  {replayPoint && (
+                    <Marker
+                      position={[replayPoint.lat, replayPoint.lng]}
+                      icon={makeIcon(statusColor(replayPoint.status))}
+                    >
+                      <Popup>
+                        <div style={{ fontSize: 13, lineHeight: 1.75, minWidth: 170 }}>
+                          <div style={{ color: statusColor(replayPoint.status), fontWeight: 700, marginBottom: 4 }}>
+                            ● {statusLabel(replayPoint.status)}
+                          </div>
+                          <div style={{ color: '#444' }}>Speed: {replayPoint.speed} km/h</div>
+                          <div style={{ color: '#444' }}>Time: {fmt(replayPoint.ts)}</div>
+                          <div style={{ color: '#888', fontSize: 11, marginTop: 3 }}>
+                            {replayPoint.lat.toFixed(5)}, {replayPoint.lng.toFixed(5)}
+                          </div>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  )}
                 </MapContainer>
               </div>
 
               {/* Detail tabs — always present on desktop, revealed on mobile
                   once a vehicle is selected (inline style overrides the class). */}
               <div className="track-detail" style={selected ? { display: 'block' } : undefined}>
-                <VehicleDetailPanel vehicle={selected} />
+                <VehicleDetailPanel vehicle={selected} replay={replay} />
               </div>
             </div>
           </div>

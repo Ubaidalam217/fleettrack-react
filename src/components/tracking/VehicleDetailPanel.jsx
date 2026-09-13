@@ -2,11 +2,13 @@ import { useState, useMemo } from 'react'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { hasDriver, SENSOR_KEYS } from '../../services/vehicleMaster'
 import { listDocuments, expiryState, daysUntilExpiry, isReadOnly } from '../../services/documentStore'
+import ReplayPanel from './ReplayPanel'
 
 const DETAIL_TABS = [
   'Vehicle Info',
   'Driver Info',
   'Usage',
+  'Replay',
   'Sensors',
   'Alerts',
   'Documents',
@@ -250,7 +252,7 @@ function Documents({ v }) {
 
 // ── Panel ──────────────────────────────────────────────────────────────────
 
-export default function VehicleDetailPanel({ vehicle }) {
+export default function VehicleDetailPanel({ vehicle, replay }) {
   const [tab, setTab] = useState(DETAIL_TABS[0])
 
   return (
@@ -310,6 +312,7 @@ export default function VehicleDetailPanel({ vehicle }) {
             {tab === 'Vehicle Info' && <VehicleInfo v={vehicle} />}
             {tab === 'Driver Info'  && <DriverInfo  v={vehicle} />}
             {tab === 'Usage'        && <Usage />}
+            {tab === 'Replay'       && <ReplayPanel vehicleId={vehicle.id} replay={replay} />}
             {tab === 'Sensors'      && <Sensors     v={vehicle} />}
             {tab === 'Alerts'       && <Alerts />}
             {tab === 'Documents'    && <Documents   v={vehicle} />}
