@@ -19,11 +19,12 @@ export default function FleetPerformanceRadar({ fleetData, heroMode = false }) {
     value: metrics[metric.toLowerCase()] ?? 60,
   }))
 
+  // In the hero the radar gets the same glass treatment as the Trips card on
+  // the opposite side, so the two flanks of the gauge read as a matched pair.
   const cardStyle = heroMode
     ? {
-        background: 'transparent',
-        borderRadius: 20,
-        padding: '16px',
+        padding: '13px 15px',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
       }
@@ -36,23 +37,27 @@ export default function FleetPerformanceRadar({ fleetData, heroMode = false }) {
       }
 
   return (
-    <div style={cardStyle}>
+    <div className={heroMode ? 'ft-glass' : undefined} style={cardStyle}>
       <h3 style={{
-        fontSize: 15, fontWeight: 700, color: '#ffffff',
-        margin: '0 0 4px', fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: heroMode ? 13 : 15, fontWeight: 600, color: '#ffffff',
+        letterSpacing: '-0.01em',
+        margin: '0 0 2px', fontFamily: 'Inter, system-ui, sans-serif',
       }}>
         Fleet Performance
       </h3>
-      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', margin: '0 0 8px' }}>
+      <p style={{ fontSize: 10, lineHeight: 1.35, color: 'rgba(255,255,255,0.55)', margin: '0 0 6px' }}>
         Multi-axis health across 6 dimensions
       </p>
 
-      <div style={{ height: 220 }}>
+      {/* In the hero the chart grows to fill the row, so the title lines up
+          with the top of the cards either side and the block has no dead
+          space under it. Standalone it keeps its fixed height. */}
+      <div style={heroMode ? { flex: '1 1 auto', minHeight: 170 } : { height: 220 }}>
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart
             data={data}
-            outerRadius="80%"
-            margin={{ top: 30, right: 60, bottom: 30, left: 60 }}
+            outerRadius="84%"
+            margin={{ top: 18, right: 42, bottom: 12, left: 42 }}
           >
             {/* No gradient or glow — ClyHealth uses a plain flat fill */}
             <PolarGrid

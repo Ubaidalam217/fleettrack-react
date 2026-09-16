@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, MapPin, FileText, BarChart2, Settings, MessageCircle } from 'lucide-react'
+import { useCurrentUser, initials, firstName } from '../services/authUser'
 
 const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-  { label: 'Tracking',  icon: MapPin,           path: '/tracking' },
+  // Label only — the route stays /tracking so every existing link still works.
+  { label: 'Live Map',  icon: MapPin,           path: '/tracking' },
   { label: 'Reports',   icon: FileText,          path: '/reports' },
   { label: 'Charts',    icon: BarChart2,         path: '/charts' },
   { label: 'Settings',  icon: Settings,          path: '/settings' },
@@ -182,6 +184,7 @@ function SupportModal({ onClose }) {
 export default function Sidebar({ sidebarOpen }) {
   const location = useLocation()
   const [supportOpen, setSupportOpen] = useState(false)
+  const user = useCurrentUser()
 
   return (
     <>
@@ -243,11 +246,11 @@ export default function Sidebar({ sidebarOpen }) {
           {/* Bottom */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', paddingBottom: 16, paddingTop: 12, gap: 12, borderTop: `1px solid ${DIVIDER}` }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <div style={{ display: 'flex', height: 32, width: 32, alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: '#3b82f6', fontSize: 12, fontWeight: 700, color: 'white' }}>
-                M
+              <div style={{ display: 'flex', height: 32, width: 32, alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'linear-gradient(135deg,#3b82f6,#6366f1)', fontSize: 12, fontWeight: 700, color: 'white', boxShadow: '0 4px 12px -4px rgba(59,130,246,0.9)' }}>
+                {initials(user)}
               </div>
-              <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.75)', lineHeight: 1 }}>Musharof</span>
-              <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', lineHeight: 1 }}>Admin</span>
+              <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.75)', lineHeight: 1 }}>{firstName(user)}</span>
+              <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', lineHeight: 1 }}>{user.role.split(' ')[1] ?? user.role}</span>
             </div>
 
             <button

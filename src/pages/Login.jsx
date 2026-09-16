@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { setCurrentUser } from '../services/authUser'
 
 const VALID_CREDENTIALS = [
   { email: 'admin@fleettrack.com',   password: 'admin123' },
@@ -26,6 +27,9 @@ export default function Login() {
     await new Promise(r => setTimeout(r, 1100))
     const valid = VALID_CREDENTIALS.some(c => c.email === email.trim() && c.password === password)
     if (valid) {
+      // Store the profile so the dashboard greeting and account menu can
+      // address the actual signed-in user.
+      setCurrentUser(email.trim())
       navigate('/dashboard')
     } else {
       setError('Invalid email or password. Please try again.')

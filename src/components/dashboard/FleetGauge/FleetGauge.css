@@ -1,0 +1,221 @@
+/* ------------------------------------------------------------------
+   FleetGauge
+
+   Sits directly on the dashboard's blue hero panel: no background, no
+   border-radius, no clipping — the hero owns all of that.
+
+   Every text/icon size is expressed in `cqw` (1cqw = 1% of the gauge's
+   own width), so the whole gauge scales as one piece and the labels keep
+   their relative spacing — and therefore never overlap — at any
+   breakpoint.
+
+   `aspect-ratio` mirrors VIEW_W : VIEW_H in FleetGauge.jsx. Keep in sync.
+------------------------------------------------------------------- */
+
+/* Bottom-anchored: the flat base of the semicircle lands on the same
+   baseline as the bottom of the cards either side, with only the footnote
+   below it. Any slack in the cell is absorbed above the artwork. */
+.fg-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  height: 100%;
+  color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.fg-gauge {
+  position: relative;
+  /* anchor for the footnote, which hangs just below the box */
+  width: 100%;
+  /* Runs the full hero column at 1280-1920px. The cap only bites on very
+     wide viewports, where an uncapped gauge would out-grow the cards
+     either side of it. Overridable per-instance. */
+  max-width: var(--fg-max-width, 840px);
+  aspect-ratio: 472 / 235;
+  container-type: inline-size;
+  /* Labels sit outside the arc — never clip them. */
+  overflow: visible;
+}
+
+/* Absolutely stacked layers ------------------------------------- */
+
+.fg-layer,
+.fg-nodes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.fg-nodes {
+  z-index: 5;
+}
+
+/* SVG arcs ------------------------------------------------------- */
+
+.fg-outer-ticks {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 8;
+  stroke-dasharray: 1 3;
+}
+
+.fg-node-arc-line {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1;
+}
+
+.fg-node-dot {
+  fill: #9fd8ff;
+  opacity: 0.9;
+}
+
+.fg-inner-ticks {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 12;
+  stroke-dasharray: 1 2;
+}
+
+.fg-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 10;
+}
+
+.fg-progress {
+  fill: none;
+  stroke: #4fc3f7;
+  stroke-width: 10;
+  stroke-linecap: butt;
+  filter: drop-shadow(0 0 6px rgba(79, 195, 247, 0.85));
+}
+
+.fg-center-glow path {
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.fg-needle {
+  fill: #ffffff;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.95));
+}
+
+/* Metric nodes --------------------------------------------------- */
+
+.fg-metric {
+  position: absolute;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  width: 8cqw;
+}
+
+.fg-icon-glow {
+  width: 3.7333cqw;
+  height: 3.7333cqw;
+  margin: 0 auto 0.2667cqw auto;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(125, 211, 252, 0.28) 0%, rgba(125, 211, 252, 0) 75%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7dd3fc;
+}
+
+.fg-icon-glow svg {
+  width: 2.2cqw;
+  height: 2.2cqw;
+  overflow: visible;
+}
+
+.fg-metric-val {
+  font-size: 1.9cqw;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.fg-metric-val span {
+  font-size: 1.3cqw;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.fg-metric-lbl {
+  font-size: 1.3cqw;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 0.25cqw;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* Center readout ------------------------------------------------- */
+
+/* `top` (not `bottom`) so the readout stays pinned inside the dome
+   opening rather than drifting with the box height. 68% of the cropped
+   viewBox puts the number on the dome's optical centre and drops the
+   title onto the arc baseline. */
+.fg-center-info {
+  position: absolute;
+  top: 68%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 10;
+}
+
+.fg-percentile-val {
+  font-size: 8cqw;
+  font-weight: 400;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.fg-percentile-val sup {
+  font-size: 2.5cqw;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.5);
+  margin-left: 0.2667cqw;
+}
+
+.fg-percentile-lbl {
+  font-size: 1.55cqw;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.75);
+  margin-top: 0.2667cqw;
+}
+
+.fg-title {
+  font-size: 2.1cqw;
+  font-weight: 600;
+  color: #ffffff;
+  margin-top: 0.8cqw;
+  white-space: nowrap;
+}
+
+/* Footnote ------------------------------------------------------- */
+
+/* Out of flow, so the gauge box's own bottom edge is the row's bottom edge
+   and the arc baseline lands level with the cards either side. The footnote
+   then hangs into the hero's bottom padding, directly under the gauge. */
+.fg-footnote {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 3px 0 0;
+  font-size: 9px;
+  line-height: 1.2;
+  font-style: italic;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.4);
+}

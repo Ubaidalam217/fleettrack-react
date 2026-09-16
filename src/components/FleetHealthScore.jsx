@@ -75,11 +75,13 @@ export default function FleetHealthScore({ isDark, fleetData, loading }) {
   }, [])
 
   return (
-    <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
+    <div className="ft-card">
       <style>{`@keyframes skel-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }`}</style>
 
-      <h3 className="text-sm font-semibold mb-0.5" style={{ color: 'var(--c-text1)' }}>Fleet Health Score</h3>
-      <p className="text-xs mb-3" style={{ color: 'var(--c-text3)' }}>Overall fleet condition</p>
+      <div style={{ marginBottom: 14 }}>
+        <h3 className="ft-card-title">Fleet Health Score</h3>
+        <p className="ft-card-sub">Overall fleet condition</p>
+      </div>
 
       <div style={{ position: 'relative', height: 140, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', lineHeight: 0 }}>

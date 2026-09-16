@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, Link } from 'react-router-dom'
 import { getPermissionState } from '../../services/pushNotifications'
+import { useCurrentUser, initials, clearCurrentUser } from '../../services/authUser'
 
 const THEME_OPTIONS = [
   {
@@ -49,6 +50,8 @@ export default function UserDropdown({ themeMode, setTheme }) {
   const triggerRef = useRef(null)
   const panelRef   = useRef(null)
   const navigate   = useNavigate()
+  const user       = useCurrentUser()
+  const avatar     = initials(user)
 
   // Recalculate position anchored to the trigger button
   useEffect(() => {
@@ -109,6 +112,7 @@ export default function UserDropdown({ themeMode, setTheme }) {
   const handleSignOut = () => {
     localStorage.removeItem('fleetAuth')
     localStorage.removeItem('fleetTheme')
+    clearCurrentUser()
     setOpen(false)
     navigate('/login')
   }
@@ -139,7 +143,7 @@ export default function UserDropdown({ themeMode, setTheme }) {
           border: open ? '2px solid #93c5fd' : '2px solid transparent',
           transition: 'border-color 0.15s',
         }}>
-          M
+          {avatar}
         </div>
       </button>
 
@@ -164,19 +168,19 @@ export default function UserDropdown({ themeMode, setTheme }) {
                 background: 'linear-gradient(135deg,#3b82f6,#6366f1)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0,
-              }}>M</div>
+              }}>{avatar}</div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  Musharof Chowdhury
+                  {user.name}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--c-text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  admin@fleettrack.com
+                  {user.email}
                 </div>
               </div>
             </div>
             <div style={{ marginTop: 8 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: '#3b82f6', background: 'rgba(59,130,246,0.1)', borderRadius: 5, padding: '2px 8px', letterSpacing: '0.04em' }}>
-                ADMIN
+                {user.role.toUpperCase()}
               </span>
             </div>
           </div>

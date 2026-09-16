@@ -32,16 +32,18 @@ export default function CostSummary({ isDark }) {
   const ptBd  = isDark ? '#1e2740' : '#ffffff'
 
   return (
-    <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
-      <div className="flex items-start justify-between mb-0.5">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Cost Summary</h3>
-          <EstimatedBadge />
+    <div className="ft-card">
+      <div className="ft-card-head" style={{ marginBottom: 14 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <h3 className="ft-card-title">Cost Summary</h3>
+            <EstimatedBadge />
+          </div>
+          <p className="ft-card-sub">Monthly expenditure</p>
+          <p className="ft-card-note">* Estimated based on industry averages. Real cost tracking available with backend integration (Phase 2).</p>
         </div>
-        <span className="text-sm font-bold" style={{ color: 'var(--c-text1)' }}>$9,420</span>
+        <span className="text-sm font-bold shrink-0" style={{ color: 'var(--c-text1)' }}>$9,420</span>
       </div>
-      <p className="text-xs mb-1" style={{ color: 'var(--c-text3)' }}>Monthly expenditure</p>
-      <p className="text-[10px] mb-3 italic" style={{ color: 'var(--c-text2)' }}>* Estimated based on industry averages. Real cost tracking available with backend integration (Phase 2).</p>
 
       <div className="h-[65px] md:h-[85px] mb-4">
         <ResponsiveContainer width="100%" height="100%">
@@ -70,7 +72,7 @@ export default function CostSummary({ isDark }) {
         </ResponsiveContainer>
       </div>
 
-      <div className="space-y-2.5">
+      <div className="space-y-2.5 ft-push">
         {COSTS.map(c => (
           <div key={c.label} className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-1.5" style={{ color: 'var(--c-text2)' }}>

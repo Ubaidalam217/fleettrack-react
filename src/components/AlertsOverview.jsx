@@ -77,23 +77,24 @@ export default function AlertsOverview() {
   const counts = [c0, c1, c2, c3]
 
   return (
-    <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
-      <div className="flex items-start justify-between mb-3 md:mb-4">
+    <div className="ft-card">
+      <div className="ft-card-head">
         <div>
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Alerts Overview</h3>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--c-text3)' }}>Active system alerts</p>
+          <h3 className="ft-card-title">Alerts Overview</h3>
+          <p className="ft-card-sub">Active system alerts</p>
         </div>
-        <a href="#" className="text-xs text-blue-500 hover:text-blue-400 transition-colors">View all</a>
+        <a href="#" className="ft-link shrink-0">View all</a>
       </div>
 
-      <div className="space-y-2.5">
+      <div className="flex flex-col gap-2.5 flex-1 justify-between">
         {ALERTS.map((a, idx) => (
           <div
             key={a.label}
-            className="flex items-center justify-between rounded-lg p-3"
+            className="flex items-center justify-between p-3"
             style={{
-              background: 'var(--c-card2)',
-              border: '1px solid var(--c-border2)',
+              background: 'var(--ft-inset)',
+              border: '1px solid var(--ft-inset-border)',
+              borderRadius: 'var(--ft-radius-inner)',
               animation: 'fadeInUp 0.45s ease both',
               animationDelay: `${100 + idx * 80}ms`,
             }}

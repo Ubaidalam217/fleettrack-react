@@ -24,13 +24,15 @@ export default function TripAnalysis({ isDark }) {
   const borderCol = isDark ? '#1e2740' : '#ffffff'
 
   return (
-    <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-        <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Trip Analysis</h3>
-        <EstimatedBadge />
+    <div className="ft-card">
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <h3 className="ft-card-title">Trip Analysis</h3>
+          <EstimatedBadge />
+        </div>
+        <p className="ft-card-sub">This month&rsquo;s breakdown</p>
+        <p className="ft-card-note">* Trip completion data not available from Flespi telemetry. Real trip tracking available with backend integration (Phase 2).</p>
       </div>
-      <p className="text-xs mb-1" style={{ color: 'var(--c-text3)' }}>This month's breakdown</p>
-      <p className="text-[10px] mb-3 italic" style={{ color: 'var(--c-text2)' }}>* Trip completion data not available from Flespi telemetry. Real trip tracking available with backend integration (Phase 2).</p>
 
       {/* Donut */}
       <div className="flex items-center justify-center mb-4">
@@ -60,7 +62,7 @@ export default function TripAnalysis({ isDark }) {
       </div>
 
       {/* Legend */}
-      <div className="space-y-2.5">
+      <div className="space-y-2.5 ft-push">
         {TRIPS.map(t => (
           <div key={t.label} className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-2" style={{ color: 'var(--c-text2)' }}>

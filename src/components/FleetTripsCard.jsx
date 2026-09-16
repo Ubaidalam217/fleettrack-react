@@ -29,56 +29,62 @@ export default function FleetTripsCard({ fleetData }) {
   const barPct  = Math.min(100, Math.round((totalKm / 15000) * 100))
 
   return (
-    <div style={{
-      background: 'rgba(10,25,60,0.6)',
-      borderRadius: 16,
-      padding: 20,
+    // Glass, not a solid slab: a white/blue tint over backdrop-blur lets the
+    // hero gradient read straight through, so the card nests into the panel
+    // instead of sitting on top of it. height:100% + a flex-growing chart so
+    // the card fills the hero row rather than dictating its height.
+    <div className="ft-glass" style={{
+      padding: '13px 15px',
+      height: '100%',
       display: 'flex',
       flexDirection: 'column',
       fontFamily: 'Inter, system-ui, sans-serif',
     }}>
 
       {/* Big number + activity pill */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ fontSize: 28, fontWeight: 700, color: '#ffffff', lineHeight: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 7 }}>
+        <div style={{ fontSize: 21, fontWeight: 700, color: '#ffffff', lineHeight: 1, letterSpacing: '-0.02em' }}>
           {totalKm.toLocaleString()}
-          <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.6)', marginLeft: 4 }}>km</span>
+          <span style={{ fontSize: 11.5, fontWeight: 500, color: 'rgba(255,255,255,0.6)', marginLeft: 4 }}>km</span>
         </div>
         <span style={{
           display: 'flex', alignItems: 'center', gap: 5,
-          background: 'rgba(255,255,255,0.92)', color: '#0a1f4a',
-          fontSize: 11, fontWeight: 600, borderRadius: 20, padding: '3px 10px',
+          background: 'rgba(255,255,255,0.14)', color: '#ffffff',
+          border: '1px solid rgba(255,255,255,0.2)',
+          fontSize: 9.5, fontWeight: 600, borderRadius: 20, padding: '2px 9px',
+          backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
         }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: level.dot, display: 'inline-block' }} />
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: level.dot, display: 'inline-block', boxShadow: `0 0 6px ${level.dot}` }} />
           {level.text}
         </span>
       </div>
 
       {/* Thin blue progress bar */}
-      <div style={{ height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.14)', overflow: 'hidden', marginBottom: 9 }}>
         <div style={{
           height: '100%', width: `${barPct}%`, borderRadius: 999,
-          background: 'linear-gradient(to right, #4fc3f7, #2196f3)',
+          background: 'linear-gradient(to right, #7dd3fc, #38bdf8)',
+          boxShadow: '0 0 10px rgba(56,189,248,0.7)',
           transition: 'width 0.7s ease',
         }} />
       </div>
 
       {/* Title + subtitle */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 4px' }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: '#ffffff', margin: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 2px' }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', margin: 0, letterSpacing: '-0.01em' }}>
           Trips &amp; Distance
         </h3>
         <EstimatedBadge dark />
       </div>
-      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', margin: '0 0 2px' }}>
+      <p style={{ fontSize: 10, lineHeight: 1.35, color: 'rgba(255,255,255,0.55)', margin: '0 0 1px' }}>
         Estimated kilometers driven, projected from live running/stopped vehicle counts
       </p>
-      <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontStyle: 'italic', margin: '0 0 10px' }}>
+      <p style={{ fontSize: 9, lineHeight: 1.3, color: 'rgba(255,255,255,0.38)', fontStyle: 'italic', margin: '0 0 4px' }}>
         * Precise odometer data requires Flespi plan upgrade (Phase 2)
       </p>
 
-      {/* Smooth blue area chart */}
-      <div style={{ height: 150 }}>
+      {/* Smooth blue area chart — takes whatever vertical room is left */}
+      <div style={{ flex: '1 1 auto', minHeight: 80 }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={SAMPLE_DATA} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
             <defs>
@@ -114,7 +120,7 @@ export default function FleetTripsCard({ fleetData }) {
             <ReferenceDot
               x={lastPoint.day}
               y={lastPoint.km}
-              r={5}
+              r={4.5}
               fill="#0a1f4a"
               stroke="#ffffff"
               strokeWidth={2}
@@ -124,17 +130,27 @@ export default function FleetTripsCard({ fleetData }) {
       </div>
 
       {/* View full report button */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
         <button
           style={{
-            background: '#ffffff', color: '#0a1f4a',
-            border: 'none', borderRadius: 8,
-            fontSize: 12, fontWeight: 600,
-            padding: '7px 14px', cursor: 'pointer',
+            background: 'rgba(255,255,255,0.95)', color: '#0a1f4a',
+            border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8,
+            fontSize: 11, fontWeight: 600,
+            padding: '5px 11px', cursor: 'pointer',
             fontFamily: 'Inter, system-ui, sans-serif',
+            boxShadow: '0 4px 14px -6px rgba(3,14,40,0.8)',
+            transition: 'background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease',
           }}
-          onMouseEnter={e => e.currentTarget.style.background = '#e8f1ff'}
-          onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = '#ffffff'
+            e.currentTarget.style.transform = 'translateY(-1px)'
+            e.currentTarget.style.boxShadow = '0 8px 20px -8px rgba(3,14,40,0.9)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.95)'
+            e.currentTarget.style.transform = 'none'
+            e.currentTarget.style.boxShadow = '0 4px 14px -6px rgba(3,14,40,0.8)'
+          }}
         >
           View full report &rsaquo;
         </button>

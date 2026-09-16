@@ -16,6 +16,9 @@ const FIELDS = [
   'position.latitude',
   'position.longitude',
   'position.speed',
+  // Course over ground — rotates the replay car and feeds the Heading field on
+  // the floating info card.
+  'position.direction',
   'engine.ignition.status',
   'timestamp',
 ].join(',')
@@ -112,10 +115,11 @@ export async function fetchDeviceTrack(deviceId, fromTs, toTs, onStatus) {
       if (lat == null || lng == null) return null
 
       const speed    = m['position.speed'] ?? m['gps.speed'] ?? m.speed ?? 0
+      const heading  = m['position.direction'] ?? m.direction ?? null
       const ignition = m['engine.ignition.status'] ?? m.ignition ?? null
       const ts       = m.timestamp ?? null
 
-      return { lat, lng, speed, ignition, ts, status: pointStatus(ignition, speed) }
+      return { lat, lng, speed, heading, ignition, ts, status: pointStatus(ignition, speed) }
     })
     .filter(Boolean)
     .sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0))

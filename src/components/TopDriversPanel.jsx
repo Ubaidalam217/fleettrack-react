@@ -19,25 +19,17 @@ function scoreChipColor(score) {
 
 export default function TopDriversPanel() {
   return (
-    <div
-      className="rounded-xl p-4 lg:p-5 h-full flex flex-col"
-      style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}
-    >
+    <div className="ft-card">
       {/* Header */}
-      <div className="flex items-start justify-between mb-4">
+      <div className="ft-card-head">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Top Drivers</h3>
+            <h3 className="ft-card-title">Top Drivers</h3>
             <EstimatedBadge />
           </div>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--c-text3)' }}>Ranked by performance score</p>
+          <p className="ft-card-sub">Ranked by performance score</p>
         </div>
-        <a
-          href="/drivers"
-          style={{ fontSize: 12, color: '#3b82f6', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}
-          onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
-          onMouseLeave={e => e.currentTarget.style.color = '#3b82f6'}
-        >
+        <a href="/drivers" className="ft-link shrink-0">
           View all
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <polyline points="9 18 15 12 9 6"/>
@@ -57,8 +49,8 @@ export default function TopDriversPanel() {
         </span>
       </div>
 
-      {/* Driver rows */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+      {/* Driver rows — evenly distributed so the list fills the card height */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, justifyContent: 'space-between' }}>
         {DRIVERS.map((d, i) => {
           const chip = scoreChipColor(d.score)
           return (
@@ -68,17 +60,17 @@ export default function TopDriversPanel() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: '9px 10px',
-                borderRadius: 10,
-                border: '1px solid var(--c-border2)',
-                background: 'var(--c-card2)',
+                padding: '10px 11px',
+                borderRadius: 12,
+                border: '1px solid var(--ft-inset-border)',
+                background: 'var(--ft-inset)',
                 cursor: 'default',
                 animation: 'fadeInUp 0.4s ease both',
                 animationDelay: `${i * 70}ms`,
                 transition: 'background 0.15s',
               }}
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--c-hover)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'var(--c-card2)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'var(--ft-inset)')}
             >
               {/* Avatar */}
               <div

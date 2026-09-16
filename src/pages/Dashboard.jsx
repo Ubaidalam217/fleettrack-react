@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import Sidebar               from '../components/Sidebar'
 import Header                from '../components/Header'
 import FleetHealthScore      from '../components/FleetHealthScore'
-import FleetHealthGauge      from '../components/FleetHealthGauge'
+import FleetGauge, { buildFleetMetrics, FLEET_GAUGE_FOOTNOTE } from '../components/dashboard/FleetGauge'
+import WelcomeGreeting        from '../components/dashboard/WelcomeGreeting'
 import FleetPerformanceRadar  from '../components/FleetPerformanceRadar'
 import FleetTripsCard         from '../components/FleetTripsCard'
 import FleetScoreCard         from '../components/FleetScoreCard'
@@ -123,13 +124,15 @@ function WidgetWrapper({ id, hidden, onHide, onRefresh, children, className = ''
           onClick={e => { e.stopPropagation(); setMenuOpen(s => !s) }}
           title="Widget options"
           style={{
-            width: 26, height: 26, borderRadius: 6,
+            width: 26, height: 26, borderRadius: 8,
             border: '1px solid var(--c-border2)', background: 'var(--c-card)',
             cursor: 'pointer', display: 'flex', alignItems: 'center',
             justifyContent: 'center', color: 'var(--c-text3)',
-            opacity: 0, transition: 'opacity 0.15s ease',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+            opacity: 0, transition: 'opacity 0.18s ease, color 0.15s ease, border-color 0.15s ease',
+            boxShadow: '0 2px 8px -2px rgba(15,23,42,0.18)',
           }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--ft-accent)'; e.currentTarget.style.borderColor = 'var(--ft-accent)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--c-text3)'; e.currentTarget.style.borderColor = 'var(--c-border2)' }}
         >
           <IcoGear />
         </button>
@@ -202,7 +205,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   )
-  const { data, loading, error, mqttFatalError, lastUpdated, refresh, isConnected } = useFlespiData()
+  const { data, loading, error, mqttFatalError, mqttRetryNotice, lastUpdated, refresh, isConnected } = useFlespiData()
   const [refreshing, setRefreshing] = useState(false)
 
   const handleRefresh = async () => {
@@ -326,35 +329,16 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
         />
 
         <main className="flex-1 overflow-y-auto no-scrollbar" style={{ overflowX: 'hidden' }}>
-          <div className="p-3 md:p-5 xl:p-6 space-y-4">
+          <div className="p-4 md:p-5 xl:p-6 space-y-5">
 
-            {/* ── Status + action bar ───────────────────────────────── */}
-            <div className="flex items-center justify-between flex-wrap gap-2">
+            {/* ── Greeting + action bar ─────────────────────────────────
+                Greeting owns the left; every control is grouped on the right
+                so the page has one action cluster instead of two. */}
+            <div className="flex items-end justify-between flex-wrap gap-3">
 
-              <button
-                onClick={() => setCustomizeOpen(true)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '5px 12px', borderRadius: 7,
-                  border: '1px solid var(--c-border2)',
-                  background: 'var(--c-card)', cursor: 'pointer',
-                  fontSize: 12, color: 'var(--c-text2)', fontWeight: 500,
-                  transition: 'border-color 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = '#3b82f6'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--c-border2)'}
-              >
-                <IcoGear size={13} />
-                <span className="hidden sm:inline">Customize Dashboard</span>
-                <span className="sm:hidden">Customize</span>
-                {hiddenWidgets.length > 0 && (
-                  <span style={{ background: '#3b82f6', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
-                    {hiddenWidgets.length} hidden
-                  </span>
-                )}
-              </button>
+              <WelcomeGreeting />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {loading && !data && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--c-text3)' }}>
                     <div style={{ width: 12, height: 12, border: '2px solid var(--c-border2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'db-spin 0.75s linear infinite' }} />
@@ -363,7 +347,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                   </div>
                 )}
                 {lastUpdated && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--c-text3)', background: 'var(--c-card)', border: '1px solid var(--c-border2)', borderRadius: 20, padding: '3px 10px' }}>
+                  <div className="ft-chip">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     <span className="hidden sm:inline">{fmtUpdated(lastUpdated)} &middot; live via MQTT</span>
                     <span className="sm:hidden">{fmtUpdated(lastUpdated)}</span>
@@ -374,17 +358,24 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                 )}
 
                 <button
+                  onClick={() => setCustomizeOpen(true)}
+                  className="ft-btn"
+                  title="Show or hide dashboard widgets"
+                >
+                  <IcoGear size={13} />
+                  <span className="hidden sm:inline">Customize Dashboard</span>
+                  <span className="sm:hidden">Customize</span>
+                  {hiddenWidgets.length > 0 && (
+                    <span style={{ background: '#3b82f6', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
+                      {hiddenWidgets.length} hidden
+                    </span>
+                  )}
+                </button>
+
+                <button
                   onClick={() => setFilterPanelOpen(s => !s)}
                   title="Toggle filter panel"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '5px 10px', borderRadius: 7,
-                    border: `1px solid ${filterPanelOpen || activeFilterCount !== null ? '#3b82f6' : 'var(--c-border2)'}`,
-                    background: filterPanelOpen || activeFilterCount !== null ? 'rgba(59,130,246,0.1)' : 'var(--c-card)',
-                    cursor: 'pointer', fontSize: 12, fontWeight: 500,
-                    color: filterPanelOpen || activeFilterCount !== null ? '#3b82f6' : 'var(--c-text2)',
-                    transition: 'all 0.15s',
-                  }}
+                  className={`ft-btn${filterPanelOpen || activeFilterCount !== null ? ' ft-btn--active' : ''}`}
                 >
                   <IcoFilter />
                   <span className="hidden sm:inline">Filter</span>
@@ -397,16 +388,20 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               </div>
             </div>
 
-            {mqttFatalError && (
+            {/* Red when the live feed is permanently broken, amber while it is
+                merely rate-limited and retrying on its own. */}
+            {(mqttFatalError || mqttRetryNotice) && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8,
-                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
-                borderRadius: 8, padding: '8px 14px', fontSize: 12, color: '#dc2626',
+                background: mqttFatalError ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
+                border: `1px solid ${mqttFatalError ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.3)'}`,
+                borderRadius: 12, padding: '10px 16px', fontSize: 12,
+                color: mqttFatalError ? '#dc2626' : '#b45309',
               }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
-                {mqttFatalError} Showing last known positions from the fleet API instead.
+                {mqttFatalError || mqttRetryNotice} Showing last known positions from the fleet API instead.
               </div>
             )}
 
@@ -416,7 +411,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
             <div className="lg:hidden space-y-4">
 
               {/* Row 2 */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 items-stretch">
                 {W('fleetHealth',     <FleetHealthScore isDark={isDark} fleetData={filteredData} loading={loading} />)}
                 {W('vehicleActivity', <VehicleActivity  isDark={isDark} vehicleCount={filteredData?.total ?? 0} />)}
                 {W('liveMap',         <LiveMap fleetData={filteredData} loading={loading} />)}
@@ -431,7 +426,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               </div>
 
               {/* Row 4 */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 items-stretch">
                 {W('fuelEnergy',   <FuelEnergy   isDark={isDark} />)}
                 {W('tripAnalysis', <TripAnalysis isDark={isDark} />)}
                 {W('costSummary',  <CostSummary  isDark={isDark} />)}
@@ -441,73 +436,107 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
             {/* ════════════════════════════════════════════════════════
                 DESKTOP layout  (>= 1024 px)  — ClyHealth style
             ════════════════════════════════════════════════════════ */}
-            <div className="hidden lg:block space-y-6">
+            <div className="hidden lg:block space-y-5">
 
-              {/* ── ClyHealth-style dark frame ── */}
-              <div style={{
-                background: 'radial-gradient(ellipse at 50% 30%, #2454b5 0%, #1a3d8f 55%, #122f73 100%)',
-                borderRadius: 28,
-                padding: '28px 32px 0',
-                position: 'relative',
-                overflow: 'hidden',
+              {/* ── Hero panel ── */}
+              <div className="ft-hero" style={{
+                /* Symmetric side padding, so the radar's left margin and the
+                   Trips card's right margin are identical and both sit fully
+                   inside the panel. Bottom padding houses the gauge footnote,
+                   which hangs out of flow just below the gauge so the arc
+                   baseline can sit level with the bottom of the cards. */
+                padding: '20px 30px 24px',
               }}>
                 {/* Glow orbs */}
                 <div style={{
                   position: 'absolute', top: -80, right: -80, width: 380, height: 380,
-                  background: 'radial-gradient(circle, rgba(59,130,246,0.3) 0%, transparent 70%)',
+                  background: 'radial-gradient(circle, rgba(96,165,250,0.32) 0%, transparent 70%)',
                   pointerEvents: 'none', borderRadius: '50%',
                   animation: 'hero-glow-float 6s ease-in-out infinite',
                 }} />
                 <div style={{
                   position: 'absolute', bottom: -100, left: -60, width: 320, height: 320,
-                  background: 'radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 70%)',
+                  background: 'radial-gradient(circle, rgba(139,92,246,0.2) 0%, transparent 70%)',
                   pointerEvents: 'none', borderRadius: '50%',
                 }} />
+                {/* Hairline sheen along the top edge */}
+                <div style={{
+                  position: 'absolute', top: 0, left: '12%', right: '12%', height: 1,
+                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)',
+                  pointerEvents: 'none',
+                }} />
 
-                {/* Row 1: Radar | Gauge | Trips & Distance - all vertically centered */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr)', alignItems: 'center', gap: 20, position: 'relative', zIndex: 1, marginBottom: 20 }}>
-                  <div className="min-w-0">
-                    {W('fleetRadar', <FleetPerformanceRadar fleetData={filteredData} heroMode />, '', true)}
+                {/* Row 1: Radar | Gauge | Trips & Distance.
+                    The two side columns are exactly equal (1fr each), which is
+                    what puts the gauge's dome and centre readout on the hero's
+                    true horizontal centre — an asymmetric pair would shift the
+                    middle column off-centre by half the difference.
+                    alignItems:stretch gives all three cells a common top and
+                    bottom edge; each child decides how to sit inside its cell
+                    (radar centred, gauge bottom-anchored, Trips card filling). */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.42fr) minmax(0, 1fr)', alignItems: 'stretch', gap: 24, position: 'relative', zIndex: 1 }}>
+                  <div className="min-w-0 flex">
+                    {W('fleetRadar', <FleetPerformanceRadar fleetData={filteredData} heroMode />, 'w-full min-w-0', true)}
                   </div>
-                  <div className="min-w-0" style={{ overflow: 'visible' }}>
-                    {W('fleetHealth', <FleetHealthGauge isDark={isDark} fleetData={filteredData} loading={loading} heroMode />, '', true)}
+                  {/* alignItems:flex-end drops the gauge onto the row's bottom
+                      edge, so the flat base of the semicircle lines up with the
+                      bottom of the cards either side. */}
+                  <div
+                    className="min-w-0"
+                    style={{
+                      overflow: 'visible',
+                      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                    }}
+                  >
+                    {W('fleetHealth', (
+                      <FleetGauge
+                        percentile={(loading && !filteredData) ? 0 : computeHealthScore(filteredData)}
+                        title="Your fleet performance"
+                        metrics={buildFleetMetrics(filteredData)}
+                        footnote={FLEET_GAUGE_FOOTNOTE}
+                      />
+                    ), 'w-full min-w-0', true)}
                   </div>
-                  <div className="min-w-0">
-                    {W('fleetTrend', <FleetTripsCard fleetData={filteredData} />, '', true)}
+                  <div className="min-w-0 flex">
+                    {W('fleetTrend', <FleetTripsCard fleetData={filteredData} />, 'w-full min-w-0', true)}
                   </div>
                 </div>
 
               </div>
 
-              {/* Score+Alerts (4) | Composition (4) | Maintenance (4) — light theme, outside dark frame */}
-              <div className="grid grid-cols-12 gap-4">
-                <div className="col-span-4 min-w-0 flex flex-col gap-4">
+              {/* Every row below uses the same gap in both directions
+                  (gap-5 = 20px) and stretches its cells, so cards in a row
+                  always share one top and one bottom edge. */}
+
+              {/* Score+Alerts (4) | Composition (4) | Maintenance (4) */}
+              <div className="grid grid-cols-12 gap-5 items-stretch">
+                <div className="col-span-4 min-w-0 flex flex-col gap-5">
                   {W('fleetScore',   <FleetScoreCard fleetData={filteredData} loading={loading} />)}
                   {W('alertMarkers', <AlertMarkersCard />)}
                 </div>
-                <div className="col-span-4 min-w-0">
+                <div className="col-span-4 min-w-0 flex">
                   {W('fleetComposition', <FleetCompositionCard fleetData={filteredData} loading={loading} />)}
                 </div>
-                <div className="col-span-4 min-w-0">
+                <div className="col-span-4 min-w-0 flex">
                   {W('maintenanceScore', <MaintenanceScoreCard fleetData={filteredData} loading={loading} />)}
                 </div>
               </div>
 
               {/* Top Drivers | Live Map */}
-              <div className="grid grid-cols-2 gap-6">
-                <div className="min-w-0">{W('driverPerf', <TopDriversPanel />)}</div>
-                <div className="min-w-0">{W('liveMap',    <LiveMap fleetData={filteredData} loading={loading} />)}</div>
+              <div className="grid grid-cols-2 gap-5 items-stretch">
+                <div className="min-w-0 flex">{W('driverPerf', <TopDriversPanel />)}</div>
+                <div className="min-w-0 flex">{W('liveMap',    <LiveMap fleetData={filteredData} loading={loading} />)}</div>
               </div>
 
               {/* Vehicle Status | AI Insights | Alerts Overview */}
-              <div className="grid grid-cols-3 gap-6">
+              <div className="grid grid-cols-3 gap-5 items-stretch">
                 {W('vehicleStatus',  <VehicleStatus vehicles={filteredData?.vehicles} loading={loading} />)}
                 {W('aiInsights',     <AIInsights fleetData={filteredData} />)}
                 {W('alertsOverview', <AlertsOverview />)}
               </div>
 
               {/* Trip Analysis | Cost Summary | Fuel & Energy */}
-              <div className="grid grid-cols-3 gap-6">
+              <div className="grid grid-cols-3 gap-5 items-stretch">
                 {W('tripAnalysis', <TripAnalysis isDark={isDark} />)}
                 {W('costSummary',  <CostSummary  isDark={isDark} />)}
                 {W('fuelEnergy',   <FuelEnergy   isDark={isDark} />)}
@@ -733,11 +762,11 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: 'var(--c-card)', borderRadius: 12,
+              background: 'var(--c-card)', borderRadius: 'var(--ft-radius)',
               border: '1px solid var(--c-border)',
               width: 400, maxWidth: '92vw', maxHeight: '88vh',
               display: 'flex', flexDirection: 'column',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              boxShadow: '0 24px 70px -20px rgba(15,23,42,0.45)',
               animation: 'scaleIn 0.18s ease',
             }}
           >

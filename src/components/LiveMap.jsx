@@ -73,27 +73,28 @@ export default function LiveMap({ fleetData, loading }) {
   const showEmpty = !loading && located.length === 0
 
   return (
-    <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
+    <div className="ft-card">
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-3 md:mb-4">
+      <div className="ft-card-head">
         <div>
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Live Fleet Map</h3>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--c-text3)' }}>
+          <h3 className="ft-card-title">Live Fleet Map</h3>
+          <p className="ft-card-sub">
             {located.length > 0
               ? `${located.length} of ${fleetData?.total ?? 0} vehicles positioned`
               : `${fleetData?.total ?? 0} vehicles tracked live`}
           </p>
         </div>
-        <div className="flex items-center gap-1 rounded-full px-2 py-0.5"
+        <div className="flex items-center gap-1 rounded-full px-2 py-0.5 shrink-0"
           style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)' }}>
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 live-blink" />
           <span className="text-[10px] font-bold text-emerald-500">LIVE</span>
         </div>
       </div>
 
-      {/* Map — no pointer-events override, no blocking overlay */}
-      <div style={{ height: 260, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--c-border2)', position: 'relative' }}>
+      {/* Map — grows to fill whatever height the row settles on, so this card
+          matches its neighbours instead of leaving dead space below. */}
+      <div style={{ flex: '1 1 auto', minHeight: 260, borderRadius: 'var(--ft-radius-inner)', overflow: 'hidden', border: '1px solid var(--c-border2)', position: 'relative' }}>
         {showEmpty && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 500,
@@ -148,7 +149,7 @@ export default function LiveMap({ fleetData, loading }) {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mt-3">
+      <div className="flex items-center gap-4 mt-3 shrink-0">
         <span className="flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--c-text3)' }}>
           <span className="h-2 w-2 rounded-full bg-emerald-500" />Moving ({fleetData?.running ?? 0})
         </span>

@@ -3,14 +3,14 @@ import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { hasDriver, SENSOR_KEYS } from '../../services/vehicleMaster'
 import { listDocuments, expiryState, daysUntilExpiry, isReadOnly } from '../../services/documentStore'
 import { fetchTodayMessages, computeUsage } from '../../utils/usageData'
-import { reverseGeocode } from '../../utils/geocode'
-import ReplayPanel from './ReplayPanel'
+import { useAddress } from '../../hooks/useAddress'
 
+// Replay used to be a tab here. It now lives in its own dock over the map and
+// is started from the vehicle's card in the list or from its marker popup.
 const DETAIL_TABS = [
   'Vehicle Info',
   'Driver Info',
   'Usage',
-  'Replay',
   'Sensors',
   'Alerts',
   'Documents',
@@ -109,22 +109,6 @@ function useUsageData(vehicleId) {
   return state
 }
 
-// Rounded to the same precision geocode.js caches on, so small GPS jitter
-// while the vehicle is parked doesn't refire a lookup for a coordinate we
-// already resolved.
-function useAddress(lat, lng) {
-  const [address, setAddress] = useState(null)
-
-  useEffect(() => {
-    if (lat == null || lng == null) { setAddress(null); return }
-    let cancelled = false
-    reverseGeocode(lat, lng).then(a => { if (!cancelled) setAddress(a) })
-    return () => { cancelled = true }
-  }, [lat, lng])
-
-  return address
-}
-
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
 function VehicleInfo({ v }) {
@@ -132,9 +116,7 @@ function VehicleInfo({ v }) {
   const docs = useMemo(() => listDocuments(v.id), [v.id])
   const { loading: usageLoading, usage } = useUsageData(v.id)
 
-  const latR = v.lat != null ? Math.round(v.lat * 10000) / 10000 : null
-  const lngR = v.lng != null ? Math.round(v.lng * 10000) / 10000 : null
-  const address = useAddress(latR, lngR)
+  const address = useAddress(v.lat, v.lng)
 
   return (
     <>
@@ -348,8 +330,12 @@ function Documents({ v }) {
 
 // ── Panel ──────────────────────────────────────────────────────────────────
 
-export default function VehicleDetailPanel({ vehicle, replay }) {
+// The sheet is only mounted while a vehicle is selected, so there is no empty
+// state to render any more — Tracking.jsx slides the whole sheet away instead.
+export default function VehicleDetailPanel({ vehicle }) {
   const [tab, setTab] = useState(DETAIL_TABS[0])
+
+  if (!vehicle) return null
 
   return (
     <div style={{
@@ -365,7 +351,6 @@ export default function VehicleDetailPanel({ vehicle, replay }) {
           <button
             key={t}
             onClick={() => setTab(t)}
-            disabled={!vehicle}
             style={{
               padding: '11px 16px',
               fontSize: 12,
@@ -374,9 +359,8 @@ export default function VehicleDetailPanel({ vehicle, replay }) {
               background: 'none',
               border: 'none',
               borderBottom: tab === t ? '2px solid #3b82f6' : '2px solid transparent',
-              color: !vehicle ? 'var(--c-text3)' : tab === t ? '#3b82f6' : 'var(--c-text2)',
-              cursor: vehicle ? 'pointer' : 'default',
-              opacity: vehicle ? 1 : 0.5,
+              color: tab === t ? '#3b82f6' : 'var(--c-text2)',
+              cursor: 'pointer',
               transition: 'color 0.15s',
             }}
           >
@@ -387,33 +371,21 @@ export default function VehicleDetailPanel({ vehicle, replay }) {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', minHeight: 0 }}>
-        {!vehicle ? (
-          <div style={{
-            height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--c-text3)', fontSize: 13, textAlign: 'center', padding: 20,
-          }}>
-            Select a vehicle to view its details.
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text1)', marginBottom: 14 }}>
-              {vehicle.master.plateNo || vehicle.name}
-              {vehicle.master.fleetNo && (
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-text3)', marginLeft: 8 }}>
-                  Fleet {vehicle.master.fleetNo}
-                </span>
-              )}
-            </div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text1)', marginBottom: 14 }}>
+          {vehicle.master.plateNo || vehicle.name}
+          {vehicle.master.fleetNo && (
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-text3)', marginLeft: 8 }}>
+              Fleet {vehicle.master.fleetNo}
+            </span>
+          )}
+        </div>
 
-            {tab === 'Vehicle Info' && <VehicleInfo v={vehicle} />}
-            {tab === 'Driver Info'  && <DriverInfo  v={vehicle} />}
-            {tab === 'Usage'        && <Usage       v={vehicle} />}
-            {tab === 'Replay'       && <ReplayPanel vehicleId={vehicle.id} replay={replay} />}
-            {tab === 'Sensors'      && <Sensors     v={vehicle} />}
-            {tab === 'Alerts'       && <Alerts />}
-            {tab === 'Documents'    && <Documents   v={vehicle} />}
-          </>
-        )}
+        {tab === 'Vehicle Info' && <VehicleInfo v={vehicle} />}
+        {tab === 'Driver Info'  && <DriverInfo  v={vehicle} />}
+        {tab === 'Usage'        && <Usage       v={vehicle} />}
+        {tab === 'Sensors'      && <Sensors     v={vehicle} />}
+        {tab === 'Alerts'       && <Alerts />}
+        {tab === 'Documents'    && <Documents   v={vehicle} />}
       </div>
     </div>
   )

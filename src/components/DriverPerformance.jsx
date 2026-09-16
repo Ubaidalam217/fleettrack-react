@@ -39,20 +39,20 @@ function Stars({ rating }) {
 
 export default function DriverPerformance() {
   return (
-    <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
-      <div className="flex items-start justify-between mb-3 md:mb-4">
+    <div className="ft-card">
+      <div className="ft-card-head">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Driver Performance</h3>
+            <h3 className="ft-card-title">Driver Performance</h3>
             <EstimatedBadge />
           </div>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--c-text3)' }}>Top performers this month</p>
+          <p className="ft-card-sub">Top performers this month</p>
         </div>
-        <a href="#" className="text-xs text-blue-500 hover:text-blue-400">View all</a>
+        <a href="#" className="ft-link shrink-0">View all</a>
       </div>
 
       {/* Summary */}
-      <div className="flex items-center gap-5 rounded-xl p-4 mb-4" style={{ background: 'var(--c-card2)', border: '1px solid var(--c-border2)' }}>
+      <div className="ft-inset flex items-center gap-5 p-4 mb-4">
         <div className="text-center shrink-0">
           <div className="text-4xl font-bold leading-none" style={{ color: 'var(--c-text1)' }}>92</div>
           <div className="text-[10px] mt-1" style={{ color: 'var(--c-text3)' }}>Avg Score</div>

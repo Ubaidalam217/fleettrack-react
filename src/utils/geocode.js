@@ -12,6 +12,19 @@ function key(lat, lng) {
 }
 
 /**
+ * Trim a Nominatim display_name down to its most specific parts.
+ *
+ * The full string runs all the way out to the country ("Sayourah 2 Street, M
+ * 38, Musaffah Industrial Area, Musaffah, Abu Dhabi, Abu Dhabi Emirate, United
+ * Arab Emirates"), which is useless in a small card on a map — the leading
+ * parts are the only ones that say where the vehicle actually is.
+ */
+export function shortenAddress(address, parts = 3) {
+  if (!address) return address
+  return address.split(',').slice(0, parts).join(',').trim()
+}
+
+/**
  * Resolve (lat, lng) to a human-readable address string. Returns null on
  * failure rather than throwing — a missing address shouldn't break the tab.
  */

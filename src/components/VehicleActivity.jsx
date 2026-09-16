@@ -169,11 +169,11 @@ export default function VehicleActivity({ isDark, vehicleCount = 0 }) {
   const ptBd  = isDark ? '#1e2740' : '#ffffff'
 
   return (
-    <div className="rounded-xl p-3 md:p-5" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
+    <div className="ft-card">
       <div className="flex items-start justify-between mb-1">
         <div>
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Vehicle Activity</h3>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--c-text3)' }}>
+          <h3 className="ft-card-title">Vehicle Activity</h3>
+          <p className="ft-card-sub">
             {isFallback && vehicleCount > 0
               ? `Estimated · ${vehicleCount} vehicles`
               : 'Last 7 days'}

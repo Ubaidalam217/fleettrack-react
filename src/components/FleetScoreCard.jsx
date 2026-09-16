@@ -27,10 +27,10 @@ export default function FleetScoreCard({ fleetData, loading }) {
   const isFlat    = delta === 0
 
   const deltaCls = isFlat
-    ? 'text-slate-500 bg-slate-100'
+    ? 'text-slate-500 bg-slate-500/10'
     : isUp
-      ? 'text-emerald-600 bg-emerald-50'
-      : 'text-rose-600 bg-rose-50'
+      ? 'text-emerald-600 bg-emerald-500/10'
+      : 'text-rose-600 bg-rose-500/10'
 
   const deltaArrow = isFlat ? null : (
     <svg
@@ -54,21 +54,23 @@ export default function FleetScoreCard({ fleetData, loading }) {
   ]
 
   return (
-    <div className="bg-[#f4f5f7] rounded-2xl p-5">
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="text-slate-900 font-semibold text-[15px]">Score Comparison</h3>
-        <span className={`flex items-center gap-0.5 text-xs font-semibold px-2 py-0.5 rounded-full ${deltaCls}`}>
+    <div className="ft-card">
+      <div className="ft-card-head" style={{ marginBottom: 12 }}>
+        <div>
+          <h3 className="ft-card-title">Score Comparison</h3>
+          <p className="ft-card-sub">Current fleet vs benchmark and prior period</p>
+        </div>
+        <span className={`flex items-center gap-0.5 text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${deltaCls}`}>
           {deltaArrow}
           {deltaText}
         </span>
       </div>
-      <p className="text-slate-400 text-xs mb-4">Current fleet vs benchmark and prior period</p>
 
       <div className="space-y-4">
         {BARS.map(b => (
           <div key={b.label}>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-slate-600 text-xs">{b.label}</span>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs" style={{ color: 'var(--c-text2)' }}>{b.label}</span>
               <div className="flex items-center gap-1.5">
                 {b.tag && (
                   <span
@@ -78,12 +80,12 @@ export default function FleetScoreCard({ fleetData, loading }) {
                     {b.tag}
                   </span>
                 )}
-                <span className="text-slate-900 text-sm font-bold">
+                <span className="text-sm font-bold" style={{ color: 'var(--c-text1)' }}>
                   {loading && !fleetData && b.label === 'Current Score' ? '—' : b.value}
                 </span>
               </div>
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.06)' }}>
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--c-progress)' }}>
               <div
                 className="h-full rounded-full transition-all duration-700"
                 style={{ width: b.value + '%', background: b.color }}
@@ -93,7 +95,7 @@ export default function FleetScoreCard({ fleetData, loading }) {
         ))}
       </div>
 
-      <p className="text-slate-400 text-[10px] mt-3">* Industry benchmark for UAE fleet operations</p>
+      <p className="ft-card-note ft-push" style={{ paddingTop: 12 }}>* Industry benchmark for UAE fleet operations</p>
     </div>
   )
 }

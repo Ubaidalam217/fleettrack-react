@@ -41,22 +41,27 @@ export default function VehicleStatus({ vehicles, loading }) {
   const showEmpty    = !loading && !isLive
 
   return (
-    <div className="rounded-xl" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border2)' }}>
+    // Flush variant: the table runs edge to edge, so the frame keeps the
+    // shared radius/border/shadow but the sections own their padding.
+    <div className="ft-card ft-card--flush">
       <style>{`@keyframes skel-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }`}</style>
 
-      <div className="flex items-center justify-between px-3 py-3 md:px-5 md:py-4" style={{ borderBottom: '1px solid var(--c-border2)' }}>
+      <div
+        className="flex items-start justify-between gap-3 shrink-0"
+        style={{ padding: 'var(--ft-pad)', paddingBottom: 14, borderBottom: '1px solid var(--c-border2)' }}
+      >
         <div>
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>Vehicle Status</h3>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--c-text3)' }}>
+          <h3 className="ft-card-title">Vehicle Status</h3>
+          <p className="ft-card-sub">
             {isLive
               ? `${source.length} vehicles · live data`
               : loading ? 'Fetching live data…' : 'No vehicles reporting'}
           </p>
         </div>
-        <a href="/tracking" className="text-xs text-blue-500 hover:text-blue-400 transition-colors">View all →</a>
+        <a href="/tracking" className="ft-link shrink-0">View all →</a>
       </div>
 
-      <div className="overflow-x-auto rounded-b-xl">
+      <div className="overflow-x-auto" style={{ flex: '1 1 auto' }}>
         <table style={{ width: '100%', fontSize: 12, minWidth: 480 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--c-border2)', background: 'var(--c-thead)' }}>

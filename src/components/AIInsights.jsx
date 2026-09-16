@@ -127,18 +127,6 @@ export default function AIInsights({ heroMode = false, fleetData }) {
 
   const actionable = insights.filter(i => i.type === 'critical' || i.type === 'warning').length
 
-  const cardStyle = heroMode
-    ? {
-        background: 'rgba(255,255,255,0.06)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.1)',
-      }
-    : {
-        background: 'var(--c-card)',
-        border: '1px solid var(--c-border2)',
-      }
-
   const badgeColor = actionable > 0
     ? {
         color:      heroMode ? '#fca5a5'              : '#dc2626',
@@ -152,37 +140,41 @@ export default function AIInsights({ heroMode = false, fleetData }) {
       }
 
   return (
-    <div className="rounded-xl p-3 md:p-5" style={{ ...cardStyle, borderRadius: heroMode ? 20 : undefined }}>
-      <div className="flex items-start justify-between mb-3 md:mb-4">
+    <div className={heroMode ? 'ft-glass' : 'ft-card'} style={heroMode ? { padding: 18 } : undefined}>
+      <div className="ft-card-head">
         <div>
           <h3
-            className="text-sm font-semibold"
-            style={{ color: heroMode ? '#ffffff' : 'var(--c-text1)' }}
+            className="ft-card-title"
+            style={heroMode ? { color: '#ffffff' } : undefined}
           >
             AI Insights
           </h3>
           <p
-            className="text-xs mt-0.5"
-            style={{ color: heroMode ? 'rgba(255,255,255,0.6)' : 'var(--c-text3)' }}
+            className="ft-card-sub"
+            style={heroMode ? { color: 'rgba(255,255,255,0.6)' } : undefined}
           >
             Smart recommendations
           </p>
         </div>
-        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={badgeColor}>
+        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0" style={badgeColor}>
           {actionable > 0 ? `${actionable} alert${actionable > 1 ? 's' : ''}` : 'all clear'}
         </span>
       </div>
 
-      <div className="space-y-3">
+      <div className="flex flex-col gap-3 flex-1">
         {insights.map((ins, idx) => {
           const s = STYLES[ins.type]
           return (
             <div
               key={idx}
-              className="rounded-lg p-3"
+              className="p-3 flex items-center"
               style={{
-                background: heroMode ? s.heroBg : 'var(--c-card2)',
+                background: heroMode ? s.heroBg : 'var(--ft-inset)',
                 border: `1px solid ${heroMode ? s.heroBorder : s.border}`,
+                borderRadius: 'var(--ft-radius-inner)',
+                /* Share the card height evenly so the list fills the row
+                   rather than stacking at the top. */
+                flex: '1 1 0',
               }}
             >
               <div className="flex items-start gap-2.5">
