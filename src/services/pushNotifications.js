@@ -60,7 +60,9 @@ export function sendPushNotification(title, options = {}) {
   try {
     const n = new Notification(title, {
       body:                options.body  || '',
-      icon:                '/favicon.ico',
+      // Was '/favicon.ico', which has never existed at that path — notifications
+      // silently fell back to the browser's default icon.
+      icon:                '/logo/apple-touch-icon-180.png',
       tag:                 options.tag   || title,   // browser dedupes by tag
       requireInteraction:  options.severity === 'critical',
       silent:              false,

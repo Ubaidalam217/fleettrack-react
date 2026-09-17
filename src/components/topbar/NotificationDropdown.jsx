@@ -5,7 +5,7 @@ import { useNotifications } from '../../hooks/useNotifications'
 
 // ── Severity display config ────────────────────────────────────────────────
 const SEV = {
-  info:     { color: '#3b82f6', bg: 'rgba(59,130,246,0.1)',  icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> },
+  info:     { color: '#5ba354', bg: 'rgba(91,163,84,0.1)',  icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> },
   warning:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> },
   critical: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)',   icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> },
   success:  { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> },
@@ -55,13 +55,13 @@ function NotifItem({ item, onRead }) {
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 10,
         width: '100%', padding: '10px 14px', textAlign: 'left',
-        background: item.read ? 'none' : 'rgba(59,130,246,0.04)',
+        background: item.read ? 'none' : 'color-mix(in srgb, var(--ft-accent) 4%, transparent)',
         border: 'none', cursor: 'pointer',
         borderBottom: '1px solid var(--c-border)',
         transition: 'background 0.1s',
       }}
       onMouseEnter={e => e.currentTarget.style.background = 'var(--c-hover)'}
-      onMouseLeave={e => e.currentTarget.style.background = item.read ? 'none' : 'rgba(59,130,246,0.04)'}
+      onMouseLeave={e => e.currentTarget.style.background = item.read ? 'none' : 'color-mix(in srgb, var(--ft-accent) 4%, transparent)'}
     >
       <div style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 8, background: sev.bg, color: sev.color, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
         {sev.icon}
@@ -85,7 +85,7 @@ function NotifItem({ item, onRead }) {
         )}
       </div>
       {!item.read && (
-        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#3b82f6', flexShrink: 0, marginTop: 4 }} />
+        <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--ft-accent)', flexShrink: 0, marginTop: 4 }} />
       )}
     </button>
   )
@@ -135,7 +135,7 @@ function GroupedList({ items, onRead, onViewAll }) {
       {overflow > 0 && (
         <button
           onClick={onViewAll}
-          style={{ display: 'block', width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#3b82f6', fontWeight: 600, textAlign: 'center', borderTop: '1px solid var(--c-border)' }}
+          style={{ display: 'block', width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--ft-accent)', fontWeight: 600, textAlign: 'center', borderTop: '1px solid var(--c-border)' }}
           onMouseEnter={e => e.currentTarget.style.background = 'var(--c-hover)'}
           onMouseLeave={e => e.currentTarget.style.background = 'none'}
         >
@@ -225,9 +225,9 @@ export default function NotificationDropdown() {
         onClick={() => setOpen(s => !s)}
         className="relative flex h-8 w-8 md:h-9 md:w-9 items-center justify-center rounded-lg transition-colors"
         style={{
-          border: `1px solid ${open ? '#3b82f6' : 'var(--c-border2)'}`,
+          border: `1px solid ${open ? 'var(--ft-accent)' : 'var(--c-border2)'}`,
           color: 'var(--c-text2)',
-          background: open ? 'rgba(59,130,246,0.08)' : 'transparent',
+          background: open ? 'color-mix(in srgb, var(--ft-accent) 8%, transparent)' : 'transparent',
         }}
         title={totalUnread > 0 ? `${totalUnread} alert${totalUnread !== 1 ? 's' : ''} in last 24 hours` : 'Notifications'}
       >
@@ -274,7 +274,7 @@ export default function NotificationDropdown() {
               {totalUnread > 0 && (
                 <button
                   onClick={() => markAllRead(tab === 'alerts' ? 'alert' : 'announcement')}
-                  style={{ fontSize: 11, color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
+                  style={{ fontSize: 11, color: 'var(--ft-accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
                 >
                   Mark all as read
                 </button>
@@ -292,7 +292,7 @@ export default function NotificationDropdown() {
                     padding: '6px 14px', fontSize: 12, fontWeight: tab === t.key ? 700 : 500,
                     color: tab === t.key ? 'var(--c-text1)' : 'var(--c-text3)',
                     background: 'none', border: 'none', cursor: 'pointer',
-                    borderBottom: tab === t.key ? '2px solid #3b82f6' : '2px solid transparent',
+                    borderBottom: tab === t.key ? '2px solid var(--ft-accent)' : '2px solid transparent',
                     display: 'flex', alignItems: 'center', gap: 5,
                     transition: 'color 0.15s',
                   }}
@@ -323,7 +323,7 @@ export default function NotificationDropdown() {
           <div style={{ padding: '8px 14px', borderTop: '1px solid var(--c-border)', textAlign: 'center', flexShrink: 0 }}>
             <button
               onClick={goViewAll}
-              style={{ fontSize: 11, color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+              style={{ fontSize: 11, color: 'var(--ft-accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
             >
               View all {tab}
             </button>

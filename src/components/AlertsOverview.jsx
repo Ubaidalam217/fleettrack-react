@@ -30,7 +30,7 @@ const ICON = {
 const ALERTS = [
   { key: 'critical',    label: 'Critical',    sub: 'Require immediate action', color: '#ef4444', countColor: 'text-red-500',     bg: 'rgba(239,68,68,0.1)'   },
   { key: 'warning',     label: 'Warning',     sub: 'Requires attention',       color: '#f97316', countColor: 'text-orange-500',  bg: 'rgba(249,115,22,0.1)'  },
-  { key: 'info',        label: 'Information', sub: 'FYI notifications',        color: '#3b82f6', countColor: 'text-blue-500',    bg: 'rgba(59,130,246,0.1)'  },
+  { key: 'info',        label: 'Information', sub: 'FYI notifications',        color: '#5ba354', countColor: 'text-blue-500',    bg: 'rgba(91,163,84,0.1)'  },
   { key: 'resolved',    label: 'Resolved',    sub: 'In last 7 days',           color: '#10b981', countColor: 'text-emerald-500', bg: 'rgba(16,185,129,0.1)'  },
 ]
 

@@ -5,7 +5,7 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun']
 const data = MONTHS.map((m, i) => ({ month: m, cost: [8200,7800,9100,8500,9800,9420][i] }))
 
 const COSTS = [
-  { label: 'Fuel',         color: '#3b82f6', amt: '$4,710', pct: '50%' },
+  { label: 'Fuel',         color: '#5ba354', amt: '$4,710', pct: '50%' },
   { label: 'Maintenance',  color: '#a855f7', amt: '$2,355', pct: '25%' },
   { label: 'Tolls',        color: '#f97316', amt: '$1,413', pct: '15%' },
   { label: 'Driver Wages', color: '#ec4899', amt: '$1,890', pct: '8%'  },
@@ -50,8 +50,8 @@ export default function CostSummary({ isDark }) {
           <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
             <defs>
               <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.08} />
-                <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                <stop offset="0%" stopColor="#5ba354" stopOpacity={0.08} />
+                <stop offset="100%" stopColor="#5ba354" stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid stroke={grid} vertical={false} />
@@ -61,10 +61,10 @@ export default function CostSummary({ isDark }) {
             <Area
               type="monotone"
               dataKey="cost"
-              stroke="#3b82f6"
+              stroke="#5ba354"
               strokeWidth={2}
               fill="url(#costGrad)"
-              dot={{ r: 3, fill: '#3b82f6', stroke: ptBd, strokeWidth: 1.5 }}
+              dot={{ r: 3, fill: '#5ba354', stroke: ptBd, strokeWidth: 1.5 }}
               activeDot={{ r: 5 }}
               isAnimationActive={false}
             />

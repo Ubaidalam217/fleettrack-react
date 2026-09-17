@@ -11,12 +11,20 @@ import CarMarker, { CAR_MARKER_CSS } from '../components/tracking/CarMarker'
 import ReplayPanel from '../components/tracking/ReplayPanel'
 import ReplayInfoCard, { REPLAY_INFO_CSS } from '../components/tracking/ReplayInfoCard'
 import { DEFAULT_REPLAY_FIELDS } from '../components/tracking/replayFields'
+import VehicleActionMenu from '../components/tracking/VehicleActionMenu'
+import EditAssetModal from '../components/tracking/EditAssetModal'
+import NearestAssetsModal from '../components/tracking/NearestAssetsModal'
+import ConfirmDialog from '../components/tracking/ConfirmDialog'
+import ToastStack from '../components/tracking/Toasts'
+import { useToasts } from '../hooks/useToasts'
 import { useFlespiMQTT } from '../hooks/useFlespiMQTT'
 import {
   ALL, FILTERS, statusColor, statusLabel,
   filterLabel, filterColor, countByFilter, matchesFilter,
 } from '../utils/vehicleStatus'
 import { fetchDeviceTrack, buildSegments } from '../utils/replay'
+import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/traces'
+import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
 
 // Points per second at 1x. The playback effect derives its tick interval and
 // its stride from this and the chosen speed multiplier.
@@ -97,6 +105,71 @@ function ReplayFollow({ point }) {
   return null
 }
 
+// Follow: re-centre on the followed vehicle every time its position changes,
+// and drop the follow the moment the user takes the map back.
+//
+// `dragstart` is the signal for "manually pans" because Leaflet only fires it
+// for a real pointer drag — map.setView() below never triggers it, so the
+// follow cannot cancel itself. Keyboard panning fires it too. Programmatic
+// zoom would muddy `zoomstart`, which is why that one is left alone.
+function FollowVehicle({ target, onManualPan }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!target) return
+    map.setView([target.lat, target.lng], map.getZoom(), { animate: true, duration: 0.6 })
+  }, [target?.lat, target?.lng]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!target) return
+    map.on('dragstart', onManualPan)
+    return () => { map.off('dragstart', onManualPan) }
+  }, [map, target, onManualPan])
+
+  return null
+}
+
+// Menu glyphs. Inline rather than lucide-react imports to match the rest of
+// this page, which draws its own icons.
+const MenuIcon = {
+  follow: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 1.5v2.5M12 20v2.5M1.5 12h2.5M20 12h2.5" />
+    </svg>
+  ),
+  trace: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 18c4 0 3-9 7-9s3 6 7 6 4-4 4-4" />
+    </svg>
+  ),
+  replay: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <polygon points="6 4 20 12 6 20" />
+    </svg>
+  ),
+  edit: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+    </svg>
+  ),
+  poll: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 12.5a9 9 0 0114 0" />
+      <path d="M8.5 16a4.5 4.5 0 017 0" />
+      <circle cx="12" cy="19.5" r="1.2" fill="currentColor" />
+    </svg>
+  ),
+  nearest: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 21s7-5.7 7-11a7 7 0 10-14 0c0 5.3 7 11 7 11z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  ),
+}
+
 // Leaflet caches its container size, so any layout change that resizes the map
 // box leaves grey gutters — and a stale getSize() — until invalidateSize()
 // runs.
@@ -138,7 +211,31 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // render immediately — nothing here gates the UI. Vehicles appear as MQTT
   // messages arrive; the hook's background REST bootstrap only fills in names
   // and last-known positions if and when it returns.
-  const { vehicles, isConnected, error } = useFlespiMQTT()
+  const { vehicles: liveVehicles, isConnected, error } = useFlespiMQTT()
+
+  // Edit Asset writes to Flespi and gets the saved record back, but the MQTT
+  // store is module-level and only reads device metadata once at startup.
+  // Rather than reach into the live-data hook, the saved master is layered on
+  // top here — the list updates immediately, and a reload picks the same values
+  // up from Flespi anyway.
+  const [masterOverrides, setMasterOverrides] = useState({})
+  const vehicles = useMemo(() => (
+    Object.keys(masterOverrides).length === 0
+      ? liveVehicles
+      : liveVehicles.map(v => (masterOverrides[v.id] ? { ...v, master: masterOverrides[v.id] } : v))
+  ), [liveVehicles, masterOverrides])
+
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts()
+
+  // ── Menu-driven state ──
+  // Follow is single-slot by design: two vehicles cannot both hold the centre.
+  const [followId, setFollowId] = useState(null)
+  // { [vehicleId]: { color, points: [[lat,lng]…], lastTs } }
+  const [traces, setTraces]     = useState({})
+  const [editVehicleId, setEditVehicleId]       = useState(null)
+  const [nearestVehicleId, setNearestVehicleId] = useState(null)
+  const [pendingCommand, setPendingCommand]     = useState(null) // { vehicleId, actionKey }
+  const [commandBusy, setCommandBusy]           = useState(false)
 
   const [activeTab, setActiveTab]   = useState(ALL)
   const [search, setSearch]         = useState('')
@@ -236,6 +333,122 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // ── Trace growth ──
+  // Runs on every vehicles change; appendPoint() is what keeps that cheap,
+  // rejecting both already-seen messages and fixes that did not move. The
+  // identity check on the rebuilt object means a push carrying nothing new for
+  // any traced vehicle leaves state untouched and costs no re-render.
+  useEffect(() => {
+    setTraces(prev => {
+      const ids = Object.keys(prev)
+      if (ids.length === 0) return prev
+
+      let changed = false
+      const next = {}
+      for (const id of ids) {
+        const v       = liveVehicles.find(x => String(x.id) === id)
+        const updated = v ? appendPoint(prev[id], v.lat, v.lng, v.lastTs) : prev[id]
+        if (updated !== prev[id]) changed = true
+        next[id] = updated
+      }
+      return changed ? next : prev
+    })
+  }, [liveVehicles])
+
+  const isFollowing = id => followId === id
+  const isTracing   = id => Object.prototype.hasOwnProperty.call(traces, id)
+
+  // Both toggles decide against current state and then set it, rather than
+  // deciding inside the updater. Updaters have to stay pure — StrictMode
+  // double-invokes them in development, which would fire every toast twice.
+  const toggleFollow = useCallback((v) => {
+    if (followId === v.id) {
+      setFollowId(null)
+      pushToast(`Stopped following ${vehicleName(v)}`, { tone: 'info' })
+      return
+    }
+    if (v.lat == null || v.lng == null) {
+      pushToast(`${vehicleName(v)} has no position to follow yet`, { tone: 'error' })
+      return
+    }
+    setFollowId(v.id)
+    pushToast(`Following ${vehicleName(v)}`, { tone: 'success' })
+  }, [followId, pushToast])
+
+  const toggleTrace = useCallback((v) => {
+    const key = String(v.id)
+
+    if (traces[key]) {
+      setTraces(({ [key]: _removed, ...rest }) => rest)
+      pushToast(`Trace off — ${vehicleName(v)}`, { tone: 'info' })
+      return
+    }
+    if (Object.keys(traces).length >= MAX_TRACES) {
+      pushToast(
+        `Trace limit reached (${MAX_TRACES}). Turn one off before starting another.`,
+        { tone: 'error' }
+      )
+      return
+    }
+    setTraces(prev => ({ ...prev, [key]: createTrace(nextTraceColor(prev), v) }))
+    pushToast(`Tracing ${vehicleName(v)}`, { tone: 'success' })
+  }, [traces, pushToast])
+
+  // Deselecting a vehicle drops its trace — the spec ties the trace's life to
+  // the selection, and a trace with no visible owner is just clutter.
+  useEffect(() => {
+    if (focusId != null) return
+    setTraces(prev => (Object.keys(prev).length ? {} : prev))
+  }, [focusId])
+
+  const runCommand = useCallback(async () => {
+    if (!pendingCommand) return
+    const { vehicleId, actionKey } = pendingCommand
+    const v      = vehicles.find(x => x.id === vehicleId)
+    const action = ACTIONS[actionKey]
+    const name   = vehicleName(v)
+
+    setCommandBusy(true)
+    try {
+      const { status } = await sendDeviceAction(vehicleId, actionKey)
+      const delivered  = status === DELIVERED
+
+      logCommand({
+        deviceId: vehicleId,
+        vehicle:  name,
+        action:   action.label,
+        outcome:  status,
+      })
+
+      // Queued is amber, never green: Flespi accepted it, but the vehicle has
+      // not seen it and will not until the unit next connects.
+      if (delivered) {
+        pushToast(`${action.label} delivered — ${name} responded`, { tone: 'success' })
+      } else {
+        pushToast(`${action.label} sent, device offline (queued) — ${name}`, { tone: 'pending', duration: 6500 })
+      }
+      setPendingCommand(null)
+    } catch (err) {
+      logCommand({
+        deviceId: vehicleId,
+        vehicle:  name,
+        action:   action.label,
+        outcome:  'failed',
+        detail:   err.message,
+      })
+      pushToast(`${action.label} failed — ${err.message}`, { tone: 'error', duration: 7000 })
+      setPendingCommand(null)
+    } finally {
+      setCommandBusy(false)
+    }
+  }, [pendingCommand, vehicles, pushToast])
+
+  const handleSaved = useCallback((deviceId, master) => {
+    setMasterOverrides(prev => ({ ...prev, [deviceId]: master }))
+    setEditVehicleId(null)
+    pushToast('Vehicle saved', { tone: 'success' })
+  }, [pushToast])
+
   const counts = countByFilter(vehicles)
 
   const filtered = vehicles
@@ -319,6 +532,19 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   )
   const replayPoint = replayShowing ? replayPoints[replayIndex] : null
 
+  // Follow yields to Replay: while a track is loaded the map is already being
+  // driven by ReplayFollow, and two things panning it would fight each other.
+  const followed = followId != null ? vehicles.find(v => v.id === followId) : null
+  const followTarget = (followed && followed.lat != null && followed.lng != null && !replayShowing)
+    ? { lat: followed.lat, lng: followed.lng }
+    : null
+
+  // Only ever reached while FollowVehicle is mounted, i.e. while following.
+  const handleManualPan = useCallback(() => {
+    setFollowId(null)
+    pushToast('Follow off — map moved manually', { tone: 'info' })
+  }, [pushToast])
+
   const flyTo = (v) => {
     if (v.lat == null || v.lng == null) return
     setFlyTarget({ lat: v.lat, lng: v.lng, n: ++flyCount.current })
@@ -345,6 +571,54 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     selectVehicle(v)
   }
 
+  // Every entry here does something on click. Immobilise, Force Override,
+  // Digital Output, High Update and Find Nearest > Operators are absent rather
+  // than greyed out: the probe found either no hardware behind them or no data
+  // to show, and a disabled row that never enables is still dead UI.
+  const menuItemsFor = (v) => [
+    {
+      key: 'follow',
+      label: 'Follow',
+      icon: MenuIcon.follow,
+      toggle: true,
+      active: isFollowing(v.id),
+      onSelect: () => toggleFollow(v),
+    },
+    {
+      key: 'trace',
+      label: 'Trace',
+      icon: MenuIcon.trace,
+      toggle: true,
+      active: isTracing(v.id),
+      onSelect: () => toggleTrace(v),
+    },
+    {
+      key: 'replay',
+      label: 'Replay',
+      icon: MenuIcon.replay,
+      onSelect: () => selectVehicle(v, { startReplay: true }),
+    },
+    { type: 'separator' },
+    {
+      key: 'edit',
+      label: 'Edit Asset',
+      icon: MenuIcon.edit,
+      onSelect: () => setEditVehicleId(v.id),
+    },
+    {
+      key: 'poll',
+      label: 'Poll',
+      icon: MenuIcon.poll,
+      onSelect: () => setPendingCommand({ vehicleId: v.id, actionKey: 'poll' }),
+    },
+    {
+      key: 'nearest',
+      label: 'Find Nearest Assets',
+      icon: MenuIcon.nearest,
+      onSelect: () => setNearestVehicleId(v.id),
+    },
+  ]
+
   const replay = {
     points:    replayPoints,
     index:     replayIndex,
@@ -362,6 +636,13 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     onSpeedChange:  setReplaySpeed,
     onFieldsChange: setFields,
   }
+
+  // Resolved from the live list rather than captured at open time, so an
+  // in-flight telemetry push cannot leave a modal showing a stale vehicle.
+  const editVehicle    = editVehicleId    != null ? vehicles.find(v => v.id === editVehicleId)    ?? null : null
+  const nearestVehicle = nearestVehicleId != null ? vehicles.find(v => v.id === nearestVehicleId) ?? null : null
+  const commandVehicle = pendingCommand   != null ? vehicles.find(v => v.id === pendingCommand.vehicleId) ?? null : null
+  const commandAction  = pendingCommand   != null ? ACTIONS[pendingCommand.actionKey] : null
 
   // Only live-connection failures reach the UI. Background REST bootstrap
   // failures are swallowed by the hook by design.
@@ -589,8 +870,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                         cursor: 'pointer',
                         background: 'none',
                         border: 'none',
-                        borderBottom: activeTab === key ? '2px solid #3b82f6' : '2px solid transparent',
-                        color: activeTab === key ? '#3b82f6' : 'var(--c-text3)',
+                        borderBottom: activeTab === key ? '2px solid var(--ft-accent)' : '2px solid transparent',
+                        color: activeTab === key ? 'var(--ft-accent)' : 'var(--c-text3)',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
@@ -694,7 +975,49 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                               >
                                 <polyline points="6 9 12 15 18 9" />
                               </svg>
+
+                              <VehicleActionMenu
+                                items={menuItemsFor(v)}
+                                label={`Actions for ${vehicleName(v)}`}
+                              />
                             </div>
+
+                            {/* Active-mode badges. These are the card's
+                                indicator that Follow/Trace are running, so they
+                                sit in the always-visible row rather than inside
+                                the collapsible card. */}
+                            {(isFollowing(v.id) || isTracing(v.id)) && (
+                              <div style={{ display: 'flex', gap: 5, paddingLeft: 17, marginBottom: 4 }}>
+                                {isFollowing(v.id) && (
+                                  <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 3.5,
+                                    fontSize: 9, fontWeight: 800, letterSpacing: '0.03em',
+                                    padding: '2px 6px', borderRadius: 4,
+                                    background: 'color-mix(in srgb, var(--ft-accent) 14%, transparent)', color: 'var(--ft-accent)',
+                                  }}>
+                                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
+                                      <circle cx="12" cy="12" r="4" />
+                                      <circle cx="12" cy="12" r="10" />
+                                    </svg>
+                                    FOLLOWING
+                                  </span>
+                                )}
+                                {isTracing(v.id) && (
+                                  <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 3.5,
+                                    fontSize: 9, fontWeight: 800, letterSpacing: '0.03em',
+                                    padding: '2px 6px', borderRadius: 4,
+                                    background: `${traces[String(v.id)].color}22`,
+                                    color: traces[String(v.id)].color,
+                                  }}>
+                                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" aria-hidden="true">
+                                      <path d="M3 18c4 0 3-9 7-9s3 6 7 6 4-4 4-4" />
+                                    </svg>
+                                    TRACING
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             <div style={{ fontSize: 11, color: 'var(--c-text2)', paddingLeft: 17, display: 'flex', flexDirection: 'column', gap: 2 }}>
                               {v.master?.fleetNo && <span>Fleet: {v.master.fleetNo}</span>}
                               <span>Driver: {v.master?.driver?.name || 'Unassigned'}</span>
@@ -706,7 +1029,6 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                           <VehicleListCard
                             v={v}
                             open={sel}
-                            onReplay={vv => selectVehicle(vv, { startReplay: true })}
                             onCenter={flyTo}
                           />
                         </div>
@@ -798,6 +1120,23 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     </CarMarker>
                   ))}
 
+                  {/* Live traces. Drawn under the replay track, which is the
+                      one the user is actively scrubbing. A single point is not
+                      a line, so those are skipped until a second fix lands. */}
+                  {Object.entries(traces).map(([id, t]) => (
+                    t.points.length > 1 && (
+                      <Polyline
+                        key={`trace-${id}`}
+                        positions={t.points}
+                        pathOptions={{ color: t.color, weight: 3.5, opacity: 0.9 }}
+                      />
+                    )
+                  ))}
+
+                  {followTarget && (
+                    <FollowVehicle target={followTarget} onManualPan={handleManualPan} />
+                  )}
+
                   {replaySegments.map(seg => (
                     <Polyline
                       key={seg.key}
@@ -840,6 +1179,38 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           </div>
         </div>
       </div>
+
+      {editVehicle && (
+        <EditAssetModal
+          vehicle={editVehicle}
+          onClose={() => setEditVehicleId(null)}
+          onSaved={handleSaved}
+          onError={msg => pushToast(msg, { tone: 'error', duration: 7000 })}
+        />
+      )}
+
+      {nearestVehicle && (
+        <NearestAssetsModal
+          origin={nearestVehicle}
+          vehicles={vehicles}
+          onClose={() => setNearestVehicleId(null)}
+          onSelect={selectVehicle}
+        />
+      )}
+
+      {pendingCommand && commandAction && (
+        <ConfirmDialog
+          title={`${commandAction.label} ${vehicleName(commandVehicle)}?`}
+          body={commandAction.detail}
+          note="Sent to the device over Flespi. If the unit is offline the command is queued until it next connects — you will be told which happened."
+          confirmLabel={`Send ${commandAction.label}`}
+          busy={commandBusy}
+          onConfirm={runCommand}
+          onClose={() => !commandBusy && setPendingCommand(null)}
+        />
+      )}
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </>
   )
 }

@@ -12,7 +12,7 @@ const MAX_MESSAGES = 3000
 // Only the fields the track actually needs. Flespi otherwise returns every
 // parameter the device reports (~29-34 per message) — on a 6h range that is
 // 247KB of JSON to deliver 51KB of useful data.
-const FIELDS = [
+const TRACK_FIELDS = [
   'position.latitude',
   'position.longitude',
   'position.speed',
@@ -34,8 +34,33 @@ const RETRY_DELAYS_SEC = [30, 60, 120]
 // enough to avoid re-triggering the 429 that chunking exists to survive.
 const CHUNK_SECONDS = 86400
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+// Thrown on cancel so callers can tell "the user pressed Cancel" apart from a
+// real failure and stay silent instead of showing an error.
+export function isAbortError(err) {
+  return err?.name === 'AbortError'
+}
+
+function abortError() {
+  const err = new Error('Cancelled')
+  err.name = 'AbortError'
+  return err
+}
+
+// Abortable sleep — the rate-limit countdown can run for two minutes, and a
+// Cancel press has to land during it, not after it.
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(abortError()); return }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    function onAbort() {
+      clearTimeout(timer)
+      reject(abortError())
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 // Mirrors useFlespiMQTT's vehicleStatus() classifier (Running/Idle/Stopped),
@@ -51,9 +76,9 @@ function pointStatus(ignition, speed) {
 // Fetches one page, retrying on 429 with the fixed backoff schedule above.
 // onStatus(text) is called with a user-friendly progress line for the UI —
 // including a second-by-second retry countdown — never the raw HTTP error.
-async function fetchWithRetry(url, onStatus) {
+async function fetchWithRetry(url, onStatus, signal) {
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, { headers: HEADERS })
+    const res = await fetch(url, { headers: HEADERS, signal })
     if (res.status !== 429) {
       if (!res.ok) {
         const body = await res.text()
@@ -68,16 +93,30 @@ async function fetchWithRetry(url, onStatus) {
     const waitSec = RETRY_DELAYS_SEC[attempt]
     for (let remaining = waitSec; remaining > 0; remaining--) {
       onStatus?.(`Rate limit reached, retrying in ${remaining}s...`)
-      await sleep(1000)
+      await sleep(1000, signal)
     }
   }
 }
 
-// fromTs/toTs are unix seconds. Returns { points, truncated }; points are
-// sorted ascending by timestamp and filtered to those with a position.
-// onStatus(text), if given, receives human-readable progress (chunk position
-// and any rate-limit retry countdown) — not raw errors.
-export async function fetchDeviceTrack(deviceId, fromTs, toTs, onStatus) {
+/**
+ * Chunked, rate-limit-surviving raw /messages fetch for one device.
+ *
+ * Split out of fetchDeviceTrack so callers that need different fields — the
+ * Movement Report wants mileage and GPS validity, which a map track does not —
+ * reuse the same chunking and 429 backoff instead of copying it a third time.
+ *
+ * @param {number} deviceId
+ * @param {number} fromTs    unix seconds, inclusive
+ * @param {number} toTs      unix seconds, inclusive
+ * @param {object} [opts]
+ * @param {string} [opts.fields]     comma-separated Flespi field list
+ * @param {function} [opts.onStatus] receives human-readable progress, never raw errors
+ * @param {AbortSignal} [opts.signal]
+ * @returns {Promise<{messages: object[], truncated: boolean}>} ascending by timestamp
+ */
+export async function fetchDeviceMessages(deviceId, fromTs, toTs, opts = {}) {
+  const { fields = TRACK_FIELDS, onStatus, signal } = opts
+
   const chunks = []
   for (let start = fromTs; start < toTs; start += CHUNK_SECONDS) {
     chunks.push([start, Math.min(start + CHUNK_SECONDS - 1, toTs)])
@@ -88,6 +127,7 @@ export async function fetchDeviceTrack(deviceId, fromTs, toTs, onStatus) {
   let truncated = false
 
   for (let i = 0; i < chunks.length; i++) {
+    if (signal?.aborted) throw abortError()
     const [chunkFrom, chunkTo] = chunks[i]
     if (chunks.length > 1) onStatus?.(`Loading ${i + 1}/${chunks.length}...`)
 
@@ -99,16 +139,30 @@ export async function fetchDeviceTrack(deviceId, fromTs, toTs, onStatus) {
       from:   chunkFrom,
       to:     chunkTo,
       count:  MAX_MESSAGES,
-      fields: FIELDS,
+      fields,
     })
     const url = `${BASE_URL}/gw/devices/${deviceId}/messages?data=${encodeURIComponent(data)}`
-    const json = await fetchWithRetry(url, onStatus)
+    const json = await fetchWithRetry(url, onStatus, signal)
     const msgs = json.result || []
     if (msgs.length >= MAX_MESSAGES) truncated = true
     allMsgs.push(...msgs)
   }
 
-  const points = allMsgs
+  allMsgs.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+  return { messages: allMsgs, truncated }
+}
+
+// fromTs/toTs are unix seconds. Returns { points, truncated }; points are
+// sorted ascending by timestamp and filtered to those with a position.
+// onStatus(text), if given, receives human-readable progress (chunk position
+// and any rate-limit retry countdown) — not raw errors.
+export async function fetchDeviceTrack(deviceId, fromTs, toTs, onStatus) {
+  const { messages, truncated } = await fetchDeviceMessages(deviceId, fromTs, toTs, {
+    fields: TRACK_FIELDS,
+    onStatus,
+  })
+
+  const points = messages
     .map(m => {
       const lat = m['position.latitude'] ?? m.lat ?? null
       const lng = m['position.longitude'] ?? m.lng ?? null

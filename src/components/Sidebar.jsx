@@ -1,22 +1,56 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, MapPin, FileText, BarChart2, Settings, MessageCircle } from 'lucide-react'
+import {
+  LayoutDashboard, MapPin, FileText, BarChart2, Settings,
+  MessageCircle, Bell, Megaphone, Search, ChevronDown,
+} from 'lucide-react'
 import { useCurrentUser, initials, firstName } from '../services/authUser'
 
-const NAV = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-  // Label only — the route stays /tracking so every existing link still works.
-  { label: 'Live Map',  icon: MapPin,           path: '/tracking' },
-  { label: 'Reports',   icon: FileText,          path: '/reports' },
-  { label: 'Charts',    icon: BarChart2,         path: '/charts' },
-  { label: 'Settings',  icon: Settings,          path: '/settings' },
+export const SIDEBAR_WIDTH = 260
+
+// Grouped to match the Crystal reference's section model. Every item from the
+// old flat list is still here; Notifications and Announcements are additions,
+// not replacements — both are real routed pages (App.jsx) that the icon rail
+// had no room for, so they were only ever reachable from the header bell.
+const NAV_SECTIONS = [
+  {
+    id: 'general',
+    title: 'General',
+    items: [
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+      // Label only — the route stays /tracking so every existing link still works.
+      { label: 'Live Map',  icon: MapPin,          path: '/tracking' },
+      { label: 'Reports',   icon: FileText,        path: '/reports' },
+      { label: 'Charts',    icon: BarChart2,       path: '/charts' },
+    ],
+  },
+  {
+    id: 'alerts',
+    title: 'Alerts',
+    items: [
+      { label: 'Notifications', icon: Bell,      path: '/notifications' },
+      { label: 'Announcements', icon: Megaphone, path: '/announcements' },
+    ],
+  },
+  {
+    id: 'fleet',
+    title: 'Fleet Management',
+    items: [
+      { label: 'Settings', icon: Settings, path: '/settings' },
+    ],
+  },
 ]
 
-const SIDEBAR_BG   = '#1e3461'
-const ACTIVE_BG    = 'rgba(59,130,246,0.22)'
-const ACTIVE_COLOR = '#60a5fa'
-const INACTIVE     = 'rgba(255,255,255,0.45)'
-const DIVIDER      = 'rgba(255,255,255,0.08)'
+const COLLAPSE_KEY = 'ft-sidebar-sections'
+
+function loadCollapsed() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]')
+    return new Set(Array.isArray(raw) ? raw : [])
+  } catch {
+    return new Set()
+  }
+}
 
 // ── Support Modal ─────────────────────────────────────────────────────────
 function SupportModal({ onClose }) {
@@ -57,7 +91,7 @@ function SupportModal({ onClose }) {
         {/* Header */}
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'color-mix(in srgb, var(--ft-accent) 10%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ft-accent)' }}>
               <MessageCircle size={16} />
             </div>
             <div>
@@ -78,9 +112,9 @@ function SupportModal({ onClose }) {
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* Company info */}
-          <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)', fontSize: 12, color: 'var(--c-text2)' }}>
+          <div style={{ padding: '10px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--ft-accent) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--ft-accent) 15%, transparent)', fontSize: 12, color: 'var(--c-text2)' }}>
             <strong style={{ color: 'var(--c-text1)' }}>Solves Inn</strong> provides 24/7 fleet support.
-            Average response time: <strong style={{ color: '#3b82f6' }}>under 2 hours</strong>.
+            Average response time: <strong style={{ color: 'var(--ft-accent)' }}>under 2 hours</strong>.
           </div>
 
           {/* Email */}
@@ -101,7 +135,7 @@ function SupportModal({ onClose }) {
                 background: 'var(--c-input)', color: 'var(--c-text1)',
                 fontSize: 13,
               }}
-              onFocus={e => e.target.style.borderColor = '#3b82f6'}
+              onFocus={e => e.target.style.borderColor = 'var(--ft-accent)'}
               onBlur={e => e.target.style.borderColor = 'var(--c-border2)'}
             />
           </div>
@@ -124,7 +158,7 @@ function SupportModal({ onClose }) {
                 background: 'var(--c-input)', color: 'var(--c-text1)',
                 fontSize: 13, resize: 'vertical', minHeight: 90, fontFamily: 'inherit',
               }}
-              onFocus={e => e.target.style.borderColor = '#3b82f6'}
+              onFocus={e => e.target.style.borderColor = 'var(--ft-accent)'}
               onBlur={e => e.target.style.borderColor = 'var(--c-border2)'}
             />
           </div>
@@ -135,7 +169,7 @@ function SupportModal({ onClose }) {
             disabled={sending}
             style={{
               padding: '10px 0', borderRadius: 8, border: 'none',
-              background: sending ? '#93c5fd' : '#3b82f6',
+              background: sending ? 'color-mix(in srgb, var(--ft-accent) 45%, #fff)' : 'var(--ft-accent)',
               color: '#fff', fontWeight: 700, fontSize: 13,
               cursor: sending ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -180,87 +214,246 @@ function SupportModal({ onClose }) {
   )
 }
 
+// The CSS lives here rather than in index.css because every rule is scoped to
+// this component, and keeping it beside the markup is what stops the hover and
+// active states drifting apart from the tokens they are built on.
+const SIDEBAR_CSS = `
+  .ft-sb-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.16) transparent; }
+  .ft-sb-scroll::-webkit-scrollbar { width: 6px; }
+  .ft-sb-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 3px; }
+  .ft-sb-scroll::-webkit-scrollbar-track { background: transparent; }
+
+  .ft-sb-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 9px 11px; margin: 1px 0;
+    border-radius: 9px;
+    font-size: 13px; font-weight: 550;
+    color: var(--c-sb-inactive);
+    text-decoration: none;
+    transition: background .15s ease, color .15s ease;
+  }
+  .ft-sb-item:hover {
+    background: var(--c-sb-inactive-hover);
+    color: var(--c-sb-inactive-hover-text);
+  }
+  .ft-sb-item[data-active="true"] {
+    background: var(--c-sb-active);
+    color: var(--c-sb-active-text);
+    font-weight: 700;
+    box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--c-sb-active) 55%, transparent);
+  }
+  .ft-sb-item:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+
+  .ft-sb-section {
+    display: flex; align-items: center; gap: 6px;
+    width: 100%; padding: 9px 11px 5px;
+    background: none; border: none; cursor: pointer;
+    font-size: 9.5px; font-weight: 800; letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--c-sb-section);
+    transition: color .15s ease;
+  }
+  .ft-sb-section:hover { color: rgba(255,255,255,.7); }
+  .ft-sb-chev { transition: transform .2s ease; }
+  .ft-sb-section[aria-expanded="false"] .ft-sb-chev { transform: rotate(-90deg); }
+
+  .ft-sb-search {
+    width: 100%; box-sizing: border-box;
+    padding: 8px 10px 8px 31px;
+    border-radius: 9px;
+    border: 1px solid var(--c-sb-divider);
+    background: var(--c-sb-elev);
+    color: #fff; font-size: 12.5px;
+    outline: none;
+    transition: border-color .15s ease;
+  }
+  .ft-sb-search::placeholder { color: rgba(255,255,255,.38); }
+  .ft-sb-search:focus { border-color: color-mix(in srgb, var(--c-sb-active) 65%, transparent); }
+`
+
+const DESKTOP_MIN = 1024
+
 // ── Sidebar ────────────────────────────────────────────────────────────────
+/**
+ * @param {boolean} [sidebarOpen] Controlled open state. Charts and Settings
+ *        render `<Sidebar />` with no props at all, so when this is undefined
+ *        the component falls back to deciding for itself by viewport. The old
+ *        72px rail treated undefined as falsy and collapsed to zero width,
+ *        which is why those two pages had no sidebar; at 260px the same bug
+ *        would instead park a panel across the whole phone screen with no
+ *        control wired up to dismiss it.
+ */
 export default function Sidebar({ sidebarOpen }) {
   const location = useLocation()
   const [supportOpen, setSupportOpen] = useState(false)
+  const [collapsed, setCollapsed]     = useState(loadCollapsed)
+  const [query, setQuery]             = useState('')
+  const [autoOpen, setAutoOpen]       = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= DESKTOP_MIN
+  )
   const user = useCurrentUser()
+
+  // Only matters in the uncontrolled case, but it is cheap and keeps the
+  // fallback honest across a resize.
+  useEffect(() => {
+    if (sidebarOpen !== undefined) return
+    const onResize = () => setAutoOpen(window.innerWidth >= DESKTOP_MIN)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [sidebarOpen])
+
+  const isOpen = sidebarOpen ?? autoOpen
+
+  const toggleSection = id => {
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next])) } catch { /* private mode */ }
+      return next
+    })
+  }
+
+  // Search filters the nav rather than decorating it — the Crystal reference
+  // puts a search box here and an inert one would be the dead UI we keep
+  // refusing to ship. Sections with no match drop out entirely.
+  const q = query.trim().toLowerCase()
+  const sections = useMemo(() => (
+    NAV_SECTIONS
+      .map(s => ({ ...s, items: q ? s.items.filter(i => i.label.toLowerCase().includes(q)) : s.items }))
+      .filter(s => s.items.length > 0)
+  ), [q])
 
   return (
     <>
+      <style>{SIDEBAR_CSS}</style>
+
       <aside
         className="fixed lg:relative inset-y-0 left-0 flex-shrink-0 z-50"
         style={{
-          width: sidebarOpen ? 72 : 0,
-          minWidth: sidebarOpen ? 72 : 0,
+          width:    isOpen ? SIDEBAR_WIDTH : 0,
+          minWidth: isOpen ? SIDEBAR_WIDTH : 0,
           overflow: 'hidden',
           transition: 'width 0.3s ease, min-width 0.3s ease',
-          backgroundColor: SIDEBAR_BG,
+          backgroundColor: 'var(--c-sb-bg)',
           height: '100vh',
         }}
       >
-        <div style={{ width: 72, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        {/* Fixed inner width so the contents do not reflow mid-animation. */}
+        <div style={{
+          width: SIDEBAR_WIDTH, height: '100%',
+          display: 'flex', flexDirection: 'column',
+        }}>
 
           {/* Logo */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '20px 0', borderBottom: `1px solid ${DIVIDER}` }}>
-            <div style={{ display: 'flex', height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 12, background: '#3b82f6', boxShadow: '0 4px 12px rgba(59,130,246,0.4)' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M20 8H4L2 14h20L20 8z" fill="white"/>
-                <rect x="4" y="14" width="3" height="4" rx="1" fill="white"/>
-                <rect x="17" y="14" width="3" height="4" rx="1" fill="white"/>
-                <circle cx="7" cy="18" r="2" fill="white"/>
-                <circle cx="17" cy="18" r="2" fill="white"/>
-              </svg>
+          <div style={{
+            padding: '18px 16px 14px',
+            borderBottom: '1px solid var(--c-sb-divider)',
+          }}>
+            <Link to="/dashboard" style={{ display: 'block', lineHeight: 0 }} aria-label="FleetmaX Solutions — go to dashboard">
+              <img
+                src="/logo/fleetmax-logo-white.png"
+                alt="FleetmaX Solutions"
+                style={{ height: 34, width: 'auto', display: 'block' }}
+              />
+            </Link>
+          </div>
+
+          {/* Search */}
+          <div style={{ padding: '12px 14px 8px' }}>
+            <div style={{ position: 'relative' }}>
+              <Search
+                size={13}
+                style={{
+                  position: 'absolute', left: 10, top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'rgba(255,255,255,.4)', pointerEvents: 'none',
+                }}
+              />
+              <input
+                className="ft-sb-search"
+                type="search"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search menu…"
+                aria-label="Search navigation"
+              />
             </div>
-            <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.85)', marginTop: 6, letterSpacing: '0.05em' }}>
-              FleetTrack
-            </span>
           </div>
 
           {/* Nav */}
-          <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', padding: '12px 0', gap: 2 }}>
-            {NAV.map(item => {
-              const active = location.pathname === item.path
+          <nav className="ft-sb-scroll" style={{ flex: 1, overflowY: 'auto', padding: '4px 10px 10px', minHeight: 0 }}>
+            {sections.map(section => {
+              // A search narrows the list, so honouring a collapsed section
+              // would hide the very match the user just typed toward.
+              const open = q ? true : !collapsed.has(section.id)
               return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    width: 52, height: 52, gap: 4, borderRadius: 12,
-                    background: active ? ACTIVE_BG : 'transparent',
-                    color: active ? ACTIVE_COLOR : INACTIVE,
-                    textDecoration: 'none',
-                    transition: 'background 0.15s, color 0.15s',
-                  }}
-                >
-                  <item.icon size={18} strokeWidth={active ? 2.2 : 1.8} />
-                  <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, lineHeight: 1 }}>
-                    {item.label}
-                  </span>
-                </Link>
+                <div key={section.id} style={{ marginBottom: 2 }}>
+                  <button
+                    className="ft-sb-section"
+                    aria-expanded={open}
+                    onClick={() => toggleSection(section.id)}
+                  >
+                    <ChevronDown size={11} strokeWidth={3} className="ft-sb-chev" />
+                    {section.title}
+                  </button>
+
+                  {open && section.items.map(item => {
+                    const active = location.pathname === item.path
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        className="ft-sb-item"
+                        data-active={active ? 'true' : 'false'}
+                        aria-current={active ? 'page' : undefined}
+                      >
+                        <item.icon size={16} strokeWidth={active ? 2.3 : 1.9} style={{ flexShrink: 0 }} />
+                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {item.label}
+                        </span>
+                      </Link>
+                    )
+                  })}
+                </div>
               )
             })}
+
+            {sections.length === 0 && (
+              <p style={{ padding: '18px 11px', margin: 0, fontSize: 12, color: 'rgba(255,255,255,.4)', lineHeight: 1.5 }}>
+                No menu item matches “{query}”.
+              </p>
+            )}
           </nav>
 
-          {/* Bottom */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', paddingBottom: 16, paddingTop: 12, gap: 12, borderTop: `1px solid ${DIVIDER}` }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <div style={{ display: 'flex', height: 32, width: 32, alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'linear-gradient(135deg,#3b82f6,#6366f1)', fontSize: 12, fontWeight: 700, color: 'white', boxShadow: '0 4px 12px -4px rgba(59,130,246,0.9)' }}>
+          {/* Footer — pinned */}
+          <div style={{ borderTop: '1px solid var(--c-sb-divider)', padding: '12px 14px 14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{
+                display: 'flex', height: 34, width: 34, flexShrink: 0,
+                alignItems: 'center', justifyContent: 'center', borderRadius: '50%',
+                background: 'var(--c-sb-active)',
+                fontSize: 12, fontWeight: 700, color: '#fff',
+              }}>
                 {initials(user)}
               </div>
-              <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.75)', lineHeight: 1 }}>{firstName(user)}</span>
-              <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', lineHeight: 1 }}>{user.role.split(' ')[1] ?? user.role}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {firstName(user)}
+                </div>
+                <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user.role}
+                </div>
+              </div>
             </div>
 
             <button
               onClick={() => setSupportOpen(true)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, opacity: 0.7, transition: 'opacity 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '0.7'}
+              className="ft-sb-item"
+              style={{ width: '100%', border: 'none', cursor: 'pointer', background: 'transparent', textAlign: 'left', font: 'inherit' }}
             >
-              <MessageCircle size={16} color={INACTIVE} strokeWidth={1.8} />
-              <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', lineHeight: 1 }}>Support</span>
+              <MessageCircle size={16} strokeWidth={1.9} style={{ flexShrink: 0 }} />
+              <span>Support</span>
             </button>
           </div>
 

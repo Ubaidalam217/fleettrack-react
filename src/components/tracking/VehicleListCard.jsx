@@ -52,8 +52,12 @@ function Cell({ label, value, color }) {
  * Always mounted so it can animate both ways; `open` drives the transition and
  * also gates the reverse-geocode, so only the expanded vehicle looks up an
  * address.
+ *
+ * Replay used to live here as a button. It moved into the row's 3-dot menu —
+ * keeping both would have been two controls for one action. Center stayed: it
+ * is a one-shot pan, distinct from Follow's continuous re-centring.
  */
-export default function VehicleListCard({ v, open, onReplay, onCenter }) {
+export default function VehicleListCard({ v, open, onCenter }) {
   const address = useAddress(v.lat, v.lng, open)
   const hasCoords = v.lat != null && v.lng != null
 
@@ -101,42 +105,26 @@ export default function VehicleListCard({ v, open, onReplay, onCenter }) {
             </span>
           </div>
 
-          <div style={{ display: 'flex', gap: 7 }}>
-            <button
-              onClick={e => { e.stopPropagation(); onReplay(v) }}
-              style={{
-                flex: 1,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                background: '#3b82f6', color: '#fff', border: 'none',
-                borderRadius: 8, padding: '8px 10px',
-                fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
-              }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <polygon points="6 4 20 12 6 20" />
-              </svg>
-              Replay
-            </button>
-            <button
-              onClick={e => { e.stopPropagation(); onCenter(v) }}
-              disabled={!hasCoords}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                background: 'var(--c-hover)', color: 'var(--c-text2)',
-                border: '1px solid var(--c-border)',
-                borderRadius: 8, padding: '8px 12px',
-                fontSize: 11.5, fontWeight: 700,
-                cursor: hasCoords ? 'pointer' : 'default',
-                opacity: hasCoords ? 1 : 0.5,
-              }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 2v3M12 19v3M2 12h3M19 12h3" strokeLinecap="round" />
-              </svg>
-              Center
-            </button>
-          </div>
+          <button
+            onClick={e => { e.stopPropagation(); onCenter(v) }}
+            disabled={!hasCoords}
+            style={{
+              width: '100%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              background: 'var(--c-hover)', color: 'var(--c-text2)',
+              border: '1px solid var(--c-border)',
+              borderRadius: 8, padding: '8px 12px',
+              fontSize: 11.5, fontWeight: 700,
+              cursor: hasCoords ? 'pointer' : 'default',
+              opacity: hasCoords ? 1 : 0.5,
+            }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" strokeLinecap="round" />
+            </svg>
+            Center
+          </button>
         </div>
       </div>
     </div>

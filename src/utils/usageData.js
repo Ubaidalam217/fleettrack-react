@@ -51,6 +51,10 @@ const cache = new Map() // deviceId -> { expiresAt, promise }
 // movement.status and trip.status are deliberately absent: trip.status is not
 // reported by these devices at all, and movement.status carries no usable
 // signal (see computeUsage). Asking for them only inflates the payload.
+// The fuel/temperature fields feed sensorsData.js's Sensors tab (Phase 3);
+// position.direction and external.powersource.status feed alertsData.js's
+// Alerts tab (Phase 4) — all added here rather than a second fetch so
+// switching tabs never issues its own request.
 const FIELDS = [
   'timestamp',
   'vehicle.mileage',
@@ -58,6 +62,15 @@ const FIELDS = [
   'position.speed',
   'position.latitude',
   'position.longitude',
+  'position.direction',
+  'external.powersource.status',
+  'fuel.sensor.value',
+  'can.fuel.consumed',
+  'can.fuel.consumed.high.resolution',
+  'ble.sensor.temperature.1',
+  'ble.sensor.temperature.2',
+  'ble.sensor.temperature.3',
+  'ble.sensor.temperature.4',
 ].join(',')
 
 // Returns today's raw messages (00:00 local to now) for a device, sorted

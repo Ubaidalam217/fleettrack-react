@@ -50,10 +50,10 @@ export default function FuelEnergy({ isDark }) {
             <CartesianGrid stroke={grid} vertical={false} />
             <XAxis dataKey="day" tick={{ fontSize: 10, fill: tick }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 10, fill: tick }} axisLine={false} tickLine={false} />
-            <Tooltip content={<CustomTooltip isDark={isDark} />} cursor={{ fill: isDark ? 'rgba(59,130,246,0.05)' : 'rgba(59,130,246,0.04)' }} />
+            <Tooltip content={<CustomTooltip isDark={isDark} />} cursor={{ fill: isDark ? 'rgba(91,163,84,0.05)' : 'rgba(91,163,84,0.04)' }} />
             <Bar dataKey="fuel" radius={[4,4,0,0]} isAnimationActive={false}>
               {data.map((_, i) => (
-                <Cell key={i} fill="rgba(59,130,246,0.7)" />
+                <Cell key={i} fill="rgba(91,163,84,0.7)" />
               ))}
             </Bar>
           </BarChart>

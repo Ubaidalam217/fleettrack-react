@@ -14,7 +14,7 @@ function relTime(ts) {
 }
 
 const SEV_META = {
-  info:     { color: '#3b82f6', bg: 'rgba(59,130,246,0.1)',  label: 'Info',     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> },
+  info:     { color: '#5ba354', bg: 'rgba(91,163,84,0.1)',  label: 'Info',     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> },
   warning:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', label: 'Warning',   icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> },
   critical: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)',  label: 'Critical',  icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> },
   success:  { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',  label: 'Success',   icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg> },
@@ -58,7 +58,7 @@ function NotifRow({ item, onMarkRead, onDelete }) {
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 14,
         padding: '14px 20px',
-        background: item.read ? 'none' : 'rgba(59,130,246,0.03)',
+        background: item.read ? 'none' : 'color-mix(in srgb, var(--ft-accent) 3%, transparent)',
         borderBottom: '1px solid var(--c-border)',
         transition: 'background 0.1s',
         ...(hover ? { background: 'var(--c-hover)' } : {}),
@@ -91,7 +91,7 @@ function NotifRow({ item, onMarkRead, onDelete }) {
               {RULE_LABELS[item.ruleId] || item.ruleId}
             </span>
           )}
-          {!item.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />}
+          {!item.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ft-accent)', display: 'inline-block' }} />}
         </div>
       </div>
 
@@ -101,7 +101,7 @@ function NotifRow({ item, onMarkRead, onDelete }) {
           onClick={() => onMarkRead(item.id)}
           title={item.read ? 'Already read' : 'Mark as read'}
           disabled={item.read}
-          style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--c-border2)', background: 'var(--c-card)', cursor: item.read ? 'default' : 'pointer', color: item.read ? 'var(--c-border2)' : '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--c-border2)', background: 'var(--c-card)', cursor: item.read ? 'default' : 'pointer', color: item.read ? 'var(--c-border2)' : 'var(--ft-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
@@ -214,7 +214,7 @@ export default function Notifications({ isDark, toggleTheme, themeMode, setTheme
                 {unreadAlerts > 0 && (
                   <button
                     onClick={() => markAllRead('alert')}
-                    style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c-border2)', background: 'var(--c-card)', color: '#3b82f6', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                    style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c-border2)', background: 'var(--c-card)', color: 'var(--ft-accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                   >
                     Mark all read
                   </button>
@@ -240,7 +240,7 @@ export default function Notifications({ isDark, toggleTheme, themeMode, setTheme
                     onClick={() => setTab(t)}
                     style={{
                       padding: '5px 12px', fontSize: 12, fontWeight: tab === t ? 700 : 500, border: 'none', cursor: 'pointer',
-                      background: tab === t ? '#3b82f6' : 'transparent',
+                      background: tab === t ? 'var(--ft-accent)' : 'transparent',
                       color: tab === t ? '#fff' : 'var(--c-text2)',
                       transition: 'all 0.15s', textTransform: 'capitalize',
                     }}

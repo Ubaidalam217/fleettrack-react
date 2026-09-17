@@ -138,9 +138,9 @@ export default function UserDropdown({ themeMode, setTheme }) {
         <div style={{
           display: 'flex', width: 28, height: 28,
           alignItems: 'center', justifyContent: 'center',
-          borderRadius: '50%', background: '#3b82f6',
+          borderRadius: '50%', background: 'var(--ft-accent)',
           fontSize: 12, fontWeight: 700, color: '#fff',
-          border: open ? '2px solid #93c5fd' : '2px solid transparent',
+          border: open ? '2px solid color-mix(in srgb, var(--ft-accent) 55%, #fff)' : '2px solid transparent',
           transition: 'border-color 0.15s',
         }}>
           {avatar}
@@ -165,7 +165,7 @@ export default function UserDropdown({ themeMode, setTheme }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
                 width: 36, height: 36, borderRadius: '50%',
-                background: 'linear-gradient(135deg,#3b82f6,#6366f1)',
+                background: 'linear-gradient(135deg,var(--ft-accent),#1d4a63)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0,
               }}>{avatar}</div>
@@ -179,7 +179,7 @@ export default function UserDropdown({ themeMode, setTheme }) {
               </div>
             </div>
             <div style={{ marginTop: 8 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#3b82f6', background: 'rgba(59,130,246,0.1)', borderRadius: 5, padding: '2px 8px', letterSpacing: '0.04em' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--ft-accent)', background: 'color-mix(in srgb, var(--ft-accent) 10%, transparent)', borderRadius: 5, padding: '2px 8px', letterSpacing: '0.04em' }}>
                 {user.role.toUpperCase()}
               </span>
             </div>
@@ -221,9 +221,9 @@ export default function UserDropdown({ themeMode, setTheme }) {
                     onClick={() => setTheme(opt.mode)}
                     style={{
                       flex: 1, padding: '5px 4px', borderRadius: 7,
-                      border: `1px solid ${active ? '#3b82f6' : 'var(--c-border2)'}`,
-                      background: active ? 'rgba(59,130,246,0.12)' : 'var(--c-input)',
-                      color: active ? '#3b82f6' : 'var(--c-text3)',
+                      border: `1px solid ${active ? 'var(--ft-accent)' : 'var(--c-border2)'}`,
+                      background: active ? 'color-mix(in srgb, var(--ft-accent) 12%, transparent)' : 'var(--c-input)',
+                      color: active ? 'var(--ft-accent)' : 'var(--c-text3)',
                       cursor: 'pointer', fontSize: 10, fontWeight: active ? 700 : 500,
                       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
                       transition: 'all 0.15s',

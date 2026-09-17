@@ -341,7 +341,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {loading && !data && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--c-text3)' }}>
-                    <div style={{ width: 12, height: 12, border: '2px solid var(--c-border2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'db-spin 0.75s linear infinite' }} />
+                    <div style={{ width: 12, height: 12, border: '2px solid var(--c-border2)', borderTopColor: 'var(--ft-accent)', borderRadius: '50%', animation: 'db-spin 0.75s linear infinite' }} />
                     <span className="hidden sm:inline">Fetching fleet data...</span>
                     <span className="sm:hidden">Loading...</span>
                   </div>
@@ -351,7 +351,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     <span className="hidden sm:inline">{fmtUpdated(lastUpdated)} &middot; live via MQTT</span>
                     <span className="sm:hidden">{fmtUpdated(lastUpdated)}</span>
-                    <button onClick={handleRefresh} title="Refresh now" disabled={refreshing} style={{ background: 'none', border: 'none', cursor: refreshing ? 'default' : 'pointer', color: '#3b82f6', padding: 0, display: 'flex', alignItems: 'center' }}>
+                    <button onClick={handleRefresh} title="Refresh now" disabled={refreshing} style={{ background: 'none', border: 'none', cursor: refreshing ? 'default' : 'pointer', color: 'var(--ft-accent)', padding: 0, display: 'flex', alignItems: 'center' }}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: refreshing ? 'db-spin 0.7s linear infinite' : 'none' }}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
                     </button>
                   </div>
@@ -366,7 +366,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                   <span className="hidden sm:inline">Customize Dashboard</span>
                   <span className="sm:hidden">Customize</span>
                   {hiddenWidgets.length > 0 && (
-                    <span style={{ background: '#3b82f6', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
+                    <span style={{ background: 'var(--ft-accent)', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
                       {hiddenWidgets.length} hidden
                     </span>
                   )}
@@ -380,7 +380,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                   <IcoFilter />
                   <span className="hidden sm:inline">Filter</span>
                   {activeFilterCount !== null && (
-                    <span style={{ background: '#3b82f6', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
+                    <span style={{ background: 'var(--ft-accent)', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
                       {activeFilterCount}
                     </span>
                   )}
@@ -632,7 +632,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                     border: '1px solid var(--c-border2)', background: 'var(--c-input)',
                     cursor: 'pointer', fontSize: 11, color: 'var(--c-text2)', fontWeight: 500,
                   }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--ft-accent)'}
                   onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--c-border2)'}
                 >
                   {btn.label}
@@ -683,7 +683,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                         type="checkbox"
                         checked={isChecked(v.id)}
                         onChange={() => toggleVehicle(v.id)}
-                        style={{ width: 13, height: 13, accentColor: '#3b82f6', flexShrink: 0, cursor: 'pointer' }}
+                        style={{ width: 13, height: 13, accentColor: 'var(--ft-accent)', flexShrink: 0, cursor: 'pointer' }}
                       />
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 12, color: 'var(--c-text1)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -708,12 +708,12 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
             onClick={handleApply}
             style={{
               width: '100%', padding: '9px 0', borderRadius: 7,
-              background: '#3b82f6', border: 'none',
+              background: 'var(--ft-accent)', border: 'none',
               color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer',
               transition: 'background 0.15s',
             }}
-            onMouseEnter={e => e.currentTarget.style.background = '#2563eb'}
-            onMouseLeave={e => e.currentTarget.style.background = '#3b82f6'}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--ft-accent-hover)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'var(--ft-accent)'}
           >
             Apply
           </button>
@@ -725,7 +725,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                 border: '1px solid var(--c-border2)', background: 'var(--c-input)',
                 color: 'var(--c-text2)', fontWeight: 500, fontSize: 12, cursor: 'pointer',
               }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = '#3b82f6'}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--ft-accent)'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--c-border2)'}
             >
               Save Filter
@@ -806,7 +806,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{
                         width: 8, height: 8, borderRadius: 2,
-                        background: hidden ? 'var(--c-border2)' : '#3b82f6',
+                        background: hidden ? 'var(--c-border2)' : 'var(--ft-accent)',
                         transition: 'background 0.2s',
                       }} />
                       <span style={{
@@ -822,7 +822,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                       onClick={() => toggleWidget(widget.id)}
                       style={{
                         width: 40, height: 22, borderRadius: 11,
-                        background: hidden ? 'var(--c-border2)' : '#3b82f6',
+                        background: hidden ? 'var(--c-border2)' : 'var(--ft-accent)',
                         border: 'none', cursor: 'pointer', position: 'relative',
                         transition: 'background 0.2s', flexShrink: 0,
                         outline: 'none',
@@ -854,7 +854,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                   border: '1px solid var(--c-border2)', background: 'var(--c-input)',
                   color: 'var(--c-text2)', fontWeight: 500, fontSize: 12, cursor: 'pointer',
                 }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--ft-accent)'}
                 onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--c-border2)'}
               >
                 Show All
@@ -863,11 +863,11 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                 onClick={() => setCustomizeOpen(false)}
                 style={{
                   padding: '7px 24px', borderRadius: 7,
-                  background: '#3b82f6', border: 'none',
+                  background: 'var(--ft-accent)', border: 'none',
                   color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#2563eb'}
-                onMouseLeave={e => e.currentTarget.style.background = '#3b82f6'}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--ft-accent-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'var(--ft-accent)'}
               >
                 Done
               </button>

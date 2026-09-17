@@ -8,6 +8,10 @@
 // being baked into either page. Unifying the two vocabularies is a later
 // cleanup; doing it now would mean editing seven Dashboard files.
 
+// These are STATUS colours, not brand colours, and the rebrand deliberately
+// leaves them alone: they have to stay mutually distinguishable on the map, and
+// "Off" recoloured to the brand green would be all but indistinguishable from
+// "Driving" at the size these dots actually render.
 export const STATUS = {
   Running:  { label: 'Driving',  color: '#22c55e' },  // green
   Idle:     { label: 'Idle',     color: '#eab308' },  // yellow
@@ -23,7 +27,9 @@ export const STATUS_KEYS = ['Running', 'Idle', 'Stopped', 'Inactive', 'NoData']
 export const ALL = 'All'
 export const FILTERS = [ALL, ...STATUS_KEYS]
 
-export const ALL_COLOR = '#3b82f6'
+// "All" is the brand-neutral tab rather than a vehicle state, so this one does
+// follow the accent. Read in a style prop, so the var resolves.
+export const ALL_COLOR = 'var(--ft-accent)'
 
 export function statusLabel(status) {
   return STATUS[status]?.label ?? STATUS.NoData.label

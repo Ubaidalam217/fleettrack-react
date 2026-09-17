@@ -3,7 +3,7 @@
 import EstimatedBadge from './EstimatedBadge'
 
 const DRIVERS = [
-  { initials: 'AK', name: 'Ahmed Khan',    assignment: 'TRK-041', trips: 48, score: 98, online: true,  color: '#3b82f6', bg: 'rgba(59,130,246,0.14)' },
+  { initials: 'AK', name: 'Ahmed Khan',    assignment: 'TRK-041', trips: 48, score: 98, online: true,  color: '#5ba354', bg: 'rgba(91,163,84,0.14)' },
   { initials: 'KH', name: 'Khalid Hassan', assignment: 'TRK-005', trips: 89, score: 95, online: false, color: '#10b981', bg: 'rgba(16,185,129,0.14)' },
   { initials: 'SA', name: 'Sara Ali',      assignment: 'TRK-017', trips: 41, score: 94, online: true,  color: '#8b5cf6', bg: 'rgba(139,92,246,0.14)' },
   { initials: 'OF', name: 'Omar Farooq',   assignment: 'TRK-009', trips: 38, score: 91, online: true,  color: '#f59e0b', bg: 'rgba(245,158,11,0.14)'  },

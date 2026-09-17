@@ -94,9 +94,9 @@ function Chip({ active, onClick, children, title }) {
         flexShrink: 0,
         padding: '5px 11px',
         borderRadius: 999,
-        border: `1px solid ${active ? '#3b82f6' : 'var(--c-border)'}`,
-        background: active ? 'rgba(59,130,246,0.12)' : 'var(--c-input)',
-        color: active ? '#3b82f6' : 'var(--c-text2)',
+        border: `1px solid ${active ? 'var(--ft-accent)' : 'var(--c-border)'}`,
+        background: active ? 'color-mix(in srgb, var(--ft-accent) 12%, transparent)' : 'var(--c-input)',
+        color: active ? 'var(--ft-accent)' : 'var(--c-text2)',
         fontSize: 11,
         fontWeight: active ? 700 : 600,
         cursor: 'pointer',
@@ -149,7 +149,7 @@ function CustomizeMenu({ fields, onChange, onClose }) {
             type="checkbox"
             checked={!!fields[f.key]}
             onChange={e => onChange({ ...fields, [f.key]: e.target.checked })}
-            style={{ accentColor: '#3b82f6', width: 13, height: 13, cursor: 'pointer' }}
+            style={{ accentColor: 'var(--ft-accent)', width: 13, height: 13, cursor: 'pointer' }}
           />
           {f.label}
         </label>
@@ -323,7 +323,7 @@ export default function ReplayPanel({ replay, vehicleName }) {
               disabled={loading || !validRange}
               style={{
                 flexShrink: 0,
-                background: loading || !validRange ? 'var(--c-hover)' : '#3b82f6',
+                background: loading || !validRange ? 'var(--c-hover)' : 'var(--ft-accent)',
                 color: loading || !validRange ? 'var(--c-text3)' : '#fff',
                 border: 'none', borderRadius: 7, padding: '7px 16px',
                 fontSize: 11.5, fontWeight: 700,
@@ -362,7 +362,7 @@ export default function ReplayPanel({ replay, vehicleName }) {
             title={playing ? 'Pause' : 'Play'}
             style={{
               width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-              background: '#3b82f6', color: '#fff', flexShrink: 0,
+              background: 'var(--ft-accent)', color: '#fff', flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
@@ -383,7 +383,7 @@ export default function ReplayPanel({ replay, vehicleName }) {
             max={points.length - 1}
             value={index}
             onChange={e => onSeek(Number(e.target.value))}
-            style={{ flex: 1, minWidth: 60, accentColor: '#3b82f6' }}
+            style={{ flex: 1, minWidth: 60, accentColor: 'var(--ft-accent)' }}
           />
 
           <span style={{ fontSize: 10.5, color: 'var(--c-text3)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
@@ -402,7 +402,7 @@ export default function ReplayPanel({ replay, vehicleName }) {
                 style={{
                   padding: '4px 7px', border: 'none', cursor: 'pointer',
                   fontSize: 10, fontWeight: 700,
-                  background: speed === s ? '#3b82f6' : 'var(--c-input)',
+                  background: speed === s ? 'var(--ft-accent)' : 'var(--c-input)',
                   color: speed === s ? '#fff' : 'var(--c-text3)',
                   transition: 'background 0.15s',
                 }}

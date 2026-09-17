@@ -3,7 +3,7 @@ import EstimatedBadge from './EstimatedBadge'
 
 const TRIPS = [
   { label: 'Completed',   value: 714, pct: '80%', color: '#10b981' },
-  { label: 'In Progress', value: 127, pct: '14%', color: '#3b82f6' },
+  { label: 'In Progress', value: 127, pct: '14%', color: '#5ba354' },
   { label: 'Cancelled',   value: 51,  pct: '6%',  color: '#ef4444' },
 ]
 

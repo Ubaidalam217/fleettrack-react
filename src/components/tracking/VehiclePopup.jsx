@@ -56,7 +56,7 @@ export default function VehiclePopup({ v, name, open, onReplay }) {
             style={{
               marginTop: 9, width: '100%',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              background: '#3b82f6', color: '#fff', border: 'none',
+              background: 'var(--ft-accent)', color: '#fff', border: 'none',
               borderRadius: 7, padding: '7px 10px',
               fontSize: 12, fontWeight: 700, cursor: 'pointer',
             }}

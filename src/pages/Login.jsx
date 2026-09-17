@@ -49,9 +49,9 @@ export default function Login() {
         .l-input { transition: border-color .2s, box-shadow .2s; }
         .l-btn   { transition: background .2s, transform .15s, box-shadow .2s; }
         .l-btn:hover:not(:disabled) {
-          background: #2563eb !important;
+          background: var(--ft-accent-hover) !important;
           transform: translateY(-1px) scale(1.02);
-          box-shadow: 0 8px 24px rgba(59,130,246,0.45) !important;
+          box-shadow: 0 8px 24px color-mix(in srgb, var(--ft-accent) 45%, transparent) !important;
         }
         .l-btn:active:not(:disabled) { transform: translateY(0); }
         .l-fp:hover { text-decoration: underline; }
@@ -82,24 +82,16 @@ export default function Login() {
           animation: 'loginCardUp 0.65s cubic-bezier(0.22, 0.61, 0.36, 1) both',
         }}>
 
-          {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
-            <div style={{ display: 'flex', width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 13, background: '#3b82f6', boxShadow: '0 4px 14px rgba(59,130,246,0.4)', flexShrink: 0 }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                <path d="M20 8H4L2 14h20L20 8z" fill="white"/>
-                <rect x="4" y="14" width="3" height="4" rx="1" fill="white"/>
-                <rect x="17" y="14" width="3" height="4" rx="1" fill="white"/>
-                <circle cx="7"  cy="18" r="2" fill="white"/>
-                <circle cx="17" cy="18" r="2" fill="white"/>
-              </svg>
-            </div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', letterSpacing: '-0.02em', lineHeight: 1 }}>
-                FleetTrack
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--c-text3)', fontWeight: 500, marginTop: 3 }}>
-                Fleet Management System
-              </div>
+          {/* Logo — the real wordmark replaces the old icon-tile + text lockup,
+              so the name is never set in a font that is not the brand's. */}
+          <div style={{ marginBottom: 32 }}>
+            <img
+              src="/logo/fleetmax-logo.png"
+              alt="FleetmaX Solutions"
+              style={{ height: 44, width: 'auto', display: 'block' }}
+            />
+            <div style={{ fontSize: 11, color: 'var(--c-text3)', fontWeight: 500, marginTop: 8 }}>
+              Fleet Management System
             </div>
           </div>
 
@@ -109,7 +101,7 @@ export default function Login() {
               Welcome Back
             </h2>
             <p style={{ fontSize: 14, color: 'var(--c-text2)', lineHeight: 1.5 }}>
-              Sign in to your FleetTrack account to continue
+              Sign in to your FleetmaX account to continue
             </p>
           </div>
 
@@ -122,7 +114,7 @@ export default function Login() {
               </label>
               <div style={{ position: 'relative' }}>
                 <svg
-                  style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: emailFocused ? '#3b82f6' : 'var(--c-text3)', transition: 'color .2s' }}
+                  style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: emailFocused ? 'var(--ft-accent)' : 'var(--c-text3)', transition: 'color .2s' }}
                   width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                 >
                   <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
@@ -144,8 +136,8 @@ export default function Login() {
                     boxSizing: 'border-box',
                     padding: '12px 14px 12px 42px',
                     borderRadius: 11,
-                    border: `1.5px solid ${emailFocused ? '#3b82f6' : 'var(--c-border2)'}`,
-                    boxShadow: emailFocused ? '0 0 0 3px rgba(59,130,246,0.14)' : 'none',
+                    border: `1.5px solid ${emailFocused ? 'var(--ft-accent)' : 'var(--c-border2)'}`,
+                    boxShadow: emailFocused ? '0 0 0 3px color-mix(in srgb, var(--ft-accent) 14%, transparent)' : 'none',
                     backgroundColor: 'var(--c-input)',
                     color: 'var(--c-text1)',
                     fontSize: 14,
@@ -164,7 +156,7 @@ export default function Login() {
                 <a
                   href="#"
                   className="l-fp"
-                  style={{ fontSize: 12, color: '#3b82f6', fontWeight: 600, textDecoration: 'none' }}
+                  style={{ fontSize: 12, color: 'var(--ft-accent)', fontWeight: 600, textDecoration: 'none' }}
                   onClick={e => e.preventDefault()}
                 >
                   Forgot Password?
@@ -172,7 +164,7 @@ export default function Login() {
               </div>
               <div style={{ position: 'relative' }}>
                 <svg
-                  style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: pwFocused ? '#3b82f6' : 'var(--c-text3)', transition: 'color .2s' }}
+                  style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: pwFocused ? 'var(--ft-accent)' : 'var(--c-text3)', transition: 'color .2s' }}
                   width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                 >
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -194,8 +186,8 @@ export default function Login() {
                     boxSizing: 'border-box',
                     padding: '12px 44px 12px 42px',
                     borderRadius: 11,
-                    border: `1.5px solid ${pwFocused ? '#3b82f6' : 'var(--c-border2)'}`,
-                    boxShadow: pwFocused ? '0 0 0 3px rgba(59,130,246,0.14)' : 'none',
+                    border: `1.5px solid ${pwFocused ? 'var(--ft-accent)' : 'var(--c-border2)'}`,
+                    boxShadow: pwFocused ? '0 0 0 3px color-mix(in srgb, var(--ft-accent) 14%, transparent)' : 'none',
                     backgroundColor: 'var(--c-input)',
                     color: 'var(--c-text1)',
                     fontSize: 14,
@@ -230,7 +222,7 @@ export default function Login() {
                 type="checkbox"
                 checked={remember}
                 onChange={e => setRemember(e.target.checked)}
-                style={{ width: 16, height: 16, accentColor: '#3b82f6', cursor: 'pointer', flexShrink: 0 }}
+                style={{ width: 16, height: 16, accentColor: 'var(--ft-accent)', cursor: 'pointer', flexShrink: 0 }}
               />
               <label htmlFor="remember" style={{ fontSize: 13, color: 'var(--c-text2)', cursor: 'pointer', userSelect: 'none' }}>
                 Remember me for 30 days
@@ -266,7 +258,7 @@ export default function Login() {
                 marginTop: 2,
                 borderRadius: 11,
                 border: 'none',
-                background: '#3b82f6',
+                background: 'var(--ft-accent)',
                 color: '#fff',
                 fontSize: 15,
                 fontWeight: 700,
@@ -276,7 +268,7 @@ export default function Login() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 9,
-                boxShadow: '0 4px 18px rgba(59,130,246,0.32)',
+                boxShadow: '0 4px 18px color-mix(in srgb, var(--ft-accent) 32%, transparent)',
                 letterSpacing: '0.01em',
               }}
             >
@@ -287,7 +279,7 @@ export default function Login() {
                 </>
               ) : (
                 <>
-                  Sign In to FleetTrack
+                  Sign In to FleetmaX
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="5" y1="12" x2="19" y2="12"/>
                     <polyline points="12 5 19 12 12 19"/>
@@ -307,7 +299,7 @@ export default function Login() {
           {/* Powered by */}
           <div style={{ textAlign: 'center' }}>
             <span style={{ fontSize: 13, color: 'var(--c-text3)' }}>Powered by </span>
-            <span style={{ fontSize: 13, fontWeight: 800, color: '#3b82f6', letterSpacing: '-0.01em' }}>FleetTrack</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ft-accent)', letterSpacing: '-0.01em' }}>FleetmaX</span>
           </div>
 
         </div>

@@ -105,7 +105,7 @@ async function fetchDeviceMeta() {
 // token lacks MQTT ACL, see fatal-auth handling below).
 async function fetchTelemetrySnapshot() {
   const res = await fetch(
-    `${BASE_URL}/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,engine.ignition.status,timestamp`,
+    `${BASE_URL}/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,engine.ignition.status,timestamp,fuel.sensor.value,ble.sensor.temperature.1`,
     { headers: HEADERS }
   )
   if (!res.ok) {
@@ -126,6 +126,9 @@ async function fetchTelemetrySnapshot() {
       heading:  t['position.direction']?.value       ?? null,
       ignition: t['engine.ignition.status']?.value    ?? null,
       lastTs:   t['timestamp']?.value ?? (tsCandidates.length ? Math.max(...tsCandidates) : null),
+      // Sensors tab (Phase 3) — current fuel level / BLE probe temperature.
+      fuelLevel:    t['fuel.sensor.value']?.value        ?? null,
+      temperature:  t['ble.sensor.temperature.1']?.value ?? null,
     })
   })
   return snap
@@ -149,6 +152,8 @@ function applyDeviceMeta(meta) {
       heading:  prev.heading  ?? null,
       ignition: prev.ignition ?? null,
       lastTs:   prev.lastTs   ?? null,
+      fuelLevel:   prev.fuelLevel   ?? null,
+      temperature: prev.temperature ?? null,
     }
     next.status = vehicleStatus(next)
     vehiclesById.set(id, next)
@@ -181,6 +186,8 @@ function applyTelemetrySnapshot(telemetry) {
       heading:  tel.heading  ?? prev.heading  ?? null,
       ignition: tel.ignition ?? prev.ignition ?? null,
       lastTs:   tel.lastTs   ?? prev.lastTs   ?? null,
+      fuelLevel:   tel.fuelLevel   ?? prev.fuelLevel   ?? null,
+      temperature: tel.temperature ?? prev.temperature ?? null,
     }
     next.status = vehicleStatus(next)
     vehiclesById.set(id, next)
@@ -342,6 +349,8 @@ function ensureClient({ bootstrap = true } = {}) {
           heading:  m['position.direction']     ?? prev.heading  ?? null,
           ignition: m['engine.ignition.status'] ?? prev.ignition ?? null,
           lastTs:   m.timestamp ?? prev.lastTs ?? null,
+          fuelLevel:   m['fuel.sensor.value']         ?? prev.fuelLevel   ?? null,
+          temperature: m['ble.sensor.temperature.1']  ?? prev.temperature ?? null,
         }
         next.status = vehicleStatus(next)
         vehiclesById.set(id, next)

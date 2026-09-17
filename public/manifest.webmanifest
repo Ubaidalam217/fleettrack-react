@@ -1,0 +1,28 @@
+{
+  "name": "FleetmaX Solutions",
+  "short_name": "FleetmaX",
+  "description": "Real-time fleet tracking with live telemetry, smart alerts and vehicle performance insights.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f2437",
+  "theme_color": "#0f2437",
+  "icons": [
+    {
+      "src": "/logo/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo/apple-touch-icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo/fleetmax-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

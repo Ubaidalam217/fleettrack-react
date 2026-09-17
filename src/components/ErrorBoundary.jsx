@@ -11,7 +11,7 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(err, info) {
-    console.error('[FleetTrack] Uncaught error:', err, info?.componentStack)
+    console.error('[FleetmaX] Uncaught error:', err, info?.componentStack)
   }
 
   render() {
@@ -51,7 +51,7 @@ export default class ErrorBoundary extends Component {
             onClick={() => window.location.reload()}
             style={{
               padding: '10px 24px', borderRadius: 9, border: 'none',
-              background: '#3b82f6', color: '#fff',
+              background: 'var(--ft-accent)', color: '#fff',
               fontSize: 13, fontWeight: 700, cursor: 'pointer',
             }}
           >

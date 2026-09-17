@@ -184,15 +184,19 @@ export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMen
               <rect x="3" y="17"    width="12" height="1.5" rx=".75"/>
             </svg>
           </button>
-          <div className="hidden sm:flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                <path d="M20 8H4L2 14h20L20 8z" fill="white"/>
-                <circle cx="7" cy="18" r="2" fill="white"/>
-                <circle cx="17" cy="18" r="2" fill="white"/>
-              </svg>
-            </div>
-            <span className="text-sm font-bold" style={{ color: 'var(--c-text1)' }}>FleetTrack</span>
+          <div className="hidden sm:flex items-center">
+            {/* Two files rather than one + a CSS filter: the wordmark is
+                two-tone, so a filter that lifts "Solutions" for dark mode
+                would drag the green with it.
+                Switched off the isDark prop, not a `dark:` utility — this app's
+                dark mode is a hand-rolled `.dark` class on a div, whereas
+                Tailwind 4's `dark:` variant follows prefers-color-scheme, so
+                the utility would track the OS and ignore the theme toggle. */}
+            <img
+              src={isDark ? '/logo/fleetmax-logo-white.png' : '/logo/fleetmax-logo.png'}
+              alt="FleetmaX Solutions"
+              style={{ height: 26, width: 'auto' }}
+            />
           </div>
         </div>
 
@@ -213,8 +217,8 @@ export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMen
               className="w-full rounded-lg py-2 pl-9 pr-4 text-sm focus:outline-none transition-colors"
               style={{
                 background: 'var(--c-input)',
-                border: `1px solid ${showResults ? '#3b82f6' : 'var(--c-border2)'}`,
-                boxShadow: showResults ? '0 0 0 3px rgba(59,130,246,0.12)' : 'none',
+                border: `1px solid ${showResults ? 'var(--ft-accent)' : 'var(--c-border2)'}`,
+                boxShadow: showResults ? '0 0 0 3px color-mix(in srgb, var(--ft-accent) 12%, transparent)' : 'none',
                 color: 'var(--c-text1)',
               }}
             />
@@ -243,7 +247,7 @@ export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMen
           </button>
 
           {/* Ask AI */}
-          <button className="hidden sm:flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-2.5 md:px-3 py-2 text-[11px] md:text-[12px] font-semibold text-white transition-colors" style={{ boxShadow: '0 4px 12px rgba(59,130,246,0.2)' }}>
+          <button className="hidden sm:flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-2.5 md:px-3 py-2 text-[11px] md:text-[12px] font-semibold text-white transition-colors" style={{ boxShadow: '0 4px 12px color-mix(in srgb, var(--ft-accent) 20%, transparent)' }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
               <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>

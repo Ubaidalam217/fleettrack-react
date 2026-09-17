@@ -205,7 +205,7 @@ export default function VehicleActivity({ isDark, vehicleCount = 0 }) {
               <XAxis dataKey="day" tick={{ fontSize: 9, fill: tick }} axisLine={false} tickLine={false} />
               <YAxis domain={[0, 'auto']} width={30} tick={{ fontSize: 9, fill: tick }} />
               <Tooltip content={<CustomTooltip isDark={isDark} />} />
-              <Line type="monotone" dataKey="distance" name="Distance (km)" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6', stroke: ptBd, strokeWidth: 1.5 }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="distance" name="Distance (km)" stroke="#5ba354" strokeWidth={2} dot={{ r: 3, fill: '#5ba354', stroke: ptBd, strokeWidth: 1.5 }} activeDot={{ r: 5 }} />
               <Line type="monotone" dataKey="engHours" name="Engine Hours"  stroke="#a855f7" strokeWidth={2} dot={{ r: 3, fill: '#a855f7', stroke: ptBd, strokeWidth: 1.5 }} activeDot={{ r: 5 }} />
               <Line type="monotone" dataKey="idleTime" name="Idle Time (h)" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3, fill: '#f59e0b', stroke: ptBd, strokeWidth: 1.5 }} activeDot={{ r: 5 }} />
             </LineChart>

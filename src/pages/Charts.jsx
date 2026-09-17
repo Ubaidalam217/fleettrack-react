@@ -16,10 +16,10 @@ export default function Charts({ isDark, toggleTheme, themeMode, setTheme }) {
           <div style={{ textAlign: 'center', maxWidth: 420 }}>
             <div style={{
               width: 64, height: 64, borderRadius: 16, margin: '0 auto 20px',
-              background: 'rgba(59,130,246,0.1)',
+              background: 'color-mix(in srgb, var(--ft-accent) 10%, transparent)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5ba354" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="20" x2="18" y2="10"/>
                 <line x1="12" y1="20" x2="12" y2="4"/>
                 <line x1="6" y1="20" x2="6" y2="14"/>

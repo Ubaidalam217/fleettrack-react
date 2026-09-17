@@ -14,7 +14,11 @@ import { BASE_URL, HEADERS } from '../hooks/flespiConfig'
 export const MASTER_KEY     = 'fleet'
 export const SCHEMA_VERSION = 1
 
-export const VEHICLE_TYPES = ['', 'car', 'van', 'truck', 'bus', 'trailer', 'equipment']
+// Client-specified set for the Edit Asset form. Safe to have narrowed from the
+// earlier draft list (which included van/trailer/equipment): `vehicleType` was
+// still empty on all ten devices when this changed, so no stored value was
+// orphaned. '' is "not set" and must stay first.
+export const VEHICLE_TYPES = ['', 'car', 'bus', 'truck', 'bike', 'machine']
 
 // Sensor flags drive the Sensors tab's "show only if configured" rule.
 export const SENSOR_KEYS = ['fuel', 'temperature', 'door', 'seatbelt', 'passenger', 'immobilizer']

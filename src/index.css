@@ -7,67 +7,96 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   FleetmaX palette
+   ─────────────────────────────────────────────────────────────────────────
+   Navy #0F2437 + the logo's own green var(--ft-accent), sampled from the client
+   artwork so the active nav block and the wordmark are literally the same
+   green. Neutrals are tinted toward the navy hue rather than left as generic
+   slate, which is what stops the light theme reading as "grey app with a
+   green button".
+
+   The sidebar keeps its own --c-sb-* tokens and is dark in BOTH themes, so
+   those live outside the light/dark split and are declared once here.
+   ══════════════════════════════════════════════════════════════════════════ */
+
 :root {
-  --c-page:    #f8fafc;
-  --c-sidebar: #ffffff;
+  /* Brand constants — identical in both themes. */
+  --ft-navy:       #0f2437;
+  --ft-navy-soft:  #16314a;
+  --ft-green:      #5ba354;
+
+  --c-page:    #f5f7fa;
+  --c-sidebar: var(--ft-navy);
   --c-header:  #ffffff;
   --c-card:    #ffffff;
-  --c-card2:   #f8fafc;
-  --c-border:  #e2e8f0;
-  --c-border2: #e2e8f0;
-  --c-text1:   #1e293b;
-  --c-text2:   #64748b;
-  --c-text3:   #94a3b8;
-  --c-hover:   #f1f5f9;
-  --c-thead:   #f8fafc;
-  --c-progress:#e2e8f0;
-  --c-input:   #f1f5f9;
-  --c-sb-active:              rgba(59,130,246,.1);
-  --c-sb-active-text:         #2563eb;
-  --c-sb-inactive:            #64748b;
-  --c-sb-inactive-hover:      rgba(0,0,0,.04);
-  --c-sb-inactive-hover-text: #1e293b;
+  --c-card2:   #f5f7fa;
+  --c-border:  #dfe5ec;
+  --c-border2: #eaeff4;
+  --c-text1:   #0f2437;
+  --c-text2:   #55697d;
+  --c-text3:   #8496a8;
+  --c-hover:   #edf1f6;
+  --c-thead:   #f5f7fa;
+  --c-progress:#e3e9f0;
+  --c-input:   #f0f3f7;
 
   /* ── Dashboard design tokens (see "Card system" below) ── */
   --ft-radius:       16px;
   --ft-radius-inner: 12px;
   --ft-pad:          20px;
   --ft-gap:          20px;
-  --ft-shadow:       0 1px 2px rgba(15,23,42,.04), 0 6px 20px -12px rgba(15,23,42,.16);
-  --ft-shadow-hover: 0 1px 3px rgba(15,23,42,.06), 0 18px 38px -18px rgba(15,23,42,.28);
-  --ft-border-hover: #cdd9ea;
-  --ft-inset:        #f8fafc;
+  --ft-shadow:       0 1px 2px rgba(15,36,55,.04), 0 6px 20px -12px rgba(15,36,55,.16);
+  --ft-shadow-hover: 0 1px 3px rgba(15,36,55,.06), 0 18px 38px -18px rgba(15,36,55,.28);
+  --ft-border-hover: #c6d2de;
+  --ft-inset:        #f5f7fa;
   --ft-inset-border: #edf1f6;
-  --ft-accent:       #3b82f6;
+
+  --ft-accent:          var(--ft-green);
+  --ft-accent-hover:    #4a8f45;
+  --ft-accent-contrast: #ffffff;
 }
 
 .dark {
-  --c-page:    #0f1117;
-  --c-sidebar: #0d1526;
-  --c-header:  #0d1526;
-  --c-card:    #1e2740;
-  --c-card2:   #162035;
-  --c-border:  #1e2740;
-  --c-border2: #253055;
+  --c-page:    #0b1622;
+  --c-header:  var(--ft-navy);
+  --c-card:    #142637;
+  --c-card2:   #101e2c;
+  --c-border:  #1e3448;
+  --c-border2: #24405a;
   --c-text1:   #ffffff;
-  --c-text2:   #9ca3af;
-  --c-text3:   #6b7280;
-  --c-hover:   #1a2d4a;
-  --c-thead:   #162035;
-  --c-progress:#2a3558;
-  --c-input:   #0f1117;
-  --c-sb-active:              rgba(59,130,246,.12);
-  --c-sb-active-text:         #60a5fa;
-  --c-sb-inactive:            #6b7280;
-  --c-sb-inactive-hover:      rgba(255,255,255,.04);
-  --c-sb-inactive-hover-text: #d1d5db;
+  --c-text2:   #9db0c2;
+  --c-text3:   #6b8299;
+  --c-hover:   #1a3047;
+  --c-thead:   #101e2c;
+  --c-progress:#24405a;
+  --c-input:   #0b1622;
 
   --ft-shadow:       0 1px 2px rgba(0,0,0,.28), 0 8px 24px -14px rgba(0,0,0,.6);
   --ft-shadow-hover: 0 1px 3px rgba(0,0,0,.34), 0 20px 40px -18px rgba(0,0,0,.75);
-  --ft-border-hover: #33406e;
+  --ft-border-hover: #2d4f6d;
   --ft-inset:        rgba(255,255,255,.035);
   --ft-inset-border: rgba(255,255,255,.07);
-  --ft-accent:       #60a5fa;
+
+  /* Lifted slightly: var(--ft-accent) on a near-black panel sits under 4.5:1 for the
+     small label text that rides on top of it. */
+  --ft-accent:       #6fbb67;
+  --ft-accent-hover: #7fc877;
+}
+
+/* ── Sidebar tokens — dark panel in both themes ──
+   Declared after .dark so a theme switch cannot reassign them. */
+:root,
+.dark {
+  --c-sb-bg:                  var(--ft-navy);
+  --c-sb-elev:                var(--ft-navy-soft);
+  --c-sb-active:              var(--ft-green);
+  --c-sb-active-text:         #ffffff;
+  --c-sb-inactive:            rgba(255,255,255,.62);
+  --c-sb-inactive-hover:      rgba(255,255,255,.07);
+  --c-sb-inactive-hover-text: #ffffff;
+  --c-sb-section:             rgba(255,255,255,.40);
+  --c-sb-divider:             rgba(255,255,255,.09);
 }
 
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
@@ -246,12 +275,12 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
 .ft-btn:hover {
   border-color: var(--ft-accent);
   color: var(--ft-accent);
-  box-shadow: 0 2px 10px -4px rgba(59,130,246,.55);
+  box-shadow: 0 2px 10px -4px color-mix(in srgb, var(--ft-accent) 55%, transparent);
 }
 .ft-btn--active {
   border-color: var(--ft-accent);
   color: var(--ft-accent);
-  background: rgba(59,130,246,.1);
+  background: color-mix(in srgb, var(--ft-accent) 10%, transparent);
 }
 .ft-btn:focus-visible,
 .ft-link:focus-visible {
@@ -282,7 +311,7 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
   gap: 3px;
   transition: color .15s ease, gap .15s ease;
 }
-.ft-link:hover { color: #2563eb; gap: 6px; }
+.ft-link:hover { color: var(--ft-accent-hover); gap: 6px; }
 
 /* Widget wrapper ---------------------------------------------------------
    Stretches to its grid cell (or shares a flex column with its siblings) and
@@ -305,13 +334,17 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
   position: relative;
   overflow: hidden;
   border-radius: 26px;
+  /* Navy body lit by the brand green rather than the old blue/violet pair.
+     The green glow is kept to the top edge and held well under half opacity —
+     pushed further it stops reading as light on navy and starts reading as a
+     second flat colour fighting the first. */
   background:
-    radial-gradient(1150px 520px at 50% -12%, rgba(125,175,255,.32) 0%, rgba(125,175,255,0) 60%),
-    radial-gradient(760px 420px at 90% 112%, rgba(139,92,246,.24) 0%, rgba(139,92,246,0) 62%),
-    linear-gradient(158deg, #1e4bb8 0%, #17398d 44%, #0e2660 100%);
+    radial-gradient(1150px 520px at 50% -12%, rgba(126,196,118,.30) 0%, rgba(126,196,118,0) 60%),
+    radial-gradient(760px 420px at 90% 112%, rgba(91,163,84,.20) 0%, rgba(91,163,84,0) 62%),
+    linear-gradient(158deg, #1d4a63 0%, #163b52 44%, #0f2437 100%);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.16),
-    0 26px 60px -34px rgba(13,36,92,.85);
+    0 26px 60px -34px rgba(9,24,38,.85);
 }
 
 /* Fine film grain — keeps the large gradient from banding and reads as
@@ -343,13 +376,13 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
 
 /* ── Welcome greeting ── */
 .ft-greet-name {
-  background: linear-gradient(96deg, #2563eb 0%, #7c3aed 52%, #0ea5e9 100%);
+  background: linear-gradient(96deg, #3f8f52 0%, var(--ft-accent) 48%, #1d4a63 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 .dark .ft-greet-name {
-  background: linear-gradient(96deg, #60a5fa 0%, #a78bfa 52%, #38bdf8 100%);
+  background: linear-gradient(96deg, #6fbb67 0%, #8fd087 48%, #63b8c9 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

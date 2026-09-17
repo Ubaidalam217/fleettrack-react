@@ -17,7 +17,7 @@ function relTime(ts) {
 }
 
 const SEV_META = {
-  info:    { color: '#3b82f6', bg: 'rgba(59,130,246,0.1)',  label: 'Info' },
+  info:    { color: '#5ba354', bg: 'rgba(91,163,84,0.1)',  label: 'Info' },
   warning: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', label: 'Warning' },
   success: { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',  label: 'Update' },
   critical:{ color: '#ef4444', bg: 'rgba(239,68,68,0.1)',  label: 'Urgent' },
@@ -76,7 +76,7 @@ function CreateModal({ onClose, onPublish }) {
               required
               placeholder="Announcement title"
               style={inputStyle}
-              onFocus={e => e.target.style.borderColor = '#3b82f6'}
+              onFocus={e => e.target.style.borderColor = 'var(--ft-accent)'}
               onBlur={e => e.target.style.borderColor = 'var(--c-border2)'}
             />
           </div>
@@ -90,7 +90,7 @@ function CreateModal({ onClose, onPublish }) {
               rows={4}
               placeholder="Write your announcement..."
               style={{ ...inputStyle, resize: 'vertical', minHeight: 90 }}
-              onFocus={e => e.target.style.borderColor = '#3b82f6'}
+              onFocus={e => e.target.style.borderColor = 'var(--ft-accent)'}
               onBlur={e => e.target.style.borderColor = 'var(--c-border2)'}
             />
           </div>
@@ -113,7 +113,7 @@ function CreateModal({ onClose, onPublish }) {
             <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--c-border2)', background: 'var(--c-input)', color: 'var(--c-text2)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
               Cancel
             </button>
-            <button type="submit" style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: '#3b82f6', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
+            <button type="submit" style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: 'var(--ft-accent)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
               Publish
             </button>
           </div>
@@ -136,7 +136,7 @@ function AnnouncementRow({ item, onMarkRead, onDelete }) {
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 14,
         padding: '16px 20px',
-        background: item.read ? 'none' : 'rgba(59,130,246,0.03)',
+        background: item.read ? 'none' : 'color-mix(in srgb, var(--ft-accent) 3%, transparent)',
         borderBottom: '1px solid var(--c-border)',
         transition: 'background 0.1s',
         ...(hover ? { background: 'var(--c-hover)' } : {}),
@@ -155,7 +155,7 @@ function AnnouncementRow({ item, onMarkRead, onDelete }) {
             <span style={{ fontSize: 10, fontWeight: 700, color: sev.color, background: sev.bg, borderRadius: 5, padding: '2px 7px' }}>
               {sev.label}
             </span>
-            {!item.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} />}
+            {!item.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ft-accent)', flexShrink: 0 }} />}
           </div>
           <span style={{ fontSize: 11, color: 'var(--c-text3)', flexShrink: 0 }}>{relTime(item.timestamp)}</span>
         </div>
@@ -172,7 +172,7 @@ function AnnouncementRow({ item, onMarkRead, onDelete }) {
           onClick={() => onMarkRead(item.id)}
           disabled={item.read}
           title={item.read ? 'Already read' : 'Mark as read'}
-          style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--c-border2)', background: 'var(--c-card)', cursor: item.read ? 'default' : 'pointer', color: item.read ? 'var(--c-border2)' : '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--c-border2)', background: 'var(--c-card)', cursor: item.read ? 'default' : 'pointer', color: item.read ? 'var(--c-border2)' : 'var(--ft-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
@@ -264,7 +264,7 @@ export default function Announcements({ isDark, toggleTheme, themeMode, setTheme
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>Announcements</h1>
                 {unreadAnnouncements > 0 && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: '#3b82f6', borderRadius: 20, padding: '2px 9px' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: 'var(--ft-accent)', borderRadius: 20, padding: '2px 9px' }}>
                     {unreadAnnouncements} unread
                   </span>
                 )}
@@ -273,7 +273,7 @@ export default function Announcements({ isDark, toggleTheme, themeMode, setTheme
                 {unreadAnnouncements > 0 && (
                   <button
                     onClick={() => markAllRead('announcement')}
-                    style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c-border2)', background: 'var(--c-card)', color: '#3b82f6', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                    style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c-border2)', background: 'var(--c-card)', color: 'var(--ft-accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                   >
                     Mark all read
                   </button>
@@ -281,7 +281,7 @@ export default function Announcements({ isDark, toggleTheme, themeMode, setTheme
                 {isAdmin() && (
                   <button
                     onClick={() => setCreateOpen(true)}
-                    style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: '#3b82f6', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                    style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--ft-accent)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Create announcement
@@ -299,7 +299,7 @@ export default function Announcements({ isDark, toggleTheme, themeMode, setTheme
                     onClick={() => setTab(t)}
                     style={{
                       padding: '5px 12px', fontSize: 12, fontWeight: tab === t ? 700 : 500, border: 'none', cursor: 'pointer',
-                      background: tab === t ? '#3b82f6' : 'transparent',
+                      background: tab === t ? 'var(--ft-accent)' : 'transparent',
                       color: tab === t ? '#fff' : 'var(--c-text2)',
                       transition: 'all 0.15s', textTransform: 'capitalize',
                     }}

@@ -22,9 +22,9 @@ const STYLES = {
     titleColor: '#16a34a',         heroTitleColor: '#4ade80',
   },
   info: {
-    bg: 'rgba(59,130,246,0.15)',    heroBg: 'rgba(96,165,250,0.15)',
-    border: 'rgba(59,130,246,0.2)', heroBorder: 'rgba(96,165,250,0.25)',
-    titleColor: '#3b82f6',          heroTitleColor: '#60a5fa',
+    bg: 'rgba(91,163,84,0.15)',    heroBg: 'rgba(96,165,250,0.15)',
+    border: 'rgba(91,163,84,0.2)', heroBorder: 'rgba(96,165,250,0.25)',
+    titleColor: 'var(--ft-accent)',  heroTitleColor: '#8fd087',
   },
 }
 
@@ -46,7 +46,7 @@ const ICONS = {
   ),
   info: (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-      <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" stroke="#5ba354" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
 }
@@ -134,9 +134,9 @@ export default function AIInsights({ heroMode = false, fleetData }) {
         border:     heroMode ? '1px solid rgba(252,165,165,0.25)' : '1px solid rgba(239,68,68,0.2)',
       }
     : {
-        color:      heroMode ? '#93c5fd'              : '#3b82f6',
-        background: heroMode ? 'rgba(147,197,253,0.15)' : 'rgba(59,130,246,0.1)',
-        border:     heroMode ? '1px solid rgba(147,197,253,0.25)' : '1px solid rgba(59,130,246,0.2)',
+        color:      heroMode ? '#8fd087'              : 'var(--ft-accent)',
+        background: heroMode ? 'rgba(147,197,253,0.15)' : 'rgba(91,163,84,0.1)',
+        border:     heroMode ? '1px solid rgba(147,197,253,0.25)' : '1px solid rgba(91,163,84,0.2)',
       }
 
   return (
