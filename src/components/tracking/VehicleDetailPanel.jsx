@@ -615,43 +615,117 @@ function Documents({ v }) {
 
 // ── Panel ──────────────────────────────────────────────────────────────────
 
-// The sheet is only mounted while a vehicle is selected, so there is no empty
-// state to render any more — Tracking.jsx slides the whole sheet away instead.
-export default function VehicleDetailPanel({ vehicle }) {
+// Size controls. Stroke glyphs at 13px to sit level with the 12px tab labels.
+function SizeIcon({ name }) {
+  const paths = {
+    minimize: <line x1="5.5" y1="12" x2="18.5" y2="12" />,
+    expandUp: <polyline points="18 15 12 9 6 15" />,
+    maximize: <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />,
+    restore:  <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />,
+  }
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[name]}
+    </svg>
+  )
+}
+
+function SizeButton({ icon, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: 26, height: 26, borderRadius: 7,
+        background: 'none', border: '1px solid var(--c-border2)',
+        color: 'var(--c-text2)', cursor: 'pointer',
+        transition: 'background 0.15s, color 0.15s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--c-hover)'; e.currentTarget.style.color = 'var(--c-text1)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'none';           e.currentTarget.style.color = 'var(--c-text2)' }}
+    >
+      <SizeIcon name={icon} />
+    </button>
+  )
+}
+
+/**
+ * The sheet is only mounted while a vehicle is selected, so there is no empty
+ * state to render any more — Tracking.jsx slides the whole sheet away instead.
+ *
+ * @param {'normal'|'min'|'max'} [mode]  Which size the sheet is currently at.
+ *        Owned by Tracking, which is the component that can actually resize it;
+ *        this one only draws the controls and reports the intent back.
+ * @param {() => void} [onToggleMin]
+ * @param {() => void} [onToggleMax]  Omitted on mobile, where the sheet has no
+ *        maximised state to go to.
+ * @param {() => void} [onRestore]    Fired when a tab is clicked while
+ *        minimised — picking a tab you cannot see would be dead UI.
+ */
+export default function VehicleDetailPanel({
+  vehicle, mode = 'normal', onToggleMin, onToggleMax, onRestore,
+}) {
   const [tab, setTab] = useState(DETAIL_TABS[0])
 
   if (!vehicle) return null
+
+  const minimized = mode === 'min'
 
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0,
       backgroundColor: 'var(--c-card)', borderTop: '1px solid var(--c-border2)',
     }}>
-      {/* Tab bar */}
+      {/* Tab bar — stays visible at every size; it is the whole of the sheet
+          while minimised. */}
       <div style={{
-        display: 'flex', flexShrink: 0, overflowX: 'auto',
+        display: 'flex', alignItems: 'center', flexShrink: 0,
         borderBottom: '1px solid var(--c-border2)',
       }}>
-        {DETAIL_TABS.map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              padding: '11px 16px',
-              fontSize: 12,
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              background: 'none',
-              border: 'none',
-              borderBottom: tab === t ? '2px solid var(--ft-accent)' : '2px solid transparent',
-              color: tab === t ? 'var(--ft-accent)' : 'var(--c-text2)',
-              cursor: 'pointer',
-              transition: 'color 0.15s',
-            }}
-          >
-            {t}
-          </button>
-        ))}
+        <div style={{ display: 'flex', flex: 1, minWidth: 0, overflowX: 'auto' }}>
+          {DETAIL_TABS.map(t => (
+            <button
+              key={t}
+              onClick={() => { setTab(t); if (minimized) onRestore?.() }}
+              style={{
+                padding: '11px 16px',
+                fontSize: 12,
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                background: 'none',
+                border: 'none',
+                borderBottom: tab === t && !minimized ? '2px solid var(--ft-accent)' : '2px solid transparent',
+                color: tab === t ? 'var(--ft-accent)' : 'var(--c-text2)',
+                cursor: 'pointer',
+                transition: 'color 0.15s',
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {(onToggleMin || onToggleMax) && (
+          <div style={{ display: 'flex', gap: 5, flexShrink: 0, padding: '0 10px 0 8px' }}>
+            {onToggleMin && (
+              <SizeButton
+                icon={minimized ? 'expandUp' : 'minimize'}
+                label={minimized ? 'Restore panel' : 'Minimize panel'}
+                onClick={onToggleMin}
+              />
+            )}
+            {onToggleMax && (
+              <SizeButton
+                icon={mode === 'max' ? 'restore' : 'maximize'}
+                label={mode === 'max' ? 'Restore panel' : 'Maximize panel'}
+                onClick={onToggleMax}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Content */}

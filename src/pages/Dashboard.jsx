@@ -324,7 +324,6 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
           themeMode={themeMode}
           setTheme={setTheme}
           onMenuClick={() => setSidebarOpen(s => !s)}
-          searchVehicles={data?.vehicles}
           isConnected={isConnected}
         />
 

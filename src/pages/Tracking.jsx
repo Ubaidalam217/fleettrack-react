@@ -6,8 +6,8 @@ import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
 import VehicleDetailPanel from '../components/tracking/VehicleDetailPanel'
 import VehicleListCard, { LIST_CARD_CSS } from '../components/tracking/VehicleListCard'
-import VehiclePopup from '../components/tracking/VehiclePopup'
-import CarMarker, { CAR_MARKER_CSS } from '../components/tracking/CarMarker'
+import VehiclePopup, { VEHICLE_POPUP_CSS } from '../components/tracking/VehiclePopup'
+import VehicleMarker, { VEHICLE_MARKER_CSS } from '../components/tracking/VehicleMarker'
 import ReplayPanel from '../components/tracking/ReplayPanel'
 import ReplayInfoCard, { REPLAY_INFO_CSS } from '../components/tracking/ReplayInfoCard'
 import { DEFAULT_REPLAY_FIELDS } from '../components/tracking/replayFields'
@@ -36,6 +36,31 @@ const MAX_TICKS_PER_SEC = 8
 
 const DESKTOP_MIN = 1024
 const FIELDS_KEY  = 'ft-replay-fields'
+
+// ── Detail sheet sizing ──
+// Height is stored in vh rather than px so a saved size still means the same
+// share of the screen on a different monitor.
+const SHEET_KEY        = 'ft-sheet-vh'
+const SHEET_MIN_VH     = 20
+const SHEET_MAX_VH     = 80
+const SHEET_DEFAULT_VH = 42
+// Minimised: the grip plus the tab strip and its borders, measured off the
+// rendered panel. Mobile has no grip, hence the two numbers.
+const SHEET_MIN_PX         = 49
+const SHEET_MIN_PX_MOBILE  = 41
+// Matches the previous fixed mobile sheet — that breakpoint keeps the plain
+// bottom-sheet behaviour and only gains minimise.
+const SHEET_MOBILE_H = '52vh'
+
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n))
+
+function loadSheetVh() {
+  try {
+    const n = Number(localStorage.getItem(SHEET_KEY))
+    if (Number.isFinite(n) && n > 0) return clamp(n, SHEET_MIN_VH, SHEET_MAX_VH)
+  } catch { /* private mode */ }
+  return SHEET_DEFAULT_VH
+}
 
 // Fix Leaflet default icon broken by bundlers
 delete L.Icon.Default.prototype._getIconUrl
@@ -125,6 +150,126 @@ function FollowVehicle({ target, onManualPan }) {
     map.on('dragstart', onManualPan)
     return () => { map.off('dragstart', onManualPan) }
   }, [map, target, onManualPan])
+
+  return null
+}
+
+// Keeps an open marker popup fully inside the map box.
+//
+// Leaflet's own autoPan is switched off on the popup (see VehiclePopup),
+// because it only measures once, at open, against the popup's *initial* size.
+// Our card then grows — the reverse-geocoded address lands a second later and
+// can add a line — and the grown card silently overhangs the edge it was
+// already flush against. This measures the real rect instead, and re-measures
+// on every size change until the popup closes.
+const POPUP_FIT_PAD = { top: 14, right: 14, bottom: 14, left: 14 }
+// The popup's own furniture around its content box: the tip below it plus the
+// wrapper's rounding. Subtracted when capping the content height.
+const POPUP_CHROME_PX = 22
+// Below this the card has no room for even the name and status, so it is
+// allowed to overhang rather than shrink into a sliver.
+const POPUP_MIN_PX    = 96
+// Bottom edge of the floating list toggle (12px inset + its own height).
+const POPUP_TOGGLE_PX = 50
+
+function PopupFit() {
+  const map = useMap()
+
+  useEffect(() => {
+    let ro      = null
+    let settle  = null
+    let openEl  = null
+    // Set by a real pointer drag and cleared by the next programmatic trigger.
+    // A user who drags an open popup off the edge meant to; a fly-to or a
+    // sheet resize that does the same thing did not.
+    let userPanned = false
+
+    const fit = () => {
+      const el = openEl
+      if (!el) return
+      const box = map.getContainer().getBoundingClientRect()
+
+      // Extra headroom so the card clears the floating list toggle, which
+      // sits in the map's top-left corner. Scaled to the box because on a map
+      // squeezed to 150px by the detail sheet, a fixed 50px inset would cost
+      // a third of the height the popup has to live in.
+      const padTop = Math.min(POPUP_TOGGLE_PX, Math.max(POPUP_FIT_PAD.top, box.height * 0.14))
+
+      // No amount of panning fits a card that is taller than the map, and the
+      // sheet can legitimately be dragged until the map is ~120px. Cap the
+      // card to what the box can hold and let it scroll instead — that is the
+      // difference between "mostly visible" and "never cut off".
+      const content = el.querySelector('.leaflet-popup-content')
+      if (content) {
+        const avail = box.height - padTop - POPUP_FIT_PAD.bottom - POPUP_CHROME_PX
+        content.style.maxHeight = `${Math.max(POPUP_MIN_PX, avail)}px`
+        content.style.overflowY = 'auto'
+      }
+
+      const r = el.getBoundingClientRect()
+      if (!r.width || !r.height) return
+
+      // Positive dx pans the view right, which moves the popup left.
+      let dx = 0
+      let dy = 0
+      if (r.left < box.left + POPUP_FIT_PAD.left)          dx = r.left - (box.left + POPUP_FIT_PAD.left)
+      else if (r.right > box.right - POPUP_FIT_PAD.right)  dx = r.right - (box.right - POPUP_FIT_PAD.right)
+      if (r.top < box.top + padTop)                        dy = r.top - (box.top + padTop)
+      else if (r.bottom > box.bottom - POPUP_FIT_PAD.bottom) dy = r.bottom - (box.bottom - POPUP_FIT_PAD.bottom)
+
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return
+      map.panBy([dx, dy], { animate: true, duration: 0.3 })
+    }
+
+    const schedule = () => { clearTimeout(settle); settle = setTimeout(fit, 70) }
+
+    const onOpen = e => {
+      const el = e.popup.getElement()
+      if (!el) return
+      openEl = el
+      userPanned = false
+      ro?.disconnect()
+      ro = new ResizeObserver(schedule)
+      ro.observe(el)
+      schedule()
+    }
+
+    const onClose = () => {
+      ro?.disconnect()
+      ro = null
+      openEl = null
+      clearTimeout(settle)
+    }
+
+    // Fitting on moveend rather than once at open is what makes this hold.
+    // Selecting a vehicle opens the popup *and* starts a one-second fly-to;
+    // anything we pan mid-flight is simply overwritten when the fly lands on
+    // its own target. Waiting for the move to finish is the only reliable
+    // moment to measure. Our own panBy lands here too, but by then the popup
+    // is inside the box and fit() returns without moving anything, so this
+    // settles in one extra pass instead of looping.
+    const onDragStart = () => { userPanned = true }
+    const onMoveEnd   = () => { if (!userPanned) schedule() }
+    // Dragging the detail sheet taller shrinks the map under an already-open
+    // popup, which is the other way a card ends up half behind the header.
+    // MapAutoSize's invalidateSize() is what fires this.
+    const onResize    = () => { userPanned = false; schedule() }
+
+    map.on('popupopen',  onOpen)
+    map.on('popupclose', onClose)
+    map.on('dragstart',  onDragStart)
+    map.on('moveend',    onMoveEnd)
+    map.on('resize',     onResize)
+    return () => {
+      map.off('popupopen',  onOpen)
+      map.off('popupclose', onClose)
+      map.off('dragstart',  onDragStart)
+      map.off('moveend',    onMoveEnd)
+      map.off('resize',     onResize)
+      ro?.disconnect()
+      clearTimeout(settle)
+    }
+  }, [map])
 
   return null
 }
@@ -237,6 +382,18 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const [pendingCommand, setPendingCommand]     = useState(null) // { vehicleId, actionKey }
   const [commandBusy, setCommandBusy]           = useState(false)
 
+  // ── Detail sheet size ──
+  // 'normal' is the draggable height; 'min' is the bare tab strip; 'max' takes
+  // the whole column and squeezes the map to nothing.
+  const [sheetVh, setSheetVh]     = useState(loadSheetVh)
+  const [sheetMode, setSheetMode] = useState('normal')
+  const [sheetDragging, setSheetDragging] = useState(false)
+  const sheetRef = useRef(null)
+  // Where each toggle came from, so a second click puts the sheet back exactly
+  // where it was rather than always dropping to 'normal'.
+  const minFromRef = useRef('normal')
+  const maxFromRef = useRef('normal')
+
   const [activeTab, setActiveTab]   = useState(ALL)
   const [search, setSearch]         = useState('')
   const [focusId, setFocusId]       = useState(null)
@@ -260,6 +417,65 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const setFields = useCallback(next => {
     setReplayFields(next)
     try { localStorage.setItem(FIELDS_KEY, JSON.stringify(next)) } catch { /* private mode */ }
+  }, [])
+
+  // ── Sheet resize ──
+  // Measures the live rect rather than deriving from sheetVh, so a drag that
+  // starts from 'min' or 'max' picks up exactly where the sheet is on screen
+  // instead of jumping to the last stored height first.
+  const startSheetDrag = useCallback(e => {
+    if (e.button != null && e.button !== 0) return
+    const box = sheetRef.current?.getBoundingClientRect()
+    if (!box) return
+    e.preventDefault()
+
+    const startY = e.clientY
+    const startH = box.height
+    const minPx  = window.innerHeight * SHEET_MIN_VH / 100
+    const maxPx  = window.innerHeight * SHEET_MAX_VH / 100
+    let latest   = startH
+
+    setSheetMode('normal')
+    setSheetDragging(true)
+
+    // Dragging up (negative dy) has to make the sheet taller.
+    const onMove = ev => {
+      latest = clamp(startH - (ev.clientY - startY), minPx, maxPx)
+      setSheetVh(latest / window.innerHeight * 100)
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      setSheetDragging(false)
+      try {
+        localStorage.setItem(SHEET_KEY, String(latest / window.innerHeight * 100))
+      } catch { /* private mode */ }
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }, [])
+
+  const toggleSheetMin = useCallback(() => {
+    setSheetMode(m => {
+      if (m === 'min') return minFromRef.current
+      minFromRef.current = m
+      return 'min'
+    })
+  }, [])
+
+  const toggleSheetMax = useCallback(() => {
+    setSheetMode(m => {
+      if (m === 'max') return maxFromRef.current
+      maxFromRef.current = m
+      return 'max'
+    })
+  }, [])
+
+  const restoreSheet = useCallback(() => {
+    setSheetMode(m => (m === 'min' ? minFromRef.current : m))
   }, [])
 
   const clearReplay = useCallback(() => {
@@ -531,6 +747,11 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     [replayShowing, replayPoints]
   )
   const replayPoint = replayShowing ? replayPoints[replayIndex] : null
+  // The track carries no vehicle type, so the replay marker borrows it from the
+  // vehicle whose route is loaded — a bus replaying yesterday is still a bus.
+  const replayVehicleType = replayActive
+    ? vehicles.find(v => v.id === replayVehicleId)?.master?.vehicleType
+    : undefined
 
   // Follow yields to Replay: while a track is loaded the map is already being
   // driven by ReplayFollow, and two things panning it would fight each other.
@@ -648,6 +869,16 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // failures are swallowed by the hook by design.
   const statusMessage = error
   const sheetOpen = !!selected
+
+  // Mobile keeps the fixed bottom sheet it always had and only gains minimise;
+  // drag-to-resize and maximise are desktop affordances and the phone layout
+  // has nowhere sensible to put either.
+  const collapsedPx = isDesktop ? SHEET_MIN_PX : SHEET_MIN_PX_MOBILE
+  const sheetHeight =
+    sheetMode === 'min' ? `${collapsedPx}px`
+      : !isDesktop      ? SHEET_MOBILE_H
+      : sheetMode === 'max' ? '100%'
+      : `${sheetVh}vh`
   // On mobile the list is a full-height overlay with its own close button, so
   // the floating toggle would just sit on top of it.
   const toggleHidden = !isDesktop && listOpen
@@ -655,7 +886,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   return (
     <>
       <style>{`
-        ${CAR_MARKER_CSS}
+        ${VEHICLE_MARKER_CSS}
+        ${VEHICLE_POPUP_CSS}
         ${LIST_CARD_CSS}
         ${REPLAY_INFO_CSS}
 
@@ -685,6 +917,42 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           overflow: hidden;
           background-color: var(--c-card);
           border-right: 1px solid var(--c-border2);
+        }
+
+        /* ── Vehicle list ──
+           The single scrolling box in this panel. Everything above it (tabs,
+           search) is flex-shrink:0 and everything inside it — including the
+           expanded cards — is clipped, so this is the only scrollbar the panel
+           can produce. overflow-x is hard off: every row already truncates with
+           an ellipsis, so a horizontal bar could only ever mean something has
+           overflowed by a pixel or two, which is a bug, not navigation. */
+        .track-list {
+          flex: 1;
+          min-height: 0;
+          position: relative;
+          overflow-y: auto;
+          overflow-x: hidden;
+          overscroll-behavior: contain;
+        }
+        .track-list::-webkit-scrollbar { width: 6px; height: 0; }
+        .track-list::-webkit-scrollbar-track  { background: transparent; }
+        .track-list::-webkit-scrollbar-corner { background: transparent; }
+        .track-list::-webkit-scrollbar-thumb {
+          background: color-mix(in srgb, var(--c-text3) 38%, transparent);
+          border-radius: 999px;
+        }
+        .track-list::-webkit-scrollbar-thumb:hover { background: var(--ft-accent); }
+
+        /* Firefox only. Chromium drops every ::-webkit-scrollbar rule above the
+           moment scrollbar-width or scrollbar-color is set on an element, which
+           would cost the teal hover — the standard properties have no hover
+           state of their own. So they are gated to engines that have no
+           ::-webkit-scrollbar to begin with. */
+        @supports not selector(::-webkit-scrollbar) {
+          .track-list {
+            scrollbar-width: thin;
+            scrollbar-color: color-mix(in srgb, var(--c-text3) 38%, transparent) transparent;
+          }
         }
 
         @media (min-width: ${DESKTOP_MIN}px) {
@@ -718,10 +986,15 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           min-height: 0;
           z-index: 1;
         }
+
         .track-map {
           position: relative;
           flex: 1 1 auto;
           min-height: 0;
+          /* Maximising the detail sheet squeezes this box to zero height. The
+             list toggle and the replay dock are absolutely positioned inside
+             it and would otherwise keep floating over the sheet. */
+          overflow: hidden;
         }
 
         /* List toggle. Lives inside .track-map, so it can never land on top of
@@ -765,11 +1038,12 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
         /* ── Detail sheet ──
            Hidden outright with nothing selected; slides up when a vehicle is.
            display:none can't be transitioned, so the height of the outer box
-           and the transform of the inner one are animated together. */
+           and the transform of the inner one are animated together.
+
+           --sheet-h is written from JS (it carries the dragged/minimised/
+           maximised size); the value here is only the pre-hydration fallback. */
         .track-detail {
-          /* Roughly the proportion the sheet had before it became collapsible,
-             which leaves the phone-sized map tall enough for a marker popup. */
-          --sheet-h: 52vh;
+          --sheet-h: ${SHEET_MOBILE_H};
           flex: 0 0 auto;
           height: 0;
           min-height: 0;
@@ -779,14 +1053,43 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
         .track-detail[data-open="true"] { height: var(--sheet-h); }
         .track-detail-inner {
           height: var(--sheet-h);
+          display: flex;
+          flex-direction: column;
           transform: translateY(100%);
           transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
         }
         .track-detail[data-open="true"] .track-detail-inner { transform: translateY(0); }
 
-        @media (min-width: ${DESKTOP_MIN}px) {
-          .track-detail { --sheet-h: clamp(300px, 42vh, 460px); }
+        /* A drag has to track the pointer exactly — an eased height would lag
+           behind it and then overshoot on release. */
+        .track-detail[data-dragging="true"],
+        .track-detail[data-dragging="true"] .track-detail-inner { transition: none; }
+
+        /* ── Resize grip ── */
+        .track-grip {
+          flex: 0 0 8px;
+          position: relative;
+          cursor: ns-resize;
+          background-color: var(--c-card);
+          touch-action: none;
         }
+        .track-grip::after {
+          content: '';
+          position: absolute;
+          top: 3px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 46px;
+          height: 3px;
+          border-radius: 2px;
+          background-color: var(--c-border2);
+          transition: background-color 0.15s ease;
+        }
+        .track-grip:hover::after,
+        .track-detail[data-dragging="true"] .track-grip::after {
+          background-color: var(--ft-accent);
+        }
+        .track-detail-body { flex: 1; min-height: 0; }
 
         @keyframes markerDrop {
           0%   { opacity: 0; transform: scale(0) translateY(-10px); }
@@ -919,7 +1222,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                 </div>
 
                 {/* Vehicle list */}
-                <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+                <div className="track-list">
                   {statusMessage ? (
                     <div style={{ padding: '16px 14px', color: '#ef4444', fontSize: 12, lineHeight: 1.6 }}>
                       <strong>Error:</strong> {statusMessage}
@@ -1097,12 +1400,15 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   {/* The sheet sliding up and the list collapsing both change
                       the map box; Leaflet renders grey tiles until told. */}
                   <MapAutoSize />
+                  {/* Keeps whichever popup is open clear of every map edge. */}
+                  <PopupFit />
 
                   {mapped.map(v => (
-                    <CarMarker
+                    <VehicleMarker
                       key={v.id}
                       position={[v.lat, v.lng]}
                       color={statusColor(v.status)}
+                      type={v.master?.vehicleType}
                       heading={v.heading}
                       autoOpenKey={focusId === v.id ? flyTarget?.n ?? null : null}
                       eventHandlers={{
@@ -1117,7 +1423,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                         open={openPopupId === v.id}
                         onReplay={vv => selectVehicle(vv, { startReplay: true })}
                       />
-                    </CarMarker>
+                    </VehicleMarker>
                   ))}
 
                   {/* Live traces. Drawn under the replay track, which is the
@@ -1148,14 +1454,15 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   {replayPoint && <ReplayFollow point={replayPoint} />}
 
                   {replayPoint && (
-                    <CarMarker
+                    <VehicleMarker
                       position={[replayPoint.lat, replayPoint.lng]}
                       color={statusColor(replayPoint.status)}
+                      type={replayVehicleType}
                       heading={replayPoint.heading}
                       zIndexOffset={1000}
                     >
                       <ReplayInfoCard point={replayPoint} fields={replayFields} />
-                    </CarMarker>
+                    </VehicleMarker>
                   )}
                 </MapContainer>
 
@@ -1170,9 +1477,32 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
               </div>
 
               {/* Detail sheet — hidden entirely until a vehicle is selected. */}
-              <div className="track-detail" data-open={sheetOpen ? 'true' : 'false'}>
+              <div
+                ref={sheetRef}
+                className="track-detail"
+                data-open={sheetOpen ? 'true' : 'false'}
+                data-dragging={sheetDragging ? 'true' : 'false'}
+                style={{ '--sheet-h': sheetHeight }}
+              >
                 <div className="track-detail-inner">
-                  <VehicleDetailPanel vehicle={sheetVehicle} />
+                  {isDesktop && (
+                    <div
+                      className="track-grip"
+                      onPointerDown={startSheetDrag}
+                      role="separator"
+                      aria-orientation="horizontal"
+                      aria-label="Resize vehicle details panel"
+                    />
+                  )}
+                  <div className="track-detail-body">
+                    <VehicleDetailPanel
+                      vehicle={sheetVehicle}
+                      mode={sheetMode}
+                      onToggleMin={toggleSheetMin}
+                      onToggleMax={isDesktop ? toggleSheetMax : undefined}
+                      onRestore={restoreSheet}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

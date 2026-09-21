@@ -454,7 +454,6 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
           isDark={isDark} toggleTheme={toggleTheme}
           themeMode={themeMode} setTheme={setTheme}
           onMenuClick={() => setSidebarOpen(s => !s)}
-          searchVehicles={vehicles}
         />
 
         <main className="flex-1 overflow-y-auto no-scrollbar" id="reports-main">

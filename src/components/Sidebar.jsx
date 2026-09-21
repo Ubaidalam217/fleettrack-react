@@ -1,8 +1,8 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, FileText, BarChart2, Settings,
-  MessageCircle, Bell, Megaphone, Search, ChevronDown,
+  MessageCircle, Bell, Megaphone, ChevronDown,
 } from 'lucide-react'
 import { useCurrentUser, initials, firstName } from '../services/authUser'
 
@@ -256,19 +256,6 @@ const SIDEBAR_CSS = `
   .ft-sb-section:hover { color: rgba(255,255,255,.7); }
   .ft-sb-chev { transition: transform .2s ease; }
   .ft-sb-section[aria-expanded="false"] .ft-sb-chev { transform: rotate(-90deg); }
-
-  .ft-sb-search {
-    width: 100%; box-sizing: border-box;
-    padding: 8px 10px 8px 31px;
-    border-radius: 9px;
-    border: 1px solid var(--c-sb-divider);
-    background: var(--c-sb-elev);
-    color: #fff; font-size: 12.5px;
-    outline: none;
-    transition: border-color .15s ease;
-  }
-  .ft-sb-search::placeholder { color: rgba(255,255,255,.38); }
-  .ft-sb-search:focus { border-color: color-mix(in srgb, var(--c-sb-active) 65%, transparent); }
 `
 
 const DESKTOP_MIN = 1024
@@ -287,7 +274,6 @@ export default function Sidebar({ sidebarOpen }) {
   const location = useLocation()
   const [supportOpen, setSupportOpen] = useState(false)
   const [collapsed, setCollapsed]     = useState(loadCollapsed)
-  const [query, setQuery]             = useState('')
   const [autoOpen, setAutoOpen]       = useState(
     () => typeof window === 'undefined' || window.innerWidth >= DESKTOP_MIN
   )
@@ -313,16 +299,6 @@ export default function Sidebar({ sidebarOpen }) {
       return next
     })
   }
-
-  // Search filters the nav rather than decorating it — the Crystal reference
-  // puts a search box here and an inert one would be the dead UI we keep
-  // refusing to ship. Sections with no match drop out entirely.
-  const q = query.trim().toLowerCase()
-  const sections = useMemo(() => (
-    NAV_SECTIONS
-      .map(s => ({ ...s, items: q ? s.items.filter(i => i.label.toLowerCase().includes(q)) : s.items }))
-      .filter(s => s.items.length > 0)
-  ), [q])
 
   return (
     <>
@@ -359,34 +335,11 @@ export default function Sidebar({ sidebarOpen }) {
             </Link>
           </div>
 
-          {/* Search */}
-          <div style={{ padding: '12px 14px 8px' }}>
-            <div style={{ position: 'relative' }}>
-              <Search
-                size={13}
-                style={{
-                  position: 'absolute', left: 10, top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: 'rgba(255,255,255,.4)', pointerEvents: 'none',
-                }}
-              />
-              <input
-                className="ft-sb-search"
-                type="search"
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Search menu…"
-                aria-label="Search navigation"
-              />
-            </div>
-          </div>
-
-          {/* Nav */}
-          <nav className="ft-sb-scroll" style={{ flex: 1, overflowY: 'auto', padding: '4px 10px 10px', minHeight: 0 }}>
-            {sections.map(section => {
-              // A search narrows the list, so honouring a collapsed section
-              // would hide the very match the user just typed toward.
-              const open = q ? true : !collapsed.has(section.id)
+          {/* Nav — starts directly under the logo now that the search box is
+              gone, so the sections gain its row back. */}
+          <nav className="ft-sb-scroll" style={{ flex: 1, overflowY: 'auto', padding: '12px 10px 10px', minHeight: 0 }}>
+            {NAV_SECTIONS.map(section => {
+              const open = !collapsed.has(section.id)
               return (
                 <div key={section.id} style={{ marginBottom: 2 }}>
                   <button
@@ -418,12 +371,6 @@ export default function Sidebar({ sidebarOpen }) {
                 </div>
               )
             })}
-
-            {sections.length === 0 && (
-              <p style={{ padding: '18px 11px', margin: 0, fontSize: 12, color: 'rgba(255,255,255,.4)', lineHeight: 1.5 }}>
-                No menu item matches “{query}”.
-              </p>
-            )}
           </nav>
 
           {/* Footer — pinned */}
