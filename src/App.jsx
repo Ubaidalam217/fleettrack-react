@@ -9,6 +9,8 @@ import SettingsPage        from './pages/Settings'
 import Notifications       from './pages/Notifications'
 import Announcements       from './pages/Announcements'
 // Settings module (Phase 1 — navigation shell, placeholder pages only)
+import SettingsReseller       from './pages/settings/Reseller'
+import SettingsGroup          from './pages/settings/Group'
 import SettingsUser           from './pages/settings/User'
 import SettingsCompany        from './pages/settings/Company'
 import SettingsCompanySubuser from './pages/settings/CompanySubuser'
@@ -101,6 +103,8 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/announcements"  element={<Announcements  {...themeProps} />} />
 
         {/* Settings module — the five leaves with real pages this phase… */}
+        <Route path="/settings/reseller"        element={<SettingsReseller       {...themeProps} />} />
+        <Route path="/settings/group"           element={<SettingsGroup          {...themeProps} />} />
         <Route path="/settings/user"            element={<SettingsUser           {...themeProps} />} />
         <Route path="/settings/company"         element={<SettingsCompany        {...themeProps} />} />
         <Route path="/settings/company-subuser" element={<SettingsCompanySubuser {...themeProps} />} />

@@ -8,24 +8,30 @@ import ConfirmDialog from '../../components/tracking/ConfirmDialog'
 import ToastStack from '../../components/tracking/Toasts'
 import { useToasts } from '../../hooks/useToasts'
 import {
-  useVehicles, useCompanies, useBranches,
+  useVehicles, useCompanies, useBranches, useGroups,
   addVehicle, updateVehicle, removeVehicle,
-  companyNameFor, branchesForCompany, emptyVehicle, isImeiTaken,
+  companyNameFor, branchesForCompany, groupsForCompany, groupIdForCompany,
+  groupNameFor, vehicleLabel, emptyVehicle, isImeiTaken,
 } from './mockData'
 
 // The fleet register. Writes to the same vehicle store the sub-user assignment
-// panel reads, so a vehicle added here is immediately assignable there.
+// panel and the alert scope picker read, so a vehicle added here is immediately
+// assignable and alertable.
 //
 // Controls are hand-built from FormKit's Field plus formStyles' inputStyle —
 // the primitives FormFields composes internally, so they render identically —
-// because the Branch dropdown's options depend on the chosen company and the
-// IMEI field carries a warning that is not a validation error.
+// because Branch and Group depend on the chosen company and the IMEI field
+// carries a warning that is not a validation error.
 
 const COLUMNS = [
-  { key: 'name',    label: 'Vehicle Name', bold: true },
-  { key: 'imei',    label: 'IMEI' },
-  { key: 'company', label: 'Company', render: row => companyNameFor(row.companyId) },
-  { key: 'plateNo', label: 'Plate No' },
+  { key: 'vehicleNumber', label: 'Vehicle Number', bold: true },
+  { key: 'imei',          label: 'IMEI' },
+  { key: 'company',       label: 'Company', render: row => companyNameFor(row.companyId) },
+  {
+    key: 'makeModel',
+    label: 'Make/Model',
+    render: row => [row.make, row.model].filter(Boolean).join(' ') || '—',
+  },
 ]
 
 const GRID = {
@@ -40,19 +46,20 @@ const GRID = {
 const IMEI_LENGTH = 15
 
 function imeiNotice(imei) {
-  const v = imei.trim()
+  const v = String(imei ?? '').trim()
   if (!v) return null
-  if (!/^\d+$/.test(v))     return { tone: 'error', text: 'IMEI must be digits only.' }
-  if (v.length !== IMEI_LENGTH) return { tone: 'warn', text: `Usually ${IMEI_LENGTH} digits — this one is ${v.length}.` }
+  if (!/^\d+$/.test(v))         return { tone: 'error', text: 'IMEI must be digits only.' }
+  if (v.length !== IMEI_LENGTH) return { tone: 'warn',  text: `Usually ${IMEI_LENGTH} digits — this one is ${v.length}.` }
   return null
 }
 
 export default function Vehicle(props) {
   const vehicles  = useVehicles()
   const companies = useCompanies()
-  // Subscribed so the Branch dropdown reacts if branches change while this page
-  // is open; the per-company slice itself comes from branchesForCompany.
+  // Subscribed so the Branch and Group dropdowns react to rows added on their
+  // own pages; the per-company slices come from the *ForCompany reads.
   useBranches()
+  useGroups()
 
   const { toasts, push, dismiss } = useToasts()
 
@@ -75,24 +82,33 @@ export default function Vehicle(props) {
   const set = (key, value) => {
     setDraft(d => {
       const next = { ...d, [key]: value }
-      // A branch belongs to exactly one company, so the old pick is not a valid
-      // option under the new one.
-      if (key === 'companyId') next.branchId = ''
+      if (key === 'companyId') {
+        // A branch belongs to exactly one company, so the old pick is not a
+        // valid option under the new one.
+        next.branchId = ''
+        // The group is the company's own when it has one; only a company that
+        // acts as its own group leaves this free to choose.
+        next.groupId = groupIdForCompany(value)
+      }
       return next
     })
     setErrors(e => (e[key] ? { ...e, [key]: null } : e))
   }
 
   const branches = editing ? branchesForCompany(draft.companyId) : []
-  const notice   = editing ? imeiNotice(draft.imei) : null
+  const groups   = editing ? groupsForCompany(draft.companyId) : []
+  // When the company carries a group, the vehicle inherits it and the field is
+  // shown read-only — it is derived, not a choice.
+  const groupLocked = editing && !!groupIdForCompany(draft.companyId)
+  const notice = editing ? imeiNotice(draft.imei) : null
 
   const submit = e => {
     e.preventDefault()
 
     const next = {}
-    if (!draft.companyId)   next.companyId = 'Company is required'
-    if (!draft.name.trim()) next.name      = 'Vehicle Name is required'
-    if (!draft.imei.trim()) next.imei      = 'IMEI Number is required'
+    if (!draft.companyId)              next.companyId     = 'Company is required'
+    if (!draft.vehicleNumber.trim())   next.vehicleNumber = 'Vehicle Number is required'
+    if (!draft.imei.trim())            next.imei          = 'IMEI Number is required'
     // Digits-only is a hard stop; an unusual *length* is only a warning, so it
     // never appears here.
     else if (!/^\d+$/.test(draft.imei.trim())) next.imei = 'IMEI must be digits only'
@@ -108,23 +124,27 @@ export default function Vehicle(props) {
 
     const clean = {
       ...draft,
-      name:    draft.name.trim(),
-      imei:    draft.imei.trim(),
-      plateNo: draft.plateNo.trim(),
+      vehicleNumber: draft.vehicleNumber.trim(),
+      vehicleId:     draft.vehicleId.trim(),
+      imei:          draft.imei.trim(),
+      subGroup:      draft.subGroup.trim(),
+      odometer:      String(draft.odometer).trim(),
+      make:          draft.make.trim(),
+      model:         draft.model.trim(),
     }
     if (draft.id) {
       updateVehicle(draft.id, clean)
-      push(`${clean.name} updated`, { tone: 'success' })
+      push(`${clean.vehicleNumber} updated`, { tone: 'success' })
     } else {
       addVehicle(clean)
-      push(`${clean.name} added`, { tone: 'success' })
+      push(`${clean.vehicleNumber} added`, { tone: 'success' })
     }
     setDraft(null)
   }
 
   const confirmDelete = () => {
     removeVehicle(pending.id)
-    push(`${pending.name} deleted`, { tone: 'success' })
+    push(`${vehicleLabel(pending)} deleted`, { tone: 'success' })
     setPending(null)
   }
 
@@ -180,14 +200,79 @@ export default function Vehicle(props) {
                 </select>
               </Field>
 
-              <Field label="Vehicle Name" required error={errors.name}>
+              {/* Derived from the company when it has a group of its own;
+                  selectable only when the company acts as its own group. */}
+              <Field label="Group">
+                {groupLocked ? (
+                  <input
+                    name="groupId"
+                    value={groupNameFor(draft.groupId)}
+                    readOnly
+                    tabIndex={-1}
+                    aria-readonly="true"
+                    title="Taken from the selected company's group"
+                    style={{
+                      ...inputStyle(false),
+                      background: 'var(--c-thead)',
+                      color: 'var(--c-text3)',
+                      cursor: 'not-allowed',
+                    }}
+                  />
+                ) : (
+                  <select
+                    name="groupId"
+                    value={draft.groupId}
+                    onChange={e => set('groupId', e.target.value)}
+                    disabled={!draft.companyId || groups.length === 0}
+                    style={{
+                      ...inputStyle(false),
+                      opacity: !draft.companyId || groups.length === 0 ? 0.6 : 1,
+                    }}
+                  >
+                    <option value="">
+                      {!draft.companyId
+                        ? '— Select a company first —'
+                        : groups.length === 0
+                          ? '— No groups for this reseller —'
+                          : '— None (company is its own group) —'}
+                    </option>
+                    {groups.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+
+              {/* Plain text until the client defines a Sub-Group entity; see
+                  emptyVehicle() in mockData.js for the upgrade path. */}
+              <Field label="Sub-Group">
                 <input
-                  name="name"
-                  value={draft.name}
-                  onChange={e => set('name', e.target.value)}
-                  aria-invalid={!!errors.name || undefined}
-                  placeholder="Mussafah Truck 1"
-                  style={inputStyle(!!errors.name)}
+                  name="subGroup"
+                  value={draft.subGroup}
+                  onChange={e => set('subGroup', e.target.value)}
+                  placeholder="Heavy"
+                  style={inputStyle(false)}
+                />
+              </Field>
+
+              <Field label="Vehicle Number" required error={errors.vehicleNumber}>
+                <input
+                  name="vehicleNumber"
+                  value={draft.vehicleNumber}
+                  onChange={e => set('vehicleNumber', e.target.value)}
+                  aria-invalid={!!errors.vehicleNumber || undefined}
+                  placeholder="AD 12345-G1"
+                  style={inputStyle(!!errors.vehicleNumber)}
+                />
+              </Field>
+
+              <Field label="Vehicle ID">
+                <input
+                  name="vehicleId"
+                  value={draft.vehicleId}
+                  onChange={e => set('vehicleId', e.target.value)}
+                  placeholder="FL-01"
+                  style={inputStyle(false)}
                 />
               </Field>
 
@@ -214,12 +299,36 @@ export default function Vehicle(props) {
                 )}
               </Field>
 
-              <Field label="Plate Number">
+              <Field label="Odometer Reading">
                 <input
-                  name="plateNo"
-                  value={draft.plateNo}
-                  onChange={e => set('plateNo', e.target.value)}
-                  placeholder="AD 12345-G1"
+                  name="odometer"
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="numeric"
+                  value={draft.odometer}
+                  onChange={e => set('odometer', e.target.value)}
+                  placeholder="184320"
+                  style={inputStyle(false)}
+                />
+              </Field>
+
+              <Field label="Make">
+                <input
+                  name="make"
+                  value={draft.make}
+                  onChange={e => set('make', e.target.value)}
+                  placeholder="Volvo"
+                  style={inputStyle(false)}
+                />
+              </Field>
+
+              <Field label="Model">
+                <input
+                  name="model"
+                  value={draft.model}
+                  onChange={e => set('model', e.target.value)}
+                  placeholder="FH16"
                   style={inputStyle(false)}
                 />
               </Field>
@@ -264,6 +373,8 @@ export default function Vehicle(props) {
           <SettingsTable
             columns={COLUMNS}
             rows={vehicles}
+            // Rows are identified by their Vehicle Number, not a `name` field.
+            labelKey="vehicleNumber"
             onEdit={openEdit}
             onDelete={setPending}
             emptyLabel={noCompanies
@@ -276,8 +387,8 @@ export default function Vehicle(props) {
       {pending && (
         <ConfirmDialog
           title="Delete vehicle?"
-          body={`${pending.name} will be removed from ${companyNameFor(pending.companyId)}.`}
-          note="It is also unassigned from any sub-user that could see it. This is mock data — nothing is sent to a server."
+          body={`${vehicleLabel(pending)} will be removed from ${companyNameFor(pending.companyId)}.`}
+          note="It is also unassigned from any sub-user or alert that could see it. This is mock data — nothing is sent to a server."
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}

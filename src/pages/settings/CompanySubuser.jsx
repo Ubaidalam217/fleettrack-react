@@ -8,14 +8,14 @@ import ConfirmDialog from '../../components/tracking/ConfirmDialog'
 import ToastStack from '../../components/tracking/Toasts'
 import { useToasts } from '../../hooks/useToasts'
 import {
-  useSubusers, useCompanies, useVehicles,
+  useSubusers, useCompanies, useVehicles, useBranches,
   addSubuser, updateSubuser, removeSubuser,
-  companyNameFor, vehiclesForCompany, emptySubuser, isSubuserEmailTaken,
+  companyNameFor, vehiclesForCompany, branchesForCompany,
+  vehicleLabel, vehicleSubLabel, emptySubuser, isSubuserEmailTaken,
 } from './mockData'
 
-// A sub-user is a restricted login under a company, scoped to the vehicles
-// assigned to it. Same control set as the User page; the addition is the
-// assignment panel, which is driven by whichever company is selected.
+// A sub-user is a restricted login under a company, scoped to the vehicles AND
+// the branches assigned to it. The two scopes are independent lists.
 
 const COLUMNS = [
   { key: 'name',     label: 'Sub-user Name', bold: true },
@@ -29,6 +29,16 @@ const COLUMNS = [
       return n === 0 ? 'None' : `${n} of ${total}`
     },
   },
+  {
+    key: 'branches',
+    label: 'Assigned Branches',
+    render: row => {
+      const total = branchesForCompany(row.companyId).length
+      // Rows written before branch scoping existed have no list at all.
+      const n = row.branchIds?.length ?? 0
+      return n === 0 ? 'None' : `${n} of ${total}`
+    },
+  },
 ]
 
 const GRID = {
@@ -37,16 +47,24 @@ const GRID = {
   gap: '14px 16px',
 }
 
-// ── Vehicle assignment ─────────────────────────────────────────────────────
+const CHECK = { width: 15, height: 15, accentColor: 'var(--ft-accent)', cursor: 'pointer', flexShrink: 0 }
+
+// ── Assignment panel ───────────────────────────────────────────────────────
 /**
- * Assign All plus one checkbox per vehicle. The header box is tri-state: ticked
+ * "Assign all" plus one checkbox per item. The header box is tri-state: ticked
  * when everything is assigned, indeterminate when only some is — "some" and
  * "none" look identical on a plain checkbox, and that is exactly the state an
  * operator most needs to be able to tell apart at a glance.
+ *
+ * Generic over what is being assigned so vehicles and branches are the same
+ * control rather than two copies that drift apart.
  */
-function VehicleAssignment({ vehicles, selected, onToggle, onToggleAll, companyChosen }) {
+function AssignPanel({
+  title, allLabel, items, selected, onToggle, onToggleAll,
+  companyChosen, noCompanyText, noItemsText, primary, secondary,
+}) {
   const allRef = useRef(null)
-  const all  = vehicles.length > 0 && selected.length === vehicles.length
+  const all  = items.length > 0 && selected.length === items.length
   const some = selected.length > 0 && !all
 
   useEffect(() => {
@@ -59,10 +77,10 @@ function VehicleAssignment({ vehicles, selected, onToggle, onToggleAll, companyC
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         gap: 12, flexWrap: 'wrap', marginBottom: 8,
       }}>
-        <span className="ft-label">Vehicle Assignment</span>
-        {vehicles.length > 0 && (
+        <span className="ft-label">{title}</span>
+        {companyChosen && items.length > 0 && (
           <span style={{ fontSize: 11.5, color: 'var(--c-text3)' }}>
-            {selected.length} of {vehicles.length} assigned
+            {selected.length} of {items.length} assigned
           </span>
         )}
       </div>
@@ -75,11 +93,11 @@ function VehicleAssignment({ vehicles, selected, onToggle, onToggleAll, companyC
       }}>
         {!companyChosen ? (
           <p style={{ margin: 0, padding: '18px 12px', textAlign: 'center', fontSize: 12, color: 'var(--c-text3)' }}>
-            Select a company to see its vehicles.
+            {noCompanyText}
           </p>
-        ) : vehicles.length === 0 ? (
+        ) : items.length === 0 ? (
           <p style={{ margin: 0, padding: '18px 12px', textAlign: 'center', fontSize: 12, color: 'var(--c-text3)' }}>
-            No vehicles registered for this company.
+            {noItemsText}
           </p>
         ) : (
           <>
@@ -95,20 +113,21 @@ function VehicleAssignment({ vehicles, selected, onToggle, onToggleAll, companyC
                 type="checkbox"
                 checked={all}
                 onChange={e => onToggleAll(e.target.checked)}
-                style={{ width: 15, height: 15, accentColor: 'var(--ft-accent)', cursor: 'pointer' }}
+                style={CHECK}
               />
-              Assign All
+              {allLabel}
             </label>
 
             <div style={{
               maxHeight: 220, overflowY: 'auto',
               display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
             }}>
-              {vehicles.map(v => {
-                const on = selected.includes(v.id)
+              {items.map(item => {
+                const on = selected.includes(item.id)
+                const sub = secondary ? secondary(item) : ''
                 return (
                   <label
-                    key={v.id}
+                    key={item.id}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 9,
                       padding: '9px 12px', cursor: 'pointer', minWidth: 0,
@@ -119,23 +138,20 @@ function VehicleAssignment({ vehicles, selected, onToggle, onToggleAll, companyC
                     <input
                       type="checkbox"
                       checked={on}
-                      onChange={() => onToggle(v.id)}
-                      style={{ width: 15, height: 15, accentColor: 'var(--ft-accent)', cursor: 'pointer', flexShrink: 0 }}
+                      onChange={() => onToggle(item.id)}
+                      style={CHECK}
                     />
-                    {/* Lead with the name and join whatever identifiers the
-                        record actually has. The Vehicle page treats the plate
-                        as optional and never collects fleetNo or type, so a
-                        fixed "plate — fleetNo · type" line renders blanks and
-                        stray separators for anything added there. */}
                     <span style={{ fontWeight: on ? 650 : 500, whiteSpace: 'nowrap' }}>
-                      {v.name || v.plateNo}
+                      {primary(item)}
                     </span>
-                    <span style={{
-                      fontSize: 11, color: 'var(--c-text3)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {[v.plateNo, v.imei, v.type].filter(Boolean).join(' · ')}
-                    </span>
+                    {sub && (
+                      <span style={{
+                        fontSize: 11, color: 'var(--c-text3)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {sub}
+                      </span>
+                    )}
                   </label>
                 )
               })}
@@ -152,9 +168,10 @@ function VehicleAssignment({ vehicles, selected, onToggle, onToggleAll, companyC
 export default function CompanySubuser(props) {
   const subusers  = useSubusers()
   const companies = useCompanies()
-  // Subscribed so the panel re-renders if the vehicle list ever changes under
-  // it; the per-company slice itself comes from vehiclesForCompany.
+  // Subscribed so both panels re-render when the fleet or the branch list
+  // changes under them; the per-company slices come from the *ForCompany reads.
   useVehicles()
+  useBranches()
 
   const { toasts, push, dismiss } = useToasts()
 
@@ -170,33 +187,40 @@ export default function CompanySubuser(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
-  const openAdd   = ()  => { setErrors({}); setDraft(emptySubuser()) }
-  const openEdit  = row => { setErrors({}); setDraft({ ...row, vehicleIds: [...row.vehicleIds] }) }
-  const closeForm = ()  => { setErrors({}); setDraft(null) }
+  const openAdd  = () => { setErrors({}); setDraft(emptySubuser()) }
+  const openEdit = row => {
+    setErrors({})
+    setDraft({
+      ...row,
+      vehicleIds: [...row.vehicleIds],
+      // Tolerates rows saved before branch scoping existed.
+      branchIds:  [...(row.branchIds ?? [])],
+    })
+  }
+  const closeForm = () => { setErrors({}); setDraft(null) }
 
   const set = (key, value) => {
     setDraft(d => {
       const next = { ...d, [key]: value }
-      // Vehicle ids belong to the old company and mean nothing under the new
-      // one, so switching company starts the assignment over.
-      if (key === 'companyId') next.vehicleIds = []
+      // Vehicle and branch ids belong to the old company and mean nothing under
+      // the new one, so switching company starts both scopes over.
+      if (key === 'companyId') { next.vehicleIds = []; next.branchIds = [] }
       return next
     })
     setErrors(e => (e[key] ? { ...e, [key]: null } : e))
   }
 
   const vehicles = editing ? vehiclesForCompany(draft.companyId) : []
+  const branches = editing ? branchesForCompany(draft.companyId) : []
 
-  const toggleVehicle = id => setDraft(d => ({
+  const toggleIn = (key, id) => setDraft(d => ({
     ...d,
-    vehicleIds: d.vehicleIds.includes(id)
-      ? d.vehicleIds.filter(x => x !== id)
-      : [...d.vehicleIds, id],
+    [key]: d[key].includes(id) ? d[key].filter(x => x !== id) : [...d[key], id],
   }))
 
-  const toggleAll = on => setDraft(d => ({
+  const toggleAllIn = (key, on, all) => setDraft(d => ({
     ...d,
-    vehicleIds: on ? vehiclesForCompany(d.companyId).map(v => v.id) : [],
+    [key]: on ? all.map(x => x.id) : [],
   }))
 
   const submit = e => {
@@ -310,20 +334,43 @@ export default function CompanySubuser(props) {
               </Field>
             </div>
 
-            <VehicleAssignment
-              vehicles={vehicles}
+            <AssignPanel
+              title="Vehicle Assignment"
+              allLabel="Assign All"
+              items={vehicles}
               selected={draft.vehicleIds}
-              onToggle={toggleVehicle}
-              onToggleAll={toggleAll}
+              onToggle={id => toggleIn('vehicleIds', id)}
+              onToggleAll={on => toggleAllIn('vehicleIds', on, vehicles)}
               companyChosen={!!draft.companyId}
+              noCompanyText="Select a company to see its vehicles."
+              noItemsText="No vehicles registered for this company."
+              primary={vehicleLabel}
+              secondary={vehicleSubLabel}
+            />
+
+            <AssignPanel
+              title="Branch Assignment"
+              allLabel="All Branches"
+              items={branches}
+              selected={draft.branchIds}
+              onToggle={id => toggleIn('branchIds', id)}
+              onToggleAll={on => toggleAllIn('branchIds', on, branches)}
+              companyChosen={!!draft.companyId}
+              noCompanyText="Select a company to see its branches."
+              noItemsText="No branches registered for this company."
+              primary={b => b.name}
             />
 
             <FormActions
               onBack={closeForm}
               onReset={() => {
                 setErrors({})
+                // Back to where the form opened; the fallback guards the row
+                // having vanished rather than spreading undefined into a draft.
                 const saved = draft.id ? subusers.find(s => s.id === draft.id) : null
-                setDraft(saved ? { ...saved, vehicleIds: [...saved.vehicleIds] } : emptySubuser())
+                setDraft(saved
+                  ? { ...saved, vehicleIds: [...saved.vehicleIds], branchIds: [...(saved.branchIds ?? [])] }
+                  : emptySubuser())
               }}
               saveLabel={draft.id ? 'Save Changes' : 'Save'}
             />

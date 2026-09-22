@@ -26,11 +26,16 @@ export const SETTINGS_MENU = [
         id: 'users',
         label: 'Users',
         icon: Users,
+        // Ordered top-down through the org hierarchy — Reseller > Group >
+        // Company > Branch > the accounts that sit under a company — so the
+        // menu reads the same way the data nests.
         children: [
-          { id: 'user',            label: 'User',            path: '/settings/user' },
+          { id: 'reseller',        label: 'Reseller',        path: '/settings/reseller' },
+          { id: 'group',           label: 'Group',           path: '/settings/group' },
           { id: 'company',         label: 'Company',         path: '/settings/company' },
-          { id: 'company-subuser', label: 'Company Subuser', path: '/settings/company-subuser' },
           { id: 'branch',          label: 'Branch',          path: '/settings/branch' },
+          { id: 'user',            label: 'User',            path: '/settings/user' },
+          { id: 'company-subuser', label: 'Company Subuser', path: '/settings/company-subuser' },
         ],
       },
       {

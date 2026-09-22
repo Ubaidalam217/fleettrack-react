@@ -11,6 +11,7 @@ import {
   useAlerts, useCompanies, useVehicles,
   addAlert, updateAlert, removeAlert,
   companyNameFor, vehiclesForCompany, emptyAlert,
+  vehicleLabel, vehicleSubLabel,
   ALERT_TYPES, alertTypeLabel,
 } from './mockData'
 
@@ -215,14 +216,17 @@ function ScopePicker({ vehicles, allVehicles, selected, onToggleAll, onToggle, c
                       onChange={() => onToggle(v.id)}
                       style={{ ...CHECK, cursor: allVehicles ? 'default' : 'pointer' }}
                     />
+                    {/* Via the shared helpers, not hardcoded field names: the
+                        vehicle shape changed once already and a literal
+                        v.name here is how every row silently goes blank. */}
                     <span style={{ fontWeight: on ? 650 : 500, whiteSpace: 'nowrap' }}>
-                      {v.name || v.plateNo}
+                      {vehicleLabel(v)}
                     </span>
                     <span style={{
                       fontSize: 11, color: 'var(--c-text3)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
-                      {[v.plateNo, v.imei].filter(Boolean).join(' · ')}
+                      {vehicleSubLabel(v)}
                     </span>
                   </label>
                 )

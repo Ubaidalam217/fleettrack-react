@@ -8,7 +8,9 @@ import ConfirmDialog from '../../components/tracking/ConfirmDialog'
 import ToastStack from '../../components/tracking/Toasts'
 import { useToasts } from '../../hooks/useToasts'
 import {
-  useCompanies, addCompany, updateCompany, removeCompany, emptyCompany, RESELLERS,
+  useCompanies, useResellers, useGroups,
+  addCompany, updateCompany, removeCompany, emptyCompany,
+  resellerNameFor, groupLabelForCompany, groupsForReseller, isCompanyEmailTaken,
 } from './mockData'
 
 // List and form live on one route. Settings' routing is Phase 1 work and the
@@ -18,17 +20,35 @@ import {
 const COLUMNS = [
   { key: 'name',     label: 'Company Name', bold: true },
   { key: 'email',    label: 'Email' },
-  { key: 'reseller', label: 'Reseller' },
+  { key: 'reseller', label: 'Reseller', render: row => resellerNameFor(row.resellerId) },
+  // A company with no group is its own group — a real state, not missing data.
+  { key: 'group',    label: 'Group', render: row => groupLabelForCompany(row) },
 ]
 
-const FIELDS = [
-  { name: 'reseller', label: 'Reseller',     type: 'select', options: RESELLERS },
-  { name: 'name',     label: 'Company Name', required: true, placeholder: 'Al Habtoor Logistics' },
-  { name: 'email',    label: 'Email',        required: true, type: 'email', placeholder: 'name@company.ae' },
-]
+// Reseller and Group options come from the live stores, so a reseller or group
+// added on its own page is selectable here without a reload. Group narrows to
+// whichever reseller is currently chosen.
+function fieldsFor(resellers) {
+  return [
+    {
+      name: 'resellerId', label: 'Reseller', type: 'select',
+      options: resellers.map(r => ({ value: r.id, label: r.name })),
+    },
+    {
+      name: 'groupId', label: 'Group', type: 'select',
+      options: v => groupsForReseller(v.resellerId).map(g => ({ value: g.id, label: g.name })),
+    },
+    { name: 'name',  label: 'Company Name', required: true, placeholder: 'Al Habtoor Logistics' },
+    { name: 'email', label: 'Email',        required: true, type: 'email', placeholder: 'name@company.ae' },
+  ]
+}
 
 export default function Company(props) {
   const companies = useCompanies()
+  const resellers = useResellers()
+  // Subscribed so the Group dropdown reacts to groups added on the Group page;
+  // the per-reseller slice itself comes from groupsForReseller.
+  useGroups()
   const { toasts, push, dismiss } = useToasts()
 
   // null = list view. Otherwise the record being edited, with id null for a new
@@ -50,7 +70,13 @@ export default function Company(props) {
   const closeForm = ()  => { setErrors({}); setDraft(null) }
 
   const set = (key, value) => {
-    setDraft(d => ({ ...d, [key]: value }))
+    setDraft(d => {
+      const next = { ...d, [key]: value }
+      // A group belongs to exactly one reseller, so the old pick is not a valid
+      // option under the new one.
+      if (key === 'resellerId') next.groupId = ''
+      return next
+    })
     setErrors(e => (e[key] ? { ...e, [key]: null } : e))
   }
 
@@ -60,6 +86,8 @@ export default function Company(props) {
     const next = {}
     if (!draft.name.trim())  next.name  = 'Company Name is required'
     if (!draft.email.trim()) next.email = 'Email is required'
+    // The company email is its login username, so it has to be unique.
+    else if (isCompanyEmailTaken(draft.email, draft.id)) next.email = 'A company with this email already exists.'
     if (Object.keys(next).length) {
       setErrors(next)
       formRef.current?.querySelector(`[name="${Object.keys(next)[0]}"]`)?.focus()
@@ -91,10 +119,10 @@ export default function Company(props) {
         <form ref={formRef} onSubmit={submit} noValidate>
           <FormCard
             title={draft.id ? 'Company details' : 'New company'}
-            subtitle="Fields marked with * are required."
+            subtitle="Fields marked with * are required. Leave Group blank if the company is its own group."
           >
             <FormFields
-              fields={FIELDS}
+              fields={fieldsFor(resellers)}
               values={draft}
               errors={errors}
               onChange={set}

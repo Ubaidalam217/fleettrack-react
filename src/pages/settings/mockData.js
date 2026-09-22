@@ -17,13 +17,14 @@ import { useSyncExternalStore } from 'react'
 
 // ── Dropdown vocabularies ──────────────────────────────────────────────────
 
-export const RESELLERS = [
-  'FleetmaX Solutions',
-  'Solves Inn',
-  'Gulf Telematics LLC',
-  'Emirates Fleet Systems',
-  'Al Nahda Trading',
-]
+/**
+ * Org hierarchy: Reseller > Group (optional) > Company > Branch > Users.
+ *
+ * Reseller and Group are entities with their own stores, so a Company points at
+ * them by id. A Company's `groupId` is nullable: when it is empty the company
+ * acts as its own group, which is why grouping labels render
+ * "— (own group)" rather than an empty cell.
+ */
 
 /**
  * Alert types. Temperature is the only one the client needs today, but the
@@ -51,14 +52,24 @@ export function alertTypeLabel(value) {
 // Also the field contract: a form's initial values and a saved row have the
 // same shape, so nothing has to guard against a missing key.
 
+export function emptyReseller() {
+  return { id: null, name: '', email: '' }
+}
+
+export function emptyGroup() {
+  return { id: null, resellerId: '', name: '' }
+}
+
 export function emptyCompany() {
   return {
     id: null,
-    reseller: RESELLERS[0],
-    name:     '',
+    resellerId: '',
+    // Nullable by design — blank means this company is its own group.
+    groupId:    '',
+    name:       '',
     // Becomes the account's login username in a later phase, which is why it
     // is required here rather than optional like the address block used to be.
-    email:    '',
+    email:      '',
   }
 }
 
@@ -99,12 +110,46 @@ export function emptyUser() {
 export function emptyVehicle() {
   return {
     id: null,
-    companyId: '',
-    branchId:  '',
-    name:      '',
-    imei:      '',
-    plateNo:   '',
+    // The join key for sub-user assignment and alert scope. Everything else on
+    // this record can change shape; this one cannot without breaking both.
+    companyId:     '',
+    branchId:      '',
+    // Normally derived from the company's groupId; selectable only when the
+    // company has no group of its own.
+    groupId:       '',
+    // Free text for now. The client has not defined a Sub-Group entity; when
+    // they do, this becomes a subGroupId pointing at its own store, the same
+    // way groupId does here.
+    subGroup:      '',
+    vehicleNumber: '',
+    // An internal identifier of the operator's own choosing — deliberately
+    // distinct from the IMEI, which belongs to the tracking device.
+    vehicleId:     '',
+    imei:          '',
+    odometer:      '',
+    make:          '',
+    model:         '',
   }
+}
+
+/**
+ * Display label for a vehicle, used by the sub-user assignment panel and the
+ * alert scope picker as well as this module's own tables.
+ *
+ * Centralised because those panels previously read `v.name || v.plateNo`
+ * directly, and both of those fields have now been replaced — a hardcoded
+ * field name there is how a shape change silently blanks every row.
+ */
+export function vehicleLabel(v) {
+  if (!v) return '—'
+  return v.vehicleNumber || v.vehicleId || v.imei || '—'
+}
+
+/** Secondary identifiers for the same panels; skips whatever is not set. */
+export function vehicleSubLabel(v) {
+  if (!v) return ''
+  const makeModel = [v.make, v.model].filter(Boolean).join(' ')
+  return [v.vehicleId, v.imei, makeModel].filter(Boolean).join(' · ')
 }
 
 /**
@@ -141,16 +186,37 @@ export function emptySubuser() {
     email:      '',
     password:   DEFAULT_PASSWORD,
     vehicleIds: [],
+    // A sub-user can be scoped to several branches as well as several
+    // vehicles; the two lists are independent.
+    branchIds:  [],
   }
 }
 
 // ── Seed rows ──────────────────────────────────────────────────────────────
 
 const SEED_COMPANIES = [
-  { id: 'c1', reseller: 'FleetmaX Solutions',    name: 'Al Habtoor Logistics',  email: 'hassan@alhabtoorlog.ae' },
-  { id: 'c2', reseller: 'Solves Inn',            name: 'Desert Rose Transport', email: 'ops@desertrose.ae' },
-  { id: 'c3', reseller: 'Gulf Telematics LLC',   name: 'Emirates Cold Chain',   email: 'y.kareem@emiratescold.ae' },
-  { id: 'c4', reseller: 'FleetmaX Solutions',    name: 'Northern Gulf Haulage', email: 'a.nasser@ngh.sa' },
+  // c4 deliberately has no group — it is its own group, which is the case the
+  // Company table and the Vehicle form both have to render without looking
+  // broken.
+  { id: 'c1', resellerId: 'r1', groupId: 'g1', name: 'Al Habtoor Logistics',  email: 'hassan@alhabtoorlog.ae' },
+  { id: 'c2', resellerId: 'r2', groupId: 'g3', name: 'Desert Rose Transport', email: 'ops@desertrose.ae' },
+  { id: 'c3', resellerId: 'r3', groupId: 'g4', name: 'Emirates Cold Chain',   email: 'y.kareem@emiratescold.ae' },
+  { id: 'c4', resellerId: 'r1', groupId: '',   name: 'Northern Gulf Haulage', email: 'a.nasser@ngh.sa' },
+]
+
+const SEED_RESELLERS = [
+  { id: 'r1', name: 'FleetmaX Solutions',     email: 'partners@fleetmax.ae' },
+  { id: 'r2', name: 'Solves Inn',             email: 'hello@solvesinn.com' },
+  { id: 'r3', name: 'Gulf Telematics LLC',    email: 'sales@gulftelematics.ae' },
+  { id: 'r4', name: 'Emirates Fleet Systems', email: '' },
+  { id: 'r5', name: 'Al Nahda Trading',       email: '' },
+]
+
+const SEED_GROUPS = [
+  { id: 'g1', resellerId: 'r1', name: 'Abu Dhabi Operations' },
+  { id: 'g2', resellerId: 'r1', name: 'Western Region' },
+  { id: 'g3', resellerId: 'r2', name: 'Dubai Metro' },
+  { id: 'g4', resellerId: 'r3', name: 'Cold Chain Division' },
 ]
 
 const SEED_BRANCHES = [
@@ -176,15 +242,15 @@ const SEED_USERS = [
 // `type` predate the Vehicle form and it does not collect them — they stay on
 // the seeds as extra identifiers and are simply absent on anything added since.
 const SEED_VEHICLES = [
-  { id: 'v1', companyId: 'c1', branchId: 'b1', name: 'Mussafah Truck 1', imei: '863071011234501', plateNo: 'AD 12345-G1', fleetNo: 'FL-01', type: 'Truck'  },
-  { id: 'v2', companyId: 'c1', branchId: 'b1', name: 'Mussafah Truck 2', imei: '863071011234502', plateNo: 'AD 55401-B2', fleetNo: 'FL-02', type: 'Truck'  },
-  { id: 'v3', companyId: 'c1', branchId: 'b2', name: 'Al Ain Van',       imei: '863071011234503', plateNo: 'AD 77120-A4', fleetNo: 'FL-03', type: 'Van'    },
-  { id: 'v4', companyId: 'c1', branchId: '',   name: 'Site Pickup',      imei: '863071011234504', plateNo: 'AD 30988-C1', fleetNo: 'FL-04', type: 'Pickup' },
-  { id: 'v5', companyId: 'c2', branchId: 'b3', name: 'Jebel Ali Hauler', imei: '863071011234505', plateNo: 'DXB 44012-K', fleetNo: 'DR-01', type: 'Trailer'},
-  { id: 'v6', companyId: 'c2', branchId: 'b3', name: 'City Van 1',       imei: '863071011234506', plateNo: 'DXB 88231-M', fleetNo: 'DR-02', type: 'Van'    },
-  { id: 'v7', companyId: 'c2', branchId: '',   name: 'Long Haul 7',      imei: '863071011234507', plateNo: 'DXB 10577-P', fleetNo: 'DR-03', type: 'Truck'  },
-  { id: 'v8', companyId: 'c3', branchId: 'b4', name: 'Reefer North',     imei: '863071011234508', plateNo: 'SHJ 20114-T', fleetNo: 'EC-01', type: 'Reefer' },
-  { id: 'v9', companyId: 'c3', branchId: 'b4', name: 'Reefer South',     imei: '863071011234509', plateNo: 'SHJ 66302-R', fleetNo: 'EC-02', type: 'Reefer' },
+  { id: 'v1', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 12345-G1', vehicleId: 'FL-01', imei: '863071011234501', odometer: '184320', make: 'Volvo',      model: 'FH16'      },
+  { id: 'v2', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 55401-B2', vehicleId: 'FL-02', imei: '863071011234502', odometer: '96110',  make: 'Volvo',      model: 'FH16'      },
+  { id: 'v3', companyId: 'c1', branchId: 'b2', groupId: 'g1', subGroup: 'Light',  vehicleNumber: 'AD 77120-A4', vehicleId: 'FL-03', imei: '863071011234503', odometer: '52400',  make: 'Toyota',     model: 'HiAce'     },
+  { id: 'v4', companyId: 'c1', branchId: '',   groupId: 'g1', subGroup: '',       vehicleNumber: 'AD 30988-C1', vehicleId: 'FL-04', imei: '863071011234504', odometer: '31875',  make: 'Nissan',     model: 'Navara'    },
+  { id: 'v5', companyId: 'c2', branchId: 'b3', groupId: 'g3', subGroup: 'Trunk',  vehicleNumber: 'DXB 44012-K', vehicleId: 'DR-01', imei: '863071011234505', odometer: '240900', make: 'Scania',     model: 'R450'      },
+  { id: 'v6', companyId: 'c2', branchId: 'b3', groupId: 'g3', subGroup: 'City',   vehicleNumber: 'DXB 88231-M', vehicleId: 'DR-02', imei: '863071011234506', odometer: '68240',  make: 'Ford',       model: 'Transit'   },
+  { id: 'v7', companyId: 'c2', branchId: '',   groupId: 'g3', subGroup: '',       vehicleNumber: 'DXB 10577-P', vehicleId: 'DR-03', imei: '863071011234507', odometer: '155300', make: 'Mercedes',   model: 'Actros'    },
+  { id: 'v8', companyId: 'c3', branchId: 'b4', groupId: 'g4', subGroup: 'Reefer', vehicleNumber: 'SHJ 20114-T', vehicleId: 'EC-01', imei: '863071011234508', odometer: '78450',  make: 'Isuzu',      model: 'NQR'       },
+  { id: 'v9', companyId: 'c3', branchId: 'b4', groupId: 'g4', subGroup: 'Reefer', vehicleNumber: 'SHJ 66302-R', vehicleId: 'EC-02', imei: '863071011234509', odometer: '91020',  make: 'Isuzu',      model: 'NQR'       },
 ]
 
 const SEED_ALERTS = [
@@ -203,8 +269,8 @@ const SEED_ALERTS = [
 ]
 
 const SEED_SUBUSERS = [
-  { id: 's1', companyId: 'c1', name: 'Mussafah Dispatch', email: 'dispatch@alhabtoorlog.ae', password: DEFAULT_PASSWORD, vehicleIds: ['v1', 'v2'] },
-  { id: 's2', companyId: 'c2', name: 'Jebel Ali Ops',     email: 'jebelali@desertrose.ae',   password: DEFAULT_PASSWORD, vehicleIds: ['v5', 'v6', 'v7'] },
+  { id: 's1', companyId: 'c1', name: 'Mussafah Dispatch', email: 'dispatch@alhabtoorlog.ae', password: DEFAULT_PASSWORD, vehicleIds: ['v1', 'v2'], branchIds: ['b1'] },
+  { id: 's2', companyId: 'c2', name: 'Jebel Ali Ops',     email: 'jebelali@desertrose.ae',   password: DEFAULT_PASSWORD, vehicleIds: ['v5', 'v6', 'v7'], branchIds: ['b3'] },
 ]
 
 // ── localStorage persistence ───────────────────────────────────────────────
@@ -220,7 +286,7 @@ const SEED_SUBUSERS = [
  * falls back to seed on next load rather than hydrating rows that no longer
  * match the form.
  */
-const STORAGE_KEY = 'fleetmax-mock-v1'
+const STORAGE_KEY = 'fleetmax-mock-v2'
 
 function readSaved() {
   try {
@@ -247,6 +313,8 @@ function persist() {
       // counter would restart it at 100 after a refresh and re-issue ids that
       // the saved data already uses.
       nextId,
+      resellers: resellerStore.get(),
+      groups:    groupStore.get(),
       companies: companyStore.get(),
       branches:  branchStore.get(),
       users:     userStore.get(),
@@ -279,6 +347,8 @@ function createStore(initial) {
   }
 }
 
+const resellerStore = createStore(hydrate('resellers', SEED_RESELLERS))
+const groupStore    = createStore(hydrate('groups',    SEED_GROUPS))
 const companyStore = createStore(hydrate('companies', SEED_COMPANIES))
 const branchStore  = createStore(hydrate('branches',  SEED_BRANCHES))
 const userStore    = createStore(hydrate('users',     SEED_USERS))
@@ -301,6 +371,8 @@ export function resetMockData() {
   try { localStorage.removeItem(STORAGE_KEY) } catch { /* nothing to clear */ }
   nextId = 100
   // Copies, so a later mutation can never write through to the seed arrays.
+  resellerStore.set([...SEED_RESELLERS])
+  groupStore.set([...SEED_GROUPS])
   companyStore.set([...SEED_COMPANIES])
   branchStore.set([...SEED_BRANCHES])
   userStore.set([...SEED_USERS])
@@ -360,6 +432,14 @@ export function updateBranch(id, patch) {
 
 export function removeBranch(id) {
   branchStore.set(list => list.filter(b => b.id !== id))
+  // A sub-user scoped to this branch would otherwise keep a dangling id and
+  // report a branch count higher than the branches it can actually see — the
+  // same cleanup removeVehicle already does for vehicle ids.
+  subuserStore.set(list => list.map(s => (
+    s.branchIds?.includes(id)
+      ? { ...s, branchIds: s.branchIds.filter(x => x !== id) }
+      : s
+  )))
 }
 
 /** Company name for a branch row, tolerant of an id that no longer resolves. */
@@ -463,6 +543,86 @@ export function branchNameFor(branchId) {
   return branchStore.get().find(b => b.id === branchId)?.name || '—'
 }
 
+// ── Resellers ──────────────────────────────────────────────────────────────
+
+export function useResellers() {
+  return useSyncExternalStore(resellerStore.subscribe, resellerStore.get, resellerStore.get)
+}
+
+export function addReseller(reseller) {
+  const row = { ...reseller, id: makeId('r') }
+  resellerStore.set(list => [...list, row])
+  return row
+}
+
+export function updateReseller(id, patch) {
+  resellerStore.set(list => list.map(r => (r.id === id ? { ...r, ...patch, id } : r)))
+}
+
+export function removeReseller(id) {
+  resellerStore.set(list => list.filter(r => r.id !== id))
+}
+
+/** Reseller name for a row, tolerant of an id that no longer resolves. */
+export function resellerNameFor(resellerId) {
+  if (!resellerId) return '—'
+  return resellerStore.get().find(r => r.id === resellerId)?.name || '—'
+}
+
+// ── Groups ─────────────────────────────────────────────────────────────────
+
+export function useGroups() {
+  return useSyncExternalStore(groupStore.subscribe, groupStore.get, groupStore.get)
+}
+
+export function addGroup(group) {
+  const row = { ...group, id: makeId('g') }
+  groupStore.set(list => [...list, row])
+  return row
+}
+
+export function updateGroup(id, patch) {
+  groupStore.set(list => list.map(g => (g.id === id ? { ...g, ...patch, id } : g)))
+}
+
+export function removeGroup(id) {
+  groupStore.set(list => list.filter(g => g.id !== id))
+}
+
+/** Every group under one reseller — the Company form's Group options. */
+export function groupsForReseller(resellerId) {
+  if (!resellerId) return []
+  return groupStore.get().filter(g => g.resellerId === resellerId)
+}
+
+/** Group name for a row, tolerant of an id that no longer resolves. */
+export function groupNameFor(groupId) {
+  if (!groupId) return '—'
+  return groupStore.get().find(g => g.id === groupId)?.name || '—'
+}
+
+/**
+ * How a company's group reads in a table. A company with no group is its own
+ * group, which is a real state rather than missing data — so it gets a label
+ * of its own instead of a bare dash.
+ */
+export function groupLabelForCompany(company) {
+  if (!company) return '—'
+  return company.groupId ? groupNameFor(company.groupId) : '— (own group)'
+}
+
+/** The groups a vehicle may belong to, derived from its company's reseller. */
+export function groupsForCompany(companyId) {
+  const company = companyStore.get().find(c => c.id === companyId)
+  if (!company) return []
+  return groupsForReseller(company.resellerId)
+}
+
+/** A company's own group id, or '' when it acts as its own group. */
+export function groupIdForCompany(companyId) {
+  return companyStore.get().find(c => c.id === companyId)?.groupId || ''
+}
+
 // ── Uniqueness ─────────────────────────────────────────────────────────────
 /**
  * `exceptId` is the record being edited, excluded so a form does not flag a
@@ -479,6 +639,13 @@ export function isImeiTaken(imei, exceptId = null) {
   const v = String(imei ?? '').trim()
   if (!v) return false
   return vehicleStore.get().some(x => x.id !== exceptId && String(x.imei ?? '').trim() === v)
+}
+
+/** True when another company already uses this email (it is their login). */
+export function isCompanyEmailTaken(email, exceptId = null) {
+  const v = normEmail(email)
+  if (!v) return false
+  return companyStore.get().some(c => c.id !== exceptId && normEmail(c.email) === v)
 }
 
 /** True when another user account already uses this email. */
