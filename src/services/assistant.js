@@ -44,3 +44,50 @@ export async function askAssistant(messages) {
 
   return data.reply
 }
+
+// ── Transcript persistence ─────────────────────────────────────────────────
+// Per-browser only: there is no backend, and none is wanted. Versioned key so
+// bumping v1 retires any transcript written against an older message shape
+// instead of trying to render it.
+
+const CHAT_KEY = 'fleetmax-assistant-chat-v1'
+
+// Storage cap, independent of the ~10 turns the function sends to Gemini. This
+// one only stops the key growing without bound in a long-lived browser.
+const MAX_STORED = 30
+
+const isMessage = m =>
+  m && typeof m.text === 'string' && (m.role === 'user' || m.role === 'assistant')
+
+/**
+ * @returns {{role:'user'|'assistant', text:string}[] | null}
+ *          null when there is nothing usable — the caller falls back to the
+ *          welcome message. Never throws: a corrupt key, a quota-blocked
+ *          browser or private mode all degrade to a fresh chat.
+ */
+export function loadChat() {
+  try {
+    const raw = localStorage.getItem(CHAT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+    // Drop anything that is not a message rather than rendering `undefined`
+    // into a bubble if the shape ever changes underneath us.
+    const clean = parsed.filter(isMessage)
+    return clean.length ? clean : null
+  } catch {
+    return null
+  }
+}
+
+export function saveChat(messages) {
+  try {
+    localStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-MAX_STORED)))
+  } catch { /* private mode or quota — the chat still works in memory */ }
+}
+
+export function clearChat() {
+  try {
+    localStorage.removeItem(CHAT_KEY)
+  } catch { /* nothing to clear */ }
+}

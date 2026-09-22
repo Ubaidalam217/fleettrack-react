@@ -23,3 +23,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Netlify folder
+.netlify
+
+# Written by the Netlify CLI when it bootstraps Deno for edge functions.
+# This project has no edge functions, so the lockfile is a local artifact.
+deno.lock

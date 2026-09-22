@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { askAssistant } from '../services/assistant'
+import { askAssistant, loadChat, saveChat, clearChat } from '../services/assistant'
 
 // In-app help assistant. A guide only — it explains features, it never acts on
-// the fleet, and it holds no state beyond this session (there is no backend to
-// persist a transcript to).
+// the fleet. The transcript is kept in localStorage, per browser; there is no
+// backend and none is wanted.
 //
 // Built on the app's existing modal vocabulary: portal to body, backdrop,
 // Escape to close, focus returned to whatever opened it — the same shape as
@@ -12,6 +12,8 @@ import { askAssistant } from '../services/assistant'
 
 const WELCOME =
   "Hi! I'm the FleetmaX Assistant. Ask me how to add a company, create a sub-user, set up an alert, and more."
+
+const welcomeChat = () => [{ role: 'assistant', text: WELCOME }]
 
 const SUGGESTIONS = [
   'How do I add a sub-user?',
@@ -74,7 +76,10 @@ function Bubble({ role, text }) {
 }
 
 export default function AssistantPanel({ onClose, isDark = false }) {
-  const [messages, setMessages] = useState([{ role: 'assistant', text: WELCOME }])
+  // Lazy initializer, so this runs once per mount. The panel unmounts when it
+  // closes (Header renders it conditionally), which makes this the hydration
+  // point for both reopening the panel and reloading the page.
+  const [messages, setMessages] = useState(() => loadChat() ?? welcomeChat())
   const [input, setInput]   = useState('')
   const [busy, setBusy]     = useState(false)
   const [error, setError]   = useState(null)
@@ -100,6 +105,17 @@ export default function AssistantPanel({ onClose, isDark = false }) {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, busy])
+
+  // One save point rather than one per call site, so a question, a reply and a
+  // reset cannot drift out of sync with what is stored.
+  useEffect(() => { saveChat(messages) }, [messages])
+
+  const newChat = () => {
+    clearChat()
+    setMessages(welcomeChat())
+    setError(null)
+    inputRef.current?.focus()
+  }
 
   const send = async (raw) => {
     const text = (raw ?? input).trim()
@@ -129,7 +145,10 @@ export default function AssistantPanel({ onClose, isDark = false }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  const showSuggestions = messages.length === 1 && !busy
+  // Nothing but the welcome message: there is no conversation to clear, and
+  // the starter prompts are still worth offering.
+  const isFresh = messages.length <= 1
+  const showSuggestions = isFresh && !busy
 
   return createPortal(
     // The theme class has to be re-applied here. App.jsx puts `dark` on a div
@@ -177,6 +196,30 @@ export default function AssistantPanel({ onClose, isDark = false }) {
             <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--c-text1)' }}>FleetmaX Assistant</div>
             <div style={{ fontSize: 10.5, color: 'var(--c-text3)' }}>Answers questions about using the app</div>
           </div>
+          {/* Same 27px bordered shape as Close below, so both read as one
+              control pair and the theme tokens carry over untouched. Disabled
+              on a fresh chat, where clearing would do nothing. */}
+          <button
+            type="button"
+            onClick={newChat}
+            disabled={isFresh}
+            aria-label="New chat"
+            title={isFresh ? 'Already a new chat' : 'New chat — clears this conversation'}
+            style={{
+              width: 27, height: 27, borderRadius: 7, flexShrink: 0,
+              border: '1px solid var(--c-border2)', background: 'var(--c-input)',
+              color: 'var(--c-text3)',
+              cursor: isFresh ? 'default' : 'pointer',
+              opacity: isFresh ? 0.45 : 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+              <line x1="12" y1="8" x2="12" y2="14" /><line x1="9" y1="11" x2="15" y2="11" />
+            </svg>
+          </button>
+
           <button
             type="button"
             onClick={onClose}
