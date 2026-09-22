@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, MapPin, FileText, BarChart2, Settings,
+  LayoutDashboard, MapPin, FileText, BarChart2,
   MessageCircle, Bell, Megaphone, ChevronDown,
 } from 'lucide-react'
 import { useCurrentUser, initials, firstName } from '../services/authUser'
+import SettingsMenu from './sidebar/SettingsMenu'
 
 export const SIDEBAR_WIDTH = 260
 
@@ -35,8 +36,11 @@ const NAV_SECTIONS = [
   {
     id: 'fleet',
     title: 'Fleet Management',
+    // Settings is not a link — it opens its own nested tree, so the section
+    // renderer hands the whole row to <SettingsMenu /> instead of building a
+    // <Link> from label/icon/path the way every other item is built.
     items: [
-      { label: 'Settings', icon: Settings, path: '/settings' },
+      { id: 'settings', custom: 'settings-menu' },
     ],
   },
 ]
@@ -352,6 +356,10 @@ export default function Sidebar({ sidebarOpen }) {
                   </button>
 
                   {open && section.items.map(item => {
+                    if (item.custom === 'settings-menu') {
+                      return <SettingsMenu key={item.id} />
+                    }
+
                     const active = location.pathname === item.path
                     return (
                       <Link

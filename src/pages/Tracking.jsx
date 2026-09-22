@@ -100,6 +100,23 @@ function MapFlyTo({ target }) {
   return null
 }
 
+// The live view: the whole country rather than one vehicle. Used for the map's
+// opening frame and again whenever the user leaves replay for live tracking.
+const UAE_VIEW = { center: [24.2, 54.5], zoom: 7 }
+
+// Separate from MapFlyTo because that one is a vehicle-level zoom driven by a
+// coordinate, and this is a fixed fleet-wide frame driven by a click. `trigger`
+// is a counter, so asking for the same view twice still moves the map; it
+// starts falsy so this does nothing on mount — MapContainer already opens here.
+function MapLiveView({ trigger }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!trigger) return
+    map.setView(UAE_VIEW.center, UAE_VIEW.zoom, { animate: true, duration: 0.8 })
+  }, [trigger]) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
+}
+
 // Keeps the replay marker on screen and clear of the control dock as the track
 // plays.
 //
@@ -488,6 +505,40 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     setReplayStatus(null)
   }, [])
 
+  // Leaving replay is this page's "go live" action, and going live re-frames
+  // the map on the country.
+  //
+  // Deliberately a wrapper rather than part of clearReplay: that also runs when
+  // you merely pick a different vehicle (see selectVehicle), and zooming out to
+  // the whole of the UAE on every row click would be unusable.
+  const [liveViewTick, setLiveViewTick] = useState(0)
+  const exitReplayToLive = useCallback(() => {
+    clearReplay()
+    setLiveViewTick(n => n + 1)
+  }, [clearReplay])
+
+  // Playback starts: fold the detail sheet down to its tab strip so the map has
+  // the column to itself.
+  //
+  // Edge-triggered on purpose. Running on every render while playing would
+  // fight the sheet's own minimise control — the user could never reopen the
+  // panel mid-replay, which is the one thing the control is for. Pausing
+  // deliberately does not restore it; where the sheet sits afterwards is the
+  // user's call.
+  const wasPlayingRef = useRef(false)
+  useEffect(() => {
+    if (replayPlaying && !wasPlayingRef.current) {
+      setSheetMode(m => {
+        if (m === 'min') return m
+        // The same bookkeeping toggleSheetMin does, so the restore control puts
+        // the sheet back where it was rather than dropping it to 'normal'.
+        minFromRef.current = m
+        return 'min'
+      })
+    }
+    wasPlayingRef.current = replayPlaying
+  }, [replayPlaying])
+
   // Fixed-pace playback. Above MAX_TICKS_PER_SEC the stride grows instead of
   // the tick shrinking, so 10x stays at ~6 renders/sec while still covering 25
   // points a second.
@@ -850,7 +901,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     status:    replayStatus,
     speed:     replaySpeed,
     fields:    replayFields,
-    onStop:    clearReplay,
+    onStop:    exitReplayToLive,
     onLoad:    handleReplayLoad,
     onPlayToggle:   () => setReplayPlaying(p => !p),
     onSeek:         (idx) => { setReplayPlaying(false); setReplayIndex(idx) },
@@ -1381,8 +1432,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                 )}
 
                 <MapContainer
-                  center={[24.4539, 54.3773]}
-                  zoom={11}
+                  center={UAE_VIEW.center}
+                  zoom={UAE_VIEW.zoom}
                   style={{ height: '100%', width: '100%' }}
                   // Leaflet's zoom buttons default to the top-left corner,
                   // which is exactly where the list toggle sits. Moved rather
@@ -1397,6 +1448,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   />
 
                   <MapFlyTo target={flyTarget} />
+                  {/* Re-frames on the UAE when the user returns to live. */}
+                  <MapLiveView trigger={liveViewTick} />
                   {/* The sheet sliding up and the list collapsing both change
                       the map box; Leaflet renders grey tiles until told. */}
                   <MapAutoSize />

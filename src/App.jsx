@@ -8,6 +8,14 @@ import Reports             from './pages/Reports'
 import SettingsPage        from './pages/Settings'
 import Notifications       from './pages/Notifications'
 import Announcements       from './pages/Announcements'
+// Settings module (Phase 1 — navigation shell, placeholder pages only)
+import SettingsUser           from './pages/settings/User'
+import SettingsCompany        from './pages/settings/Company'
+import SettingsCompanySubuser from './pages/settings/CompanySubuser'
+import SettingsBranch         from './pages/settings/Branch'
+import SettingsVehicle        from './pages/settings/Vehicle'
+import SettingsAlerts         from './pages/settings/Alerts'
+import SettingsComingSoon     from './pages/settings/ComingSoon'
 import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
 import { useNotificationEngine } from './hooks/useNotificationEngine'
@@ -91,6 +99,21 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/settings"       element={<SettingsPage   {...themeProps} />} />
         <Route path="/notifications"  element={<Notifications  {...themeProps} />} />
         <Route path="/announcements"  element={<Announcements  {...themeProps} />} />
+
+        {/* Settings module — the five leaves with real pages this phase… */}
+        <Route path="/settings/user"            element={<SettingsUser           {...themeProps} />} />
+        <Route path="/settings/company"         element={<SettingsCompany        {...themeProps} />} />
+        <Route path="/settings/company-subuser" element={<SettingsCompanySubuser {...themeProps} />} />
+        <Route path="/settings/branch"          element={<SettingsBranch         {...themeProps} />} />
+        <Route path="/settings/vehicle"         element={<SettingsVehicle        {...themeProps} />} />
+        <Route path="/settings/alerts"          element={<SettingsAlerts         {...themeProps} />} />
+        {/* …and the branches that share one placeholder until they get built. */}
+        <Route path="/settings/driver"          element={<SettingsComingSoon     {...themeProps} />} />
+        <Route path="/settings/master"          element={<SettingsComingSoon     {...themeProps} />} />
+        <Route path="/settings/geofence"        element={<SettingsComingSoon     {...themeProps} />} />
+        <Route path="/settings/technician"      element={<SettingsComingSoon     {...themeProps} />} />
+        <Route path="/settings/bulk-action"     element={<SettingsComingSoon     {...themeProps} />} />
+
         <Route path="*"               element={<Navigate to="/login" replace />} />
       </Routes>
 
