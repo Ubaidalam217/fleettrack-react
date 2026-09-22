@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Moon, Sun } from 'lucide-react'
 import NotificationDropdown from './topbar/NotificationDropdown'
 import UserDropdown         from './topbar/UserDropdown'
+import AssistantPanel       from './AssistantPanel'
 
 // ── Connection badge ───────────────────────────────────────────────────────
 function LiveBadge({ isConnected }) {
@@ -45,6 +46,10 @@ function DateTime({ time, date }) {
 export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMenuClick, isConnected = true }) {
   const [time, setTime] = useState('')
   const [date, setDate] = useState('')
+  // Owned here rather than lifted to each page: every page already renders
+  // this header, so one piece of state lights the assistant up app-wide
+  // without touching a single page component.
+  const [aiOpen, setAiOpen] = useState(false)
 
   useEffect(() => {
     const tick = () => {
@@ -82,7 +87,12 @@ export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMen
       {/* Right */}
       <div className="flex items-center gap-1.5 md:gap-2 lg:gap-2.5">
         {/* Ask AI */}
-        <button className="hidden sm:flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-2.5 md:px-3 py-2 text-[11px] md:text-[12px] font-semibold text-white transition-colors" style={{ boxShadow: '0 4px 12px color-mix(in srgb, var(--ft-accent) 20%, transparent)' }}>
+        <button
+          onClick={() => setAiOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={aiOpen}
+          className="hidden sm:flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-2.5 md:px-3 py-2 text-[11px] md:text-[12px] font-semibold text-white transition-colors" style={{ boxShadow: '0 4px 12px color-mix(in srgb, var(--ft-accent) 20%, transparent)' }}
+        >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
             <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -112,6 +122,10 @@ export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMen
         {/* User dropdown */}
         <UserDropdown themeMode={themeMode ?? 'light'} setTheme={setTheme ?? (() => {})} />
       </div>
+
+      {/* isDark is forwarded because the panel portals to <body>, outside the
+          div that carries the theme class. */}
+      {aiOpen && <AssistantPanel isDark={isDark} onClose={() => setAiOpen(false)} />}
     </header>
   )
 }

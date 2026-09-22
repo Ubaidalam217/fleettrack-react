@@ -2,6 +2,13 @@
   command = "npm run build"
   publish = "dist"
 
+# Serverless functions. The AI assistant proxy lives here so the Gemini key
+# stays server-side; GEMINI_API_KEY is set in the Netlify UI (and in the
+# gitignored .env for `netlify dev`), never in the client bundle.
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 # Flespi IoT API proxy
 # The client fetch calls already include Authorization: FlespiToken ... in the request
 # headers, which Netlify forwards to the upstream. No header injection needed here.
