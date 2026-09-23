@@ -12,7 +12,7 @@ import {
   companyNameFor, emptyUser, isUserEmailTaken,
 } from './mockData'
 
-// Company login accounts. Distinct from the Company page next door, which owns
+// BG login accounts. Distinct from the BG page next door, which owns
 // the organisation record (name, reseller, contact email); this owns the
 // credential that signs in against one of those organisations.
 //
@@ -41,7 +41,7 @@ function StatusPill({ status }) {
 }
 
 const COLUMNS = [
-  { key: 'company',  label: 'Company', bold: true, render: row => companyNameFor(row.companyId) },
+  { key: 'company',  label: 'BG', bold: true, render: row => companyNameFor(row.companyId) },
   { key: 'email',    label: 'Username (email)' },
   { key: 'status',   label: 'Status', render: row => <StatusPill status={row.status} /> },
 ]
@@ -82,7 +82,7 @@ export default function User(props) {
     e.preventDefault()
 
     const next = {}
-    if (!draft.companyId)    next.companyId = 'Company is required'
+    if (!draft.companyId)    next.companyId = 'BG is required'
     if (!draft.email.trim()) next.email     = 'Email is required'
     // The email is the username, so this is the login-uniqueness check too.
     else if (isUserEmailTaken(draft.email, draft.id)) next.email = 'A user with this email already exists.'
@@ -121,7 +121,7 @@ export default function User(props) {
             subtitle="Fields marked with * are required. The username is the email address."
           >
             <div style={GRID}>
-              <Field label="Company" required error={errors.companyId}>
+              <Field label="BG (Business Group)" required error={errors.companyId}>
                 <select
                   ref={firstRef}
                   name="companyId"
@@ -213,9 +213,9 @@ export default function User(props) {
               type="button"
               style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
               disabled={noCompanies}
-              // An account has to belong to a company, so with none on file the
+              // An account has to belong to a BG, so with none on file the
               // form would open with an unsatisfiable required dropdown.
-              title={noCompanies ? 'Add a company first' : undefined}
+              title={noCompanies ? 'Add a BG first' : undefined}
               onClick={openAdd}
             >
               <Plus size={14} strokeWidth={2.6} />
@@ -230,7 +230,7 @@ export default function User(props) {
             onEdit={openEdit}
             onDelete={setPending}
             emptyLabel={noCompanies
-              ? 'No companies on file — add a company before creating users.'
+              ? 'No BGs on file — add a Business Group before creating users.'
               : 'No users yet — use Add User to create one.'}
           />
         </>

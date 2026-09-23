@@ -10,7 +10,8 @@ import { useToasts } from '../../hooks/useToasts'
 import {
   useVehicles, useCompanies, useBranches, useGroups,
   addVehicle, updateVehicle, removeVehicle,
-  companyNameFor, branchesForCompany, groupsForCompany, groupIdForCompany,
+  companyNameFor, branchTreeForCompany, branchOptionLabel,
+  groupsForCompany, groupIdForCompany,
   groupNameFor, vehicleLabel, emptyVehicle, isImeiTaken,
 } from './mockData'
 
@@ -26,7 +27,7 @@ import {
 const COLUMNS = [
   { key: 'vehicleNumber', label: 'Vehicle Number', bold: true },
   { key: 'imei',          label: 'IMEI' },
-  { key: 'company',       label: 'Company', render: row => companyNameFor(row.companyId) },
+  { key: 'company',       label: 'BG', render: row => companyNameFor(row.companyId) },
   {
     key: 'makeModel',
     label: 'Make/Model',
@@ -57,7 +58,7 @@ export default function Vehicle(props) {
   const vehicles  = useVehicles()
   const companies = useCompanies()
   // Subscribed so the Branch and Group dropdowns react to rows added on their
-  // own pages; the per-company slices come from the *ForCompany reads.
+  // own pages; the per-BG slices come from the *ForCompany reads.
   useBranches()
   useGroups()
 
@@ -83,11 +84,12 @@ export default function Vehicle(props) {
     setDraft(d => {
       const next = { ...d, [key]: value }
       if (key === 'companyId') {
-        // A branch belongs to exactly one company, so the old pick is not a
-        // valid option under the new one.
+        // A branch belongs to exactly one BG, so the old pick is not a valid
+        // option under the new one.
+
         next.branchId = ''
-        // The group is the company's own when it has one; only a company that
-        // acts as its own group leaves this free to choose.
+        // The group is the BG's own when it has one; only a BG that acts as
+        // its own group leaves this free to choose.
         next.groupId = groupIdForCompany(value)
       }
       return next
@@ -95,7 +97,9 @@ export default function Vehicle(props) {
     setErrors(e => (e[key] ? { ...e, [key]: null } : e))
   }
 
-  const branches = editing ? branchesForCompany(draft.companyId) : []
+  // Depth-first with a `depth` per row, so a vehicle can be filed against a
+  // sub-branch at any level and the dropdown still reads as a hierarchy.
+  const branches = editing ? branchTreeForCompany(draft.companyId) : []
   const groups   = editing ? groupsForCompany(draft.companyId) : []
   // When the company carries a group, the vehicle inherits it and the field is
   // shown read-only — it is derived, not a choice.
@@ -106,7 +110,7 @@ export default function Vehicle(props) {
     e.preventDefault()
 
     const next = {}
-    if (!draft.companyId)              next.companyId     = 'Company is required'
+    if (!draft.companyId)              next.companyId     = 'BG is required'
     if (!draft.vehicleNumber.trim())   next.vehicleNumber = 'Vehicle Number is required'
     if (!draft.imei.trim())            next.imei          = 'IMEI Number is required'
     // Digits-only is a hard stop; an unusual *length* is only a warning, so it
@@ -160,7 +164,7 @@ export default function Vehicle(props) {
             subtitle="Fields marked with * are required. The IMEI is what matches this vehicle to its tracking device."
           >
             <div style={GRID}>
-              <Field label="Company" required error={errors.companyId}>
+              <Field label="BG (Business Group)" required error={errors.companyId}>
                 <select
                   ref={firstRef}
                   name="companyId"
@@ -189,13 +193,13 @@ export default function Vehicle(props) {
                 >
                   <option value="">
                     {!draft.companyId
-                      ? '— Select a company first —'
+                      ? '— Select a BG first —'
                       : branches.length === 0
-                        ? '— No branches for this company —'
+                        ? '— No branches for this BG —'
                         : '— None —'}
                   </option>
                   {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
+                    <option key={b.id} value={b.id}>{branchOptionLabel(b)}</option>
                   ))}
                 </select>
               </Field>
@@ -210,7 +214,7 @@ export default function Vehicle(props) {
                     readOnly
                     tabIndex={-1}
                     aria-readonly="true"
-                    title="Taken from the selected company's group"
+                    title="Taken from the selected BG's group"
                     style={{
                       ...inputStyle(false),
                       background: 'var(--c-thead)',
@@ -231,10 +235,10 @@ export default function Vehicle(props) {
                   >
                     <option value="">
                       {!draft.companyId
-                        ? '— Select a company first —'
+                        ? '— Select a BG first —'
                         : groups.length === 0
-                          ? '— No groups for this reseller —'
-                          : '— None (company is its own group) —'}
+                          ? '— No groups for this GGB —'
+                          : '— None (BG is its own group) —'}
                     </option>
                     {groups.map(g => (
                       <option key={g.id} value={g.id}>{g.name}</option>
@@ -360,9 +364,9 @@ export default function Vehicle(props) {
               type="button"
               style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
               disabled={noCompanies}
-              // A vehicle has to belong to a company, so with none on file the
+              // A vehicle has to belong to a BG, so with none on file the
               // form would open with an unsatisfiable required dropdown.
-              title={noCompanies ? 'Add a company first' : undefined}
+              title={noCompanies ? 'Add a BG first' : undefined}
               onClick={openAdd}
             >
               <Plus size={14} strokeWidth={2.6} />
@@ -378,7 +382,7 @@ export default function Vehicle(props) {
             onEdit={openEdit}
             onDelete={setPending}
             emptyLabel={noCompanies
-              ? 'No companies on file — add a company before registering vehicles.'
+              ? 'No BGs on file — add a Business Group before registering vehicles.'
               : 'No vehicles yet — use Add Vehicle to register one.'}
           />
         </>

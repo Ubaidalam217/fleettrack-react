@@ -4,7 +4,15 @@ import { useSyncExternalStore } from 'react'
  * Phase 2 mock backend for the Settings module.
  *
  * Everything here is in-memory: no fetch, no persistence, no Flespi. The point
- * of the file is the seam — pages only ever touch the exported hooks and
+ * of the file is the seam — pages only ever touch the const INDENT = '    '   // one level, as literal NBSPs
+const GUIDE  = '└ '                       // └ + NBSP
+
+export function branchOptionLabel(branch) {
+  const depth = branch?.depth ?? 0
+  if (!depth) return branch?.name ?? ''
+  return INDENT.repeat(depth) + GUIDE + branch.name
+}
+ported hooks and
  * mutators, never the arrays, so a later phase can replace the bodies of
  * addCompany/updateCompany/removeCompany with real API calls and the two pages
  * carry on unchanged.
@@ -18,12 +26,27 @@ import { useSyncExternalStore } from 'react'
 // ── Dropdown vocabularies ──────────────────────────────────────────────────
 
 /**
- * Org hierarchy: Reseller > Group (optional) > Company > Branch > Users.
+ * Org hierarchy, in the client's vocabulary:
  *
- * Reseller and Group are entities with their own stores, so a Company points at
- * them by id. A Company's `groupId` is nullable: when it is empty the company
- * acts as its own group, which is why grouping labels render
- * "— (own group)" rather than an empty cell.
+ *   Super Admin > GGB > Group (optional) > BG > Branch > Sub-branches > Vehicles
+ *
+ * The store keys predate that vocabulary and deliberately keep the old names —
+ * a GGB is a `reseller` row, a BG is a `company` row, and a vehicle still
+ * points at `companyId`. Renaming the keys would touch every page, every seed
+ * and every persisted blob in a browser, to buy nothing the display labels do
+ * not already buy. The mapping lives here and nowhere else:
+ *
+ *   reseller  → GGB (Group Global Admin)
+ *   company   → BG (Business Group)
+ *   group     → Group (unchanged)
+ *
+ * GGB and Group are entities with their own stores, so a BG points at them by
+ * id. A BG's `groupId` is nullable: when it is empty the BG acts as its own
+ * group, which is why grouping labels render "— (own group)" rather than an
+ * empty cell.
+ *
+ * Branches nest to any depth via `parentBranchId` — see emptyBranch() and the
+ * branch tree helpers further down.
  */
 
 /**
@@ -73,11 +96,22 @@ export function emptyCompany() {
   }
 }
 
+/**
+ * A branch, or a sub-branch of one.
+ *
+ * `parentBranchId` is '' for a top-level branch and otherwise the id of another
+ * branch *of the same BG*. There is no depth limit: a sub-branch can itself be
+ * a parent. `companyId` stays required at every depth rather than being
+ * inherited from the parent, so one read answers "which BG owns this row"
+ * without walking the chain — and so a row whose parent has gone missing is
+ * still attributable.
+ */
 export function emptyBranch() {
   return {
     id: null,
-    companyId: '',
-    name:      '',
+    companyId:      '',
+    parentBranchId: '',
+    name:           '',
   }
 }
 
@@ -219,11 +253,19 @@ const SEED_GROUPS = [
   { id: 'g4', resellerId: 'r3', name: 'Cold Chain Division' },
 ]
 
+// Seeded three deep under Mussafah Depot on purpose: two levels would read as
+// "branch and sub-branch" and leave the unlimited part untested, so the tree
+// rendering, the cycle exclusion and the subtree delete all have a real case to
+// exercise from first load.
 const SEED_BRANCHES = [
-  { id: 'b1', companyId: 'c1', name: 'Mussafah Depot' },
-  { id: 'b2', companyId: 'c1', name: 'Al Ain Yard' },
-  { id: 'b3', companyId: 'c2', name: 'Jebel Ali Hub' },
-  { id: 'b4', companyId: 'c3', name: 'Sharjah Cold Store' },
+  { id: 'b1', companyId: 'c1', parentBranchId: '',   name: 'Mussafah Depot' },
+  { id: 'b5', companyId: 'c1', parentBranchId: 'b1', name: 'Mussafah — Bay 1' },
+  { id: 'b6', companyId: 'c1', parentBranchId: 'b1', name: 'Mussafah — Bay 2' },
+  { id: 'b7', companyId: 'c1', parentBranchId: 'b6', name: 'Bay 2 — Night Shift' },
+  { id: 'b2', companyId: 'c1', parentBranchId: '',   name: 'Al Ain Yard' },
+  { id: 'b3', companyId: 'c2', parentBranchId: '',   name: 'Jebel Ali Hub' },
+  { id: 'b8', companyId: 'c2', parentBranchId: 'b3', name: 'JA — Container Yard' },
+  { id: 'b4', companyId: 'c3', parentBranchId: '',   name: 'Sharjah Cold Store' },
 ]
 
 const SEED_USERS = [
@@ -282,11 +324,12 @@ const SEED_SUBUSERS = [
  * mutator and selector below behaves exactly as before, so this whole section
  * deletes in one piece once the real APIs land.
  *
- * The key is versioned — bump v1 to v2 and every browser holding the old shape
- * falls back to seed on next load rather than hydrating rows that no longer
- * match the form.
+ * The key is versioned — bump it and every browser holding the old shape falls
+ * back to seed on next load rather than hydrating rows that no longer match the
+ * form. v3 is the nested-branch shape: v2 branches have no `parentBranchId`, so
+ * hydrating them would render a tree with every row silently at the top level.
  */
-const STORAGE_KEY = 'fleetmax-mock-v2'
+const STORAGE_KEY = 'fleetmax-mock-v3'
 
 function readSaved() {
   try {
@@ -430,19 +473,133 @@ export function updateBranch(id, patch) {
   branchStore.set(list => list.map(b => (b.id === id ? { ...b, ...patch, id } : b)))
 }
 
-export function removeBranch(id) {
-  branchStore.set(list => list.filter(b => b.id !== id))
-  // A sub-user scoped to this branch would otherwise keep a dangling id and
-  // report a branch count higher than the branches it can actually see — the
-  // same cleanup removeVehicle already does for vehicle ids.
-  subuserStore.set(list => list.map(s => (
-    s.branchIds?.includes(id)
-      ? { ...s, branchIds: s.branchIds.filter(x => x !== id) }
-      : s
-  )))
+/**
+ * Every branch below `branchId`, at any depth. Excludes the branch itself.
+ *
+ * Iterative rather than recursive, with a `seen` set: stored data can be
+ * hand-edited or restored from an older shape, and a parent chain that loops
+ * would otherwise recurse until the stack gives out. Callers get a plain array
+ * either way.
+ */
+export function branchDescendantIds(branchId) {
+  if (!branchId) return []
+  const all = branchStore.get()
+  const out = []
+  const seen = new Set([branchId])
+  const stack = [branchId]
+  while (stack.length) {
+    const parent = stack.pop()
+    for (const b of all) {
+      if (b.parentBranchId === parent && !seen.has(b.id)) {
+        seen.add(b.id)
+        out.push(b.id)
+        stack.push(b.id)
+      }
+    }
+  }
+  return out
 }
 
-/** Company name for a branch row, tolerant of an id that no longer resolves. */
+/** A branch plus everything under it — what a delete actually removes. */
+export function branchSubtreeIds(branchId) {
+  return branchId ? [branchId, ...branchDescendantIds(branchId)] : []
+}
+
+/**
+ * One BG's branches, flattened depth-first with a `depth` on each row: the
+ * order and indentation the table and both pickers render from.
+ *
+ * Two guards, both about never losing a row from the page:
+ *  - a `parentBranchId` that does not resolve inside this BG (deleted parent,
+ *    or a parent belonging to another BG) is treated as top-level rather than
+ *    dropped, so the row stays visible and therefore fixable;
+ *  - anything left unvisited after the walk sat in a parent cycle, and is
+ *    appended flat for the same reason.
+ */
+export function branchTreeForCompany(companyId) {
+  if (!companyId) return []
+  const all  = branchStore.get().filter(b => b.companyId === companyId)
+  const byId = new Map(all.map(b => [b.id, b]))
+
+  const childrenOf = new Map()
+  for (const b of all) {
+    const parent = b.parentBranchId && byId.has(b.parentBranchId) ? b.parentBranchId : ''
+    if (!childrenOf.has(parent)) childrenOf.set(parent, [])
+    childrenOf.get(parent).push(b)
+  }
+
+  const out  = []
+  const seen = new Set()
+  const walk = (parent, depth) => {
+    for (const b of childrenOf.get(parent) || []) {
+      if (seen.has(b.id)) continue
+      seen.add(b.id)
+      out.push({ ...b, depth })
+      walk(b.id, depth + 1)
+    }
+  }
+  walk('', 0)
+  for (const b of all) if (!seen.has(b.id)) out.push({ ...b, depth: 0 })
+  return out
+}
+
+/**
+ * Indented label for a branch inside a native <select>.
+ *
+ * Non-breaking spaces rather than CSS padding because an <option> ignores
+ * padding in most browsers — this is the one place where whitespace in the
+ * string is the mechanism rather than a workaround.
+ */
+// One indent level and the child guide, written as escapes: these are
+// non-breaking spaces, and a literal NBSP in source is invisible to the next
+// person to touch this line and is exactly what an editor's trim-whitespace
+// setting eats without anyone noticing.
+const BRANCH_INDENT = '\u00A0\u00A0\u00A0\u00A0'
+const BRANCH_GUIDE  = '\u2514\u00A0'
+
+export function branchOptionLabel(branch) {
+  const depth = branch?.depth ?? 0
+  if (!depth) return branch?.name ?? ''
+  return BRANCH_INDENT.repeat(depth) + BRANCH_GUIDE + branch.name
+}
+
+/**
+ * Deletes a branch AND everything under it — a sub-branch cannot outlive its
+ * parent without becoming unreachable from the tree.
+ *
+ * Returns a summary so the page can say what happened: the caller has already
+ * shown a count in the confirm dialog, and detached vehicles are worth a toast
+ * because nothing else on screen would reveal them.
+ */
+export function removeBranch(id) {
+  const doomed = new Set(branchSubtreeIds(id))
+  if (!doomed.size) return { removed: 0, subBranches: 0, vehiclesDetached: 0 }
+
+  // Counted before the write, while the rows still point at the old ids.
+  const vehiclesDetached = vehicleStore.get().filter(v => doomed.has(v.branchId)).length
+
+  branchStore.set(list => list.filter(b => !doomed.has(b.id)))
+
+  // A sub-user scoped to any of these branches would otherwise keep a dangling
+  // id and report a branch count higher than the branches it can actually see —
+  // the same cleanup removeVehicle already does for vehicle ids.
+  subuserStore.set(list => list.map(s => (
+    s.branchIds?.some(x => doomed.has(x))
+      ? { ...s, branchIds: s.branchIds.filter(x => !doomed.has(x)) }
+      : s
+  )))
+
+  // A vehicle keeps its BG and simply stops being filed under a branch. '' and
+  // not null: the Vehicle form binds this straight into a <select value>, and
+  // null would flip that control to uncontrolled mid-edit.
+  vehicleStore.set(list => list.map(v => (
+    doomed.has(v.branchId) ? { ...v, branchId: '' } : v
+  )))
+
+  return { removed: doomed.size, subBranches: doomed.size - 1, vehiclesDetached }
+}
+
+/** BG name for a branch row, tolerant of an id that no longer resolves. */
 export function companyNameFor(companyId) {
   return companyStore.get().find(c => c.id === companyId)?.name || '—'
 }
@@ -525,13 +682,20 @@ export function removeVehicle(id) {
   )))
 }
 
-/** Every vehicle belonging to one company; empty array for an unknown id. */
+/** Every vehicle belonging to one BG; empty array for an unknown id. */
 export function vehiclesForCompany(companyId) {
   if (!companyId) return []
   return vehicleStore.get().filter(v => v.companyId === companyId)
 }
 
-/** Every branch belonging to one company — the Vehicle form's Branch options. */
+/**
+ * Every branch belonging to one BG, at every depth, in no particular order.
+ *
+ * This is the *set* — "how many branches does this BG have", and what
+ * "All Branches" covers. Anything that draws the hierarchy wants
+ * branchTreeForCompany instead, which returns the same rows ordered and
+ * carrying a depth.
+ */
 export function branchesForCompany(companyId) {
   if (!companyId) return []
   return branchStore.get().filter(b => b.companyId === companyId)
@@ -563,7 +727,7 @@ export function removeReseller(id) {
   resellerStore.set(list => list.filter(r => r.id !== id))
 }
 
-/** Reseller name for a row, tolerant of an id that no longer resolves. */
+/** GGB name for a row, tolerant of an id that no longer resolves. */
 export function resellerNameFor(resellerId) {
   if (!resellerId) return '—'
   return resellerStore.get().find(r => r.id === resellerId)?.name || '—'
@@ -589,7 +753,7 @@ export function removeGroup(id) {
   groupStore.set(list => list.filter(g => g.id !== id))
 }
 
-/** Every group under one reseller — the Company form's Group options. */
+/** Every group under one GGB — the BG form's Group options. */
 export function groupsForReseller(resellerId) {
   if (!resellerId) return []
   return groupStore.get().filter(g => g.resellerId === resellerId)
@@ -602,23 +766,23 @@ export function groupNameFor(groupId) {
 }
 
 /**
- * How a company's group reads in a table. A company with no group is its own
- * group, which is a real state rather than missing data — so it gets a label
- * of its own instead of a bare dash.
+ * How a BG's group reads in a table. A BG with no group is its own group,
+ * which is a real state rather than missing data — so it gets a label of its
+ * own instead of a bare dash.
  */
 export function groupLabelForCompany(company) {
   if (!company) return '—'
   return company.groupId ? groupNameFor(company.groupId) : '— (own group)'
 }
 
-/** The groups a vehicle may belong to, derived from its company's reseller. */
+/** The groups a vehicle may belong to, derived from its BG's GGB. */
 export function groupsForCompany(companyId) {
   const company = companyStore.get().find(c => c.id === companyId)
   if (!company) return []
   return groupsForReseller(company.resellerId)
 }
 
-/** A company's own group id, or '' when it acts as its own group. */
+/** A BG's own group id, or '' when it acts as its own group. */
 export function groupIdForCompany(companyId) {
   return companyStore.get().find(c => c.id === companyId)?.groupId || ''
 }
@@ -641,7 +805,7 @@ export function isImeiTaken(imei, exceptId = null) {
   return vehicleStore.get().some(x => x.id !== exceptId && String(x.imei ?? '').trim() === v)
 }
 
-/** True when another company already uses this email (it is their login). */
+/** True when another BG already uses this email (it is their login). */
 export function isCompanyEmailTaken(email, exceptId = null) {
   const v = normEmail(email)
   if (!v) return false

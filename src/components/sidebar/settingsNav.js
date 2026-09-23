@@ -10,8 +10,8 @@ import {
  * `children` and a *leaf* when it has a `path`; nothing has both, which is what
  * lets the renderer stay a single recursive function.
  *
- * Only five leaves have real pages this phase — Company, Company Subuser,
- * Branch, Vehicle, Alerts. The rest keep their own distinct path (so the
+ * Eight leaves have real pages — GGB, Group, BG, Branch, User, Company
+ * Subuser, Vehicle, Alerts. The rest keep their own distinct path (so the
  * sidebar can still highlight exactly one row) but all resolve to the shared
  * ComingSoon placeholder in App.jsx. When a real page lands, only the route
  * changes; this file does not.
@@ -26,16 +26,20 @@ export const SETTINGS_MENU = [
         id: 'users',
         label: 'Users',
         icon: Users,
-        // Ordered top-down through the org hierarchy — Reseller > Group >
-        // Company > Branch > the accounts that sit under a company — so the
-        // menu reads the same way the data nests.
+        // Ordered top-down through the org hierarchy — GGB > Group > BG >
+        // Branch > the accounts that sit under a BG — so the menu reads the
+        // same way the data nests.
+        //
+        // The ids and paths are the pre-rename names on purpose: they are what
+        // the router, the sidebar highlight and every existing bookmark match
+        // on, and none of them is ever shown to a user. Only `label` is.
         children: [
-          { id: 'reseller',        label: 'Reseller',        path: '/settings/reseller' },
-          { id: 'group',           label: 'Group',           path: '/settings/group' },
-          { id: 'company',         label: 'Company',         path: '/settings/company' },
-          { id: 'branch',          label: 'Branch',          path: '/settings/branch' },
-          { id: 'user',            label: 'User',            path: '/settings/user' },
-          { id: 'company-subuser', label: 'Company Subuser', path: '/settings/company-subuser' },
+          { id: 'reseller',        label: 'GGB (Group Global Admin)', path: '/settings/reseller' },
+          { id: 'group',           label: 'Group',                    path: '/settings/group' },
+          { id: 'company',         label: 'BG (Business Group)',      path: '/settings/company' },
+          { id: 'branch',          label: 'Branch',                   path: '/settings/branch' },
+          { id: 'user',            label: 'User',                     path: '/settings/user' },
+          { id: 'company-subuser', label: 'Company Subuser',          path: '/settings/company-subuser' },
         ],
       },
       {

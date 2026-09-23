@@ -8,13 +8,13 @@ import { CARD_SURFACE } from './formStyles'
  * Same table recipe the dashboard uses (see components/VehicleStatus.jsx): a
  * card frame the table runs edge to edge inside, a --c-thead header band with
  * 10px uppercase labels, --c-border2 row rules and a --c-hover row highlight.
- * Kept generic over columns because Company and Branch differ only in which
+ * Kept generic over columns because BG and Branch differ only in which
  * fields they show.
  *
  * Column spec: { key, label, bold?, muted?, render?(row) }
  *
  * `labelKey` is which field names a row in the Edit/Delete accessible labels.
- * It defaults to `name`, so Company and Branch are unaffected; the User table
+ * It defaults to `name`, so BG and Branch are unaffected; the User table
  * points it at `email`, whose rows are identified by their login rather than
  * by a name they do not have.
  */

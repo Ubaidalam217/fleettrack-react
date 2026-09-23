@@ -12,20 +12,20 @@ import {
   resellerNameFor, emptyGroup,
 } from './mockData'
 
-// A group sits between a reseller and its companies. Companies may skip it —
-// one with no group acts as its own group.
+// A group sits between a GGB and its BGs. A BG may skip it — one with no
+// group acts as its own group.
 
 const COLUMNS = [
   { key: 'name',     label: 'Group Name', bold: true },
-  { key: 'reseller', label: 'Reseller', render: row => resellerNameFor(row.resellerId) },
+  { key: 'reseller', label: 'GGB', render: row => resellerNameFor(row.resellerId) },
 ]
 
-// Reseller options come from the live store, so a reseller added next door is
-// selectable here without a reload.
+// GGB options come from the live store, so a GGB added next door is selectable
+// here without a reload.
 function fieldsFor(resellers) {
   return [
     {
-      name: 'resellerId', label: 'Reseller', required: true, type: 'select',
+      name: 'resellerId', label: 'GGB', required: true, type: 'select',
       options: resellers.map(r => ({ value: r.id, label: r.name })),
     },
     { name: 'name', label: 'Group Name', required: true, placeholder: 'Abu Dhabi Operations' },
@@ -62,7 +62,7 @@ export default function Group(props) {
     e.preventDefault()
 
     const next = {}
-    if (!draft.resellerId)  next.resellerId = 'Reseller is required'
+    if (!draft.resellerId)  next.resellerId = 'GGB is required'
     if (!draft.name.trim()) next.name       = 'Group Name is required'
     if (Object.keys(next).length) {
       setErrors(next)
@@ -123,9 +123,9 @@ export default function Group(props) {
               type="button"
               style={{ ...PRIMARY_BTN, opacity: noResellers ? 0.5 : 1, cursor: noResellers ? 'not-allowed' : 'pointer' }}
               disabled={noResellers}
-              // A group belongs to a reseller, so with none on file the form
-              // would open with an unsatisfiable required dropdown.
-              title={noResellers ? 'Add a reseller first' : undefined}
+              // A group belongs to a GGB, so with none on file the form would
+              // open with an unsatisfiable required dropdown.
+              title={noResellers ? 'Add a GGB first' : undefined}
               onClick={openAdd}
             >
               <Plus size={14} strokeWidth={2.6} />
@@ -139,7 +139,7 @@ export default function Group(props) {
             onEdit={openEdit}
             onDelete={setPending}
             emptyLabel={noResellers
-              ? 'No resellers on file — add a reseller before creating groups.'
+              ? 'No GGBs on file — add a GGB before creating groups.'
               : 'No groups yet — use Add Group to create one.'}
           />
         </>
@@ -149,7 +149,7 @@ export default function Group(props) {
         <ConfirmDialog
           title="Delete group?"
           body={`${pending.name} will be removed from ${resellerNameFor(pending.resellerId)}.`}
-          note="Companies in this group are left in place and fall back to acting as their own group. This is mock data — nothing is sent to a server."
+          note="BGs in this group are left in place and fall back to acting as their own group. This is mock data — nothing is sent to a server."
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}

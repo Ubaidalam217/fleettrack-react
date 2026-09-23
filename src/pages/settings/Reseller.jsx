@@ -11,15 +11,16 @@ import {
   useResellers, addReseller, updateReseller, removeReseller, emptyReseller,
 } from './mockData'
 
-// Top of the org hierarchy: a reseller owns groups, which own companies.
+// Top of the org hierarchy below Super Admin: a GGB owns groups, which own
+// BGs. Stored as `reseller` rows — see the vocabulary note in mockData.js.
 
 const COLUMNS = [
-  { key: 'name',  label: 'Reseller Name', bold: true },
+  { key: 'name',  label: 'GGB Name', bold: true },
   { key: 'email', label: 'Email' },
 ]
 
 const FIELDS = [
-  { name: 'name',  label: 'Reseller Name', required: true, placeholder: 'FleetmaX Solutions' },
+  { name: 'name',  label: 'GGB Name', required: true, placeholder: 'FleetmaX Solutions' },
   { name: 'email', label: 'Email',         type: 'email',  placeholder: 'partners@fleetmax.ae' },
 ]
 
@@ -52,7 +53,7 @@ export default function Reseller(props) {
     e.preventDefault()
 
     const next = {}
-    if (!draft.name.trim()) next.name = 'Reseller Name is required'
+    if (!draft.name.trim()) next.name = 'GGB Name is required'
     if (Object.keys(next).length) {
       setErrors(next)
       formRef.current?.querySelector(`[name="${Object.keys(next)[0]}"]`)?.focus()
@@ -76,14 +77,14 @@ export default function Reseller(props) {
     setPending(null)
   }
 
-  const title = !editing ? 'Reseller' : draft.id ? 'Edit Reseller' : 'Add Reseller'
+  const title = !editing ? 'GGB (Group Global Admin)' : draft.id ? 'Edit GGB' : 'Add GGB'
 
   return (
     <SettingsLayout title={title} {...props}>
       {editing ? (
         <form ref={formRef} onSubmit={submit} noValidate>
           <FormCard
-            title={draft.id ? 'Reseller details' : 'New reseller'}
+            title={draft.id ? 'GGB details' : 'New GGB'}
             subtitle="Fields marked with * are required."
           >
             <FormFields
@@ -106,10 +107,10 @@ export default function Reseller(props) {
         </form>
       ) : (
         <>
-          <TableToolbar count={resellers.length} noun="reseller" plural="resellers">
+          <TableToolbar count={resellers.length} noun="GGB" plural="GGBs">
             <button type="button" style={PRIMARY_BTN} onClick={openAdd}>
               <Plus size={14} strokeWidth={2.6} />
-              Add Reseller
+              Add GGB
             </button>
           </TableToolbar>
 
@@ -118,16 +119,16 @@ export default function Reseller(props) {
             rows={resellers}
             onEdit={openEdit}
             onDelete={setPending}
-            emptyLabel="No resellers yet — use Add Reseller to create one."
+            emptyLabel="No GGBs yet — use Add GGB to create one."
           />
         </>
       )}
 
       {pending && (
         <ConfirmDialog
-          title="Delete reseller?"
+          title="Delete GGB?"
           body={`${pending.name} will be removed from the list.`}
-          note="Groups and companies under this reseller are left in place. This is mock data — nothing is sent to a server."
+          note="Groups and BGs under this GGB are left in place. This is mock data — nothing is sent to a server."
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}

@@ -96,7 +96,10 @@ function MenuNode({ node, expanded, onToggle, pathname }) {
         aria-current={isActive ? 'page' : undefined}
       >
         {glyph}
-        <span className="ft-sb-tree-label">{node.label}</span>
+        {/* The row clips its label, and some are long enough to clip — "GGB
+            (Group Global Admin)" among them. The tooltip is what makes the
+            hidden half reachable without widening the rail for one entry. */}
+        <span className="ft-sb-tree-label" title={node.label}>{node.label}</span>
       </Link>
     )
   }
@@ -111,7 +114,7 @@ function MenuNode({ node, expanded, onToggle, pathname }) {
         onClick={() => onToggle(node.id)}
       >
         {glyph}
-        <span className="ft-sb-tree-label">{node.label}</span>
+        <span className="ft-sb-tree-label" title={node.label}>{node.label}</span>
         <ChevronDown size={11} strokeWidth={3} className="ft-sb-tree-chev" />
       </button>
 

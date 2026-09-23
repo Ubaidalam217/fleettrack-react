@@ -135,7 +135,7 @@ const CHECK = { width: 15, height: 15, accentColor: 'var(--ft-accent)', cursor: 
  *
  * The difference is what the header box means. Here "All Vehicles" is a stored
  * mode rather than a shortcut for ticking everything, so an alert set to all
- * also covers vehicles added to the company later. Unticking it drops to an
+ * also covers vehicles added to the BG later. Unticking it drops to an
  * explicit list, which is why the individual boxes are disabled while it is on:
  * they are not what the alert is using.
  */
@@ -164,11 +164,11 @@ function ScopePicker({ vehicles, allVehicles, selected, onToggleAll, onToggle, c
       }}>
         {!companyChosen ? (
           <p style={{ margin: 0, padding: '18px 12px', textAlign: 'center', fontSize: 12, color: 'var(--c-text3)' }}>
-            Select a company to choose which vehicles this alert watches.
+            Select a Business Group to choose which vehicles this alert watches.
           </p>
         ) : vehicles.length === 0 ? (
           <p style={{ margin: 0, padding: '18px 12px', textAlign: 'center', fontSize: 12, color: 'var(--c-text3)' }}>
-            No vehicles registered for this company.
+            No vehicles registered for this BG.
           </p>
         ) : (
           <>
@@ -322,13 +322,13 @@ export default function Alerts(props) {
     const next = {}
     if (!draft.name.trim()) next.name      = 'Alert Name is required'
     if (!draft.type)        next.type      = 'Alert Type is required'
-    if (!draft.companyId)   next.companyId = 'Company is required'
+    if (!draft.companyId)   next.companyId = 'BG is required'
 
     // An alert that watches nothing can never fire, so an empty explicit scope
     // is a hard stop rather than a saved no-op.
     if (draft.companyId) {
       if (vehicles.length === 0) {
-        next.scope = 'This company has no vehicles to watch.'
+        next.scope = 'This BG has no vehicles to watch.'
       } else if (!draft.allVehicles && draft.vehicleIds.length === 0) {
         next.scope = 'Select at least one vehicle, or switch on All Vehicles.'
       }
@@ -405,7 +405,7 @@ export default function Alerts(props) {
                 </select>
               </Field>
 
-              <Field label="Apply To — Company" required error={errors.companyId}>
+              <Field label="Apply To — BG" required error={errors.companyId}>
                 <select
                   name="companyId"
                   value={draft.companyId}
@@ -510,9 +510,9 @@ export default function Alerts(props) {
               type="button"
               style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
               disabled={noCompanies}
-              // An alert has to be scoped to a company, so with none on file the
+              // An alert has to be scoped to a BG, so with none on file the
               // form would open with an unsatisfiable required dropdown.
-              title={noCompanies ? 'Add a company first' : undefined}
+              title={noCompanies ? 'Add a BG first' : undefined}
               onClick={openAdd}
             >
               <Plus size={14} strokeWidth={2.6} />
@@ -526,7 +526,7 @@ export default function Alerts(props) {
             onEdit={openEdit}
             onDelete={setPending}
             emptyLabel={noCompanies
-              ? 'No companies on file — add a company before creating alerts.'
+              ? 'No BGs on file — add a Business Group before creating alerts.'
               : 'No alerts yet — use Add Alert to create one.'}
           />
         </>

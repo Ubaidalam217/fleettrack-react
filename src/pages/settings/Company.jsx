@@ -18,27 +18,27 @@ import {
 // would light up nothing in the sidebar; the page swaps its own body instead.
 
 const COLUMNS = [
-  { key: 'name',     label: 'Company Name', bold: true },
+  { key: 'name',     label: 'BG Name', bold: true },
   { key: 'email',    label: 'Email' },
-  { key: 'reseller', label: 'Reseller', render: row => resellerNameFor(row.resellerId) },
-  // A company with no group is its own group — a real state, not missing data.
+  { key: 'reseller', label: 'GGB', render: row => resellerNameFor(row.resellerId) },
+  // A BG with no group is its own group — a real state, not missing data.
   { key: 'group',    label: 'Group', render: row => groupLabelForCompany(row) },
 ]
 
-// Reseller and Group options come from the live stores, so a reseller or group
-// added on its own page is selectable here without a reload. Group narrows to
-// whichever reseller is currently chosen.
+// GGB and Group options come from the live stores, so a GGB or group added on
+// its own page is selectable here without a reload. Group narrows to whichever
+// GGB is currently chosen.
 function fieldsFor(resellers) {
   return [
     {
-      name: 'resellerId', label: 'Reseller', type: 'select',
+      name: 'resellerId', label: 'GGB', type: 'select',
       options: resellers.map(r => ({ value: r.id, label: r.name })),
     },
     {
       name: 'groupId', label: 'Group', type: 'select',
       options: v => groupsForReseller(v.resellerId).map(g => ({ value: g.id, label: g.name })),
     },
-    { name: 'name',  label: 'Company Name', required: true, placeholder: 'Al Habtoor Logistics' },
+    { name: 'name',  label: 'BG Name', required: true, placeholder: 'Al Habtoor Logistics' },
     { name: 'email', label: 'Email',        required: true, type: 'email', placeholder: 'name@company.ae' },
   ]
 }
@@ -72,7 +72,7 @@ export default function Company(props) {
   const set = (key, value) => {
     setDraft(d => {
       const next = { ...d, [key]: value }
-      // A group belongs to exactly one reseller, so the old pick is not a valid
+      // A group belongs to exactly one GGB, so the old pick is not a valid
       // option under the new one.
       if (key === 'resellerId') next.groupId = ''
       return next
@@ -84,10 +84,10 @@ export default function Company(props) {
     e.preventDefault()
 
     const next = {}
-    if (!draft.name.trim())  next.name  = 'Company Name is required'
+    if (!draft.name.trim())  next.name  = 'BG Name is required'
     if (!draft.email.trim()) next.email = 'Email is required'
-    // The company email is its login username, so it has to be unique.
-    else if (isCompanyEmailTaken(draft.email, draft.id)) next.email = 'A company with this email already exists.'
+    // The BG email is its login username, so it has to be unique.
+    else if (isCompanyEmailTaken(draft.email, draft.id)) next.email = 'A Business Group with this email already exists.'
     if (Object.keys(next).length) {
       setErrors(next)
       formRef.current?.querySelector(`[name="${Object.keys(next)[0]}"]`)?.focus()
@@ -111,15 +111,15 @@ export default function Company(props) {
     setPending(null)
   }
 
-  const title = !editing ? 'Company' : draft.id ? 'Edit Company' : 'Add Company'
+  const title = !editing ? 'BG (Business Group)' : draft.id ? 'Edit BG' : 'Add BG'
 
   return (
     <SettingsLayout title={title} {...props}>
       {editing ? (
         <form ref={formRef} onSubmit={submit} noValidate>
           <FormCard
-            title={draft.id ? 'Company details' : 'New company'}
-            subtitle="Fields marked with * are required. Leave Group blank if the company is its own group."
+            title={draft.id ? 'Business Group details' : 'New Business Group'}
+            subtitle="Fields marked with * are required. Leave Group blank if the BG is its own group."
           >
             <FormFields
               fields={fieldsFor(resellers)}
@@ -145,7 +145,7 @@ export default function Company(props) {
         </form>
       ) : (
         <>
-          <TableToolbar count={companies.length} noun="company" plural="companies">
+          <TableToolbar count={companies.length} noun="BG" plural="BGs">
             <button
               type="button"
               className="ft-btn"
@@ -156,7 +156,7 @@ export default function Company(props) {
             </button>
             <button type="button" style={PRIMARY_BTN} onClick={openAdd}>
               <Plus size={14} strokeWidth={2.6} />
-              Add Company
+              Add BG
             </button>
           </TableToolbar>
 
@@ -165,14 +165,14 @@ export default function Company(props) {
             rows={companies}
             onEdit={openEdit}
             onDelete={setPending}
-            emptyLabel="No companies yet — use Add Company to create one."
+            emptyLabel="No Business Groups yet — use Add BG to create one."
           />
         </>
       )}
 
       {pending && (
         <ConfirmDialog
-          title="Delete company?"
+          title="Delete Business Group?"
           body={`${pending.name} will be removed from the list.`}
           note="This is mock data — nothing is sent to a server."
           confirmLabel="Delete"

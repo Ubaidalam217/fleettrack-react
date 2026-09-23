@@ -10,16 +10,16 @@ import { useToasts } from '../../hooks/useToasts'
 import {
   useSubusers, useCompanies, useVehicles, useBranches,
   addSubuser, updateSubuser, removeSubuser,
-  companyNameFor, vehiclesForCompany, branchesForCompany,
+  companyNameFor, vehiclesForCompany, branchesForCompany, branchTreeForCompany,
   vehicleLabel, vehicleSubLabel, emptySubuser, isSubuserEmailTaken,
 } from './mockData'
 
-// A sub-user is a restricted login under a company, scoped to the vehicles AND
-// the branches assigned to it. The two scopes are independent lists.
+// A sub-user is a restricted login under a BG, scoped to the vehicles AND the
+// branches assigned to it. The two scopes are independent lists.
 
 const COLUMNS = [
   { key: 'name',     label: 'Sub-user Name', bold: true },
-  { key: 'company',  label: 'Company', render: row => companyNameFor(row.companyId) },
+  { key: 'company',  label: 'BG', render: row => companyNameFor(row.companyId) },
   {
     key: 'vehicles',
     label: 'Assigned Vehicles',
@@ -48,6 +48,25 @@ const GRID = {
 }
 
 const CHECK = { width: 15, height: 15, accentColor: 'var(--ft-accent)', cursor: 'pointer', flexShrink: 0 }
+
+/**
+ * A branch row inside the assignment panel, indented to its depth.
+ *
+ * Real margin rather than the non-breaking-space trick branchOptionLabel needs:
+ * these are checkbox labels in normal flow, not <option> text, so CSS works
+ * here and the guide character stays a separate muted element instead of being
+ * baked into the name.
+ */
+function branchTreeLabel(branch) {
+  const depth = branch.depth ?? 0
+  if (!depth) return branch.name
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: depth * 14 }}>
+      <span style={{ color: 'var(--c-text3)', marginRight: 5 }} aria-hidden="true">└</span>
+      {branch.name}
+    </span>
+  )
+}
 
 // ── Assignment panel ───────────────────────────────────────────────────────
 /**
@@ -169,7 +188,7 @@ export default function CompanySubuser(props) {
   const subusers  = useSubusers()
   const companies = useCompanies()
   // Subscribed so both panels re-render when the fleet or the branch list
-  // changes under them; the per-company slices come from the *ForCompany reads.
+  // changes under them; the per-BG slices come from the *ForCompany reads.
   useVehicles()
   useBranches()
 
@@ -202,8 +221,8 @@ export default function CompanySubuser(props) {
   const set = (key, value) => {
     setDraft(d => {
       const next = { ...d, [key]: value }
-      // Vehicle and branch ids belong to the old company and mean nothing under
-      // the new one, so switching company starts both scopes over.
+      // Vehicle and branch ids belong to the old BG and mean nothing under the
+      // new one, so switching BG starts both scopes over.
       if (key === 'companyId') { next.vehicleIds = []; next.branchIds = [] }
       return next
     })
@@ -211,7 +230,10 @@ export default function CompanySubuser(props) {
   }
 
   const vehicles = editing ? vehiclesForCompany(draft.companyId) : []
-  const branches = editing ? branchesForCompany(draft.companyId) : []
+  // Tree order with a depth per row. It is the same SET branchesForCompany
+  // returns, so "All Branches" still means every branch of this BG at every
+  // depth — only the order and the indentation come from the tree read.
+  const branches = editing ? branchTreeForCompany(draft.companyId) : []
 
   const toggleIn = (key, id) => setDraft(d => ({
     ...d,
@@ -227,7 +249,7 @@ export default function CompanySubuser(props) {
     e.preventDefault()
 
     const next = {}
-    if (!draft.companyId)    next.companyId = 'Company is required'
+    if (!draft.companyId)    next.companyId = 'BG is required'
     if (!draft.name.trim())  next.name      = 'Short Name is required'
     if (!draft.email.trim()) next.email     = 'Email is required'
     // The email is the username, so this is the login-uniqueness check too.
@@ -267,7 +289,7 @@ export default function CompanySubuser(props) {
             subtitle="Fields marked with * are required. The username is the email address."
           >
             <div style={GRID}>
-              <Field label="Company" required error={errors.companyId}>
+              <Field label="BG (Business Group)" required error={errors.companyId}>
                 <select
                   ref={firstRef}
                   name="companyId"
@@ -342,8 +364,8 @@ export default function CompanySubuser(props) {
               onToggle={id => toggleIn('vehicleIds', id)}
               onToggleAll={on => toggleAllIn('vehicleIds', on, vehicles)}
               companyChosen={!!draft.companyId}
-              noCompanyText="Select a company to see its vehicles."
-              noItemsText="No vehicles registered for this company."
+              noCompanyText="Select a Business Group to see its vehicles."
+              noItemsText="No vehicles registered for this BG."
               primary={vehicleLabel}
               secondary={vehicleSubLabel}
             />
@@ -356,9 +378,12 @@ export default function CompanySubuser(props) {
               onToggle={id => toggleIn('branchIds', id)}
               onToggleAll={on => toggleAllIn('branchIds', on, branches)}
               companyChosen={!!draft.companyId}
-              noCompanyText="Select a company to see its branches."
-              noItemsText="No branches registered for this company."
-              primary={b => b.name}
+              noCompanyText="Select a Business Group to see its branches."
+              noItemsText="No branches registered for this BG."
+              // Ticking a parent deliberately does NOT tick its children: a
+              // sub-branch is a separate scope, and cascading here would hand
+              // out access nobody asked for the moment a child is added later.
+              primary={branchTreeLabel}
             />
 
             <FormActions
@@ -383,7 +408,7 @@ export default function CompanySubuser(props) {
               type="button"
               style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
               disabled={noCompanies}
-              title={noCompanies ? 'Add a company first' : undefined}
+              title={noCompanies ? 'Add a BG first' : undefined}
               onClick={openAdd}
             >
               <Plus size={14} strokeWidth={2.6} />
@@ -397,7 +422,7 @@ export default function CompanySubuser(props) {
             onEdit={openEdit}
             onDelete={setPending}
             emptyLabel={noCompanies
-              ? 'No companies on file — add a company before creating sub-users.'
+              ? 'No BGs on file — add a Business Group before creating sub-users.'
               : 'No sub-users yet — use Add Subuser to create one.'}
           />
         </>
