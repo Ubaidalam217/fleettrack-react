@@ -1,4 +1,4 @@
-// What a vehicle marker draws, per Edit Asset vehicle type.
+// What a vehicle marker draws, per Console vehicle type.
 //
 // Two tiers. Photographic top-down art is preferred and lives in
 // public/vehicles (see ART_FILES); any type with no usable photo falls back to
@@ -76,7 +76,7 @@ function resolveArt(key) {
  * URL of the photographic marker art for a vehicle type, or null when that
  * type has none and the caller should draw {@link vehicleSvg} instead.
  *
- * @param {string} type Edit Asset `master.vehicleType`.
+ * @param {string} type Console `master.vehicleType`.
  */
 export function vehicleArt(type) {
   return resolveArt(String(type || '').toLowerCase())
@@ -238,7 +238,7 @@ const SHAPES = { car, truck, bus, bike, machine }
 /**
  * Markup for one vehicle marker.
  *
- * @param {string} type  Edit Asset `master.vehicleType`. Empty, unknown and
+ * @param {string} type  Console `master.vehicleType`. Empty, unknown and
  *                       undefined all fall back to the car, which is the only
  *                       sane default for a fleet whose metadata is still being
  *                       filled in — ten of ten devices had no type set when

@@ -12,7 +12,7 @@ import ReplayPanel from '../components/tracking/ReplayPanel'
 import ReplayInfoCard, { REPLAY_INFO_CSS } from '../components/tracking/ReplayInfoCard'
 import { DEFAULT_REPLAY_FIELDS } from '../components/tracking/replayFields'
 import VehicleActionMenu from '../components/tracking/VehicleActionMenu'
-import EditAssetModal from '../components/tracking/EditAssetModal'
+import VehicleConsole from '../components/tracking/VehicleConsole'
 import NearestAssetsModal from '../components/tracking/NearestAssetsModal'
 import ConfirmDialog from '../components/tracking/ConfirmDialog'
 import ToastStack from '../components/tracking/Toasts'
@@ -311,12 +311,6 @@ const MenuIcon = {
       <polygon points="6 4 20 12 6 20" />
     </svg>
   ),
-  edit: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
-    </svg>
-  ),
   poll: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M5 12.5a9 9 0 0114 0" />
@@ -375,7 +369,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // and last-known positions if and when it returns.
   const { vehicles: liveVehicles, isConnected, error } = useFlespiMQTT()
 
-  // Edit Asset writes to Flespi and gets the saved record back, but the MQTT
+  // The Console writes to Flespi and gets the saved record back, but the MQTT
   // store is module-level and only reads device metadata once at startup.
   // Rather than reach into the live-data hook, the saved master is layered on
   // top here — the list updates immediately, and a reload picks the same values
@@ -394,7 +388,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const [followId, setFollowId] = useState(null)
   // { [vehicleId]: { color, points: [[lat,lng]…], lastTs } }
   const [traces, setTraces]     = useState({})
-  const [editVehicleId, setEditVehicleId]       = useState(null)
+  // The Console is opened from the detail panel's own toolbar, so it is only
+  // ever about the selected vehicle — but it still holds an id rather than a
+  // boolean, so the open dialog cannot be re-pointed by a change of selection.
+  const [consoleVehicleId, setConsoleVehicleId] = useState(null)
   const [nearestVehicleId, setNearestVehicleId] = useState(null)
   const [pendingCommand, setPendingCommand]     = useState(null) // { vehicleId, actionKey }
   const [commandBusy, setCommandBusy]           = useState(false)
@@ -710,10 +707,13 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     }
   }, [pendingCommand, vehicles, pushToast])
 
-  const handleSaved = useCallback((deviceId, master) => {
+  // `settingsNote` is set when the Console created a Settings vehicle for this
+  // device's IMEI — worth saying out loud, because that write is what makes the
+  // panel's BG/Group fields resolve and nothing else on screen reveals it.
+  const handleSaved = useCallback((deviceId, master, settingsNote) => {
     setMasterOverrides(prev => ({ ...prev, [deviceId]: master }))
-    setEditVehicleId(null)
-    pushToast('Vehicle saved', { tone: 'success' })
+    setConsoleVehicleId(null)
+    pushToast(settingsNote ? `Vehicle saved and ${settingsNote}` : 'Vehicle saved', { tone: 'success' })
   }, [pushToast])
 
   const counts = countByFilter(vehicles)
@@ -847,6 +847,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // Digital Output, High Update and Find Nearest > Operators are absent rather
   // than greyed out: the probe found either no hardware behind them or no data
   // to show, and a disabled row that never enables is still dead UI.
+  //
+  // Editing is not here either. It moved to the Console button on the detail
+  // panel's toolbar, which is where the fields it changes are on screen.
   const menuItemsFor = (v) => [
     {
       key: 'follow',
@@ -871,12 +874,6 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       onSelect: () => selectVehicle(v, { startReplay: true }),
     },
     { type: 'separator' },
-    {
-      key: 'edit',
-      label: 'Edit Asset',
-      icon: MenuIcon.edit,
-      onSelect: () => setEditVehicleId(v.id),
-    },
     {
       key: 'poll',
       label: 'Poll',
@@ -911,7 +908,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
 
   // Resolved from the live list rather than captured at open time, so an
   // in-flight telemetry push cannot leave a modal showing a stale vehicle.
-  const editVehicle    = editVehicleId    != null ? vehicles.find(v => v.id === editVehicleId)    ?? null : null
+  const consoleVehicle = consoleVehicleId != null ? vehicles.find(v => v.id === consoleVehicleId) ?? null : null
   const nearestVehicle = nearestVehicleId != null ? vehicles.find(v => v.id === nearestVehicleId) ?? null : null
   const commandVehicle = pendingCommand   != null ? vehicles.find(v => v.id === pendingCommand.vehicleId) ?? null : null
   const commandAction  = pendingCommand   != null ? ACTIONS[pendingCommand.actionKey] : null
@@ -1554,6 +1551,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       onToggleMin={toggleSheetMin}
                       onToggleMax={isDesktop ? toggleSheetMax : undefined}
                       onRestore={restoreSheet}
+                      onOpenConsole={sheetVehicle ? () => setConsoleVehicleId(sheetVehicle.id) : undefined}
                     />
                   </div>
                 </div>
@@ -1563,10 +1561,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
         </div>
       </div>
 
-      {editVehicle && (
-        <EditAssetModal
-          vehicle={editVehicle}
-          onClose={() => setEditVehicleId(null)}
+      {consoleVehicle && (
+        <VehicleConsole
+          vehicle={consoleVehicle}
+          onClose={() => setConsoleVehicleId(null)}
           onSaved={handleSaved}
           onError={msg => pushToast(msg, { tone: 'error', duration: 7000 })}
         />

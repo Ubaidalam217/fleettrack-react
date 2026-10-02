@@ -147,6 +147,21 @@ function App() {
 
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark')
 
+  // The theme class also goes on <html>, not just on the wrapper below.
+  //
+  // Every dialog in the app — the vehicle Console, ConfirmDialog, the nearest-
+  // assets modal, the action menu, the toast stack, the AI panel — is portalled
+  // to document.body so the panels that clip them cannot. That puts them
+  // *outside* the wrapper div, where the custom properties are declared, so
+  // they inherited the light :root values no matter what the theme was set to.
+  // Both carry the class: the wrapper keeps working exactly as before and the
+  // portalled subtree finally resolves the same variables as the page.
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle('dark', isDark)
+    return () => root.classList.remove('dark')
+  }, [isDark])
+
   return (
     <ErrorBoundary>
       <div className={isDark ? 'dark' : ''} style={{ minHeight: '100vh', backgroundColor: 'var(--c-page)', overflowX: 'hidden' }}>

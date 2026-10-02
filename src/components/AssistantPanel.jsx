@@ -8,7 +8,7 @@ import { askAssistant, loadChat, saveChat, clearChat } from '../services/assista
 //
 // Built on the app's existing modal vocabulary: portal to body, backdrop,
 // Escape to close, focus returned to whatever opened it — the same shape as
-// EditAssetModal and ConfirmDialog.
+// VehicleConsole and ConfirmDialog.
 
 const WELCOME =
   "Hi! I'm the FleetmaX Assistant. Ask me how to add a company, create a sub-user, set up an alert, and more."

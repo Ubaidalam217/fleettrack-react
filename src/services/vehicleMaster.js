@@ -14,7 +14,7 @@ import { BASE_URL, HEADERS } from '../hooks/flespiConfig'
 export const MASTER_KEY     = 'fleet'
 export const SCHEMA_VERSION = 1
 
-// Client-specified set for the Edit Asset form. Safe to have narrowed from the
+// Client-specified set for the Console's vehicle type field. Safe to have narrowed from the
 // earlier draft list (which included van/trailer/equipment): `vehicleType` was
 // still empty on all ten devices when this changed, so no stored value was
 // orphaned. '' is "not set" and must stay first.

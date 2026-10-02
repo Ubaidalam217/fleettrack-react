@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
+import { defaultUserSetting } from './subuserSchema'
 
 /**
  * Phase 2 mock backend for the Settings module.
@@ -163,6 +164,13 @@ export function emptyVehicle() {
     odometer:      '',
     make:          '',
     model:         '',
+    // The SIM number in the tracking unit and the unit's own model. Both are
+    // asset paperwork rather than telemetry — Flespi reports neither — and both
+    // are read by the Live Map's vehicle panel. Added after the Vehicle form
+    // was written, so they are edited from the Live Map Console and simply
+    // ride along untouched when a row is saved from Settings.
+    mobileNo:      '',
+    deviceType:    '',
   }
 }
 
@@ -210,6 +218,16 @@ export function emptyAlert() {
 }
 
 // A restricted account under a company, limited to the vehicles assigned to it.
+//
+// The six-tab form (see subuserSchema.js) added everything below the original
+// five fields. All of it is additive and every key has a default, so rows
+// written before the tabs existed — the seeds included — still load: see
+// normalizeSubuser(), which is what the form reads through. That is why the
+// storage key did not need a version bump.
+//
+// Deliberately absent: `confirmUsername` and `retypePassword`. Both are
+// confirmation inputs the form validates against Email and Password, and a
+// stored second copy of a credential is how the two drift apart.
 export function emptySubuser() {
   return {
     id: null,
@@ -223,6 +241,61 @@ export function emptySubuser() {
     // A sub-user can be scoped to several branches as well as several
     // vehicles; the two lists are independent.
     branchIds:  [],
+
+    // ── My Account ──
+    shareVia:              { email: false, sms: false },
+    mobileNumber:          '',
+    enableSecurityPin:     false,
+    passwordRecoveryEmail: '',
+
+    // ── Data Access ──
+    // 'object' | 'objectGroup'. Object Group has no entity in FleetmaX yet, so
+    // the form offers the choice the reference shows but can only act on
+    // 'object' — see the note on that tab.
+    selectionMode: 'object',
+
+    // ── Screen Access ──
+    // { [screenRoute]: 'none'|'view'|'modify'|'addDelete'|'customize' }.
+    // Sparse on purpose: an absent screen reads as DEFAULT_PERMISSION, so
+    // adding a screen to the catalogue never has to migrate stored rows.
+    permissions: {},
+
+    // ── User Setting ──
+    userSetting: defaultUserSetting(),
+
+    // ── Authentication ──
+    authRequiredFor: [],
+    deleteAuthFor:   [],
+
+    // ── SSO ──
+    ssoProviders: [],
+  }
+}
+
+/**
+ * A stored sub-user widened to the full shape.
+ *
+ * Every read path for the form goes through here, so a row saved by an older
+ * build — or a seed that predates the tabs — arrives with every key present
+ * and the arrays copied. Without the copies an edit would mutate the stored
+ * row in place and a Cancel would not actually cancel.
+ */
+export function normalizeSubuser(row) {
+  const base = emptySubuser()
+  if (!row) return base
+  return {
+    ...base,
+    ...row,
+    vehicleIds:      Array.isArray(row.vehicleIds) ? [...row.vehicleIds] : [],
+    branchIds:       Array.isArray(row.branchIds)  ? [...row.branchIds]  : [],
+    shareVia:        { ...base.shareVia,    ...(row.shareVia    || {}) },
+    permissions:     { ...(row.permissions || {}) },
+    userSetting:     { ...base.userSetting, ...(row.userSetting || {}) },
+    authRequiredFor: Array.isArray(row.authRequiredFor) ? [...row.authRequiredFor] : [],
+    deleteAuthFor:   Array.isArray(row.deleteAuthFor)   ? [...row.deleteAuthFor]   : [],
+    ssoProviders:    Array.isArray(row.ssoProviders)
+      ? row.ssoProviders.map(p => ({ ...p }))
+      : [],
   }
 }
 
@@ -279,20 +352,21 @@ const SEED_USERS = [
 // has none, which is the case the assignment panel has to handle without
 // looking broken.
 //
-// `imei` is the key that will match a row here against a Flespi device once
-// this stops being mock data, which is why the form requires it. `fleetNo` and
-// `type` predate the Vehicle form and it does not collect them — they stay on
-// the seeds as extra identifiers and are simply absent on anything added since.
+// `imei` is the key that matches a row here against a Flespi device — see
+// settingsProfileForImei() below, which is what the Live Map's vehicle panel
+// reads. `fleetNo` and `type` predate the Vehicle form and it does not collect
+// them — they stay on the seeds as extra identifiers and are simply absent on
+// anything added since.
 const SEED_VEHICLES = [
-  { id: 'v1', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 12345-G1', vehicleId: 'FL-01', imei: '863071011234501', odometer: '184320', make: 'Volvo',      model: 'FH16'      },
-  { id: 'v2', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 55401-B2', vehicleId: 'FL-02', imei: '863071011234502', odometer: '96110',  make: 'Volvo',      model: 'FH16'      },
-  { id: 'v3', companyId: 'c1', branchId: 'b2', groupId: 'g1', subGroup: 'Light',  vehicleNumber: 'AD 77120-A4', vehicleId: 'FL-03', imei: '863071011234503', odometer: '52400',  make: 'Toyota',     model: 'HiAce'     },
-  { id: 'v4', companyId: 'c1', branchId: '',   groupId: 'g1', subGroup: '',       vehicleNumber: 'AD 30988-C1', vehicleId: 'FL-04', imei: '863071011234504', odometer: '31875',  make: 'Nissan',     model: 'Navara'    },
-  { id: 'v5', companyId: 'c2', branchId: 'b3', groupId: 'g3', subGroup: 'Trunk',  vehicleNumber: 'DXB 44012-K', vehicleId: 'DR-01', imei: '863071011234505', odometer: '240900', make: 'Scania',     model: 'R450'      },
-  { id: 'v6', companyId: 'c2', branchId: 'b3', groupId: 'g3', subGroup: 'City',   vehicleNumber: 'DXB 88231-M', vehicleId: 'DR-02', imei: '863071011234506', odometer: '68240',  make: 'Ford',       model: 'Transit'   },
-  { id: 'v7', companyId: 'c2', branchId: '',   groupId: 'g3', subGroup: '',       vehicleNumber: 'DXB 10577-P', vehicleId: 'DR-03', imei: '863071011234507', odometer: '155300', make: 'Mercedes',   model: 'Actros'    },
-  { id: 'v8', companyId: 'c3', branchId: 'b4', groupId: 'g4', subGroup: 'Reefer', vehicleNumber: 'SHJ 20114-T', vehicleId: 'EC-01', imei: '863071011234508', odometer: '78450',  make: 'Isuzu',      model: 'NQR'       },
-  { id: 'v9', companyId: 'c3', branchId: 'b4', groupId: 'g4', subGroup: 'Reefer', vehicleNumber: 'SHJ 66302-R', vehicleId: 'EC-02', imei: '863071011234509', odometer: '91020',  make: 'Isuzu',      model: 'NQR'       },
+  { id: 'v1', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 12345-G1', vehicleId: 'FL-01', imei: '863071011234501', odometer: '184320', make: 'Volvo',      model: 'FH16',     deviceType: 'Teltonika FMB920', mobileNo: '+971 50 111 2201' },
+  { id: 'v2', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 55401-B2', vehicleId: 'FL-02', imei: '863071011234502', odometer: '96110',  make: 'Volvo',      model: 'FH16',     deviceType: 'Teltonika FMB920', mobileNo: '+971 50 111 2202' },
+  { id: 'v3', companyId: 'c1', branchId: 'b2', groupId: 'g1', subGroup: 'Light',  vehicleNumber: 'AD 77120-A4', vehicleId: 'FL-03', imei: '863071011234503', odometer: '52400',  make: 'Toyota',     model: 'HiAce',    deviceType: 'Teltonika FMB130', mobileNo: '+971 50 111 2203' },
+  { id: 'v4', companyId: 'c1', branchId: '',   groupId: 'g1', subGroup: '',       vehicleNumber: 'AD 30988-C1', vehicleId: 'FL-04', imei: '863071011234504', odometer: '31875',  make: 'Nissan',     model: 'Navara',   deviceType: 'Teltonika FMB130', mobileNo: '' },
+  { id: 'v5', companyId: 'c2', branchId: 'b3', groupId: 'g3', subGroup: 'Trunk',  vehicleNumber: 'DXB 44012-K', vehicleId: 'DR-01', imei: '863071011234505', odometer: '240900', make: 'Scania',     model: 'R450',     deviceType: 'Queclink GV300',   mobileNo: '+971 55 404 7701' },
+  { id: 'v6', companyId: 'c2', branchId: 'b3', groupId: 'g3', subGroup: 'City',   vehicleNumber: 'DXB 88231-M', vehicleId: 'DR-02', imei: '863071011234506', odometer: '68240',  make: 'Ford',       model: 'Transit',  deviceType: 'Queclink GV300',   mobileNo: '+971 55 404 7702' },
+  { id: 'v7', companyId: 'c2', branchId: '',   groupId: 'g3', subGroup: '',       vehicleNumber: 'DXB 10577-P', vehicleId: 'DR-03', imei: '863071011234507', odometer: '155300', make: 'Mercedes',   model: 'Actros',   deviceType: '',                 mobileNo: '' },
+  { id: 'v8', companyId: 'c3', branchId: 'b4', groupId: 'g4', subGroup: 'Reefer', vehicleNumber: 'SHJ 20114-T', vehicleId: 'EC-01', imei: '863071011234508', odometer: '78450',  make: 'Isuzu',      model: 'NQR',      deviceType: 'Teltonika FMC130', mobileNo: '+971 56 882 3310' },
+  { id: 'v9', companyId: 'c3', branchId: 'b4', groupId: 'g4', subGroup: 'Reefer', vehicleNumber: 'SHJ 66302-R', vehicleId: 'EC-02', imei: '863071011234509', odometer: '91020',  make: 'Isuzu',      model: 'NQR',      deviceType: 'Teltonika FMC130', mobileNo: '+971 56 882 3311' },
 ]
 
 const SEED_ALERTS = [
@@ -705,6 +779,95 @@ export function branchesForCompany(companyId) {
 export function branchNameFor(branchId) {
   if (!branchId) return '—'
   return branchStore.get().find(b => b.id === branchId)?.name || '—'
+}
+
+// ── Flespi ↔ Settings link ─────────────────────────────────────────────────
+// The Live Map shows Flespi devices; BG, Group, Sub-Group, make/model and the
+// ODO reading only exist here. The IMEI is the only identifier both sides
+// carry, so it is the join key.
+
+/**
+ * Comparison key for an IMEI. Digits only, because the two sides arrive from
+ * different places: Settings collects the IMEI by hand (so it can carry a
+ * space or a stray dash) while Flespi reports it from the device's
+ * `configuration.ident`. Comparing the raw strings would miss a match any
+ * human would call obvious.
+ */
+export function imeiKey(imei) {
+  return String(imei ?? '').replace(/\D/g, '')
+}
+
+/** The Settings vehicle registered to this IMEI, or null when there is none. */
+export function vehicleByImei(imei) {
+  const key = imeiKey(imei)
+  if (!key) return null
+  return vehicleStore.get().find(v => imeiKey(v.imei) === key) ?? null
+}
+
+/**
+ * Everything the Live Map's vehicle panel needs about a device's Settings
+ * registration, resolved and flattened: a BG *name* rather than a companyId, a
+ * group name rather than a groupId.
+ *
+ * `linked: false` is a first-class answer rather than an error — a device that
+ * has never been registered under Settings > Object > Vehicle is the normal
+ * state for a tracker that was just added to the Flespi account, and the panel
+ * says so instead of rendering blanks that look like a bug.
+ */
+export function settingsProfileForImei(imei) {
+  const key = imeiKey(imei)
+  const row = vehicleByImei(imei)
+  if (!row) return { linked: false, imeiKey: key, vehicle: null }
+
+  const company = companyStore.get().find(c => c.id === row.companyId) ?? null
+  // The vehicle's own groupId is authoritative: the Vehicle form copies the
+  // BG's group into it on save, and only leaves it free to choose when the BG
+  // has no group of its own. Falling back to the company covers rows written
+  // before that rule existed.
+  const groupId = row.groupId || company?.groupId || ''
+
+  return {
+    linked:     true,
+    imeiKey:    key,
+    vehicle:    row,
+    bgId:       row.companyId,
+    bgName:     company?.name || '—',
+    groupName:  groupId ? groupNameFor(groupId) : (company ? 'BG is its own group' : '—'),
+    branchName: branchNameFor(row.branchId),
+    subGroup:   row.subGroup   || '',
+    plateNo:    row.vehicleNumber || '',
+    // `vehicleId` is the operator's own identifier for the asset, and Fleet No
+    // is what the Live Map calls it — the same field under the two names each
+    // side of the app grew up with.
+    fleetNo:    row.vehicleId  || '',
+    make:       row.make       || '',
+    model:      row.model      || '',
+    makeModel:  [row.make, row.model].filter(Boolean).join(' '),
+    deviceType: row.deviceType || '',
+    mobileNo:   row.mobileNo   || '',
+    // No odometer here on purpose. The Settings record still carries one (the
+    // Vehicle form collects it), but the Live Map's ODO Reading is the
+    // tracker's own figure — one odometer, from the device that measures it.
+  }
+}
+
+/**
+ * Live version of settingsProfileForImei for the vehicle panel.
+ *
+ * Subscribes to all four stores the profile reads from, not just vehicles: a
+ * BG renamed on the Company page has to change the panel's BG Name, and that
+ * write never touches the vehicle row. Each hook returns a reference-stable
+ * array, so the memo only recomputes when one of them is actually replaced.
+ */
+export function useSettingsProfile(imei) {
+  const vehicles  = useVehicles()
+  const companies = useCompanies()
+  const groups    = useGroups()
+  const branches  = useBranches()
+  return useMemo(
+    () => settingsProfileForImei(imei),
+    [imei, vehicles, companies, groups, branches]
+  )
 }
 
 // ── Resellers ──────────────────────────────────────────────────────────────

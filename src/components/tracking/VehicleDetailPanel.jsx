@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { hasDriver } from '../../services/vehicleMaster'
 import { listDocuments, expiryState, daysUntilExpiry, isReadOnly } from '../../services/documentStore'
-import { fetchTodayMessages, computeUsage } from '../../utils/usageData'
+import { useVehicleUsage, fmtOdometer } from '../../hooks/useVehicleUsage'
 import { computeSensors } from '../../utils/sensorsData'
 import {
   computeAlerts, ALERT_TYPES, SEVERITY, SEVERITY_FILTERS, UNAVAILABLE_NOTES,
@@ -11,6 +11,7 @@ import {
 import { useAddress } from '../../hooks/useAddress'
 import { useVisible } from '../../hooks/useVisible'
 import { shortenAddress } from '../../utils/geocode'
+import { useSettingsProfile } from '../../pages/settings/mockData'
 
 // Replay used to be a tab here. It now lives in its own dock over the map and
 // is started from the vehicle's card in the list or from its marker popup.
@@ -55,14 +56,23 @@ function Grid({ children }) {
   )
 }
 
-function Section({ title, children }) {
+// `caption` names where a section's values come from. Worth the room on the
+// mixed-source sections: Plate No appears twice on this tab — once from the
+// device's own metadata and once from the Settings record — and without the
+// caption that reads as a duplicated field rather than two sources.
+function Section({ title, caption, children }) {
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{
-        fontSize: 11, fontWeight: 700, color: 'var(--c-text2)',
+        display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap',
         marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid var(--c-border)',
       }}>
-        {title}
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text2)' }}>
+          {title}
+        </span>
+        {caption && (
+          <span style={{ fontSize: 10, color: 'var(--c-text3)' }}>{caption}</span>
+        )}
       </div>
       {children}
     </div>
@@ -90,44 +100,75 @@ function fmtDuration(sec) {
   return `${h}h ${min}m`
 }
 
-// Shared by the Usage and Vehicle Info tabs — both read today's messages for
-// the same device, and fetchTodayMessages() caches the request itself, so
-// switching between the two tabs never issues a second fetch within the TTL.
-function useUsageData(vehicleId) {
-  const [state, setState] = useState({ loading: true, error: null, status: null, usage: null, messages: null })
-
-  useEffect(() => {
-    let cancelled = false
-    setState({ loading: true, error: null, status: null, usage: null, messages: null })
-
-    fetchTodayMessages(vehicleId, status => {
-      if (!cancelled) setState(s => ({ ...s, status }))
-    })
-      .then(messages => {
-        if (!cancelled) setState({ loading: false, error: null, status: null, usage: computeUsage(messages), messages })
-      })
-      .catch(err => {
-        if (!cancelled) setState({ loading: false, error: err.message, status: null, usage: null, messages: null })
-      })
-
-    return () => { cancelled = true }
-  }, [vehicleId])
-
-  return state
-}
-
 // ── Tabs ───────────────────────────────────────────────────────────────────
+
+// Unset Settings fields on a *matched* vehicle are a blank in the record, not a
+// missing link — a plain dash, the same as everywhere else on this tab. On an
+// unmatched device every one of them is unanswerable, which is a different
+// thing and says so.
+const NOT_ASSIGNED = 'Not assigned'
+
+/**
+ * BG / Group / registration, read from the Settings vehicle store and joined to
+ * this device by IMEI. None of it exists in Flespi.
+ *
+ * ODO Reading is the exception and is deliberately not part of that join: it is
+ * the tracker's own odometer, passed in from the tab's usage fetch. There used
+ * to be a second, separately-stored "registered" reading in the Settings record
+ * as well, and two numbers both called the odometer is one number too many.
+ */
+function OrgSection({ v, odoKm, odoLoading }) {
+  const profile = useSettingsProfile(v.ident)
+  const linked  = profile.linked
+  const blank   = linked ? null : NOT_ASSIGNED
+
+  return (
+    <Section
+      title="Organisation & Registration"
+      caption={linked
+        ? 'From the Settings vehicle record · matched by IMEI'
+        : 'No Settings vehicle for this IMEI'}
+    >
+      <Grid>
+        <Field label="Group Name"                value={linked ? profile.groupName  : blank} />
+        <Field label="BG (Business Group) Name"  value={linked ? profile.bgName     : blank} />
+        <Field label="Sub Group"                 value={linked ? profile.subGroup   : blank} />
+        <Field label="Make & Model"              value={linked ? profile.makeModel  : blank} />
+        <Field label="Device Type"               value={linked ? profile.deviceType : blank} />
+        <Field label="Mobile No"                 value={linked ? profile.mobileNo   : blank} />
+        <Field label="Plate No"                  value={linked ? profile.plateNo    : blank} />
+        <Field label="Fleet No"                  value={linked ? profile.fleetNo    : blank} />
+        {/* Device telemetry, so it has an answer whether or not the device is
+            linked — the only field here that does. */}
+        <Field label="ODO Reading" value={odoLoading ? '…' : fmtOdometer(odoKm)} />
+      </Grid>
+
+      {/* One plain line, and no button of its own. Assigning an unmatched
+          device used to have a call-to-action here, which duplicated the
+          Console button in the panel's own toolbar — the same callback, two
+          places to find it. The toolbar button is the single edit entry point
+          and handles the unmatched case itself. */}
+      <div style={{ fontSize: 10.5, color: 'var(--c-text3)', lineHeight: 1.6, marginTop: 10 }}>
+        ODO Reading is the device&rsquo;s live odometer from Flespi and is read-only.
+        {linked
+          ? ' Everything else here comes from the Settings vehicle record.'
+          : ' The rest has no source yet — this device’s IMEI is not registered under' +
+            ' Settings > Object > Vehicle. Use the Console, top right, to assign it.'}
+      </div>
+    </Section>
+  )
+}
 
 function VehicleInfo({ v }) {
   const m = v.master
   const docs = useMemo(() => listDocuments(v.id), [v.id])
-  const { loading: usageLoading, usage } = useUsageData(v.id)
+  const { loading: usageLoading, usage } = useVehicleUsage(v.id)
 
   const address = useAddress(v.lat, v.lng)
 
   return (
     <>
-      <Section title="Identity">
+      <Section title="Identity" caption="From this device in Flespi">
         <Grid>
           <Field label="Plate No"     value={m.plateNo} />
           <Field label="Fleet No"     value={m.fleetNo} />
@@ -138,7 +179,13 @@ function VehicleInfo({ v }) {
         </Grid>
       </Section>
 
-      <Section title="Position">
+      <OrgSection
+        v={v}
+        odoKm={usage?.odometerKm}
+        odoLoading={usageLoading}
+      />
+
+      <Section title="Position" caption="Live from the tracker · read-only">
         <Grid>
           <Field
             label="Location"
@@ -146,10 +193,8 @@ function VehicleInfo({ v }) {
           />
           <Field label="Speed"       value={v.speed != null ? `${v.speed} km/h` : null} />
           <Field label="Last Update" value={fmtTs(v.lastTs)} />
-          <Field
-            label="Odometer"
-            value={usageLoading ? '…' : usage?.odometerKm != null ? `${usage.odometerKm.toFixed(1)} km` : null}
-          />
+          {/* The odometer is not repeated here — it is the ODO Reading field in
+              Organisation & Registration, from this same fetch. */}
           <Field
             label="Max Speed Today"
             value={usageLoading ? '…' : usage ? `${usage.maxSpeed} km/h` : null}
@@ -226,7 +271,7 @@ function DriverInfo({ v }) {
 }
 
 function Usage({ v }) {
-  const { loading, error, status, usage } = useUsageData(v.id)
+  const { loading, error, status, usage } = useVehicleUsage(v.id)
 
   if (loading) {
     return (
@@ -263,7 +308,7 @@ function Usage({ v }) {
 }
 
 function Sensors({ v }) {
-  const { loading, error, status, messages } = useUsageData(v.id)
+  const { loading, error, status, messages } = useVehicleUsage(v.id)
   const data = useMemo(() => computeSensors(messages, v), [messages, v])
 
   if (loading) {
@@ -461,7 +506,7 @@ function AlertRow({ alert }) {
 }
 
 function Alerts({ v }) {
-  const { loading, error, status, messages } = useUsageData(v.id)
+  const { loading, error, status, messages } = useVehicleUsage(v.id)
   const [thresholds, setThresholds] = useState(() => getThresholds(v.id))
   const [severityFilter, setSeverityFilter] = useState('All')
   const [typeFilter, setTypeFilter] = useState('all')
@@ -631,6 +676,57 @@ function SizeIcon({ name }) {
   )
 }
 
+function PencilIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  )
+}
+
+/**
+ * The one edit affordance for the whole asset, replacing the old Edit Asset
+ * entry in the vehicle's 3-dot menu. It sits with the size controls because
+ * that is the panel's own toolbar, but it is labelled rather than icon-only —
+ * the size buttons change how the panel looks, this one changes the vehicle.
+ *
+ * It covers assigning as well as editing: the Console opens into its
+ * create-and-link form when the device has no Settings record yet, so an
+ * unmatched vehicle needs no call-to-action of its own further down the tab.
+ */
+function ConsoleButton({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Open the vehicle Console to edit or assign this asset"
+      aria-label="Open vehicle Console"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 5,
+        height: 26, padding: '0 9px', borderRadius: 7,
+        background: 'none', border: '1px solid var(--c-border2)',
+        color: 'var(--c-text2)', cursor: 'pointer',
+        fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+        transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.background   = 'color-mix(in srgb, var(--ft-accent) 10%, transparent)'
+        e.currentTarget.style.color        = 'var(--ft-accent)'
+        e.currentTarget.style.borderColor  = 'var(--ft-accent)'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background  = 'none'
+        e.currentTarget.style.color       = 'var(--c-text2)'
+        e.currentTarget.style.borderColor = 'var(--c-border2)'
+      }}
+    >
+      <PencilIcon />
+      Console
+    </button>
+  )
+}
+
 function SizeButton({ icon, label, onClick }) {
   return (
     <button
@@ -664,9 +760,11 @@ function SizeButton({ icon, label, onClick }) {
  *        maximised state to go to.
  * @param {() => void} [onRestore]    Fired when a tab is clicked while
  *        minimised — picking a tab you cannot see would be dead UI.
+ * @param {() => void} [onOpenConsole]  Opens the vehicle Console. Owned by
+ *        Tracking, which holds the dialog.
  */
 export default function VehicleDetailPanel({
-  vehicle, mode = 'normal', onToggleMin, onToggleMax, onRestore,
+  vehicle, mode = 'normal', onToggleMin, onToggleMax, onRestore, onOpenConsole,
 }) {
   const [tab, setTab] = useState(DETAIL_TABS[0])
 
@@ -708,8 +806,9 @@ export default function VehicleDetailPanel({
           ))}
         </div>
 
-        {(onToggleMin || onToggleMax) && (
-          <div style={{ display: 'flex', gap: 5, flexShrink: 0, padding: '0 10px 0 8px' }}>
+        {(onOpenConsole || onToggleMin || onToggleMax) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, padding: '0 10px 0 8px' }}>
+            {onOpenConsole && <ConsoleButton onClick={onOpenConsole} />}
             {onToggleMin && (
               <SizeButton
                 icon={minimized ? 'expandUp' : 'minimize'}

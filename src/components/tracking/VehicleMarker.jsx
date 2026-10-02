@@ -94,7 +94,7 @@ function vehicleIcon(type, color) {
 /**
  * A vehicle marker that points where the vehicle is pointing.
  *
- * `type` is the Edit Asset vehicle type (car/truck/bus/bike/machine); anything
+ * `type` is the Console vehicle type (car/truck/bus/bike/machine); anything
  * else draws the car.
  *
  * `heading` is a compass course in degrees (Flespi's position.direction);

@@ -6,8 +6,8 @@
  * of React Fast Refresh, so the constants live in their own plain .js file and
  * FormKit stays refreshable while you are editing a form.
  *
- * The input and label values are lifted from EditAssetModal so a Settings form
- * and the Live Map's Edit Asset dialog render the same control set.
+ * The input and label values are lifted from VehicleConsole so a Settings form
+ * and the Live Map's vehicle Console render the same control set.
  */
 
 export const FIELD_LABEL = {
@@ -29,7 +29,7 @@ export function inputStyle(invalid) {
   }
 }
 
-/** Filled accent button — same recipe as EditAssetModal's Save. */
+/** Filled accent button — same recipe as VehicleConsole's Save. */
 export const PRIMARY_BTN = {
   padding: '9px 22px', borderRadius: 9, border: 'none',
   background: 'var(--ft-accent)', color: '#fff',
@@ -37,7 +37,7 @@ export const PRIMARY_BTN = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
 }
 
-/** Bordered button — same recipe as EditAssetModal's Cancel. */
+/** Bordered button — same recipe as VehicleConsole's Cancel. */
 export const SECONDARY_BTN = {
   padding: '9px 16px', borderRadius: 9,
   border: '1px solid var(--c-border2)', background: 'var(--c-input)',
