@@ -9,8 +9,11 @@ import ToastStack from '../../components/tracking/Toasts'
 import { useToasts } from '../../hooks/useToasts'
 import {
   useUsers, useCompanies, addUser, updateUser, removeUser,
-  companyNameFor, emptyUser, isUserEmailTaken,
-} from './mockData'
+  companyNameFor, emptyUser, isUserEmailTaken, DEFAULT_PASSWORD,
+} from '../../data/settings'
+import { usePageAccess, handleApiError, modeNote } from './pageChrome'
+import PageNotice from './PageNotice'
+import { IS_REAL } from '../../data/mode'
 
 // BG login accounts. Distinct from the BG page next door, which owns
 // the organisation record (name, reseller, contact email); this owns the
@@ -56,10 +59,12 @@ export default function User(props) {
   const users     = useUsers()
   const companies = useCompanies()
   const { toasts, push, dismiss } = useToasts()
+  const access = usePageAccess('user')
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)
+  const [saving,  setSaving]  = useState(false)
   const firstRef = useRef(null)
   const formRef  = useRef(null)
 
@@ -78,13 +83,16 @@ export default function User(props) {
     setErrors(e => (e[key] ? { ...e, [key]: null } : e))
   }
 
-  const submit = e => {
+  const submit = async e => {
     e.preventDefault()
+    if (saving) return
 
     const next = {}
     if (!draft.companyId)    next.companyId = 'BG is required'
     if (!draft.email.trim()) next.email     = 'Email is required'
-    // The email is the username, so this is the login-uniqueness check too.
+    // The email is the username, so this is the login-uniqueness check too. Only
+    // the accounts in scope are visible here; the server's case-insensitive unique
+    // index catches the rest and comes back as a 409 on the same field.
     else if (isUserEmailTaken(draft.email, draft.id)) next.email = 'A user with this email already exists.'
     if (Object.keys(next).length) {
       setErrors(next)
@@ -93,20 +101,46 @@ export default function User(props) {
     }
 
     const clean = { ...draft, email: draft.email.trim() }
-    if (draft.id) {
-      updateUser(draft.id, clean)
-      push(`${clean.email} updated`, { tone: 'success' })
-    } else {
-      addUser(clean)
-      push(`${clean.email} added`, { tone: 'success' })
+    const customPassword = clean.password && clean.password !== DEFAULT_PASSWORD
+
+    setSaving(true)
+    try {
+      if (draft.id) {
+        await updateUser(draft.id, clean)
+        push(
+          IS_REAL && customPassword
+            ? `${clean.email} updated · password reset, they must change it at next sign-in`
+            : `${clean.email} updated`,
+          { tone: 'success' }
+        )
+      } else {
+        await addUser(clean)
+        // Worth saying in real mode: the operator has to hand this over, and the
+        // account cannot use the API at all until it is changed.
+        push(
+          IS_REAL
+            ? `${clean.email} added · first password "${clean.password || DEFAULT_PASSWORD}", must be changed at first sign-in`
+            : `${clean.email} added`,
+          { tone: 'success' }
+        )
+      }
+      setDraft(null)
+    } catch (err) {
+      handleApiError(err, { push, setErrors })
+    } finally {
+      setSaving(false)
     }
-    setDraft(null)
   }
 
-  const confirmDelete = () => {
-    removeUser(pending.id)
-    push(`${pending.email} deleted`, { tone: 'success' })
+  const confirmDelete = async () => {
+    const row = pending
     setPending(null)
+    try {
+      await removeUser(row.id)
+      push(`${row.email} deleted`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+    }
   }
 
   const noCompanies = companies.length === 0
@@ -168,7 +202,20 @@ export default function User(props) {
                 />
               </Field>
 
-              <Field label="Password">
+              {/* Write-only against the real API: the hash is never returned, so
+                  this shows the default on an existing row. Leaving it alone changes
+                  nothing; typing in it triggers a password reset (which also
+                  re-arms the first-login requirement). */}
+              <Field
+                label="Password"
+                hint={
+                  IS_REAL
+                    ? draft.id
+                      ? 'Type a new password to reset it, or leave it as-is to keep the current one.'
+                      : 'Handed to the user for their first sign-in.'
+                    : undefined
+                }
+              >
                 <input
                   name="password"
                   value={draft.password}
@@ -178,21 +225,40 @@ export default function User(props) {
               </Field>
             </div>
 
+            {/*
+              Always on in real mode, and locked.
+
+              The server sets mustChangePassword on every account it creates and
+              offers no way to clear it other than the account changing its own
+              password — which is the right behaviour: a password somebody else
+              chose and typed into a form is not a secret. An editable checkbox
+              here would be a setting that silently did nothing.
+            */}
             <label
               style={{
                 display: 'flex', alignItems: 'center', gap: 9,
-                marginTop: 16, cursor: 'pointer',
+                marginTop: 16, cursor: IS_REAL ? 'default' : 'pointer',
                 fontSize: 12.5, color: 'var(--c-text2)',
               }}
             >
               <input
                 type="checkbox"
                 name="forceChange"
-                checked={draft.forceChange}
+                checked={IS_REAL ? (draft.id ? draft.forceChange : true) : draft.forceChange}
                 onChange={e => set('forceChange', e.target.checked)}
-                style={{ width: 15, height: 15, accentColor: 'var(--ft-accent)', cursor: 'pointer' }}
+                disabled={IS_REAL}
+                style={{
+                  width: 15, height: 15, accentColor: 'var(--ft-accent)',
+                  cursor: IS_REAL ? 'not-allowed' : 'pointer',
+                  opacity: IS_REAL ? 0.65 : 1,
+                }}
               />
               Force password change on first login
+              {IS_REAL && (
+                <span style={{ fontSize: 10.5, color: 'var(--c-text3)' }}>
+                  — always required for a password set here
+                </span>
+              )}
             </label>
 
             <FormActions
@@ -203,36 +269,50 @@ export default function User(props) {
                 setDraft(saved ? { ...saved } : emptyUser())
               }}
               saveLabel={draft.id ? 'Save Changes' : 'Save'}
+              saving={saving}
             />
           </FormCard>
         </form>
       ) : (
         <>
-          <TableToolbar count={users.length} noun="user" plural="users">
-            <button
-              type="button"
-              style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
-              disabled={noCompanies}
-              // An account has to belong to a BG, so with none on file the
-              // form would open with an unsatisfiable required dropdown.
-              title={noCompanies ? 'Add a BG first' : undefined}
-              onClick={openAdd}
-            >
-              <Plus size={14} strokeWidth={2.6} />
-              Add User
-            </button>
-          </TableToolbar>
+          <PageNotice {...access} />
 
-          <SettingsTable
-            columns={COLUMNS}
-            rows={users}
-            labelKey="email"
-            onEdit={openEdit}
-            onDelete={setPending}
-            emptyLabel={noCompanies
-              ? 'No BGs on file — add a Business Group before creating users.'
-              : 'No users yet — use Add User to create one.'}
-          />
+          {!access.loading && (
+            <>
+              <TableToolbar count={users.length} noun="user" plural="users">
+                {access.canWrite && (
+                  <button
+                    type="button"
+                    style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
+                    disabled={noCompanies}
+                    // An account has to belong to a BG, so with none on file the
+                    // form would open with an unsatisfiable required dropdown.
+                    title={noCompanies ? 'Add a BG first' : undefined}
+                    onClick={openAdd}
+                  >
+                    <Plus size={14} strokeWidth={2.6} />
+                    Add User
+                  </button>
+                )}
+              </TableToolbar>
+
+              <SettingsTable
+                columns={COLUMNS}
+                rows={users}
+                labelKey="email"
+                onEdit={openEdit}
+                onDelete={setPending}
+                canWrite={access.canWrite}
+                emptyLabel={
+                  !access.canWrite
+                    ? 'No users to show.'
+                    : noCompanies
+                      ? 'No BGs on file — add a Business Group before creating users.'
+                      : 'No users yet — use Add User to create one.'
+                }
+              />
+            </>
+          )}
         </>
       )}
 
@@ -240,7 +320,10 @@ export default function User(props) {
         <ConfirmDialog
           title="Delete user?"
           body={`${pending.email} will lose access to ${companyNameFor(pending.companyId)}.`}
-          note="This is mock data — nothing is sent to a server."
+          note={modeNote(
+            'The account is deleted and can no longer sign in. This cannot be undone.',
+            'This is mock data — nothing is sent to a server.'
+          )}
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}

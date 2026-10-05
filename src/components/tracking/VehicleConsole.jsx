@@ -8,7 +8,7 @@ import {
   useCompanies, useBranches, useResellers,
   branchTreeForCompany, branchOptionLabel,
   groupIdForCompany, groupNameFor, resellerNameFor,
-} from '../../pages/settings/mockData'
+} from '../../data/settings'
 
 // The vehicle Console — opened from the pencil button on the Live Map's
 // vehicle detail panel. One dialog for everything about one asset that a user
@@ -336,10 +336,15 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
         deviceType:    String(sform.deviceType ?? '').trim(),
         mobileNo:      String(sform.mobileNo ?? '').trim(),
       }
+      // Awaited: in real mode these are HTTP calls, and reporting "saved" before
+      // the write landed would show a success toast for a request that then 409s on
+      // a duplicate IMEI. A failure here propagates to the caller's catch rather
+      // than being swallowed — the device metadata above has already been written,
+      // so the user needs to know the two halves disagree.
       if (profile.linked) {
-        updateVehicle(profile.vehicle.id, clean)
+        await updateVehicle(profile.vehicle.id, clean)
       } else {
-        addVehicle(clean)
+        await addVehicle(clean)
         settingsNote = 'linked to a new Settings vehicle'
       }
     }

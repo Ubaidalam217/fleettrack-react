@@ -10,7 +10,10 @@ import { useToasts } from '../../hooks/useToasts'
 import {
   useGroups, useResellers, addGroup, updateGroup, removeGroup,
   resellerNameFor, emptyGroup,
-} from './mockData'
+} from '../../data/settings'
+import { usePageAccess, handleApiError, modeNote } from './pageChrome'
+import PageNotice from './PageNotice'
+import { IS_REAL } from '../../data/mode'
 
 // A group sits between a GGB and its BGs. A BG may skip it — one with no
 // group acts as its own group.
@@ -22,11 +25,18 @@ const COLUMNS = [
 
 // GGB options come from the live store, so a GGB added next door is selectable
 // here without a reload.
-function fieldsFor(resellers) {
+//
+// `editing` locks the GGB on an existing group: the API accepts a group's GGB only
+// at creation time, because changing it would move every BG, branch, vehicle and
+// account beneath the group into a different tenant in one request.
+function fieldsFor(resellers, editing) {
+  const lockParent = IS_REAL && editing
   return [
     {
       name: 'resellerId', label: 'GGB', required: true, type: 'select',
       options: resellers.map(r => ({ value: r.id, label: r.name })),
+      disabled: lockParent,
+      hint: lockParent ? 'A group cannot be moved to another GGB.' : undefined,
     },
     { name: 'name', label: 'Group Name', required: true, placeholder: 'Abu Dhabi Operations' },
   ]
@@ -36,10 +46,12 @@ export default function Group(props) {
   const groups    = useGroups()
   const resellers = useResellers()
   const { toasts, push, dismiss } = useToasts()
+  const access = usePageAccess('group')
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)
+  const [saving,  setSaving]  = useState(false)
   const firstRef = useRef(null)
   const formRef  = useRef(null)
 
@@ -58,8 +70,9 @@ export default function Group(props) {
     setErrors(e => (e[key] ? { ...e, [key]: null } : e))
   }
 
-  const submit = e => {
+  const submit = async e => {
     e.preventDefault()
+    if (saving) return
 
     const next = {}
     if (!draft.resellerId)  next.resellerId = 'GGB is required'
@@ -71,20 +84,32 @@ export default function Group(props) {
     }
 
     const clean = { ...draft, name: draft.name.trim() }
-    if (draft.id) {
-      updateGroup(draft.id, clean)
-      push(`${clean.name} updated`, { tone: 'success' })
-    } else {
-      addGroup(clean)
-      push(`${clean.name} added`, { tone: 'success' })
+    setSaving(true)
+    try {
+      if (draft.id) {
+        await updateGroup(draft.id, clean)
+        push(`${clean.name} updated`, { tone: 'success' })
+      } else {
+        await addGroup(clean)
+        push(`${clean.name} added`, { tone: 'success' })
+      }
+      setDraft(null)
+    } catch (err) {
+      handleApiError(err, { push, setErrors })
+    } finally {
+      setSaving(false)
     }
-    setDraft(null)
   }
 
-  const confirmDelete = () => {
-    removeGroup(pending.id)
-    push(`${pending.name} deleted`, { tone: 'success' })
+  const confirmDelete = async () => {
+    const row = pending
     setPending(null)
+    try {
+      await removeGroup(row.id)
+      push(`${row.name} deleted`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+    }
   }
 
   const noResellers = resellers.length === 0
@@ -99,7 +124,7 @@ export default function Group(props) {
             subtitle="Fields marked with * are required."
           >
             <FormFields
-              fields={fieldsFor(resellers)}
+              fields={fieldsFor(resellers, !!draft.id)}
               values={draft}
               errors={errors}
               onChange={set}
@@ -113,35 +138,49 @@ export default function Group(props) {
                 setDraft(saved ? { ...saved } : emptyGroup())
               }}
               saveLabel={draft.id ? 'Save Changes' : 'Save'}
+              saving={saving}
             />
           </FormCard>
         </form>
       ) : (
         <>
-          <TableToolbar count={groups.length} noun="group" plural="groups">
-            <button
-              type="button"
-              style={{ ...PRIMARY_BTN, opacity: noResellers ? 0.5 : 1, cursor: noResellers ? 'not-allowed' : 'pointer' }}
-              disabled={noResellers}
-              // A group belongs to a GGB, so with none on file the form would
-              // open with an unsatisfiable required dropdown.
-              title={noResellers ? 'Add a GGB first' : undefined}
-              onClick={openAdd}
-            >
-              <Plus size={14} strokeWidth={2.6} />
-              Add Group
-            </button>
-          </TableToolbar>
+          <PageNotice {...access} />
 
-          <SettingsTable
-            columns={COLUMNS}
-            rows={groups}
-            onEdit={openEdit}
-            onDelete={setPending}
-            emptyLabel={noResellers
-              ? 'No GGBs on file — add a GGB before creating groups.'
-              : 'No groups yet — use Add Group to create one.'}
-          />
+          {!access.loading && (
+            <>
+              <TableToolbar count={groups.length} noun="group" plural="groups">
+                {access.canWrite && (
+                  <button
+                    type="button"
+                    style={{ ...PRIMARY_BTN, opacity: noResellers ? 0.5 : 1, cursor: noResellers ? 'not-allowed' : 'pointer' }}
+                    disabled={noResellers}
+                    // A group belongs to a GGB, so with none on file the form would
+                    // open with an unsatisfiable required dropdown.
+                    title={noResellers ? 'Add a GGB first' : undefined}
+                    onClick={openAdd}
+                  >
+                    <Plus size={14} strokeWidth={2.6} />
+                    Add Group
+                  </button>
+                )}
+              </TableToolbar>
+
+              <SettingsTable
+                columns={COLUMNS}
+                rows={groups}
+                onEdit={openEdit}
+                onDelete={setPending}
+                canWrite={access.canWrite}
+                emptyLabel={
+                  !access.canWrite
+                    ? 'No groups to show.'
+                    : noResellers
+                      ? 'No GGBs on file — add a GGB before creating groups.'
+                      : 'No groups yet — use Add Group to create one.'
+                }
+              />
+            </>
+          )}
         </>
       )}
 
@@ -149,7 +188,10 @@ export default function Group(props) {
         <ConfirmDialog
           title="Delete group?"
           body={`${pending.name} will be removed from ${resellerNameFor(pending.resellerId)}.`}
-          note="BGs in this group are left in place and fall back to acting as their own group. This is mock data — nothing is sent to a server."
+          note={modeNote(
+            'BGs in this group are kept and fall back to acting as their own group. Any Group Admin account scoped to this group is deleted.',
+            'BGs in this group are left in place and fall back to acting as their own group. This is mock data — nothing is sent to a server.'
+          )}
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}

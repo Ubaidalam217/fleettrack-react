@@ -17,8 +17,13 @@ import { CARD_SURFACE } from './formStyles'
  * It defaults to `name`, so BG and Branch are unaffected; the User table
  * points it at `email`, whose rows are identified by their login rather than
  * by a name they do not have.
+ *
+ * `canWrite` drops the Actions column entirely for a role that may not write (a
+ * sub-user in real mode). Hiding the two buttons but keeping the column would
+ * leave an empty header and a ragged right edge on every row; the server rejects
+ * the calls regardless, so the column has nothing to offer.
  */
-export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLabel, labelKey = 'name' }) {
+export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLabel, labelKey = 'name', canWrite = true }) {
   const [hovered, setHovered] = useState(null)
 
   return (
@@ -36,12 +41,14 @@ export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLa
                   {c.label}
                 </th>
               ))}
-              <th
-                className="text-right px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider"
-                style={{ color: 'var(--c-text3)', whiteSpace: 'nowrap' }}
-              >
-                Actions
-              </th>
+              {canWrite && (
+                <th
+                  className="text-right px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: 'var(--c-text3)', whiteSpace: 'nowrap' }}
+                >
+                  Actions
+                </th>
+              )}
             </tr>
           </thead>
 
@@ -49,7 +56,7 @@ export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLa
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length + 1}
+                  colSpan={columns.length + (canWrite ? 1 : 0)}
                   style={{ padding: '38px 12px', textAlign: 'center', color: 'var(--c-text3)', fontSize: 12 }}
                 >
                   {emptyLabel}
@@ -79,24 +86,26 @@ export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLa
                   </td>
                 ))}
 
-                <td className="px-3 py-2.5" style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                  <div style={{ display: 'inline-flex', gap: 6 }}>
-                    <IconButton
-                      label={`Edit ${row[labelKey]}`}
-                      tone="var(--ft-accent)"
-                      onClick={() => onEdit(row)}
-                    >
-                      <Pencil size={13} />
-                    </IconButton>
-                    <IconButton
-                      label={`Delete ${row[labelKey]}`}
-                      tone="#ef4444"
-                      onClick={() => onDelete(row)}
-                    >
-                      <Trash2 size={13} />
-                    </IconButton>
-                  </div>
-                </td>
+                {canWrite && (
+                  <td className="px-3 py-2.5" style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    <div style={{ display: 'inline-flex', gap: 6 }}>
+                      <IconButton
+                        label={`Edit ${row[labelKey]}`}
+                        tone="var(--ft-accent)"
+                        onClick={() => onEdit(row)}
+                      >
+                        <Pencil size={13} />
+                      </IconButton>
+                      <IconButton
+                        label={`Delete ${row[labelKey]}`}
+                        tone="#ef4444"
+                        onClick={() => onDelete(row)}
+                      >
+                        <Trash2 size={13} />
+                      </IconButton>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

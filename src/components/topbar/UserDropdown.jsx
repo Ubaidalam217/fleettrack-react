@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { useNavigate, Link } from 'react-router-dom'
 import { getPermissionState } from '../../services/pushNotifications'
 import { useCurrentUser, initials, clearCurrentUser } from '../../services/authUser'
+import { IS_REAL } from '../../data/mode'
+import { logout as realLogout } from '../../data/session'
 
 const THEME_OPTIONS = [
   {
@@ -113,6 +115,10 @@ export default function UserDropdown({ themeMode, setTheme }) {
     localStorage.removeItem('fleetAuth')
     localStorage.removeItem('fleetTheme')
     clearCurrentUser()
+    // Real mode: drops the JWT from memory and sessionStorage. Called in addition
+    // to the mock cleanup above rather than instead of it, so a browser that has
+    // used both modes does not keep a stale demo profile around.
+    if (IS_REAL) realLogout()
     setOpen(false)
     navigate('/login')
   }

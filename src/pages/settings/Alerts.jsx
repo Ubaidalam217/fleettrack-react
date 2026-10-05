@@ -13,7 +13,10 @@ import {
   companyNameFor, vehiclesForCompany, emptyAlert,
   vehicleLabel, vehicleSubLabel,
   ALERT_TYPES, alertTypeLabel,
-} from './mockData'
+} from '../../data/settings'
+import { usePageAccess, handleApiError, modeNote } from './pageChrome'
+import PageNotice from './PageNotice'
+import { IS_REAL } from '../../data/mode'
 
 // Alert rules. Controls are hand-built from FormKit's Field plus formStyles'
 // inputStyle — the primitives FormFields composes internally, so they render
@@ -255,10 +258,12 @@ export default function Alerts(props) {
   useVehicles()
 
   const { toasts, push, dismiss } = useToasts()
+  const access = usePageAccess('alerts')
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)
+  const [saving,  setSaving]  = useState(false)
   const firstRef = useRef(null)
   const formRef  = useRef(null)
 
@@ -316,8 +321,9 @@ export default function Alerts(props) {
   const vehicles = editing ? vehiclesForCompany(draft.companyId) : []
   const SettingsFields = editing ? SETTINGS_RENDERERS[draft.type] : null
 
-  const submit = e => {
+  const submit = async e => {
     e.preventDefault()
+    if (saving) return
 
     const next = {}
     if (!draft.name.trim()) next.name      = 'Alert Name is required'
@@ -350,20 +356,32 @@ export default function Alerts(props) {
       // stale list from reappearing if the mode is flipped back later.
       vehicleIds: draft.allVehicles ? [] : draft.vehicleIds,
     }
-    if (draft.id) {
-      updateAlert(draft.id, clean)
-      push(`${clean.name} updated`, { tone: 'success' })
-    } else {
-      addAlert(clean)
-      push(`${clean.name} added`, { tone: 'success' })
+    setSaving(true)
+    try {
+      if (draft.id) {
+        await updateAlert(draft.id, clean)
+        push(`${clean.name} updated`, { tone: 'success' })
+      } else {
+        await addAlert(clean)
+        push(`${clean.name} added`, { tone: 'success' })
+      }
+      setDraft(null)
+    } catch (err) {
+      handleApiError(err, { push, setErrors })
+    } finally {
+      setSaving(false)
     }
-    setDraft(null)
   }
 
-  const confirmDelete = () => {
-    removeAlert(pending.id)
-    push(`${pending.name} deleted`, { tone: 'success' })
+  const confirmDelete = async () => {
+    const row = pending
     setPending(null)
+    try {
+      await removeAlert(row.id)
+      push(`${row.name} deleted`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+    }
   }
 
   const noCompanies = companies.length === 0
@@ -405,13 +423,27 @@ export default function Alerts(props) {
                 </select>
               </Field>
 
-              <Field label="Apply To — BG" required error={errors.companyId}>
+              {/* Locked on an existing alert in real mode: the API takes an alert's
+                  BG only at creation time, since its explicit vehicle list is
+                  validated against that BG and re-pointing it would leave the rule
+                  watching vehicles from a tenant it no longer belongs to. */}
+              <Field
+                label="Apply To — BG"
+                required
+                error={errors.companyId}
+                hint={IS_REAL && draft.id ? 'An alert cannot be moved to another BG.' : undefined}
+              >
                 <select
                   name="companyId"
                   value={draft.companyId}
                   onChange={e => set('companyId', e.target.value)}
+                  disabled={IS_REAL && !!draft.id}
                   aria-invalid={!!errors.companyId || undefined}
-                  style={inputStyle(!!errors.companyId)}
+                  style={
+                    IS_REAL && draft.id
+                      ? { ...inputStyle(!!errors.companyId), opacity: 0.6, cursor: 'not-allowed' }
+                      : inputStyle(!!errors.companyId)
+                  }
                 >
                   <option value="">— Select —</option>
                   {companies.map(c => (
@@ -500,35 +532,49 @@ export default function Alerts(props) {
                   : emptyAlert())
               }}
               saveLabel={draft.id ? 'Save Changes' : 'Save'}
+              saving={saving}
             />
           </FormCard>
         </form>
       ) : (
         <>
-          <TableToolbar count={alerts.length} noun="alert" plural="alerts">
-            <button
-              type="button"
-              style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
-              disabled={noCompanies}
-              // An alert has to be scoped to a BG, so with none on file the
-              // form would open with an unsatisfiable required dropdown.
-              title={noCompanies ? 'Add a BG first' : undefined}
-              onClick={openAdd}
-            >
-              <Plus size={14} strokeWidth={2.6} />
-              Add Alert
-            </button>
-          </TableToolbar>
+          <PageNotice {...access} />
 
-          <SettingsTable
-            columns={COLUMNS}
-            rows={alerts}
-            onEdit={openEdit}
-            onDelete={setPending}
-            emptyLabel={noCompanies
-              ? 'No BGs on file — add a Business Group before creating alerts.'
-              : 'No alerts yet — use Add Alert to create one.'}
-          />
+          {!access.loading && (
+            <>
+              <TableToolbar count={alerts.length} noun="alert" plural="alerts">
+                {access.canWrite && (
+                  <button
+                    type="button"
+                    style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
+                    disabled={noCompanies}
+                    // An alert has to be scoped to a BG, so with none on file the
+                    // form would open with an unsatisfiable required dropdown.
+                    title={noCompanies ? 'Add a BG first' : undefined}
+                    onClick={openAdd}
+                  >
+                    <Plus size={14} strokeWidth={2.6} />
+                    Add Alert
+                  </button>
+                )}
+              </TableToolbar>
+
+              <SettingsTable
+                columns={COLUMNS}
+                rows={alerts}
+                onEdit={openEdit}
+                onDelete={setPending}
+                canWrite={access.canWrite}
+                emptyLabel={
+                  !access.canWrite
+                    ? 'No alerts to show.'
+                    : noCompanies
+                      ? 'No BGs on file — add a Business Group before creating alerts.'
+                      : 'No alerts yet — use Add Alert to create one.'
+                }
+              />
+            </>
+          )}
         </>
       )}
 
@@ -536,7 +582,10 @@ export default function Alerts(props) {
         <ConfirmDialog
           title="Delete alert?"
           body={`${pending.name} will stop watching ${scopeLabel(pending)}.`}
-          note="This is mock data — nothing is sent to a server."
+          note={modeNote(
+            'The rule is deleted. This cannot be undone.',
+            'This is mock data — nothing is sent to a server.'
+          )}
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}

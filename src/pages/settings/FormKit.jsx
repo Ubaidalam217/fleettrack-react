@@ -8,7 +8,7 @@ import { FIELD_LABEL, inputStyle, PRIMARY_BTN, SECONDARY_BTN, CARD_SURFACE } fro
  * controls in a page-width grid rather than a two-column modal.
  */
 
-export function Field({ label, required, error, children }) {
+export function Field({ label, required, error, hint, children }) {
   return (
     <div style={{ minWidth: 0 }}>
       <label style={FIELD_LABEL}>
@@ -16,11 +16,17 @@ export function Field({ label, required, error, children }) {
         {required && <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span>}
       </label>
       {children}
-      {error && (
+      {error ? (
         <span style={{ fontSize: 10.5, color: '#ef4444', display: 'block', marginTop: 3 }}>
           {error}
         </span>
-      )}
+      ) : hint ? (
+        // Only when there is no error — an explanatory hint under a red message
+        // competes with it for the same glance.
+        <span style={{ fontSize: 10.5, color: 'var(--c-text3)', display: 'block', marginTop: 3 }}>
+          {hint}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -31,10 +37,17 @@ export function Field({ label, required, error, children }) {
  * keeps the two pages to one readable array each instead of ~200 lines of
  * near-identical JSX.
  *
- * Spec entry: { name, label, required?, type?, placeholder?, options? }
- *   type    — 'text' (default) | 'email' | 'tel' | 'select'
- *   options — array of {value,label} or strings; may be a function of the
- *             current values, which is how State narrows when Country changes.
+ * Spec entry: { name, label, required?, type?, placeholder?, options?, disabled?, hint? }
+ *   type     — 'text' (default) | 'email' | 'tel' | 'select'
+ *   options  — array of {value,label} or strings; may be a function of the
+ *              current values, which is how State narrows when Country changes.
+ *   disabled — renders the control locked. Used for a parent the backend refuses
+ *              to let an edit change (a group's GGB, a BG's GGB): re-parenting
+ *              would move every row beneath it across a tenant boundary, so the
+ *              API only accepts it at creation time. Showing the field live and
+ *              then ignoring what was chosen is the worse option — the user sees
+ *              a successful save that did not do what they asked.
+ *   hint     — small text under the control, for explaining exactly that.
  */
 export function FormFields({ fields, values, errors, onChange, firstRef }) {
   return (
@@ -49,13 +62,16 @@ export function FormFields({ fields, values, errors, onChange, firstRef }) {
           name: f.name,
           value: values[f.name] ?? '',
           onChange: e => onChange(f.name, e.target.value),
-          style: inputStyle(invalid),
+          style: f.disabled
+            ? { ...inputStyle(invalid), opacity: 0.6, cursor: 'not-allowed' }
+            : inputStyle(invalid),
           'aria-invalid': invalid || undefined,
+          disabled: !!f.disabled,
           ref: i === 0 ? firstRef : undefined,
         }
 
         return (
-          <Field key={f.name} label={f.label} required={f.required} error={errors[f.name]}>
+          <Field key={f.name} label={f.label} required={f.required} error={errors[f.name]} hint={f.hint}>
             {f.type === 'select' ? (
               <select {...common}>
                 <option value="">— Select —</option>
@@ -82,8 +98,16 @@ function normalizeOptions(options, values) {
  * Save / Back / Reset, in the app's button language: Save is the filled accent
  * button from VehicleConsole's footer, the other two are the bordered
  * secondary. Right-aligned, wrapping to a stack on a narrow screen.
+ *
+ * `saving` disables all three and relabels Save while a request is in flight.
+ * Against the mock store a save was instant and there was nothing to indicate; in
+ * real mode it is a round trip, and without this the only feedback for a slow save
+ * is a button that appears to have done nothing — which gets clicked again.
+ * Back and Reset are disabled too, because navigating away mid-write leaves the
+ * user with no idea whether it landed.
  */
-export function FormActions({ onBack, onReset, saveLabel = 'Save' }) {
+export function FormActions({ onBack, onReset, saveLabel = 'Save', saving = false }) {
+  const busy = { opacity: 0.6, cursor: 'not-allowed' }
   return (
     <div style={{
       display: 'flex', flexWrap: 'wrap', gap: 8,
@@ -91,9 +115,11 @@ export function FormActions({ onBack, onReset, saveLabel = 'Save' }) {
       marginTop: 20, paddingTop: 16,
       borderTop: '1px solid var(--c-border2)',
     }}>
-      <button type="button" onClick={onBack}  style={SECONDARY_BTN}>Back</button>
-      <button type="button" onClick={onReset} style={SECONDARY_BTN}>Reset</button>
-      <button type="submit" style={PRIMARY_BTN}>{saveLabel}</button>
+      <button type="button" onClick={onBack}  style={saving ? { ...SECONDARY_BTN, ...busy } : SECONDARY_BTN} disabled={saving}>Back</button>
+      <button type="button" onClick={onReset} style={saving ? { ...SECONDARY_BTN, ...busy } : SECONDARY_BTN} disabled={saving}>Reset</button>
+      <button type="submit" style={saving ? { ...PRIMARY_BTN, ...busy } : PRIMARY_BTN} disabled={saving}>
+        {saving ? 'Saving…' : saveLabel}
+      </button>
     </div>
   )
 }

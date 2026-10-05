@@ -11,7 +11,10 @@ import {
   useCompanies, useResellers, useGroups,
   addCompany, updateCompany, removeCompany, emptyCompany,
   resellerNameFor, groupLabelForCompany, groupsForReseller, isCompanyEmailTaken,
-} from './mockData'
+} from '../../data/settings'
+import { usePageAccess, handleApiError, modeNote } from './pageChrome'
+import PageNotice from './PageNotice'
+import { IS_REAL } from '../../data/mode'
 
 // List and form live on one route. Settings' routing is Phase 1 work and the
 // menu highlights a single leaf per page, so opening the form as a second URL
@@ -25,18 +28,39 @@ const COLUMNS = [
   { key: 'group',    label: 'Group', render: row => groupLabelForCompany(row) },
 ]
 
-// GGB and Group options come from the live stores, so a GGB or group added on
-// its own page is selectable here without a reload. Group narrows to whichever
-// GGB is currently chosen.
-function fieldsFor(resellers) {
+/**
+ * GGB and Group options come from the live stores, so a GGB or group added on its
+ * own page is selectable here without a reload. Group narrows to whichever GGB is
+ * currently chosen.
+ *
+ * Two real-mode locks on the parent selectors, both matching what the API will
+ * actually accept:
+ *
+ *  - editing: the API takes a BG's GGB only at creation time, since changing it
+ *    would move every branch, vehicle and account under it into another tenant.
+ *  - creating with no GGB visible: a Group Admin cannot see any GGB — the tier
+ *    above its own node is not in its scope — so it has nothing to choose from.
+ *    The server derives both the GGB and the group from who is asking, which is
+ *    the only placement that keeps the new BG inside the creator's own scope. The
+ *    two controls say so rather than sitting there empty and looking broken.
+ */
+function fieldsFor(resellers, { editing, derivedParent }) {
+  const lockGgb = IS_REAL && (editing || derivedParent)
   return [
     {
       name: 'resellerId', label: 'GGB', type: 'select',
       options: resellers.map(r => ({ value: r.id, label: r.name })),
+      disabled: lockGgb,
+      hint: !IS_REAL ? undefined
+        : editing ? 'A BG cannot be moved to another GGB.'
+        : derivedParent ? 'Set automatically from your own scope.'
+        : undefined,
     },
     {
       name: 'groupId', label: 'Group', type: 'select',
       options: v => groupsForReseller(v.resellerId).map(g => ({ value: g.id, label: g.name })),
+      disabled: IS_REAL && derivedParent,
+      hint: IS_REAL && derivedParent ? 'Set automatically from your own group.' : undefined,
     },
     { name: 'name',  label: 'BG Name', required: true, placeholder: 'Al Habtoor Logistics' },
     { name: 'email', label: 'Email',        required: true, type: 'email', placeholder: 'name@company.ae' },
@@ -50,12 +74,14 @@ export default function Company(props) {
   // the per-reseller slice itself comes from groupsForReseller.
   useGroups()
   const { toasts, push, dismiss } = useToasts()
+  const access = usePageAccess('company')
 
   // null = list view. Otherwise the record being edited, with id null for a new
   // one — which is also what tells Save whether to add or update.
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)   // row queued for deletion
+  const [saving,  setSaving]  = useState(false)
   const firstRef = useRef(null)
   const formRef  = useRef(null)
 
@@ -80,13 +106,16 @@ export default function Company(props) {
     setErrors(e => (e[key] ? { ...e, [key]: null } : e))
   }
 
-  const submit = e => {
+  const submit = async e => {
     e.preventDefault()
+    if (saving) return
 
     const next = {}
     if (!draft.name.trim())  next.name  = 'BG Name is required'
     if (!draft.email.trim()) next.email = 'Email is required'
-    // The BG email is its login username, so it has to be unique.
+    // The BG email is its login username, so it has to be unique. This local check
+    // only sees the BGs in scope — the server's unique index is what catches a
+    // clash with another tenant's BG, and lands in the same place via handleApiError.
     else if (isCompanyEmailTaken(draft.email, draft.id)) next.email = 'A Business Group with this email already exists.'
     if (Object.keys(next).length) {
       setErrors(next)
@@ -95,21 +124,37 @@ export default function Company(props) {
     }
 
     const clean = { ...draft, name: draft.name.trim(), email: draft.email.trim() }
-    if (draft.id) {
-      updateCompany(draft.id, clean)
-      push(`${clean.name} updated`, { tone: 'success' })
-    } else {
-      addCompany(clean)
-      push(`${clean.name} added`, { tone: 'success' })
+    setSaving(true)
+    try {
+      if (draft.id) {
+        await updateCompany(draft.id, clean)
+        push(`${clean.name} updated`, { tone: 'success' })
+      } else {
+        await addCompany(clean)
+        push(`${clean.name} added`, { tone: 'success' })
+      }
+      setDraft(null)
+    } catch (err) {
+      handleApiError(err, { push, setErrors })
+    } finally {
+      setSaving(false)
     }
-    setDraft(null)
   }
 
-  const confirmDelete = () => {
-    removeCompany(pending.id)
-    push(`${pending.name} deleted`, { tone: 'success' })
+  const confirmDelete = async () => {
+    const row = pending
     setPending(null)
+    try {
+      await removeCompany(row.id)
+      push(`${row.name} deleted`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+    }
   }
+
+  // A creator who can see no GGB has its placement derived by the server — see
+  // fieldsFor(). Only meaningful in real mode; mock mode always has the seeds.
+  const derivedParent = IS_REAL && resellers.length === 0
 
   const title = !editing ? 'BG (Business Group)' : draft.id ? 'Edit BG' : 'Add BG'
 
@@ -122,7 +167,7 @@ export default function Company(props) {
             subtitle="Fields marked with * are required. Leave Group blank if the BG is its own group."
           >
             <FormFields
-              fields={fieldsFor(resellers)}
+              fields={fieldsFor(resellers, { editing: !!draft.id, derivedParent })}
               values={draft}
               errors={errors}
               onChange={set}
@@ -140,33 +185,49 @@ export default function Company(props) {
                 setDraft(saved ? { ...saved } : emptyCompany())
               }}
               saveLabel={draft.id ? 'Save Changes' : 'Save'}
+              saving={saving}
             />
           </FormCard>
         </form>
       ) : (
         <>
-          <TableToolbar count={companies.length} noun="BG" plural="BGs">
-            <button
-              type="button"
-              className="ft-btn"
-              onClick={() => push('Certificate import is not wired up yet — coming in a later phase.', { tone: 'info' })}
-            >
-              <FileBadge size={13} />
-              Import from Certificate
-            </button>
-            <button type="button" style={PRIMARY_BTN} onClick={openAdd}>
-              <Plus size={14} strokeWidth={2.6} />
-              Add BG
-            </button>
-          </TableToolbar>
+          <PageNotice {...access} />
 
-          <SettingsTable
-            columns={COLUMNS}
-            rows={companies}
-            onEdit={openEdit}
-            onDelete={setPending}
-            emptyLabel="No Business Groups yet — use Add BG to create one."
-          />
+          {!access.loading && (
+            <>
+              <TableToolbar count={companies.length} noun="BG" plural="BGs">
+                {access.canWrite && (
+                  <>
+                    <button
+                      type="button"
+                      className="ft-btn"
+                      onClick={() => push('Certificate import is not wired up yet — coming in a later phase.', { tone: 'info' })}
+                    >
+                      <FileBadge size={13} />
+                      Import from Certificate
+                    </button>
+                    <button type="button" style={PRIMARY_BTN} onClick={openAdd}>
+                      <Plus size={14} strokeWidth={2.6} />
+                      Add BG
+                    </button>
+                  </>
+                )}
+              </TableToolbar>
+
+              <SettingsTable
+                columns={COLUMNS}
+                rows={companies}
+                onEdit={openEdit}
+                onDelete={setPending}
+                canWrite={access.canWrite}
+                emptyLabel={
+                  access.canWrite
+                    ? 'No Business Groups yet — use Add BG to create one.'
+                    : 'No Business Groups to show.'
+                }
+              />
+            </>
+          )}
         </>
       )}
 
@@ -174,7 +235,10 @@ export default function Company(props) {
         <ConfirmDialog
           title="Delete Business Group?"
           body={`${pending.name} will be removed from the list.`}
-          note="This is mock data — nothing is sent to a server."
+          note={modeNote(
+            'Every branch, vehicle, account and alert in this BG is deleted with it. This cannot be undone.',
+            'This is mock data — nothing is sent to a server.'
+          )}
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}

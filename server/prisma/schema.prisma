@@ -1,0 +1,360 @@
+// FleetmaX tracking backend — data model.
+//
+// Mirrors the Settings module the frontend already ships against its in-memory
+// mock (src/pages/settings/mockData.js), but uses the client's vocabulary for
+// the table names rather than the mock's legacy keys:
+//
+//   mock `reseller` → Ggb            mock `company` → BusinessGroup
+//   mock `group`    → Group          mock `companyId` → bgId
+//
+// The hierarchy:
+//
+//   Super Admin → Ggb → Group (optional) → BusinessGroup → Branch* → Vehicle
+//
+// Branch nests to any depth through parentBranchId. Every leaf entity (Branch,
+// Vehicle, User, Alert) carries bgId directly rather than inheriting it from a
+// parent, because the BG is the pivot every scope check filters on — see
+// src/lib/scope.js. One read answers "which BG owns this row" without walking a
+// chain, and a row whose parent went missing is still attributable.
+//
+// No telemetry lives here. Positions, speed, temperature and ignition all stay
+// in Flespi; Vehicle.imei is the only identifier both sides carry and is
+// therefore the join key.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Who a login account is, and therefore what it can see. Ordered widest to
+/// narrowest. The scope links on User (ggbId / groupId / bgId) are what the
+/// role is resolved against: see assertScopeLinks() in src/lib/users.js, which
+/// enforces that exactly the right one is set for each role.
+enum Role {
+  SUPER_ADMIN
+  GGB_ADMIN
+  GROUP_ADMIN
+  BG_USER
+  SUB_USER
+}
+
+/// Spelled in the frontend's casing ('Active' / 'Inactive') so a row round-trips
+/// to the Settings tables without a translation layer in between.
+enum Status {
+  Active
+  Inactive
+}
+
+/// Group Global Admin — the top of the tree below Super Admin. The mock calls
+/// this a `reseller`.
+model Ggb {
+  id    String  @id @default(cuid())
+  name  String
+  /// Optional: the mock seeds two GGBs with no contact address at all.
+  email String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  groups         Group[]
+  businessGroups BusinessGroup[]
+  users          User[]
+}
+
+/// An optional tier between a GGB and its BGs. A BG with no Group is its own
+/// group — see BusinessGroup.groupId.
+model Group {
+  id    String @id @default(cuid())
+  name  String
+  ggbId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ggb            Ggb             @relation(fields: [ggbId], references: [id], onDelete: Cascade)
+  businessGroups BusinessGroup[]
+  users          User[]
+
+  @@index([ggbId])
+}
+
+/// Business Group — the tenant boundary. Branches, vehicles, users and alerts
+/// all belong to exactly one BG, and almost every scope check reduces to "which
+/// BGs may this account see".
+model BusinessGroup {
+  id   String @id @default(cuid())
+  name String
+
+  /// Also the BG account's login username, which is why it is required here and
+  /// globally unique rather than optional like Ggb.email.
+  email String @unique
+
+  ggbId String
+
+  /// Nullable by design: null means this BG acts as its own group. The frontend
+  /// renders that state as "— (own group)" rather than as missing data.
+  groupId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ggb      Ggb       @relation(fields: [ggbId], references: [id], onDelete: Cascade)
+  group    Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  branches Branch[]
+  vehicles Vehicle[]
+  users    User[]
+  alerts   Alert[]
+
+  @@index([ggbId])
+  @@index([groupId])
+}
+
+/// A branch, or a sub-branch of one, to unlimited depth.
+///
+/// `onDelete: Cascade` on the self-relation is what makes "deleting a branch
+/// deletes its whole subtree" a database guarantee rather than an application
+/// convention. The route still walks the subtree first — but only to count what
+/// it is about to remove so the response can report it.
+model Branch {
+  id             String  @id @default(cuid())
+  name           String
+  bgId           String
+  /// null for a top-level branch; otherwise another branch of the SAME bg,
+  /// enforced in src/lib/branches.js along with cycle prevention.
+  parentBranchId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bg       BusinessGroup   @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  parent   Branch?         @relation("BranchTree", fields: [parentBranchId], references: [id], onDelete: Cascade)
+  children Branch[]        @relation("BranchTree")
+  vehicles Vehicle[]
+  subusers SubuserBranch[]
+
+  @@index([bgId])
+  @@index([parentBranchId])
+}
+
+/// A tracked asset. Everything here is paperwork the operator maintains; the
+/// live figures come from Flespi, keyed on `imei`.
+model Vehicle {
+  id   String  @id @default(cuid())
+  bgId String
+  /// Optional, and always a branch of the same bg. A branch delete sets this
+  /// back to null (SetNull below) rather than taking the vehicle with it.
+  branchId String?
+
+  /// Free text. The client has not defined a Sub-Group entity; when they do this
+  /// becomes a subGroupId pointing at its own table.
+  subGroup String?
+
+  /// Plate number — the mock's `vehicleNumber`.
+  plateNo String?
+
+  /// The operator's own identifier for the asset — the mock's `vehicleId`.
+  /// Deliberately distinct from `imei`, which belongs to the tracking device.
+  fleetNo String?
+
+  /// The join key against a Flespi device's configuration.ident. Digits only,
+  /// normalised on the way in, so a hand-typed space or dash cannot produce a
+  /// second row that every human would call the same device.
+  imei String @unique
+
+  make        String?
+  model       String?
+  /// The tracking unit's own model, e.g. "Teltonika FMB920".
+  deviceType  String?
+  /// The SIM number in the tracking unit.
+  mobileNo    String?
+  vehicleType String?
+
+  /**
+   * Added in Phase 2, because the frontend's Vehicle form collects both and
+   * without them a save silently discarded what the operator typed.
+   *
+   * `odometer` is free text, not a number: the form is a text input and the value
+   * is paperwork the operator maintains by hand, not a measurement. It is NOT the
+   * Live Map's ODO reading — that one comes from the tracker itself and is never
+   * stored here.
+   *
+   * `groupId` is only meaningful when the vehicle's BG has no group of its own:
+   * the form derives the group from the BG whenever the BG has one, and leaves it
+   * selectable only in that case. Deliberately a plain id with no relation —
+   * adding one would make a group delete cascade into vehicles, and a vehicle
+   * must outlive an optional grouping tier.
+   */
+  odometer String?
+  groupId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bg       BusinessGroup    @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  branch   Branch?          @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  subusers SubuserVehicle[]
+  alerts   AlertVehicle[]
+
+  @@index([bgId])
+  @@index([branchId])
+}
+
+/// A login account at any tier.
+///
+/// One table for all five roles rather than one per tier: every role needs the
+/// same credential handling, the same token and the same change-password flow,
+/// and the only thing that differs is which scope link is set.
+model User {
+  id String @id @default(cuid())
+
+  /// Stored already lower-cased, and every lookup lower-cases its input, so the
+  /// plain unique index below gives case-insensitive uniqueness without needing
+  /// the citext extension on the deployment target. See normalizeEmail() in
+  /// src/lib/text.js — it is the only place that decides what "same email"
+  /// means.
+  email        String @unique
+  passwordHash String
+
+  role   Role
+  status Status @default(Active)
+
+  /// True until the account changes the password it was handed. Set on every
+  /// newly created BG user and sub-user, and on the seeded Super Admin.
+  mustChangePassword Boolean @default(true)
+
+  /// Display name. The mock keys the sub-user's as `name` so the shared
+  /// SettingsTable can label row actions with it.
+  shortName String?
+  mobile    String?
+
+  /// Exactly one of these is set, chosen by `role`: GGB_ADMIN → ggbId,
+  /// GROUP_ADMIN → groupId, BG_USER and SUB_USER → bgId, SUPER_ADMIN → none.
+  ggbId   String?
+  groupId String?
+  bgId    String?
+
+  // ── Sub-user tab data ───────────────────────────────────────────────────
+  // The six-tab sub-user form is ~40 preference controls and a permission
+  // matrix over every screen. Columns for each would be a schema change every
+  // time a screen is added, so each tab is stored as the JSON blob the frontend
+  // already holds in state. Nothing server-side branches on their contents —
+  // they are carried, validated for shape, and handed back.
+
+  /// Tab 4 — the ~26 preference controls (time zone, formats, notification
+  /// channels...). Shape: subuserSchema.js defaultUserSetting().
+  userSetting Json?
+
+  /// Tab 5 — { authRequiredFor: string[], deleteAuthFor: string[] }.
+  authentication Json?
+
+  /// Tab 6 — the SSO provider list.
+  sso Json?
+
+  /// Tab 3 — { [screenRoute]: 'none'|'view'|'modify'|'addDelete'|'customize' }.
+  /// Sparse on purpose: an absent screen reads as the frontend's
+  /// DEFAULT_PERMISSION, so adding a screen never has to migrate stored rows.
+  screenAccess Json?
+
+  /// Tabs 1-2 — share-via flags, security PIN, recovery email, selection mode.
+  myAccount Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ggb Ggb?           @relation(fields: [ggbId], references: [id], onDelete: Cascade)
+  grp Group?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  bg  BusinessGroup? @relation(fields: [bgId], references: [id], onDelete: Cascade)
+
+  vehicles SubuserVehicle[]
+  branches SubuserBranch[]
+
+  @@index([ggbId])
+  @@index([groupId])
+  @@index([bgId])
+  @@index([role])
+}
+
+/// Which vehicles a sub-user may see. For a SUB_USER this join IS the scope —
+/// nothing else grants a vehicle.
+model SubuserVehicle {
+  userId    String
+  vehicleId String
+
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, vehicleId])
+  @@index([vehicleId])
+}
+
+/// Which branches a sub-user is filed under.
+///
+/// Stored and returned, but deliberately NOT a grant of the branch's vehicles
+/// in this phase — see the scope table in src/lib/scope.js. Turning it into one
+/// later is a change in that one file.
+model SubuserBranch {
+  userId   String
+  branchId String
+
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@id([userId, branchId])
+  @@index([branchId])
+}
+
+/// A rule watching some slice of one BG's fleet.
+model Alert {
+  id   String @id @default(cuid())
+  name String
+
+  /// Registry-driven on the frontend (ALERT_TYPES in mockData.js) and only
+  /// 'temperature' exists today, so this is a string rather than an enum — a new
+  /// type must not need a migration.
+  type String @default("temperature")
+
+  bgId String
+
+  /// A mode, not a snapshot. Expanding "all" into a list of ids at write time
+  /// would silently exclude every vehicle added afterwards. `vehicles` below is
+  /// only read when this is false.
+  allVehicles Boolean @default(true)
+
+  /// Temperature bounds, in °C. Either may be null — one-sided rules ("over
+  /// 45°C", no floor) are the common case.
+  minTemp Float?
+  maxTemp Float?
+
+  /// { inApp, email, sms }. Carried for the UI; nothing dispatches on it yet.
+  notify Json?
+
+  status Status @default(Active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bg       BusinessGroup  @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicles AlertVehicle[]
+
+  @@index([bgId])
+}
+
+/// Explicit vehicle scope for an alert whose allVehicles is false.
+model AlertVehicle {
+  alertId   String
+  vehicleId String
+
+  alert   Alert   @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@id([alertId, vehicleId])
+  @@index([vehicleId])
+}

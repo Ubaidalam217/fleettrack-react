@@ -9,7 +9,9 @@ import ToastStack from '../../components/tracking/Toasts'
 import { useToasts } from '../../hooks/useToasts'
 import {
   useResellers, addReseller, updateReseller, removeReseller, emptyReseller,
-} from './mockData'
+} from '../../data/settings'
+import { usePageAccess, handleApiError, modeNote } from './pageChrome'
+import PageNotice from './PageNotice'
 
 // Top of the org hierarchy below Super Admin: a GGB owns groups, which own
 // BGs. Stored as `reseller` rows — see the vocabulary note in mockData.js.
@@ -27,10 +29,14 @@ const FIELDS = [
 export default function Reseller(props) {
   const resellers = useResellers()
   const { toasts, push, dismiss } = useToasts()
+  const access = usePageAccess('reseller')
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)
+  // Guards against a double submit while the request is in flight — in real mode
+  // the Save button is no longer instant, and two clicks would create two GGBs.
+  const [saving,  setSaving]  = useState(false)
   const firstRef = useRef(null)
   const formRef  = useRef(null)
 
@@ -49,8 +55,9 @@ export default function Reseller(props) {
     setErrors(e => (e[key] ? { ...e, [key]: null } : e))
   }
 
-  const submit = e => {
+  const submit = async e => {
     e.preventDefault()
+    if (saving) return
 
     const next = {}
     if (!draft.name.trim()) next.name = 'GGB Name is required'
@@ -61,20 +68,34 @@ export default function Reseller(props) {
     }
 
     const clean = { ...draft, name: draft.name.trim(), email: draft.email.trim() }
-    if (draft.id) {
-      updateReseller(draft.id, clean)
-      push(`${clean.name} updated`, { tone: 'success' })
-    } else {
-      addReseller(clean)
-      push(`${clean.name} added`, { tone: 'success' })
+    setSaving(true)
+    try {
+      if (draft.id) {
+        await updateReseller(draft.id, clean)
+        push(`${clean.name} updated`, { tone: 'success' })
+      } else {
+        await addReseller(clean)
+        push(`${clean.name} added`, { tone: 'success' })
+      }
+      // Only on success. Closing the form first would throw away what the user
+      // typed the moment the server rejected it.
+      setDraft(null)
+    } catch (err) {
+      handleApiError(err, { push, setErrors })
+    } finally {
+      setSaving(false)
     }
-    setDraft(null)
   }
 
-  const confirmDelete = () => {
-    removeReseller(pending.id)
-    push(`${pending.name} deleted`, { tone: 'success' })
+  const confirmDelete = async () => {
+    const row = pending
     setPending(null)
+    try {
+      await removeReseller(row.id)
+      push(`${row.name} deleted`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+    }
   }
 
   const title = !editing ? 'GGB (Group Global Admin)' : draft.id ? 'Edit GGB' : 'Add GGB'
@@ -102,25 +123,39 @@ export default function Reseller(props) {
                 setDraft(saved ? { ...saved } : emptyReseller())
               }}
               saveLabel={draft.id ? 'Save Changes' : 'Save'}
+              saving={saving}
             />
           </FormCard>
         </form>
       ) : (
         <>
-          <TableToolbar count={resellers.length} noun="GGB" plural="GGBs">
-            <button type="button" style={PRIMARY_BTN} onClick={openAdd}>
-              <Plus size={14} strokeWidth={2.6} />
-              Add GGB
-            </button>
-          </TableToolbar>
+          <PageNotice {...access} />
 
-          <SettingsTable
-            columns={COLUMNS}
-            rows={resellers}
-            onEdit={openEdit}
-            onDelete={setPending}
-            emptyLabel="No GGBs yet — use Add GGB to create one."
-          />
+          {!access.loading && (
+            <>
+              <TableToolbar count={resellers.length} noun="GGB" plural="GGBs">
+                {access.canWrite && (
+                  <button type="button" style={PRIMARY_BTN} onClick={openAdd}>
+                    <Plus size={14} strokeWidth={2.6} />
+                    Add GGB
+                  </button>
+                )}
+              </TableToolbar>
+
+              <SettingsTable
+                columns={COLUMNS}
+                rows={resellers}
+                onEdit={openEdit}
+                onDelete={setPending}
+                canWrite={access.canWrite}
+                emptyLabel={
+                  access.canWrite
+                    ? 'No GGBs yet — use Add GGB to create one.'
+                    : 'No GGBs to show.'
+                }
+              />
+            </>
+          )}
         </>
       )}
 
@@ -128,7 +163,10 @@ export default function Reseller(props) {
         <ConfirmDialog
           title="Delete GGB?"
           body={`${pending.name} will be removed from the list.`}
-          note="Groups and BGs under this GGB are left in place. This is mock data — nothing is sent to a server."
+          note={modeNote(
+            'Every group, BG, branch, vehicle, account and alert under this GGB is deleted with it. This cannot be undone.',
+            'Groups and BGs under this GGB are left in place. This is mock data — nothing is sent to a server.'
+          )}
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}

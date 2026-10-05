@@ -1,0 +1,19 @@
+# The repo root .gitignore already ignores `.env` at any depth, and node_modules.
+# This file repeats both deliberately: server/ is self-contained with its own
+# package.json, and a secret must not be one `git mv` of the root ignore file away
+# from being committed.
+
+node_modules/
+
+# Secrets. Only .env.example belongs in git.
+.env
+.env.*
+!.env.example
+
+# Logs and coverage
+*.log
+npm-debug.log*
+coverage/
+
+# Prisma's generated client, if a custom output path is ever configured.
+prisma/generated/

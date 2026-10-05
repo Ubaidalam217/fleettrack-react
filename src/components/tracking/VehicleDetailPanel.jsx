@@ -11,7 +11,7 @@ import {
 import { useAddress } from '../../hooks/useAddress'
 import { useVisible } from '../../hooks/useVisible'
 import { shortenAddress } from '../../utils/geocode'
-import { useSettingsProfile } from '../../pages/settings/mockData'
+import { useSettingsProfile } from '../../data/settings'
 
 // Replay used to be a tab here. It now lives in its own dock over the map and
 // is started from the vehicle's card in the list or from its marker popup.

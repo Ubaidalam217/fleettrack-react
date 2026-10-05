@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import mqtt from 'mqtt'
 import { BASE_URL, HEADERS } from './flespiConfig'
 import { normalizeMaster, cacheRawMetadata } from '../services/vehicleMaster'
+import { useScopedSnapshot } from '../data/fleetScope'
 
 // Flespi MQTT gateway — real-time push, replaces REST polling for live telemetry.
 const MQTT_URL      = 'wss://mqtt.flespi.io:443'
@@ -423,6 +424,19 @@ function getSnapshot() {
   return snapshot
 }
 
+/**
+ * The live fleet, scoped to what the signed-in account may see.
+ *
+ * The scope filter is applied HERE, at the single source every consumer reads
+ * from — the Live Map's list/map/counts/search, the Dashboard tiles, Reports,
+ * VehicleActivity and the notification engine. Filtering in each of those instead
+ * would be nine places to keep in step, and the one that got missed would be the
+ * one that leaked a vehicle count to a sub-user.
+ *
+ * In mock mode and for a Super Admin, useScopedSnapshot returns the same snapshot
+ * object it was given, so nothing about today's behaviour changes.
+ */
 export function useFlespiMQTT() {
-  return useSyncExternalStore(subscribe, getSnapshot)
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot)
+  return useScopedSnapshot(snapshot)
 }

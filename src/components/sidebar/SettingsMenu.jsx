@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ChevronDown, Settings } from 'lucide-react'
 // Named settingsNav, not settingsMenu: this folder is on a case-insensitive
 // filesystem, and "./SettingsMenu" resolved to the config instead of the
 // component when the two names differed only by case.
-import { SETTINGS_MENU, SETTINGS_ROOT_ID, ancestorIds } from './settingsNav'
+import { SETTINGS_MENU, SETTINGS_ROOT_ID, ancestorIds, filterSettingsMenu } from './settingsNav'
+import { IS_REAL } from '../../data/mode'
+import { useSession } from '../../data/session'
+import { canSeePage } from '../../data/permissions'
 
 const EXPAND_KEY = 'ft-settings-menu'
 
@@ -147,6 +150,19 @@ function MenuNode({ node, expanded, onToggle, pathname }) {
 export default function SettingsMenu() {
   const location = useLocation()
   const pathname = location.pathname
+  const session  = useSession()
+
+  /**
+   * The tree this role actually gets.
+   *
+   * useMemo on the role rather than on the session object: the session store
+   * notifies on every change (a token refresh, a phase move), and rebuilding the
+   * tree for those would discard nothing but waste a walk on every navigation.
+   */
+  const menu = useMemo(() => {
+    const roleKey = IS_REAL ? (session.user?.role ?? null) : null
+    return filterSettingsMenu(SETTINGS_MENU, id => canSeePage(roleKey, id))
+  }, [session.user?.role])
 
   const [expanded, setExpanded] = useState(() => {
     const next = loadExpanded()
@@ -187,7 +203,7 @@ export default function SettingsMenu() {
 
       {rootOpen && (
         <div className="ft-sb-tree-kids">
-          {SETTINGS_MENU.map(node => (
+          {menu.map(node => (
             <MenuNode
               key={node.id}
               node={node}

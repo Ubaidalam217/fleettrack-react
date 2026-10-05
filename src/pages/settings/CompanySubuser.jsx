@@ -13,7 +13,10 @@ import {
   companyNameFor, vehiclesForCompany, branchesForCompany, branchTreeForCompany,
   vehicleLabel, vehicleSubLabel, emptySubuser, normalizeSubuser,
   isSubuserEmailTaken, DEFAULT_PASSWORD,
-} from './mockData'
+} from '../../data/settings'
+import { usePageAccess, handleApiError, modeNote } from './pageChrome'
+import PageNotice from './PageNotice'
+import { IS_REAL } from '../../data/mode'
 import {
   ACCESS_TREE, PERMISSION_LEVELS, permissionFor, grantedCount, allScreens,
   USER_SETTING_FIELDS, AUTH_REQUIRED_OPTIONS, DELETE_AUTH_OPTIONS,
@@ -502,10 +505,12 @@ export default function CompanySubuser(props) {
   useBranches()
 
   const { toasts, push, dismiss } = useToasts()
+  const access = usePageAccess('company-subuser')
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)
+  const [saving,  setSaving]  = useState(false)
   const [tab,     setTab]     = useState(TABS[0].id)
 
   // Confirmation inputs, held outside the draft so they can never be saved.
@@ -582,8 +587,9 @@ export default function CompanySubuser(props) {
     [key]: on ? all.map(x => x.id) : [],
   }))
 
-  const submit = e => {
+  const submit = async e => {
     e.preventDefault()
+    if (saving) return
 
     const next = {}
     if (!draft.companyId)    next.companyId = 'BG is required'
@@ -624,20 +630,47 @@ export default function CompanySubuser(props) {
         .map(p => ({ ...p, provider: p.provider.trim() }))
         .filter(p => p.provider),
     }
-    if (draft.id) {
-      updateSubuser(draft.id, clean)
-      push(`${clean.name} updated`, { tone: 'success' })
-    } else {
-      addSubuser(clean)
-      push(`${clean.name} added`, { tone: 'success' })
+    const customPassword = clean.password && clean.password !== DEFAULT_PASSWORD
+
+    setSaving(true)
+    try {
+      if (draft.id) {
+        // In real mode this is three or five calls — the row, then the vehicle and
+        // branch assignment sets, in the order the server's own rules allow. See
+        // updateSubuser in data/settings.js.
+        await updateSubuser(draft.id, clean)
+        push(`${clean.name} updated`, { tone: 'success' })
+      } else {
+        await addSubuser(clean)
+        push(
+          IS_REAL
+            ? `${clean.name} added · first password "${customPassword ? clean.password : DEFAULT_PASSWORD}", must be changed at first sign-in`
+            : `${clean.name} added`,
+          { tone: 'success' }
+        )
+      }
+      setDraft(null)
+    } catch (err) {
+      // Assignment failures come back against vehicleIds / branchIds, which are on
+      // the Data Access tab — so jump there, the way local validation already does,
+      // instead of annotating a field the user cannot see.
+      const fields = handleApiError(err, { push, setErrors })
+      const firstKey = fields && Object.keys(fields)[0]
+      if (firstKey && ERROR_TAB[firstKey]) setTab(ERROR_TAB[firstKey])
+    } finally {
+      setSaving(false)
     }
-    setDraft(null)
   }
 
-  const confirmDelete = () => {
-    removeSubuser(pending.id)
-    push(`${pending.name} deleted`, { tone: 'success' })
+  const confirmDelete = async () => {
+    const row = pending
     setPending(null)
+    try {
+      await removeSubuser(row.id)
+      push(`${row.name} deleted`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+    }
   }
 
   const resetForm = () => {
@@ -1036,33 +1069,47 @@ export default function CompanySubuser(props) {
               onBack={closeForm}
               onReset={resetForm}
               saveLabel={draft.id ? 'Save Changes' : 'Save'}
+              saving={saving}
             />
           </FormCard>
         </form>
       ) : (
         <>
-          <TableToolbar count={subusers.length} noun="sub-user" plural="sub-users">
-            <button
-              type="button"
-              style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
-              disabled={noCompanies}
-              title={noCompanies ? 'Add a BG first' : undefined}
-              onClick={openAdd}
-            >
-              <Plus size={14} strokeWidth={2.6} />
-              Add Subuser
-            </button>
-          </TableToolbar>
+          <PageNotice {...access} />
 
-          <SettingsTable
-            columns={COLUMNS}
-            rows={subusers}
-            onEdit={openEdit}
-            onDelete={setPending}
-            emptyLabel={noCompanies
-              ? 'No BGs on file — add a Business Group before creating sub-users.'
-              : 'No sub-users yet — use Add Subuser to create one.'}
-          />
+          {!access.loading && (
+            <>
+              <TableToolbar count={subusers.length} noun="sub-user" plural="sub-users">
+                {access.canWrite && (
+                  <button
+                    type="button"
+                    style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
+                    disabled={noCompanies}
+                    title={noCompanies ? 'Add a BG first' : undefined}
+                    onClick={openAdd}
+                  >
+                    <Plus size={14} strokeWidth={2.6} />
+                    Add Subuser
+                  </button>
+                )}
+              </TableToolbar>
+
+              <SettingsTable
+                columns={COLUMNS}
+                rows={subusers}
+                onEdit={openEdit}
+                onDelete={setPending}
+                canWrite={access.canWrite}
+                emptyLabel={
+                  !access.canWrite
+                    ? 'No sub-users to show.'
+                    : noCompanies
+                      ? 'No BGs on file — add a Business Group before creating sub-users.'
+                      : 'No sub-users yet — use Add Subuser to create one.'
+                }
+              />
+            </>
+          )}
         </>
       )}
 
@@ -1070,7 +1117,10 @@ export default function CompanySubuser(props) {
         <ConfirmDialog
           title="Delete sub-user?"
           body={`${pending.name} will lose access to ${companyNameFor(pending.companyId)}.`}
-          note="This is mock data — nothing is sent to a server."
+          note={modeNote(
+            'The account is deleted along with its vehicle and branch assignments. This cannot be undone.',
+            'This is mock data — nothing is sent to a server.'
+          )}
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}

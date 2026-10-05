@@ -1,5 +1,8 @@
 import { useMemo, useSyncExternalStore } from 'react'
 import { defaultUserSetting } from './subuserSchema'
+// Real mode keeps the stores and selectors below but replaces their data source.
+// See the note above the localStorage section for what that changes.
+import { IS_REAL as REAL_MODE } from '../../data/mode'
 
 /**
  * Phase 2 mock backend for the Settings module.
@@ -405,6 +408,27 @@ const SEED_SUBUSERS = [
  */
 const STORAGE_KEY = 'fleetmax-mock-v3'
 
+/**
+ * Phase 2: in real mode this file is still the store, but not the data source.
+ *
+ * The stores and every selector below are shared by both modes — real mode fills
+ * the same arrays from the API (see data/settings.js), translated into the shapes
+ * this file already uses. That is what lets `branchTreeForCompany`,
+ * `settingsProfileForImei`, `isImeiTaken` and ~30 others work unchanged against
+ * live data instead of being reimplemented.
+ *
+ * Only two things must differ, and both are below:
+ *
+ *  - the stores start EMPTY rather than seeded, so a real session never flashes
+ *    fictional GGBs before the first fetch resolves;
+ *  - persist() is a no-op, so live tenant data is never written into the mock's
+ *    localStorage key — where it would reappear as "mock data" the next time
+ *    someone ran without VITE_API_URL.
+ *
+ * In mock mode REAL_MODE is false and every path below is byte-for-byte what it
+ * was before this phase.
+ */
+
 function readSaved() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -418,12 +442,17 @@ function readSaved() {
   }
 }
 
-const saved = readSaved()
+// Real mode has a server to read from, so the saved blob is not even consulted.
+const saved = REAL_MODE ? null : readSaved()
 
 // Only accept a saved slice that is still the right shape.
-const hydrate = (key, seed) => (Array.isArray(saved?.[key]) ? saved[key] : [...seed])
+// Real mode starts empty: the hydrator in data/settings.js fills these from the
+// API, and seeding first would show fictional rows for one frame.
+const hydrate = (key, seed) =>
+  REAL_MODE ? [] : Array.isArray(saved?.[key]) ? saved[key] : [...seed]
 
 function persist() {
+  if (REAL_MODE) return
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       // The id counter rides along with the rows. Saving rows but not the
@@ -476,6 +505,50 @@ const alertStore   = createStore(hydrate('alerts',    SEED_ALERTS))
 let nextId = Number.isFinite(saved?.nextId) ? saved.nextId : 100
 const makeId = prefix => `${prefix}${nextId++}`
 
+/**
+ * Real-mode entry point: replace one store's rows wholesale.
+ *
+ * Used only by data/settings.js after a fetch. A whole-array replacement rather
+ * than a merge because the server is authoritative — a merge would keep a row the
+ * server has deleted, and "deleted elsewhere but still on my screen" is the exact
+ * staleness this is meant to avoid.
+ *
+ * Rows must already be in this file's shape; adapters.js does that conversion.
+ * The double-underscore marks it as plumbing: no page calls it.
+ */
+const STORES = {
+  resellers: resellerStore,
+  groups: groupStore,
+  companies: companyStore,
+  branches: branchStore,
+  users: userStore,
+  subusers: subuserStore,
+  vehicles: vehicleStore,
+  alerts: alertStore,
+}
+
+export function __replaceStore(key, rows) {
+  const store = STORES[key]
+  if (!store) throw new Error(`__replaceStore: unknown store "${key}"`)
+  store.set(Array.isArray(rows) ? rows : [])
+}
+
+/**
+ * One store's current rows, outside React.
+ *
+ * The exported use*() hooks cover every component; this is for the mutators in
+ * data/settings.js, which need to compare a submitted row against the stored one
+ * (has the sub-user's BG changed?) from a plain async function.
+ */
+export function __snapshot(key) {
+  const store = STORES[key]
+  if (!store) throw new Error(`__snapshot: unknown store "${key}"`)
+  return store.get()
+}
+
+/** The store keys, so the hydrator does not hardcode a list that can drift. */
+export const __STORE_KEYS = Object.keys(STORES)
+
 // First run on this browser: write the seed out so the saved copy and what is
 // on screen agree from the very first render.
 if (!saved) persist()
@@ -500,7 +573,10 @@ export function resetMockData() {
   persist()
 }
 
-if (typeof window !== 'undefined') {
+// Mock-mode only. In real mode there is no seed to reset to and nothing in
+// localStorage, so advertising fleetmaxResetData() would offer a developer a
+// button that silently does nothing to the data they are actually looking at.
+if (typeof window !== 'undefined' && !REAL_MODE) {
   window.fleetmaxResetData = () => {
     resetMockData()
     console.log('[FleetmaX] Mock data reset to seed.')

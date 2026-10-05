@@ -64,6 +64,31 @@ export const SETTINGS_MENU = [
 export const SETTINGS_ROOT_ID = 'settings'
 
 /**
+ * The tree with the leaves this role cannot use pruned out.
+ *
+ * Prunes rather than hides per row, because a branch whose every leaf is gone has
+ * to go too — a BG user would otherwise get a "Users" branch that expands to
+ * nothing, which reads as a loading failure rather than as a permission.
+ *
+ * `canSee(leafId)` is data/permissions.js canSeePage. This file stays free of any
+ * knowledge of roles: it owns the shape of the tree, and the caller owns who may
+ * see what. In mock mode canSee answers true for everything and the tree comes
+ * back untouched.
+ */
+export function filterSettingsMenu(nodes, canSee) {
+  const out = []
+  for (const node of nodes) {
+    if (node.children) {
+      const children = filterSettingsMenu(node.children, canSee)
+      if (children.length) out.push({ ...node, children })
+      continue
+    }
+    if (canSee(node.id)) out.push(node)
+  }
+  return out
+}
+
+/**
  * Ids of every branch on the way down to `pathname`, including the root.
  * Used to auto-open the tree so a deep link lands with its parents expanded.
  * Returns an empty array when the path is not in the tree.

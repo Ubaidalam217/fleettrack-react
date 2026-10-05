@@ -7,6 +7,8 @@
 // back to the demo administrator profile so the UI never renders blank.
 
 import { useEffect, useState } from 'react'
+import { IS_REAL } from '../data/mode'
+import { displayProfile, useSession, getUser as getSessionUser } from '../data/session'
 
 const STORAGE_KEY = 'fleetUser'
 
@@ -52,8 +54,28 @@ export function clearCurrentUser() {
   try { localStorage.removeItem(STORAGE_KEY) } catch {}
 }
 
-/** The signed-in profile, or the demo administrator when none is stored. */
+/**
+ * A signed-out real session, shown while the app is still deciding.
+ *
+ * Deliberately NOT the demo administrator: in real mode the chrome must never
+ * claim an identity nobody is signed in as. The screens that could render it are
+ * only on screen for the frame before the login gate takes over.
+ */
+const ANON_USER = { email: '', name: 'there', role: '' }
+
+/**
+ * The signed-in profile.
+ *
+ * Real mode reads the session (data/session.js) and knows nothing about
+ * localStorage or the demo directory. Mock mode is unchanged: the login screen
+ * writes an email, this reads it back, and an unknown account falls back to the
+ * demo administrator so the UI never renders blank.
+ *
+ * Routing both through one function is what lets Header, Sidebar, UserDropdown
+ * and the dashboard greeting stay completely unaware that there are two modes.
+ */
 export function getCurrentUser() {
+  if (IS_REAL) return displayProfile(getSessionUser()) ?? ANON_USER
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
     if (raw?.email) return profileFor(raw.email)
@@ -83,18 +105,30 @@ export function greetingFor(date = new Date()) {
 /**
  * Reads the profile once on mount and re-reads it when another tab signs in
  * or out, so the greeting and the account menu stay in sync.
+ *
+ * Real mode subscribes to the session store instead, so a sign-in, a sign-out, a
+ * password change or a 401-driven session expiry updates the chrome immediately —
+ * the `storage` event would not fire for any of those, since the real session lives
+ * in sessionStorage and in memory.
+ *
+ * Both branches are unconditional hook calls in a fixed order, which is what keeps
+ * this legal: IS_REAL is a module constant, so a given build only ever takes one
+ * path and the hook order never changes between renders.
  */
 export function useCurrentUser() {
-  const [user, setUser] = useState(getCurrentUser)
+  const session = useSession()
+  const [mockUser, setMockUser] = useState(getCurrentUser)
 
   useEffect(() => {
+    if (IS_REAL) return
     const sync = e => {
       if (e && e.key && e.key !== STORAGE_KEY) return
-      setUser(getCurrentUser())
+      setMockUser(getCurrentUser())
     }
     window.addEventListener('storage', sync)
     return () => window.removeEventListener('storage', sync)
   }, [])
 
-  return user
+  if (IS_REAL) return displayProfile(session.user) ?? ANON_USER
+  return mockUser
 }

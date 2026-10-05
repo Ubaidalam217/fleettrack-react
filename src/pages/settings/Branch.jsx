@@ -11,7 +11,10 @@ import {
   useBranches, useCompanies, useVehicles, addBranch, updateBranch, removeBranch,
   companyNameFor, emptyBranch,
   branchTreeForCompany, branchDescendantIds, branchOptionLabel,
-} from './mockData'
+} from '../../data/settings'
+import { usePageAccess, handleApiError, modeNote } from './pageChrome'
+import PageNotice from './PageNotice'
+import { IS_REAL } from '../../data/mode'
 
 /**
  * Branches, and sub-branches of those, to any depth.
@@ -66,10 +69,12 @@ export default function Branch(props) {
   // changing under it; the per-branch slice comes from the store read.
   const vehicles = useVehicles()
   const { toasts, push, dismiss } = useToasts()
+  const access = usePageAccess('branch')
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)
+  const [saving,  setSaving]  = useState(false)
   const firstRef = useRef(null)
   const formRef  = useRef(null)
 
@@ -133,8 +138,9 @@ export default function Branch(props) {
     setErrors(e => (e[key] ? { ...e, [key]: null } : e))
   }
 
-  const submit = e => {
+  const submit = async e => {
     e.preventDefault()
+    if (saving) return
 
     const next = {}
     if (!draft.companyId)   next.companyId = 'BG is required'
@@ -152,14 +158,24 @@ export default function Branch(props) {
     }
 
     const clean = { ...draft, name: draft.name.trim() }
-    if (draft.id) {
-      updateBranch(draft.id, clean)
-      push(`${clean.name} updated`, { tone: 'success' })
-    } else {
-      addBranch(clean)
-      push(`${clean.name} added`, { tone: 'success' })
+    setSaving(true)
+    try {
+      if (draft.id) {
+        await updateBranch(draft.id, clean)
+        push(`${clean.name} updated`, { tone: 'success' })
+      } else {
+        await addBranch(clean)
+        push(`${clean.name} added`, { tone: 'success' })
+      }
+      setDraft(null)
+    } catch (err) {
+      // The server runs the same two parent rules this form does — same BG, and no
+      // cycle through a descendant — and returns them against parentBranchId, so a
+      // stale dropdown lands the message on the right control.
+      handleApiError(err, { push, setErrors })
+    } finally {
+      setSaving(false)
     }
-    setDraft(null)
   }
 
   // What a delete would actually take with it, computed while the dialog is
@@ -169,13 +185,21 @@ export default function Branch(props) {
     ? vehicles.filter(v => v.branchId === pending.id || doomed.includes(v.branchId)).length
     : 0
 
-  const confirmDelete = () => {
-    const { subBranches, vehiclesDetached } = removeBranch(pending.id)
-    const parts = [`${pending.name} deleted`]
-    if (subBranches)      parts.push(`${subBranches} sub-branch${subBranches === 1 ? '' : 'es'} removed`)
-    if (vehiclesDetached) parts.push(`${vehiclesDetached} vehicle${vehiclesDetached === 1 ? '' : 's'} left unassigned`)
-    push(parts.join(' · '), { tone: 'success' })
+  const confirmDelete = async () => {
+    const row = pending
     setPending(null)
+    try {
+      // Both modes return the same summary — the server reports what the cascade
+      // actually took, counted before the delete, so the toast is the truth rather
+      // than a prediction. See removeBranch in data/settings.js.
+      const { subBranches, vehiclesDetached } = await removeBranch(row.id)
+      const parts = [`${row.name} deleted`]
+      if (subBranches)      parts.push(`${subBranches} sub-branch${subBranches === 1 ? '' : 'es'} removed`)
+      if (vehiclesDetached) parts.push(`${vehiclesDetached} vehicle${vehiclesDetached === 1 ? '' : 's'} left unassigned`)
+      push(parts.join(' · '), { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+    }
   }
 
   const noCompanies = companies.length === 0
@@ -194,14 +218,27 @@ export default function Branch(props) {
               gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
               gap: '14px 16px',
             }}>
-              <Field label="BG (Business Group)" required error={errors.companyId}>
+              {/* Locked on an existing branch in real mode: the API accepts a
+                  branch's BG only at creation time, because moving it would carry
+                  its vehicles and its sub-user assignments into another tenant. */}
+              <Field
+                label="BG (Business Group)"
+                required
+                error={errors.companyId}
+                hint={IS_REAL && draft.id ? 'A branch cannot be moved to another BG.' : undefined}
+              >
                 <select
                   ref={firstRef}
                   name="companyId"
                   value={draft.companyId}
                   onChange={e => set('companyId', e.target.value)}
+                  disabled={IS_REAL && !!draft.id}
                   aria-invalid={!!errors.companyId || undefined}
-                  style={inputStyle(!!errors.companyId)}
+                  style={
+                    IS_REAL && draft.id
+                      ? { ...inputStyle(!!errors.companyId), opacity: 0.6, cursor: 'not-allowed' }
+                      : inputStyle(!!errors.companyId)
+                  }
                 >
                   <option value="">— Select —</option>
                   {companies.map(c => (
@@ -264,35 +301,49 @@ export default function Branch(props) {
                   : emptyBranch())
               }}
               saveLabel={draft.id ? 'Save Changes' : 'Save'}
+              saving={saving}
             />
           </FormCard>
         </form>
       ) : (
         <>
-          <TableToolbar count={branches.length} noun="branch" plural="branches">
-            <button
-              type="button"
-              style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
-              disabled={noCompanies}
-              // A branch needs a BG, so with none on file the form would open
-              // with an unsatisfiable required dropdown.
-              title={noCompanies ? 'Add a BG first' : undefined}
-              onClick={openAdd}
-            >
-              <Plus size={14} strokeWidth={2.6} />
-              Add Branch
-            </button>
-          </TableToolbar>
+          <PageNotice {...access} />
 
-          <SettingsTable
-            columns={COLUMNS}
-            rows={rows}
-            onEdit={openEdit}
-            onDelete={setPending}
-            emptyLabel={noCompanies
-              ? 'No Business Groups on file — add a BG before creating branches.'
-              : 'No branches yet — use Add Branch to create one.'}
-          />
+          {!access.loading && (
+            <>
+              <TableToolbar count={branches.length} noun="branch" plural="branches">
+                {access.canWrite && (
+                  <button
+                    type="button"
+                    style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
+                    disabled={noCompanies}
+                    // A branch needs a BG, so with none on file the form would open
+                    // with an unsatisfiable required dropdown.
+                    title={noCompanies ? 'Add a BG first' : undefined}
+                    onClick={openAdd}
+                  >
+                    <Plus size={14} strokeWidth={2.6} />
+                    Add Branch
+                  </button>
+                )}
+              </TableToolbar>
+
+              <SettingsTable
+                columns={COLUMNS}
+                rows={rows}
+                onEdit={openEdit}
+                onDelete={setPending}
+                canWrite={access.canWrite}
+                emptyLabel={
+                  !access.canWrite
+                    ? 'No branches to show.'
+                    : noCompanies
+                      ? 'No Business Groups on file — add a BG before creating branches.'
+                      : 'No branches yet — use Add Branch to create one.'
+                }
+              />
+            </>
+          )}
         </>
       )}
 
@@ -304,11 +355,13 @@ export default function Branch(props) {
               ? `${pending.name} will be removed from ${companyNameFor(pending.companyId)}, along with ${doomed.length} sub-branch${doomed.length === 1 ? '' : 'es'} beneath it.`
               : `${pending.name} will be removed from ${companyNameFor(pending.companyId)}.`
           }
-          note={
+          note={[
             doomedVehicles
-              ? `${doomedVehicles} vehicle${doomedVehicles === 1 ? '' : 's'} filed under ${doomedVehicles === 1 ? 'it' : 'them'} will keep their BG but lose their branch. Any sub-user scoped to a deleted branch is unassigned from it. This is mock data — nothing is sent to a server.`
-              : 'Any sub-user scoped to a deleted branch is unassigned from it. This is mock data — nothing is sent to a server.'
-          }
+              ? `${doomedVehicles} vehicle${doomedVehicles === 1 ? '' : 's'} filed under ${doomedVehicles === 1 ? 'it' : 'them'} will keep their BG but lose their branch.`
+              : null,
+            'Any sub-user scoped to a deleted branch is unassigned from it.',
+            modeNote(null, 'This is mock data — nothing is sent to a server.'),
+          ].filter(Boolean).join(' ')}
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}

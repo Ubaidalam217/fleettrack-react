@@ -20,9 +20,14 @@ import SettingsAlerts         from './pages/settings/Alerts'
 import SettingsComingSoon     from './pages/settings/ComingSoon'
 import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
+import AuthGate            from './components/AuthGate'
 import { useNotificationEngine } from './hooks/useNotificationEngine'
 import * as store from './services/notificationStore'
 import { shouldShowPrompt } from './services/pushNotifications'
+import { IS_REAL } from './data/mode'
+import { PHASE, restore, useSession } from './data/session'
+import { useSettingsData } from './data/settings'
+import { useFleetScopeLoader } from './data/fleetScope'
 
 // ── Seed announcements once on first load ──────────────────────────────────
 const SEED_KEY = 'announcements_seeded'
@@ -69,54 +74,85 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
   useNotificationEngine()
 
   const location = useLocation()
+  const session  = useSession()
   const [showPermissionPrompt, setShowPermissionPrompt] = useState(false)
+
+  /**
+   * Real mode: load the Settings data and the Live Map's visible-fleet allowlist
+   * whenever a session becomes ready, and clear both on sign-out.
+   *
+   * Mounted here, once, rather than per page. The eight Settings pages share one
+   * set of stores, so a per-page fetch would re-request everything on every
+   * navigation between them; and the fleet allowlist has to be in place before the
+   * Live Map renders, which is a different route entirely. Both are no-ops in mock
+   * mode.
+   */
+  useSettingsData()
+  useFleetScopeLoader()
 
   // Seed once on mount
   useEffect(() => {
     seedAnnouncements()
   }, [])
 
+  // Real mode: validate any token left in sessionStorage before rendering a
+  // protected route. AuthGate holds on a splash until this settles.
+  useEffect(() => {
+    restore()
+  }, [])
+
   // Show push permission prompt on first authenticated page visit
   // Runs when location changes so it also fires if user navigates back after login
   useEffect(() => {
-    const isAuth = !!localStorage.getItem('fleetAuth')
+    // Real mode has a real session to ask; mock mode keeps reading the flag the
+    // demo has always used. Asking for notification permission while the
+    // change-password gate is up would be a second modal over a blocking screen.
+    const isAuth = IS_REAL
+      ? session.phase === PHASE.READY
+      : !!localStorage.getItem('fleetAuth')
     if (!isAuth) return
     if (!shouldShowPrompt()) return
 
     const timer = setTimeout(() => setShowPermissionPrompt(true), 2000)
     return () => clearTimeout(timer)
-  }, [location.pathname])
+  }, [location.pathname, session.phase])
 
   const themeProps = { isDark, toggleTheme, themeMode, setTheme }
+
+  /**
+   * Every route below except /login goes through the gate, so a route added later
+   * is protected by default rather than by remembering to wrap it.
+   */
+  const guard = el => <AuthGate>{el}</AuthGate>
 
   return (
     <>
       <Routes>
         <Route path="/"               element={<Navigate to="/login" replace />} />
         <Route path="/login"          element={<Login />} />
-        <Route path="/dashboard"      element={<Dashboard      {...themeProps} />} />
-        <Route path="/tracking"       element={<Tracking       {...themeProps} />} />
-        <Route path="/charts"         element={<Charts         {...themeProps} />} />
-        <Route path="/reports"        element={<Reports        {...themeProps} />} />
-        <Route path="/settings"       element={<SettingsPage   {...themeProps} />} />
-        <Route path="/notifications"  element={<Notifications  {...themeProps} />} />
-        <Route path="/announcements"  element={<Announcements  {...themeProps} />} />
+        <Route path="/dashboard"      element={guard(<Dashboard      {...themeProps} />)} />
+        <Route path="/tracking"       element={guard(<Tracking       {...themeProps} />)} />
+        <Route path="/charts"         element={guard(<Charts         {...themeProps} />)} />
+        <Route path="/reports"        element={guard(<Reports        {...themeProps} />)} />
+        <Route path="/settings"       element={guard(<SettingsPage   {...themeProps} />)} />
+        <Route path="/notifications"  element={guard(<Notifications  {...themeProps} />)} />
+        <Route path="/announcements"  element={guard(<Announcements  {...themeProps} />)} />
 
         {/* Settings module — the five leaves with real pages this phase… */}
-        <Route path="/settings/reseller"        element={<SettingsReseller       {...themeProps} />} />
-        <Route path="/settings/group"           element={<SettingsGroup          {...themeProps} />} />
-        <Route path="/settings/user"            element={<SettingsUser           {...themeProps} />} />
-        <Route path="/settings/company"         element={<SettingsCompany        {...themeProps} />} />
-        <Route path="/settings/company-subuser" element={<SettingsCompanySubuser {...themeProps} />} />
-        <Route path="/settings/branch"          element={<SettingsBranch         {...themeProps} />} />
-        <Route path="/settings/vehicle"         element={<SettingsVehicle        {...themeProps} />} />
-        <Route path="/settings/alerts"          element={<SettingsAlerts         {...themeProps} />} />
+        <Route path="/settings/reseller"        element={guard(<SettingsReseller       {...themeProps} />)} />
+        <Route path="/settings/group"           element={guard(<SettingsGroup          {...themeProps} />)} />
+        <Route path="/settings/user"            element={guard(<SettingsUser           {...themeProps} />)} />
+        <Route path="/settings/company"         element={guard(<SettingsCompany        {...themeProps} />)} />
+        <Route path="/settings/company-subuser" element={guard(<SettingsCompanySubuser {...themeProps} />)} />
+        <Route path="/settings/branch"          element={guard(<SettingsBranch         {...themeProps} />)} />
+        <Route path="/settings/vehicle"         element={guard(<SettingsVehicle        {...themeProps} />)} />
+        <Route path="/settings/alerts"          element={guard(<SettingsAlerts         {...themeProps} />)} />
         {/* …and the branches that share one placeholder until they get built. */}
-        <Route path="/settings/driver"          element={<SettingsComingSoon     {...themeProps} />} />
-        <Route path="/settings/master"          element={<SettingsComingSoon     {...themeProps} />} />
-        <Route path="/settings/geofence"        element={<SettingsComingSoon     {...themeProps} />} />
-        <Route path="/settings/technician"      element={<SettingsComingSoon     {...themeProps} />} />
-        <Route path="/settings/bulk-action"     element={<SettingsComingSoon     {...themeProps} />} />
+        <Route path="/settings/driver"          element={guard(<SettingsComingSoon     {...themeProps} />)} />
+        <Route path="/settings/master"          element={guard(<SettingsComingSoon     {...themeProps} />)} />
+        <Route path="/settings/geofence"        element={guard(<SettingsComingSoon     {...themeProps} />)} />
+        <Route path="/settings/technician"      element={guard(<SettingsComingSoon     {...themeProps} />)} />
+        <Route path="/settings/bulk-action"     element={guard(<SettingsComingSoon     {...themeProps} />)} />
 
         <Route path="*"               element={<Navigate to="/login" replace />} />
       </Routes>

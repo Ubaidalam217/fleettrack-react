@@ -1,29 +1,67 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { setCurrentUser } from '../services/authUser'
+import { IS_REAL } from '../data/mode'
+import { login as realLogin, useSession, PHASE } from '../data/session'
+import { errorMessage } from '../data/http'
 
+const PHASE_ANON = PHASE.ANON
+const PHASE_LOADING = PHASE.LOADING
+
+// Mock mode only — the demo accounts the Netlify build signs in with.
 const VALID_CREDENTIALS = [
   { email: 'admin@fleettrack.com',   password: 'admin123' },
   { email: 'admin@gmail.com',        password: 'admin123' },
   { email: 'ubaidalam217@gmail.com', password: 'admin123' },
 ]
 
+/**
+ * One login screen for both modes.
+ *
+ * The markup, styling and animation below are untouched from the mock-only
+ * version — only handleSubmit branches. Duplicating the screen for real mode would
+ * have meant two copies of ~230 lines of inline styling drifting apart the first
+ * time either was adjusted.
+ */
 export default function Login() {
   const navigate = useNavigate()
+  const session  = useSession()
 
   const [email,        setEmail]        = useState('')
   const [password,     setPassword]     = useState('')
   const [showPw,       setShowPw]       = useState(false)
   const [remember,     setRemember]     = useState(false)
   const [loading,      setLoading]      = useState(false)
+  // Pre-filled when the server ended the previous session, so an unexplained
+  // bounce back to this screen comes with its reason attached.
   const [error,        setError]        = useState('')
   const [emailFocused, setEmailFocused] = useState(false)
   const [pwFocused,    setPwFocused]    = useState(false)
+
+  const shownError = error || (IS_REAL ? session.expiredNotice || '' : '')
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
+
+    if (IS_REAL) {
+      try {
+        await realLogin(email.trim(), password)
+        // Where to go next is not decided here. If the account is still on the
+        // password it was handed, AuthGate renders the change-password screen over
+        // whatever route this lands on — so this navigate is just "somewhere
+        // inside the app" rather than a decision about first-login state.
+        navigate('/dashboard')
+      } catch (err) {
+        setError(errorMessage(err, 'Invalid email or password. Please try again.'))
+        setLoading(false)
+      }
+      return
+    }
+
+    // The artificial delay is part of the demo's feel — it is what makes the
+    // spinner legible — so mock mode keeps it.
     await new Promise(r => setTimeout(r, 1100))
     const valid = VALID_CREDENTIALS.some(c => c.email === email.trim() && c.password === password)
     if (valid) {
@@ -35,6 +73,20 @@ export default function Login() {
       setError('Invalid email or password. Please try again.')
       setLoading(false)
     }
+  }
+
+  /**
+   * Already signed in: do not show a login form.
+   *
+   * Reachable by typing the URL, by the browser's back button after signing in, or
+   * by "/" redirecting here. Rendering the form would invite someone to
+   * authenticate as a second account on top of a live session.
+   *
+   * MUST_CHANGE_PASSWORD counts as signed in — AuthGate renders the gate on the
+   * destination, which is the screen that account actually needs.
+   */
+  if (IS_REAL && session.phase !== PHASE_ANON && session.phase !== PHASE_LOADING) {
+    return <Navigate to="/dashboard" replace />
   }
 
   return (
@@ -128,7 +180,7 @@ export default function Login() {
                   onChange={e => setEmail(e.target.value)}
                   onFocus={() => setEmailFocused(true)}
                   onBlur={() => setEmailFocused(false)}
-                  placeholder="admin@fleettrack.com"
+                  placeholder={IS_REAL ? 'you@company.com' : 'admin@fleettrack.com'}
                   required
                   autoComplete="email"
                   style={{
@@ -230,7 +282,7 @@ export default function Login() {
             </div>
 
             {/* Error */}
-            {error && (
+            {shownError && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 9,
                 padding: '11px 14px', borderRadius: 11,
@@ -243,7 +295,7 @@ export default function Login() {
                   <line x1="12" y1="8" x2="12" y2="12"/>
                   <line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
-                <span style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>{error}</span>
+                <span style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>{shownError}</span>
               </div>
             )}
 

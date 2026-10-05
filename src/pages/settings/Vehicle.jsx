@@ -13,7 +13,10 @@ import {
   companyNameFor, branchTreeForCompany, branchOptionLabel,
   groupsForCompany, groupIdForCompany,
   groupNameFor, vehicleLabel, emptyVehicle, isImeiTaken,
-} from './mockData'
+} from '../../data/settings'
+import { usePageAccess, handleApiError, modeNote } from './pageChrome'
+import PageNotice from './PageNotice'
+import { IS_REAL } from '../../data/mode'
 
 // The fleet register. Writes to the same vehicle store the sub-user assignment
 // panel and the alert scope picker read, so a vehicle added here is immediately
@@ -63,10 +66,12 @@ export default function Vehicle(props) {
   useGroups()
 
   const { toasts, push, dismiss } = useToasts()
+  const access = usePageAccess('vehicle')
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)
+  const [saving,  setSaving]  = useState(false)
   const firstRef = useRef(null)
   const formRef  = useRef(null)
 
@@ -106,8 +111,9 @@ export default function Vehicle(props) {
   const groupLocked = editing && !!groupIdForCompany(draft.companyId)
   const notice = editing ? imeiNotice(draft.imei) : null
 
-  const submit = e => {
+  const submit = async e => {
     e.preventDefault()
+    if (saving) return
 
     const next = {}
     if (!draft.companyId)              next.companyId     = 'BG is required'
@@ -136,20 +142,35 @@ export default function Vehicle(props) {
       make:          draft.make.trim(),
       model:         draft.model.trim(),
     }
-    if (draft.id) {
-      updateVehicle(draft.id, clean)
-      push(`${clean.vehicleNumber} updated`, { tone: 'success' })
-    } else {
-      addVehicle(clean)
-      push(`${clean.vehicleNumber} added`, { tone: 'success' })
+    setSaving(true)
+    try {
+      if (draft.id) {
+        await updateVehicle(draft.id, clean)
+        push(`${clean.vehicleNumber} updated`, { tone: 'success' })
+      } else {
+        await addVehicle(clean)
+        push(`${clean.vehicleNumber} added`, { tone: 'success' })
+      }
+      setDraft(null)
+    } catch (err) {
+      // A duplicate IMEI comes back 409 against `imei`, which is the same field the
+      // local check above uses — so a clash with a vehicle in another tenant (which
+      // this account cannot see, and so cannot check locally) reads identically.
+      handleApiError(err, { push, setErrors })
+    } finally {
+      setSaving(false)
     }
-    setDraft(null)
   }
 
-  const confirmDelete = () => {
-    removeVehicle(pending.id)
-    push(`${vehicleLabel(pending)} deleted`, { tone: 'success' })
+  const confirmDelete = async () => {
+    const row = pending
     setPending(null)
+    try {
+      await removeVehicle(row.id)
+      push(`${vehicleLabel(row)} deleted`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+    }
   }
 
   const noCompanies = companies.length === 0
@@ -164,14 +185,28 @@ export default function Vehicle(props) {
             subtitle="Fields marked with * are required. The IMEI is what matches this vehicle to its tracking device."
           >
             <div style={GRID}>
-              <Field label="BG (Business Group)" required error={errors.companyId}>
+              {/* Locked on an existing vehicle in real mode: the API accepts a
+                  vehicle's BG only at creation time. Moving one between BGs would
+                  also have to strip its sub-user assignments and alert memberships
+                  in the old BG, which is a transfer operation rather than an edit. */}
+              <Field
+                label="BG (Business Group)"
+                required
+                error={errors.companyId}
+                hint={IS_REAL && draft.id ? 'A vehicle cannot be moved to another BG.' : undefined}
+              >
                 <select
                   ref={firstRef}
                   name="companyId"
                   value={draft.companyId}
                   onChange={e => set('companyId', e.target.value)}
+                  disabled={IS_REAL && !!draft.id}
                   aria-invalid={!!errors.companyId || undefined}
-                  style={inputStyle(!!errors.companyId)}
+                  style={
+                    IS_REAL && draft.id
+                      ? { ...inputStyle(!!errors.companyId), opacity: 0.6, cursor: 'not-allowed' }
+                      : inputStyle(!!errors.companyId)
+                  }
                 >
                   <option value="">— Select —</option>
                   {companies.map(c => (
@@ -346,45 +381,61 @@ export default function Vehicle(props) {
                 setDraft(saved ? { ...saved } : emptyVehicle())
               }}
               saveLabel={draft.id ? 'Save Changes' : 'Save'}
+              saving={saving}
             />
           </FormCard>
         </form>
       ) : (
         <>
-          <TableToolbar count={vehicles.length} noun="vehicle" plural="vehicles">
-            <button
-              type="button"
-              className="ft-btn"
-              onClick={() => push('TRACKING APP import will pull vehicles from the Certificate app — not wired up yet.', { tone: 'info' })}
-            >
-              <FileBadge size={13} />
-              Import from Certificate (TRACKING APP)
-            </button>
-            <button
-              type="button"
-              style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
-              disabled={noCompanies}
-              // A vehicle has to belong to a BG, so with none on file the
-              // form would open with an unsatisfiable required dropdown.
-              title={noCompanies ? 'Add a BG first' : undefined}
-              onClick={openAdd}
-            >
-              <Plus size={14} strokeWidth={2.6} />
-              Add Vehicle
-            </button>
-          </TableToolbar>
+          <PageNotice {...access} />
 
-          <SettingsTable
-            columns={COLUMNS}
-            rows={vehicles}
-            // Rows are identified by their Vehicle Number, not a `name` field.
-            labelKey="vehicleNumber"
-            onEdit={openEdit}
-            onDelete={setPending}
-            emptyLabel={noCompanies
-              ? 'No BGs on file — add a Business Group before registering vehicles.'
-              : 'No vehicles yet — use Add Vehicle to register one.'}
-          />
+          {!access.loading && (
+            <>
+              <TableToolbar count={vehicles.length} noun="vehicle" plural="vehicles">
+                {access.canWrite && (
+                  <>
+                    <button
+                      type="button"
+                      className="ft-btn"
+                      onClick={() => push('TRACKING APP import will pull vehicles from the Certificate app — not wired up yet.', { tone: 'info' })}
+                    >
+                      <FileBadge size={13} />
+                      Import from Certificate (TRACKING APP)
+                    </button>
+                    <button
+                      type="button"
+                      style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
+                      disabled={noCompanies}
+                      // A vehicle has to belong to a BG, so with none on file the
+                      // form would open with an unsatisfiable required dropdown.
+                      title={noCompanies ? 'Add a BG first' : undefined}
+                      onClick={openAdd}
+                    >
+                      <Plus size={14} strokeWidth={2.6} />
+                      Add Vehicle
+                    </button>
+                  </>
+                )}
+              </TableToolbar>
+
+              <SettingsTable
+                columns={COLUMNS}
+                rows={vehicles}
+                // Rows are identified by their Vehicle Number, not a `name` field.
+                labelKey="vehicleNumber"
+                onEdit={openEdit}
+                onDelete={setPending}
+                canWrite={access.canWrite}
+                emptyLabel={
+                  !access.canWrite
+                    ? 'No vehicles to show.'
+                    : noCompanies
+                      ? 'No BGs on file — add a Business Group before registering vehicles.'
+                      : 'No vehicles yet — use Add Vehicle to register one.'
+                }
+              />
+            </>
+          )}
         </>
       )}
 
@@ -392,7 +443,10 @@ export default function Vehicle(props) {
         <ConfirmDialog
           title="Delete vehicle?"
           body={`${vehicleLabel(pending)} will be removed from ${companyNameFor(pending.companyId)}.`}
-          note="It is also unassigned from any sub-user or alert that could see it. This is mock data — nothing is sent to a server."
+          note={[
+            'It is also unassigned from any sub-user or alert that could see it.',
+            modeNote('This cannot be undone.', 'This is mock data — nothing is sent to a server.'),
+          ].join(' ')}
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}
