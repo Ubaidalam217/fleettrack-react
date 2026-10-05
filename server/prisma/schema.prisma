@@ -271,11 +271,54 @@ model User {
 
   vehicles SubuserVehicle[]
   branches SubuserBranch[]
+  flespiGrant FlespiGrant?
 
   @@index([ggbId])
   @@index([groupId])
   @@index([bgId])
   @@index([role])
+}
+
+/// The Flespi ACL token currently issued to one account.
+///
+/// ── What is deliberately NOT here ───────────────────────────────────────────
+///
+/// The token KEY. Only Flespi's own id is stored, and the key is read back from
+/// Flespi with the Master token whenever the client asks for it. A limited,
+/// expiring, revocable third-party credential is still a credential, and keeping
+/// it out of our database means a dump of this table grants nothing — it is a list
+/// of integers. The cost is one extra Flespi call per refresh, and refreshes are
+/// rare (once per login, then on expiry).
+///
+/// ── Why scopeHash ───────────────────────────────────────────────────────────
+///
+/// A cached token is only reusable while it still describes the right fleet. The
+/// hash covers the ordered device-id list AND the methods, so reassigning a
+/// sub-user's vehicles, adding a vehicle to their BG, or changing their role all
+/// produce a different hash and force a new token on the next request. Comparing
+/// the hash is what makes "reuse a valid cached token" safe rather than stale.
+model FlespiGrant {
+  /// One live grant per account: a second would be an orphan nobody revokes.
+  userId String @id
+
+  /// Flespi's token id, used to delete it and to read its key back.
+  flespiTokenId Int
+
+  /// Mirrors the Flespi token's own `expire`, which is set to the JWT's exp.
+  expiresAt DateTime
+
+  /// sha256 of the ACL this token was minted for. See the note above.
+  scopeHash String
+
+  /// How many devices the ACL covers, for logging and for the API response.
+  deviceCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([flespiTokenId])
 }
 
 /// Which vehicles a sub-user may see. For a SUB_USER this join IS the scope —

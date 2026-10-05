@@ -80,6 +80,33 @@ const schema = z.object({
 
   LOGIN_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
   LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+
+  /**
+   * A Flespi MASTER token. The browser must never receive it.
+   *
+   * Used to mint per-user ACL tokens scoped to the devices that user may see, and
+   * to map a vehicle's IMEI to its Flespi device id.
+   *
+   * Optional, not required: the whole API has to keep working without it. If it is
+   * unset, /api/flespi/token answers 503 and login simply returns no grant — every
+   * other endpoint is unaffected. Making it required would mean a missing Flespi
+   * credential took down authentication.
+   */
+  FLESPI_TOKEN: z.string().optional(),
+
+  /**
+   * Hard timeout on any Flespi call. Short on purpose: these run inside our own
+   * request handlers, and the login path treats a Flespi failure as non-fatal, so
+   * waiting is worse than giving up.
+   */
+  FLESPI_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
+
+  /**
+   * How long the IMEI → device-id map is cached. Devices are added to the Flespi
+   * account by hand, so this only bounds how long a brand-new device stays
+   * unmatchable.
+   */
+  FLESPI_DEVICE_CACHE_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
 })
 
 const parsed = schema.safeParse(process.env)

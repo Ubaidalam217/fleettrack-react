@@ -5,6 +5,7 @@ import { getPermissionState } from '../../services/pushNotifications'
 import { useCurrentUser, initials, clearCurrentUser } from '../../services/authUser'
 import { IS_REAL } from '../../data/mode'
 import { logout as realLogout } from '../../data/session'
+import { revoke as revokeFlespiToken } from '../../data/flespiToken'
 
 const THEME_OPTIONS = [
   {
@@ -118,7 +119,13 @@ export default function UserDropdown({ themeMode, setTheme }) {
     // Real mode: drops the JWT from memory and sessionStorage. Called in addition
     // to the mock cleanup above rather than instead of it, so a browser that has
     // used both modes does not keep a stale demo profile around.
-    if (IS_REAL) realLogout()
+    if (IS_REAL) {
+      // Fire-and-forget, before the JWT is dropped: this is the one sign-out path
+      // that can still authenticate, so it is where the server gets told to delete
+      // the token at Flespi rather than letting it expire on its own.
+      revokeFlespiToken().catch(() => {})
+      realLogout()
+    }
     setOpen(false)
     navigate('/login')
   }

@@ -28,6 +28,7 @@ import branchRoutes from './routes/branches.js'
 import vehicleRoutes from './routes/vehicles.js'
 import userRoutes from './routes/users.js'
 import alertRoutes from './routes/alerts.js'
+import flespiRoutes from './routes/flespi.js'
 
 /**
  * CORS, from FRONTEND_ORIGINS.
@@ -116,6 +117,9 @@ export function createApp() {
   app.use('/api/vehicles', vehicleRoutes)
   app.use('/api/users', userRoutes)
   app.use('/api/alerts', alertRoutes)
+  // Behind requireAuth + requirePasswordChanged like everything else: an account
+  // still on its handed-over password must not be able to mint a live-data token.
+  app.use('/api/flespi', flespiRoutes)
 
   app.use(notFoundHandler)
   app.use(errorHandler)

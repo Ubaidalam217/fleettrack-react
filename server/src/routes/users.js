@@ -42,6 +42,7 @@ import {
   scopedWhere,
 } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { revokeGrant, revokeGrantsAround } from '../lib/flespiGrant.js'
 
 const router = Router()
 
@@ -356,6 +357,11 @@ router.put(
       include: USER_INCLUDE,
     })
 
+    // A role change swaps GET for GET+PUT (or back), and a BG change swaps the
+    // whole device list. Both invalidate this account's Flespi ACL, and the old
+    // and new BG are both touched because a move changes what each side contains.
+    await revokeGrantsAround({ userId: existing.id, bgIds: [existing.bgId, links.bgId] })
+
     res.json({ data: publicUser(row) })
   })
 )
@@ -419,6 +425,11 @@ router.put(
       return tx.user.findUnique({ where: { id: existing.id }, include: USER_INCLUDE })
     })
 
+    // The point of the whole phase: a reassigned sub-user must not keep a Flespi
+    // token that still reaches the vehicles it just lost. Revoked here so the next
+    // refresh mints one for the new set.
+    await revokeGrant(existing.id)
+
     res.json({ data: publicUser(row) })
   })
 )
@@ -465,6 +476,10 @@ router.delete(
     if (existing.id === req.scope.userId) {
       throw forbidden('You cannot delete your own account')
     }
+
+    // Before the delete: FlespiGrant cascades with the user, after which nothing
+    // in our database points at the Flespi token to clean it up.
+    await revokeGrant(existing.id)
 
     await prisma.user.delete({ where: { id: existing.id } })
     res.json({ data: { id: existing.id } })

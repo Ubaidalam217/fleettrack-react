@@ -9,13 +9,55 @@ import { z } from 'zod'
 import prisma from '../prisma.js'
 import { asyncHandler, unauthorized, badRequest } from '../lib/http.js'
 import { hashPassword, verifyPassword, PASSWORD_MIN_LENGTH } from '../lib/password.js'
-import { signToken } from '../lib/jwt.js'
+import { signToken, verifyToken } from '../lib/jwt.js'
+import { buildScope } from '../lib/scope.js'
+import { ensureGrant } from '../lib/flespiGrant.js'
+import { isConfigured as isFlespiConfigured } from '../lib/flespi.js'
 import { normalizeEmail } from '../lib/text.js'
 import { publicUser } from '../lib/serialize.js'
 import { validate } from '../middleware/validate.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
+
+/**
+ * Mint the caller's Flespi grant for the login response, or return null.
+ *
+ * Wrapped in a catch-all because it is the one place a third-party call sits on the
+ * authentication path. A sub-user whose Flespi token cannot be minted should still
+ * get into the app and see an explicable "no live data" state, not a failed login.
+ *
+ * The scope is built from the row we just authenticated, including the assignment
+ * joins — the same shape middleware/auth.js builds — so a sub-user's ACL is its
+ * assigned vehicles and nothing wider.
+ */
+async function grantForLogin(user, jwt) {
+  if (!isFlespiConfigured()) return null
+  try {
+    const withJoins = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true, role: true, ggbId: true, groupId: true, bgId: true,
+        vehicles: { select: { vehicleId: true } },
+        branches: { select: { branchId: true } },
+      },
+    })
+    const scope = buildScope(withJoins)
+    const payload = verifyToken(jwt)
+    const grant = await ensureGrant(withJoins, scope, payload?.exp ?? null)
+    return {
+      token: grant.token,
+      expiresAt: grant.expiresAt.toISOString(),
+      deviceCount: grant.deviceCount,
+      unmatchedImeis: grant.unmatchedImeis,
+    }
+  } catch (err) {
+    // Logged, not thrown. The client has a working session and a documented
+    // fallback; losing live data for one request is not worth failing the login.
+    console.warn('[auth] could not mint a Flespi grant at login:', err?.message)
+    return null
+  }
+}
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').transform(normalizeEmail),
@@ -51,13 +93,26 @@ router.post(
       throw unauthorized('Invalid email or password')
     }
 
+    const token = signToken(user)
+
     res.json({
-      token: signToken(user),
+      token,
       tokenType: 'Bearer',
       user: publicUser(user),
       // Also on the user object; duplicated at the top level because it is the
       // one flag the client has to branch on immediately after a login.
       mustChangePassword: user.mustChangePassword,
+      /**
+       * The caller's limited Flespi token, so the Live Map has live data from the
+       * first render instead of after a second round trip.
+       *
+       * BEST EFFORT, and null on any failure. Authentication must not depend on a
+       * third party being reachable: if Flespi is down or unconfigured, signing in
+       * still works and the client falls back to POST /api/flespi/token, which is
+       * the same call it uses for refresh anyway. Making login await a mandatory
+       * Flespi call would mean a Flespi outage locked everyone out of the app.
+       */
+      flespi: await grantForLogin(user, token),
     })
   })
 )

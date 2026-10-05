@@ -21,6 +21,7 @@ import {
   scopedWhere,
 } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { revokeGrantsUnderBg } from '../lib/flespiGrant.js'
 
 const router = Router()
 
@@ -233,6 +234,11 @@ router.delete(
       prisma.user.count({ where: { bgId: existing.id } }),
       prisma.alert.count({ where: { bgId: existing.id } }),
     ])
+
+    // Before the delete: the cascade takes the users and their FlespiGrant rows
+    // with it, and then nothing in our database points at the Flespi tokens to
+    // clean them up. They would sit in the account until their own expiry.
+    await revokeGrantsUnderBg(existing.id)
 
     await prisma.businessGroup.delete({ where: { id: existing.id } })
     res.json({ data: { id: existing.id, removed: { branches, vehicles, users, alerts } } })

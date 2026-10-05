@@ -13,6 +13,7 @@ import { asyncHandler } from '../lib/http.js'
 import { optionalEmail, requiredText } from '../lib/fields.js'
 import { assertCanWrite, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { revokeGrantsUnderGgb } from '../lib/flespiGrant.js'
 
 const router = Router()
 
@@ -85,6 +86,9 @@ router.delete(
       prisma.businessGroup.count({ where: { ggbId: existing.id } }),
       prisma.vehicle.count({ where: { bg: { ggbId: existing.id } } }),
     ])
+
+    // Everything under this GGB is about to be cascaded away, accounts included.
+    await revokeGrantsUnderGgb(existing.id)
 
     await prisma.ggb.delete({ where: { id: existing.id } })
     res.json({ data: { id: existing.id, removed: { groups, businessGroups: bgs, vehicles } } })

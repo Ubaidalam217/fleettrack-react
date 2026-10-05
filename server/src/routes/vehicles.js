@@ -16,6 +16,7 @@ import { asyncHandler, badRequest, conflict } from '../lib/http.js'
 import { imeiField, optionalId, optionalText, requiredId } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { revokeGrantsForBg } from '../lib/flespiGrant.js'
 
 const router = Router()
 
@@ -168,6 +169,10 @@ router.post(
       },
       include: VEHICLE_INCLUDE,
     })
+    // The BG's fleet changed, so every live Flespi ACL under it is now too narrow.
+    // Dropping the grants makes the next refresh mint one that includes this
+    // vehicle; leaving them would hide a brand-new vehicle until the token expired.
+    await revokeGrantsForBg(bg.id)
     res.status(201).json({ data: row })
   })
 )
@@ -194,6 +199,9 @@ router.put(
       },
       include: VEHICLE_INCLUDE,
     })
+    // An edit can change the IMEI, which is the Flespi join key, so the ACL's
+    // device ids may no longer match.
+    await revokeGrantsForBg(existing.bgId)
     res.json({ data: row })
   })
 )
@@ -218,6 +226,9 @@ router.delete(
     ])
 
     await prisma.vehicle.delete({ where: { id: existing.id } })
+    // Revoked so a token minted before the delete cannot keep reading a device the
+    // account is no longer entitled to.
+    await revokeGrantsForBg(existing.bgId)
     res.json({
       data: {
         id: existing.id,

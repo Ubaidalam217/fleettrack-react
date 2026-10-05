@@ -28,6 +28,7 @@ import { IS_REAL } from './data/mode'
 import { PHASE, restore, useSession } from './data/session'
 import { useSettingsData } from './data/settings'
 import { useFleetScopeLoader } from './data/fleetScope'
+import { useFlespiTokenLoader } from './data/flespiTokenLoader'
 
 // ── Seed announcements once on first load ──────────────────────────────────
 const SEED_KEY = 'announcements_seeded'
@@ -89,6 +90,10 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
    */
   useSettingsData()
   useFleetScopeLoader()
+  // Real mode: make sure a per-user Flespi token exists once the session is ready.
+  // Login usually supplies one already; this covers the refresh-the-page case and
+  // a login where the server could not mint one.
+  useFlespiTokenLoader()
 
   // Seed once on mount
   useEffect(() => {

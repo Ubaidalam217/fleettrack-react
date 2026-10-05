@@ -1,12 +1,20 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import mqtt from 'mqtt'
-import { BASE_URL, HEADERS } from './flespiConfig'
+import { BASE_URL, HEADERS, flespiToken } from './flespiConfig'
 import { normalizeMaster, cacheRawMetadata } from '../services/vehicleMaster'
 import { useScopedSnapshot } from '../data/fleetScope'
+import { IS_REAL } from '../data/mode'
+import { useFlespiTokenState } from '../data/flespiToken'
 
 // Flespi MQTT gateway — real-time push, replaces REST polling for live telemetry.
 const MQTT_URL      = 'wss://mqtt.flespi.io:443'
-const MQTT_USERNAME = import.meta.env.VITE_FLESPI_TOKEN
+/**
+ * The broker username is the Flespi token, and in real mode that token is minted
+ * per user AFTER login and refreshed before it expires — so it cannot be a
+ * module-level constant any more. Read on every connect, and watched below so a
+ * change tears the session down and reconnects under the new identity.
+ */
+const mqttUsername = () => flespiToken()
 // Unique per browser tab/session, and always paired with `clean: true` below.
 // Those two settings are only safe together in that combination:
 //   - a fixed clientId makes the broker kick whichever tab connected first the
@@ -232,6 +240,9 @@ function loadInitialSnapshot() {
 const vehiclesById = new Map()
 let metaById        = new Map()
 let client           = null
+// Which Flespi token the current session connected with, so a refresh can be
+// told apart from a no-op. mqtt.js fixes the username at connect time.
+let connectedWith = null
 let refCount         = 0
 let teardownTimer    = null
 let banRetryTimer    = null
@@ -258,23 +269,33 @@ function rebuildVehicles() {
 function ensureClient({ bootstrap = true } = {}) {
   if (client) return
 
-  if (!MQTT_USERNAME) {
-    // No token at build time: every CONNECT would be refused, and the refusal
-    // reads as a broker-side auth failure. Say what it actually is.
+  const username = mqttUsername()
+  if (!username) {
+    // No token yet. In real mode this is the normal state between page load and
+    // the backend issuing a grant, so it is not an error — it resolves on its own
+    // when useFlespiTokenWatcher sees the token arrive. In mock mode it means the
+    // build has no VITE_FLESPI_TOKEN, which is a real misconfiguration.
     publish({
       isConnected: false,
       mqttRetryNotice: null,
-      mqttFatalError: 'No Flespi token configured (VITE_FLESPI_TOKEN).',
+      mqttFatalError: IS_REAL
+        ? null
+        : 'No Flespi token configured (VITE_FLESPI_TOKEN).',
     })
     return
   }
+
+  // Remembered so a token refresh can be detected as "different identity" and
+  // force a reconnect; mqtt.js would otherwise keep using the original username
+  // for the lifetime of the client.
+  connectedWith = username
 
   if (bootstrap) loadInitialSnapshot()
 
   log('connecting to', MQTT_URL, 'as', CLIENT_ID)
 
   client = mqtt.connect(MQTT_URL, {
-    username:        MQTT_USERNAME,
+    username:        username,
     password:        '',
     clientId:        CLIENT_ID,
     // MQTT 5. Flespi then answers a refused CONNECT with a specific reason code
@@ -394,6 +415,7 @@ function teardownClient() {
 // Full stop: no consumers left, so cancel any pending ban retry too — otherwise
 // it would silently reopen a socket for a dashboard nobody is looking at.
 function teardownSession() {
+  connectedWith = null
   if (banRetryTimer) { clearTimeout(banRetryTimer); banRetryTimer = null }
   banRetryIndex = 0
   teardownClient()
@@ -425,18 +447,61 @@ function getSnapshot() {
 }
 
 /**
+ * Reconnect when the Flespi token changes.
+ *
+ * In real mode the token arrives after login and is replaced before it expires.
+ * mqtt.js fixes the username at connect time, so a new token means a new session —
+ * otherwise the socket would keep running under the old identity until the broker
+ * dropped it, and after a reassignment that identity may still see vehicles the
+ * user has lost.
+ *
+ * Mounted alongside the store read in useFlespiMQTT so every consumer gets it
+ * without having to know.
+ */
+function useFlespiTokenWatcher() {
+  /**
+   * Subscribing is what makes this work.
+   *
+   * flespiToken() is a plain function call, so on its own the component would never
+   * re-render when the backend's grant arrives — the effect below would run once
+   * with no token and never again, leaving the map permanently empty. Reading the
+   * store here is what ties the render to the token's lifecycle.
+   */
+  useFlespiTokenState()
+  const token = flespiToken()
+  useEffect(() => {
+    if (!IS_REAL) return
+    // Nothing to do if this is already the identity in use, or if there is no
+    // token yet and no client to tear down.
+    if (token === connectedWith) return
+    if (!token && !client) return
+    log('token changed — reconnecting MQTT under the new identity')
+    teardownSession()
+    if (token && refCount > 0) ensureClient()
+  }, [token])
+}
+
+/**
  * The live fleet, scoped to what the signed-in account may see.
  *
- * The scope filter is applied HERE, at the single source every consumer reads
- * from — the Live Map's list/map/counts/search, the Dashboard tiles, Reports,
- * VehicleActivity and the notification engine. Filtering in each of those instead
- * would be nine places to keep in step, and the one that got missed would be the
- * one that leaked a vehicle count to a sub-user.
+ * Two layers, deliberately:
  *
- * In mock mode and for a Super Admin, useScopedSnapshot returns the same snapshot
- * object it was given, so nothing about today's behaviour changes.
+ *  1. In real mode the token itself is restricted, so Flespi never sends this
+ *     browser another tenant's devices. That is the actual boundary.
+ *  2. useScopedSnapshot still filters by IMEI on top. Belt and braces — it also
+ *     covers the Super Admin case, where the token is intentionally unrestricted.
+ *
+ * The filter is applied HERE, at the single source every consumer reads from — the
+ * Live Map's list/map/counts/search, the Dashboard tiles, Reports, VehicleActivity
+ * and the notification engine. Filtering in each of those instead would be nine
+ * places to keep in step, and the one that got missed would be the one that leaked
+ * a vehicle count.
+ *
+ * In mock mode useScopedSnapshot returns the same snapshot object it was given, so
+ * nothing about today's behaviour changes.
  */
 export function useFlespiMQTT() {
+  useFlespiTokenWatcher()
   const snapshot = useSyncExternalStore(subscribe, getSnapshot)
   return useScopedSnapshot(snapshot)
 }

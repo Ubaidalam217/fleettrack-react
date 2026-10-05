@@ -14,6 +14,7 @@ import { asyncHandler } from '../lib/http.js'
 import { requiredId, requiredText } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { revokeGrantsUnderGroup } from '../lib/flespiGrant.js'
 
 const router = Router()
 
@@ -110,6 +111,10 @@ router.delete(
       prisma.businessGroup.count({ where: { groupId: existing.id } }),
       prisma.user.count({ where: { groupId: existing.id } }),
     ])
+
+    // Group admins scoped here are deleted by the cascade; revoke their Flespi
+    // tokens first, while the rows still exist to find them by.
+    await revokeGrantsUnderGroup(existing.id)
 
     await prisma.group.delete({ where: { id: existing.id } })
     res.json({
