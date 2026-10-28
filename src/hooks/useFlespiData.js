@@ -6,13 +6,23 @@ import { useFlespiMQTT } from './useFlespiMQTT'
 export { BASE_URL, HEADERS } from './flespiConfig'
 
 export function useFlespiData() {
-  const { vehicles, isConnected, lastUpdated, error, mqttFatalError, mqttRetryNotice } = useFlespiMQTT()
+  const {
+    vehicles, isConnected, lastUpdated, error,
+    mqttFatalError, mqttRetryNotice, noVehicles, tokenError,
+  } = useFlespiMQTT()
 
   // Loading until the MQTT session has connected at least once (or produced vehicles/errored).
   // The two MQTT banners also end the loading state: if the broker is refusing us
   // *and* the REST bootstrap came back empty, a permanent skeleton would hide the
   // very banner that explains why.
-  const hasLoaded = isConnected || vehicles.length > 0 || !!error || !!mqttFatalError || !!mqttRetryNotice
+  //
+  // `noVehicles` and `tokenError` end it for the same reason: both are answers. An
+  // account with no vehicles assigned has finished loading — there is simply nothing
+  // to load — and leaving the spinner up implied data was still on its way.
+  const hasLoaded =
+    isConnected || vehicles.length > 0 ||
+    !!error || !!mqttFatalError || !!mqttRetryNotice ||
+    noVehicles || !!tokenError
 
   const data = useMemo(() => {
     if (!hasLoaded) return null
@@ -44,6 +54,8 @@ export function useFlespiData() {
     error,
     mqttFatalError,
     mqttRetryNotice,
+    noVehicles,
+    tokenError,
     lastUpdated,
     isConnected,
     refresh: () => Promise.resolve(), // MQTT streams live — nothing to re-fetch

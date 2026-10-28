@@ -1,6 +1,25 @@
 import { useState, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { BASE_URL, HEADERS } from '../hooks/useFlespiData'
+import { BASE_URL, HEADERS, hasFlespiToken } from '../hooks/flespiConfig'
+
+// Only the four fields the chart reads. Flespi needs this as a COMMA-SEPARATED
+// STRING — an array is a hard 400 ("#/fields: invalid type 'array', allowed only
+// string") — which is why every field list in this codebase ends in .join(',').
+const FIELDS = [
+  // Which vehicle a message belongs to. Note `device.id`, dotted: that is what
+  // REST messages carry. The MQTT payload's `device_id` does not exist here, so
+  // reading it grouped all ten devices into one bucket and measured intervals
+  // ACROSS vehicles.
+  'device.id',
+  'timestamp',
+  'position.speed',
+  'engine.ignition.status',
+].join(',')
+
+// Per device, matching MAX_MESSAGES in replay.js / usageData.js. Enough to cover
+// a week at these devices' ~5-minute reporting rate; a device that reports faster
+// is truncated, which costs the tail of the oldest day and nothing else.
+const MAX_MESSAGES = 3000
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -12,10 +31,12 @@ const DAY_VARIATIONS = [0.85, 0.90, 1.05, 0.95, 1.10, 0.80, 0.75]
 function buildChartData(messages) {
   const now = Date.now()
 
-  // Group by device so consecutive-message intervals stay within one vehicle
+  // Group by device so consecutive-message intervals stay within one vehicle.
+  // `device.id` is the REST field; `device_id` is kept as a fallback because it
+  // is what an MQTT payload uses, and a caller may yet pass one in.
   const byDevice = {}
   messages.forEach(m => {
-    const did = m.device_id ?? 'unknown'
+    const did = m['device.id'] ?? m.device_id ?? 'unknown'
     if (!byDevice[did]) byDevice[did] = []
     byDevice[did].push(m)
   })
@@ -102,6 +123,13 @@ export default function VehicleActivity({ isDark, vehicleCount = 0 }) {
   const [isFallback, setIsFallback] = useState(false)
 
   useEffect(() => {
+    // Real mode without a login: the proxy can only 401 — skip it and let the
+    // estimated fallback render.
+    if (!hasFlespiToken()) {
+      setIsFallback(true)
+      return
+    }
+
     let cancelled = false
     const timeout = setTimeout(() => {
       if (!cancelled) setIsFallback(true)
@@ -110,9 +138,20 @@ export default function VehicleActivity({ isDark, vehicleCount = 0 }) {
     const from = Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000)
     const to   = Math.floor(Date.now() / 1000)
 
-    // Single call — same BASE_URL/HEADERS pattern as useNotificationEngine.js.
-    // No 'fields' param: let Flespi return whatever fields each device supports.
-    const url = `${BASE_URL}/gw/devices/all/messages?count=100&from=${from}&to=${to}`
+    /**
+     * Flespi takes from/to/count/fields inside a JSON `data` object.
+     *
+     * As top-level query params — which is what this sent — they are SILENTLY
+     * IGNORED: HTTP 200, and the response is every stored message on every
+     * device with every field. Measured on this account that was 398,208
+     * messages / 267.75 MB for what the chart uses as ~21,000 messages / 1.9 MB,
+     * on every Dashboard mount, and it is what tripped Flespi's per-account REST
+     * traffic limit and produced the 429s on Reports.
+     *
+     * Same form as replay.js and usageData.js, which already got this right.
+     */
+    const data = JSON.stringify({ from, to, count: MAX_MESSAGES, fields: FIELDS })
+    const url = `${BASE_URL}/gw/devices/all/messages?data=${encodeURIComponent(data)}`
 
     fetch(url, { headers: HEADERS })
       .then(async r => {

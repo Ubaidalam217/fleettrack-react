@@ -2,19 +2,19 @@
   command = "npm run build"
   publish = "dist"
 
-# Serverless functions. The AI assistant proxy lives here so the Gemini key
-# stays server-side; GEMINI_API_KEY is set in the Netlify UI (and in the
-# gitignored .env for `netlify dev`), never in the client bundle.
+# Serverless functions. Secrets stay server-side: GEMINI_API_KEY (AI assistant)
+# and FLESPI_TOKEN (Flespi proxy) are set in the Netlify UI as secret env vars,
+# and in the gitignored .env for local dev — never in the client bundle.
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Flespi IoT API proxy
-# The client fetch calls already include Authorization: FlespiToken ... in the request
-# headers, which Netlify forwards to the upstream. No header injection needed here.
+# Flespi IoT API — through the proxy function, which adds the one Flespi key
+# server-side and only allows read-only gw/devices requests. The browser never
+# sees a Flespi token.
 [[redirects]]
   from   = "/flespi/*"
-  to     = "https://flespi.io/:splat"
+  to     = "/.netlify/functions/flespi-proxy/:splat"
   status = 200
   force  = true
 
@@ -23,3 +23,18 @@
   from   = "/*"
   to     = "/index.html"
   status = 200
+
+# Security headers for every response.
+#  - frame-ancestors / X-Frame-Options: the app cannot be embedded in another
+#    site's frame (clickjacking).
+#  - nosniff: the browser must not guess content types.
+#  - Referrer-Policy: other sites see only our origin, never full URLs.
+#  - Permissions-Policy: no camera / microphone; geolocation only for ourselves.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(self)"

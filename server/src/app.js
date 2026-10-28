@@ -28,7 +28,10 @@ import branchRoutes from './routes/branches.js'
 import vehicleRoutes from './routes/vehicles.js'
 import userRoutes from './routes/users.js'
 import alertRoutes from './routes/alerts.js'
+import geofenceRoutes from './routes/geofences.js'
 import flespiRoutes from './routes/flespi.js'
+import geocodeRoutes from './routes/geocode.js'
+import flespiProxyRoutes from './routes/flespiProxy.js'
 
 /**
  * CORS, from FRONTEND_ORIGINS.
@@ -117,9 +120,14 @@ export function createApp() {
   app.use('/api/vehicles', vehicleRoutes)
   app.use('/api/users', userRoutes)
   app.use('/api/alerts', alertRoutes)
+  app.use('/api/geofences', geofenceRoutes)
   // Behind requireAuth + requirePasswordChanged like everything else: an account
   // still on its handed-over password must not be able to mint a live-data token.
+  // Every Flespi call from the browser goes through here with the one server-side
+  // token; registered before /api/flespi so /proxy never reaches the token routes.
+  app.use('/api/flespi/proxy', flespiProxyRoutes)
   app.use('/api/flespi', flespiRoutes)
+  app.use('/api/geocode', geocodeRoutes)
 
   app.use(notFoundHandler)
   app.use(errorHandler)

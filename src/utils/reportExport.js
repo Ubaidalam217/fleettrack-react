@@ -66,6 +66,11 @@ const LOGO_GREEN  = [91, 163, 84]   // FleetmaX brand green, #5ba354
 const LOGO_SRC    = '/logo/fleetmax-logo.png'
 
 // ── small helpers ─────────────────────────────────────────────────────────
+//
+// fileStamp, download, loadLogo and drawLogo are exported for daywiseExport.js:
+// the Daywise sheets are a different geometry but the same house style, and the
+// logo in particular is worth embedding through one cached code path rather than
+// two.
 
 function clip(doc, text, width) {
   const s = String(text ?? '')
@@ -73,13 +78,13 @@ function clip(doc, text, width) {
   return doc.splitTextToSize(s, width)[0] ?? ''
 }
 
-function fileStamp() {
+export function fileStamp() {
   const d = new Date()
   const p = n => String(n).padStart(2, '0')
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`
 }
 
-function download(blob, filename) {
+export function download(blob, filename) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -116,7 +121,7 @@ const LOGO_PDF_W = 300
  * as 863*273*4 bytes. Downsampling to 300px and dropping the alpha (the PDF
  * page is white anyway) takes the same logo under ~20KB.
  */
-async function loadLogo() {
+export async function loadLogo() {
   if (logoDataUrl !== undefined) return logoDataUrl
   try {
     const res = await fetch(LOGO_SRC)
@@ -142,7 +147,7 @@ async function loadLogo() {
   return logoDataUrl
 }
 
-function drawLogo(doc) {
+export function drawLogo(doc) {
   const y = 18
   if (logoDataUrl) {
     // Source is 863x273 (~3.16:1); 76pt wide keeps it inside the slot.
@@ -185,6 +190,9 @@ function drawChrome(doc, filters, meta) {
   doc.text(`:  ${filters.applyTolerance ? 'True' : 'False'}`, 338.1, 66.1)
   doc.text('Tolerance', 479.1, 66.1)
   doc.text(`(m) :  ${filters.toleranceMeters}`, 511.4, 66.1)
+  // Not in the Ctrack sample, so only drawn when used — a thinned report must
+  // say it is thinned.
+  if (filters.intervalSec > 0) doc.text(`Interval :  ${filters.intervalLabel}`, 640, 66.1)
   doc.text(`From Date   :  ${filters.fromLabel}`, COL.vehicle, 79.6)
   doc.text('To Date   ', 282.6, 79.6)
   doc.text(`:  ${filters.toLabel}`, 313.4, 79.6)
@@ -423,7 +431,7 @@ export async function exportMovementExcel(report, filters, meta = {}) {
   const f1 = ws.addRow([
     `Selection :  ${filters.selection}`, '', '',
     `Apply Tolerance :  ${filters.applyTolerance ? 'True' : 'False'}`, '',
-    `Tolerance (m) :  ${filters.toleranceMeters}`, '',
+    `Tolerance (m) :  ${filters.toleranceMeters}${filters.intervalSec > 0 ? `    Interval :  ${filters.intervalLabel}` : ''}`, '',
   ])
   const f2 = ws.addRow([
     `From Date :  ${filters.fromLabel}`, '', '',

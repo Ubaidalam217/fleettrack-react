@@ -30,3 +30,8 @@ dist-ssr
 # Written by the Netlify CLI when it bootstraps Deno for edge functions.
 # This project has no edge functions, so the lockfile is a local artifact.
 deno.lock
+
+# Internal notes and client material - kept local, never pushed (the repo is public)
+docs/SESSION-*
+docs/aitracking-reference*
+docs/FleetmaX-What-We-Built.*

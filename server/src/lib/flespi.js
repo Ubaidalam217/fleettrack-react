@@ -139,6 +139,44 @@ async function call(path, { method = 'GET', body, timeoutMs = env.FLESPI_TIMEOUT
   return payload
 }
 
+/**
+ * Pass one request through to Flespi with the Master token, returning Flespi's
+ * own status and body untouched. Used by the /api/flespi/proxy route, whose job is
+ * to decide WHETHER a request may go through; this only carries it.
+ *
+ * Unlike call(), a non-2xx answer is not an error here: a 404 or 429 from Flespi
+ * is the response the browser should see, so the caller can react to it exactly
+ * as it did when it talked to Flespi directly.
+ */
+export async function forward(pathWithQuery, { method = 'GET', body, timeoutMs = 60_000 } = {}) {
+  if (!isConfigured()) {
+    const err = new Error('FLESPI_TOKEN is not configured on the server')
+    err.status = 503
+    throw err
+  }
+  let res
+  try {
+    res = await fetch(`${BASE}${pathWithQuery}`, {
+      method,
+      headers: masterHeaders(body !== undefined),
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  } catch (err) {
+    const timedOut = err?.name === 'TimeoutError'
+    throw new FlespiError(
+      timedOut ? 504 : 502,
+      timedOut ? `Flespi did not respond within ${timeoutMs}ms` : `Cannot reach Flespi: ${err?.message}`,
+      pathWithQuery
+    )
+  }
+  return {
+    status: res.status,
+    contentType: res.headers.get('content-type') || 'application/json',
+    text: await res.text(),
+  }
+}
+
 // ── Tokens ──────────────────────────────────────────────────────────────────
 
 /**

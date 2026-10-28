@@ -11,7 +11,22 @@
 // hour of lookups to repeat on every reload. A rounded coordinate -> address
 // mapping does not go stale (the vehicle moves, the street does not), so the
 // only real cost of persisting is storage — bounded below by MAX_PERSISTED.
+//
+// In REAL mode reverseGeocodeMany goes through the backend instead
+// (POST /api/geocode/reverse): its Postgres cache is shared by every user and
+// browser, so a client on a fresh machine gets every address anyone has
+// already resolved at once, and the 1/sec Nominatim throttle is enforced once
+// for the whole server rather than per tab. Mock mode (the Netlify demo) has no
+// backend and keeps calling Nominatim directly.
+import { IS_REAL } from '../data/mode'
+import { request } from '../data/http'
+
 const cache = new Map() // "lat,lng" (rounded) -> address string
+
+/** Points per cache-only request; the server accepts up to 2000. */
+const SERVER_CACHE_CHUNK = 1000
+/** Live lookups per request — small, so progress moves and no request runs long. */
+const SERVER_RESOLVE_BATCH = 10
 
 // v2: entries cached before accept-language=en was sent are in the local
 // script (Arabic in this fleet's region), which is not what the report wants.
@@ -106,6 +121,32 @@ export async function reverseGeocode(lat, lng) {
   }
 }
 
+/**
+ * Forward geocode: a place/address string → candidate coordinates, for the
+ * geofence editor's "jump the map here" search.
+ *
+ * Not cached, unlike reverseGeocode above — a free-text query has none of the
+ * rounded-coordinate locality that makes caching reverse lookups pay off, and
+ * this is a one-off interactive search rather than something called hundreds
+ * of times per report.
+ */
+export async function searchPlace(query) {
+  const q = String(query ?? '').trim()
+  if (!q) return []
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=0&accept-language=en`
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } })
+    if (!res.ok) return []
+    const json = await res.json()
+    if (!Array.isArray(json)) return []
+    return json
+      .map(r => ({ label: r.display_name, lat: Number(r.lat), lng: Number(r.lon) }))
+      .filter(r => Number.isFinite(r.lat) && Number.isFinite(r.lng))
+  } catch {
+    return []
+  }
+}
+
 /** How many of these coordinates are not already cached. */
 export function countUncached(coords) {
   loadPersisted()
@@ -171,6 +212,8 @@ export async function reverseGeocodeMany(coords, opts = {}) {
     }
   }
 
+  if (IS_REAL) return resolveViaServer(pending, addresses, { limit, signal, onProgress })
+
   const budget = Math.max(0, Math.min(pending.length, limit))
   const total = budget
   let resolved = 0
@@ -195,4 +238,61 @@ export async function reverseGeocodeMany(coords, opts = {}) {
 
   schedulePersist()
   return { addresses, resolved, skipped: pending.length - budget }
+}
+
+/** Merge a server answer into the local cache and the caller's result map. */
+function absorb(serverAddresses, addresses) {
+  for (const [k, address] of Object.entries(serverAddresses ?? {})) {
+    cache.set(k, address)
+    if (address) addresses.set(k, address)
+  }
+}
+
+/**
+ * Real-mode half of reverseGeocodeMany: everything the shared server cache
+ * already knows in one or two requests, then the misses in small batches the
+ * server looks up live (throttled there, for every user at once).
+ */
+async function resolveViaServer(pending, addresses, { limit, signal, onProgress }) {
+  const points = p => p.map(({ lat, lng }) => ({ lat, lng }))
+
+  try {
+    for (let i = 0; i < pending.length; i += SERVER_CACHE_CHUNK) {
+      if (signal?.aborted) throw abortError()
+      const res = await request('/api/geocode/reverse', {
+        method: 'POST',
+        body: { points: points(pending.slice(i, i + SERVER_CACHE_CHUNK)), resolve: 0 },
+      })
+      absorb(res.addresses, addresses)
+    }
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err
+    // Server unreachable: the rows keep their coordinates.
+    schedulePersist()
+    return { addresses, resolved: 0, skipped: pending.filter(p => !cache.has(p.k)).length }
+  }
+
+  const misses = pending.filter(p => !cache.has(p.k))
+  const budget = Math.max(0, Math.min(misses.length, limit))
+  let resolved = 0
+
+  for (let i = 0; i < budget; i += SERVER_RESOLVE_BATCH) {
+    if (signal?.aborted) throw abortError()
+    const batch = misses.slice(i, Math.min(i + SERVER_RESOLVE_BATCH, budget))
+    try {
+      const res = await request('/api/geocode/reverse', {
+        method: 'POST',
+        body: { points: points(batch), resolve: batch.length },
+      })
+      absorb(res.addresses, addresses)
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err
+      // A failed batch leaves those rows on coordinates; a re-run retries them.
+    }
+    resolved += batch.length
+    onProgress?.(resolved, budget)
+  }
+
+  schedulePersist()
+  return { addresses, resolved, skipped: misses.length - budget }
 }

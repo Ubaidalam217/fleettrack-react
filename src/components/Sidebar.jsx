@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, MapPin, FileText, BarChart2,
+  LayoutDashboard, MapPin, BarChart2,
   MessageCircle, Bell, Megaphone, ChevronDown,
 } from 'lucide-react'
 import { useCurrentUser, initials, firstName } from '../services/authUser'
 import SettingsMenu from './sidebar/SettingsMenu'
+import ReportsMenu from './sidebar/ReportsMenu'
 
 export const SIDEBAR_WIDTH = 260
 
@@ -21,7 +22,9 @@ const NAV_SECTIONS = [
       { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
       // Label only — the route stays /tracking so every existing link still works.
       { label: 'Live Map',  icon: MapPin,          path: '/tracking' },
-      { label: 'Reports',   icon: FileText,        path: '/reports' },
+      // Like Settings below: not a link but its own nested tree, so the section
+      // renderer hands the whole row to <ReportsMenu />.
+      { id: 'reports', custom: 'reports-menu' },
       { label: 'Charts',    icon: BarChart2,       path: '/charts' },
     ],
   },
@@ -358,6 +361,9 @@ export default function Sidebar({ sidebarOpen }) {
                   {open && section.items.map(item => {
                     if (item.custom === 'settings-menu') {
                       return <SettingsMenu key={item.id} />
+                    }
+                    if (item.custom === 'reports-menu') {
+                      return <ReportsMenu key={item.id} />
                     }
 
                     const active = location.pathname === item.path

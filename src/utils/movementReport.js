@@ -9,7 +9,9 @@
 // everything below comes from `engine.ignition.status`, `position.speed`,
 // `vehicle.mileage` and `position.valid`/`position.satellites`. A probe of all
 // 10 devices (2026-09-17) found:
-//   - ignition, speed, lat/lng, mileage and satellites on 100% of messages;
+//   - ignition, speed, lat/lng, mileage and satellites on 100% of messages
+//     (no longer true for mileage: by 2026-10 four devices send none, which
+//     is why Cumulative Odo goes through distance.js's GPS fallback);
 //   - `position.valid` on only 3 of 10 devices, so the "; (GPS Unlock)" suffix
 //     is satellite-count-derived on the rest and will rarely fire;
 //   - NO iButton/RFID/driver-tag field and NO immobilizer field anywhere on the
@@ -24,8 +26,9 @@
 
 import { fetchDeviceMessages, isAbortError } from './replay'
 import { reverseGeocodeMany, geocodeKey, shortenAddress, countUncached } from './geocode'
+import { haversineMeters, createDistanceStepper } from './distance'
 
-export { isAbortError }
+export { isAbortError, haversineMeters }
 
 // Only the fields the derivation below reads. Unfiltered, Flespi returns every
 // parameter a device reports (~33-81 here), which is several times the payload
@@ -53,6 +56,20 @@ export const STATUS_DEFS = [
 ]
 
 export const STATUS_LABELS = Object.fromEntries(STATUS_DEFS.map(s => [s.key, s.label]))
+
+// Row interval choices (seconds) for the form's Interval dropdown — see
+// deriveRows for what is and is not thinned. 0 = every message, as Ctrack does.
+export const INTERVAL_OPTIONS = [
+  { sec: 0,    label: 'All messages' },
+  { sec: 60,   label: '1 min' },
+  { sec: 300,  label: '5 min' },
+  { sec: 900,  label: '15 min' },
+  { sec: 1800, label: '30 min' },
+]
+
+export function intervalLabel(sec) {
+  return INTERVAL_OPTIONS.find(o => o.sec === sec)?.label ?? `${Math.round(sec / 60)} min`
+}
 export const AVAILABLE_STATUS_KEYS = STATUS_DEFS.filter(s => !s.unavailable).map(s => s.key)
 
 // Continuous ignition-on-at-a-standstill beyond this is Excessive Idling. The
@@ -111,19 +128,6 @@ function dateKeyOf(ts) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-// ── geometry ──────────────────────────────────────────────────────────────
-
-const EARTH_M = 6371000
-
-export function haversineMeters(lat1, lng1, lat2, lng2) {
-  const toRad = deg => (deg * Math.PI) / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLng = toRad(lng2 - lng1)
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
-  return 2 * EARTH_M * Math.asin(Math.min(1, Math.sqrt(a)))
-}
-
 // ── status derivation ─────────────────────────────────────────────────────
 
 // "; (GPS Unlock)" in the sample persists across several consecutive rows and
@@ -164,13 +168,25 @@ function makeRow({ ts, statusKey, speed, odoKm, lat, lng, unlocked }) {
  *   - with tolerance on, an ordinary Driving row within N metres of the last
  *     kept row is dropped. Transitions (Start up / Ignition off) and idling
  *     rows are never dropped: they are the events the report exists to show,
- *     and they happen precisely when the vehicle is not moving.
+ *     and they happen precisely when the vehicle is not moving;
+ *   - with an interval set, a Driving or Ignition off row that repeats the
+ *     previous row's status less than `intervalSec` after it is dropped. A
+ *     device reports every 10-60 s, so a fleet-day is thousands of rows; this
+ *     thins the repeats without losing an event — Start up, the first row of
+ *     any status (so every switch-off stays), and Excessive Idling are always
+ *     kept. Cumulative Odo still steps over every message, so the distance in
+ *     a thinned report is the same as in the full one.
  */
-function deriveRows(messages, { applyTolerance, toleranceMeters }) {
+function deriveRows(messages, { applyTolerance, toleranceMeters, intervalSec = 0 }) {
   const rows = []
+  let lastEmitted = null    // { ts, statusKey } of the last row pushed, for the interval test
 
-  let firstMileage = null
-  let lastMileage  = null
+  // Distance since the start of the range: every interval's distance summed —
+  // odometer where the device reports one, GPS otherwise (distance.js). For a
+  // device that always reports `vehicle.mileage` this telescopes to exactly
+  // the old `last - first`.
+  const step       = createDistanceStepper()
+  let odoKm        = 0
   let prevIgnition = null   // last non-null ignition seen
   let prevTs       = null
   let idleStart    = null   // ts the current continuous idle began
@@ -187,12 +203,7 @@ function deriveRows(messages, { applyTolerance, toleranceMeters }) {
     const lng   = num(m['position.longitude'])
     if (lat != null && lng != null) { lastLat = lat; lastLng = lng }
 
-    const mileage = num(m['vehicle.mileage'])
-    if (mileage != null) {
-      if (firstMileage == null) firstMileage = mileage
-      lastMileage = mileage
-    }
-    const odoKm = (firstMileage != null && lastMileage != null) ? lastMileage - firstMileage : 0
+    odoKm += step(m).km
 
     const rawIgn = m['engine.ignition.status']
     const ign = typeof rawIgn === 'boolean' ? rawIgn : prevIgnition
@@ -227,6 +238,7 @@ function deriveRows(messages, { applyTolerance, toleranceMeters }) {
       for (; b <= ts; b += IDLE_SEC) {
         rows.push(makeRow({ ts: b, statusKey: 'excessiveIdling', speed: 0, odoKm, lat: lastLat, lng: lastLng, unlocked }))
         lastBoundary = b
+        lastEmitted = { ts: b, statusKey: 'excessiveIdling' }
       }
       prevIgnition = ign
       prevTs = ts
@@ -243,7 +255,17 @@ function deriveRows(messages, { applyTolerance, toleranceMeters }) {
       continue
     }
 
+    if (
+      intervalSec > 0 && (statusKey === 'driving' || statusKey === 'ignitionOff')
+      && lastEmitted?.statusKey === statusKey && ts - lastEmitted.ts < intervalSec
+    ) {
+      prevIgnition = ign
+      prevTs = ts
+      continue
+    }
+
     rows.push(makeRow({ ts, statusKey, speed, odoKm, lat, lng, unlocked }))
+    lastEmitted = { ts, statusKey }
     if (lat != null && lng != null) lastKept = { lat, lng }
     prevIgnition = ign
     prevTs = ts
@@ -311,6 +333,7 @@ export function deriveMovementReport(byDevice, opts = {}) {
     statuses = AVAILABLE_STATUS_KEYS,
     applyTolerance = false,
     toleranceMeters = 0,
+    intervalSec = 0,
   } = opts
 
   const metaById = new Map(vehicles.map(v => [v.id, v]))
@@ -327,7 +350,7 @@ export function deriveMovementReport(byDevice, opts = {}) {
     const vehicleId = master?.plateNo || meta?.name || `Device ${deviceId}`
     const driverId  = master?.driver?.name || ''
 
-    const allRows = deriveRows(messages, { applyTolerance, toleranceMeters })
+    const allRows = deriveRows(messages, { applyTolerance, toleranceMeters, intervalSec })
     if (allRows.length === 0) continue
 
     // Vehicle and date totals are computed over ALL derived rows, before the
@@ -407,7 +430,7 @@ export async function resolveReportLocations(report, opts = {}) {
   const { addresses, resolved, skipped } = await reverseGeocodeMany(rows, {
     limit,
     signal,
-    onProgress: (done, total) => onProgress?.({ phase: 'geocode', done, total, text: `Resolving addresses ${done}/${total}...` }),
+    onProgress: (done, total) => onProgress?.({ phase: 'geocode', done, total, text: `Resolving addresses ${done}/${total} — you can download now...` }),
   })
 
   for (const r of rows) {

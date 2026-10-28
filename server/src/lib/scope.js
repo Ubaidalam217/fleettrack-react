@@ -76,6 +76,7 @@ const ENTITIES = Object.freeze({
   vehicle: { delegate: 'vehicle', label: 'Vehicle' },
   user: { delegate: 'user', label: 'User' },
   alert: { delegate: 'alert', label: 'Alert' },
+  geofence: { delegate: 'geofence', label: 'Geofence' },
 })
 
 /**
@@ -226,6 +227,17 @@ export function userWhere(scope) {
   }
 }
 
+/**
+ * A geofence is visible to a sub-user whenever its BG is — there is no
+ * per-vehicle narrowing the way vehicleWhere/alertWhere apply, because a
+ * geofence is not assigned to vehicles; it is a shape over a BG's whole
+ * territory. "Sub-user sees its BG's geofences, read-only" is the brief's
+ * whole rule, and WRITABLE below is what makes the read-only half true.
+ */
+export function geofenceWhere(scope) {
+  return childBgWhere(scope)
+}
+
 export function alertWhere(scope) {
   const base = childBgWhere(scope)
   if (!isSubUser(scope)) return base
@@ -249,6 +261,7 @@ const WHERE_BUILDERS = Object.freeze({
   vehicle: vehicleWhere,
   user: userWhere,
   alert: alertWhere,
+  geofence: geofenceWhere,
 })
 
 /**
@@ -311,10 +324,10 @@ export async function findScoped(entity, id, scope, opts = {}) {
  * assertWritableParent() below. Flagged for the client to confirm.
  */
 const WRITABLE = Object.freeze({
-  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert']),
-  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert']),
-  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert']),
-  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert']),
+  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence']),
+  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence']),
+  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert', 'geofence']),
+  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert', 'geofence']),
   // Read-only, explicitly. An empty set rather than a missing key so a typo in a
   // role name can never be mistaken for "sub-user, therefore no writes".
   SUB_USER: new Set(),

@@ -205,7 +205,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   )
-  const { data, loading, error, mqttFatalError, mqttRetryNotice, lastUpdated, refresh, isConnected } = useFlespiData()
+  const { data, loading, error, mqttFatalError, mqttRetryNotice, noVehicles, tokenError, lastUpdated, refresh, isConnected } = useFlespiData()
   const [refreshing, setRefreshing] = useState(false)
 
   const handleRefresh = async () => {
@@ -325,6 +325,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
           setTheme={setTheme}
           onMenuClick={() => setSidebarOpen(s => !s)}
           isConnected={isConnected}
+          noVehicles={noVehicles}
         />
 
         <main className="flex-1 overflow-y-auto no-scrollbar" style={{ overflowX: 'hidden' }}>
@@ -401,6 +402,41 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
                 {mqttFatalError || mqttRetryNotice} Showing last known positions from the fleet API instead.
+              </div>
+            )}
+
+            {/* Nothing is assigned to this account. Not a fault — so it is stated
+                plainly, in neutral colours, with the one action that resolves it.
+                It replaces the spinner that used to sit here indefinitely. */}
+            {noVehicles && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                background: 'var(--c-card)', border: '1px solid var(--c-border)',
+                borderRadius: 12, padding: '14px 16px', fontSize: 12.5,
+                color: 'var(--c-text2)', lineHeight: 1.6,
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--c-text3)' }}>
+                  <path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 00-1.17-2.83L19 9h-5"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>
+                </svg>
+                <span>
+                  <strong style={{ color: 'var(--c-text1)' }}>No vehicles assigned to your account yet.</strong>{' '}
+                  Once a vehicle is registered to your business group it appears here automatically — ask your administrator to add one under Settings → Vehicle.
+                </span>
+              </div>
+            )}
+
+            {/* The grant request failed. Distinct from the MQTT banner above: the
+                live feed was never reached, and a retry is already scheduled. */}
+            {tokenError && !noVehicles && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+                borderRadius: 12, padding: '10px 16px', fontSize: 12, color: '#dc2626',
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                Could not start the live feed: {tokenError} Retrying automatically.
               </div>
             )}
 

@@ -38,10 +38,10 @@ const ADMINS_AND_BG = [ROLE.SUPER_ADMIN, ROLE.GGB_ADMIN, ROLE.GROUP_ADMIN, ROLE.
 
 /** Mirror of WRITABLE in server/src/lib/scope.js. Keep in step. */
 const WRITABLE = Object.freeze({
-  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert']),
-  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert']),
-  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert']),
-  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert']),
+  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence']),
+  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence']),
+  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert', 'geofence']),
+  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert', 'geofence']),
   SUB_USER: new Set(),
 })
 
@@ -67,6 +67,7 @@ const PAGE_ROLES = Object.freeze({
   'company-subuser': ADMINS_AND_BG,
   vehicle: ALL,
   alerts: ALL,
+  geofence: ALL,
 })
 
 /** Settings page id → the entity its Add/Edit/Delete buttons write. */
@@ -79,6 +80,7 @@ export const PAGE_ENTITY = Object.freeze({
   user: 'user',
   'company-subuser': 'user',
   alerts: 'alert',
+  geofence: 'geofence',
 })
 
 /**

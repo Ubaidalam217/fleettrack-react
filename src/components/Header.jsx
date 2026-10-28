@@ -5,18 +5,33 @@ import UserDropdown         from './topbar/UserDropdown'
 import AssistantPanel       from './AssistantPanel'
 
 // ── Connection badge ───────────────────────────────────────────────────────
-function LiveBadge({ isConnected }) {
+/**
+ * Three states, not two.
+ *
+ * "Reconnecting..." is only honest while a connection is actually being attempted.
+ * When the account can reach no device there is nothing to reconnect TO, and the
+ * amber blinking badge read as a fault that would clear on its own — it never did.
+ * That case gets its own flat, non-blinking "Offline" instead.
+ */
+function LiveBadge({ isConnected, noVehicles = false }) {
+  const tone = isConnected
+    ? { bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.2)', dot: 'bg-emerald-400', text: 'text-emerald-400' }
+    : noVehicles
+      ? { bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.25)', dot: 'bg-slate-400', text: 'text-slate-400' }
+      : { bg: 'rgba(234,179,8,0.1)', border: 'rgba(234,179,8,0.2)', dot: 'bg-yellow-400', text: 'text-yellow-400' }
+
+  const label = isConnected ? 'LIVE' : noVehicles ? 'Offline · No vehicles' : 'Reconnecting...'
+
   return (
     <div
       className="hidden sm:flex items-center gap-1.5 rounded-full px-2 md:px-2.5 py-1"
-      style={{
-        background: isConnected ? 'rgba(16,185,129,0.1)' : 'rgba(234,179,8,0.1)',
-        border: `1px solid ${isConnected ? 'rgba(16,185,129,0.2)' : 'rgba(234,179,8,0.2)'}`,
-      }}
+      style={{ background: tone.bg, border: `1px solid ${tone.border}` }}
+      title={noVehicles && !isConnected ? 'No vehicles are assigned to your account, so there is no live feed to connect to.' : undefined}
     >
-      <span className={`h-1.5 w-1.5 rounded-full live-blink ${isConnected ? 'bg-emerald-400' : 'bg-yellow-400'}`}></span>
-      <span className={`text-[10px] md:text-[11px] font-bold tracking-wide ${isConnected ? 'text-emerald-400' : 'text-yellow-400'}`}>
-        {isConnected ? 'LIVE' : 'Reconnecting...'}
+      {/* No blink in the no-vehicles state: a pulsing dot promises activity. */}
+      <span className={`h-1.5 w-1.5 rounded-full ${noVehicles && !isConnected ? '' : 'live-blink'} ${tone.dot}`}></span>
+      <span className={`text-[10px] md:text-[11px] font-bold tracking-wide ${tone.text}`}>
+        {label}
       </span>
     </div>
   )
@@ -43,7 +58,7 @@ function DateTime({ time, date }) {
  * owns vehicle search; a third box in the header was a duplicate of one or the
  * other on every page it appeared on.
  */
-export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMenuClick, isConnected = true }) {
+export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMenuClick, isConnected = true, noVehicles = false }) {
   const [time, setTime] = useState('')
   const [date, setDate] = useState('')
   // Owned here rather than lifted to each page: every page already renders
@@ -101,7 +116,7 @@ export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMen
         </button>
 
         {/* MQTT connection status badge */}
-        <LiveBadge isConnected={isConnected} />
+        <LiveBadge isConnected={isConnected} noVehicles={noVehicles} />
 
         {/* Date/Time */}
         <DateTime time={time} date={date} />

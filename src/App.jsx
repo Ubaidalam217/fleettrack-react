@@ -17,7 +17,14 @@ import SettingsCompanySubuser from './pages/settings/CompanySubuser'
 import SettingsBranch         from './pages/settings/Branch'
 import SettingsVehicle        from './pages/settings/Vehicle'
 import SettingsAlerts         from './pages/settings/Alerts'
+import SettingsGeofence       from './pages/settings/Geofence'
 import SettingsComingSoon     from './pages/settings/ComingSoon'
+// Reports module — Movement Report, plus the two Daywise sheets (step 2)
+import ReportPlaceholder       from './pages/reports/ReportPlaceholder'
+import WorkingHourReport       from './pages/reports/WorkingHourReport'
+import SummaryUsageReport      from './pages/reports/SummaryUsageReport'
+import GeoZoneReport           from './pages/reports/GeoZoneReport'
+import { REPORTS_DEFAULT_PATH } from './components/sidebar/reportsNav'
 import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
 import AuthGate            from './components/AuthGate'
@@ -28,7 +35,6 @@ import { IS_REAL } from './data/mode'
 import { PHASE, restore, useSession } from './data/session'
 import { useSettingsData } from './data/settings'
 import { useFleetScopeLoader } from './data/fleetScope'
-import { useFlespiTokenLoader } from './data/flespiTokenLoader'
 
 // ── Seed announcements once on first load ──────────────────────────────────
 const SEED_KEY = 'announcements_seeded'
@@ -90,10 +96,6 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
    */
   useSettingsData()
   useFleetScopeLoader()
-  // Real mode: make sure a per-user Flespi token exists once the session is ready.
-  // Login usually supplies one already; this covers the refresh-the-page case and
-  // a login where the server could not mint one.
-  useFlespiTokenLoader()
 
   // Seed once on mount
   useEffect(() => {
@@ -138,7 +140,10 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/dashboard"      element={guard(<Dashboard      {...themeProps} />)} />
         <Route path="/tracking"       element={guard(<Tracking       {...themeProps} />)} />
         <Route path="/charts"         element={guard(<Charts         {...themeProps} />)} />
-        <Route path="/reports"        element={guard(<Reports        {...themeProps} />)} />
+        {/* Bare /reports is where every pre-existing link and bookmark points.
+            It redirects into the menu rather than rendering, so there is exactly
+            one URL for the Movement Report and the sidebar highlights one row. */}
+        <Route path="/reports"        element={<Navigate to={REPORTS_DEFAULT_PATH} replace />} />
         <Route path="/settings"       element={guard(<SettingsPage   {...themeProps} />)} />
         <Route path="/notifications"  element={guard(<Notifications  {...themeProps} />)} />
         <Route path="/announcements"  element={guard(<Announcements  {...themeProps} />)} />
@@ -152,12 +157,29 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/settings/branch"          element={guard(<SettingsBranch         {...themeProps} />)} />
         <Route path="/settings/vehicle"         element={guard(<SettingsVehicle        {...themeProps} />)} />
         <Route path="/settings/alerts"          element={guard(<SettingsAlerts         {...themeProps} />)} />
+        <Route path="/settings/geofence"        element={guard(<SettingsGeofence       {...themeProps} />)} />
         {/* …and the branches that share one placeholder until they get built. */}
         <Route path="/settings/driver"          element={guard(<SettingsComingSoon     {...themeProps} />)} />
         <Route path="/settings/master"          element={guard(<SettingsComingSoon     {...themeProps} />)} />
-        <Route path="/settings/geofence"        element={guard(<SettingsComingSoon     {...themeProps} />)} />
         <Route path="/settings/technician"      element={guard(<SettingsComingSoon     {...themeProps} />)} />
         <Route path="/settings/bulk-action"     element={guard(<SettingsComingSoon     {...themeProps} />)} />
+
+        {/* Reports module — Movement Report is the page that already existed… */}
+        <Route path="/reports/movement"      element={guard(<Reports            {...themeProps} />)} />
+        {/* …the rest share one placeholder, each on its own path so the sidebar
+            can highlight exactly the row that was clicked. Order matches
+            components/sidebar/reportsNav.js, which is the client's order. */}
+        <Route path="/reports/vehicles"      element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/usage-full"    element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/usage-summary" element={guard(<SummaryUsageReport {...themeProps} />)} />
+        <Route path="/reports/trip"          element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/event"         element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/working-hour"  element={guard(<WorkingHourReport  {...themeProps} />)} />
+        <Route path="/reports/private-usage" element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/geo-zone"      element={guard(<GeoZoneReport      {...themeProps} />)} />
+        <Route path="/reports/time-sheet"    element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/drivers"       element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/gyr"           element={guard(<ReportPlaceholder  {...themeProps} />)} />
 
         <Route path="*"               element={<Navigate to="/login" replace />} />
       </Routes>

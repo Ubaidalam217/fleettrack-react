@@ -75,6 +75,18 @@ export function alertTypeLabel(value) {
   return ALERT_TYPES.find(t => t.value === value)?.label || '—'
 }
 
+/**
+ * Geofence/Address categories. Deliberately a flat string list rather than an
+ * entity with its own table — the client's own list (Factory, Depot, ...) is
+ * described as editable/extendable, and a free string with a registry here is
+ * the same pattern ALERT_TYPES already uses: a new category is one entry in
+ * this array, not a migration. `category` on a Geofence row is simply text;
+ * nothing server-side validates it against this list.
+ */
+export const GEOFENCE_CATEGORIES = [
+  'Factory', 'Depot', 'Warehouse', 'Customer', 'Other',
+]
+
 // ── Blank records ──────────────────────────────────────────────────────────
 // Also the field contract: a form's initial values and a saved row have the
 // same shape, so nothing has to guard against a missing key.
@@ -205,6 +217,33 @@ export function vehicleSubLabel(v) {
  * the fleet grows and coverage silently does not. `vehicleIds` is only read
  * when the toggle is off.
  */
+/**
+ * A named map shape over one BG's territory — a polygon GEOFENCE or a circle
+ * ADDRESS, per the reference system's two screens (see the Geofence model's
+ * own comment in schema.prisma). `points` and the `center*`/`radius` fields
+ * are both always present on the draft; the editor only shows the set that
+ * matches `shape`, and the save path (adapters.js) is what nulls out the
+ * other set — exactly like Vehicle's `groupId` fallback, so the form never
+ * has to remember which fields are "real" for the current shape.
+ */
+export function emptyGeofence() {
+  return {
+    id: null,
+    companyId: '',
+    kind: 'GEOFENCE',
+    shape: 'POLYGON',
+    name: '',
+    points: [],
+    centerLat: null,
+    centerLng: null,
+    radius: 200,
+    category: '',
+    color: '#2563eb',
+    description: '',
+    active: true,
+  }
+}
+
 export function emptyAlert() {
   return {
     id: null,
@@ -387,6 +426,45 @@ const SEED_ALERTS = [
   },
 ]
 
+// A handful of real UAE shapes so the Netlify demo shows the module working
+// rather than an empty table. Kizad and Jebel Ali are rough industrial-zone
+// polygons; Sharjah is a circle, so both shapes render on first load.
+const SEED_GEOFENCES = [
+  {
+    id: 'gf1', companyId: 'c1', kind: 'GEOFENCE', shape: 'POLYGON',
+    name: 'Kizad Industrial Zone',
+    points: [
+      { lat: 24.7985, lng: 54.6395 },
+      { lat: 24.8010, lng: 54.6700 },
+      { lat: 24.7790, lng: 54.6760 },
+      { lat: 24.7760, lng: 54.6430 },
+    ],
+    centerLat: null, centerLng: null, radius: null,
+    category: 'Factory', color: '#2563eb',
+    description: 'KIZAD mega-plant perimeter.', active: true,
+  },
+  {
+    id: 'gf2', companyId: 'c2', kind: 'GEOFENCE', shape: 'POLYGON',
+    name: 'Jebel Ali Free Zone',
+    points: [
+      { lat: 25.0190, lng: 55.0870 },
+      { lat: 25.0230, lng: 55.1180 },
+      { lat: 25.0020, lng: 55.1230 },
+      { lat: 24.9985, lng: 55.0920 },
+    ],
+    centerLat: null, centerLng: null, radius: null,
+    category: 'Warehouse', color: '#059669',
+    description: 'JAFZA container yard boundary.', active: true,
+  },
+  {
+    id: 'gf3', companyId: 'c3', kind: 'ADDRESS', shape: 'CIRCLE',
+    name: 'Sharjah Cold Store',
+    points: null, centerLat: 25.3463, centerLng: 55.4209, radius: 250,
+    category: 'Depot', color: '#d97706',
+    description: 'Main reefer loading depot.', active: true,
+  },
+]
+
 const SEED_SUBUSERS = [
   { id: 's1', companyId: 'c1', name: 'Mussafah Dispatch', email: 'dispatch@alhabtoorlog.ae', password: DEFAULT_PASSWORD, vehicleIds: ['v1', 'v2'], branchIds: ['b1'] },
   { id: 's2', companyId: 'c2', name: 'Jebel Ali Ops',     email: 'jebelali@desertrose.ae',   password: DEFAULT_PASSWORD, vehicleIds: ['v5', 'v6', 'v7'], branchIds: ['b3'] },
@@ -467,6 +545,7 @@ function persist() {
       subusers:  subuserStore.get(),
       vehicles:  vehicleStore.get(),
       alerts:    alertStore.get(),
+      geofences: geofenceStore.get(),
     }))
   } catch { /* private mode or quota — the session still works in memory */ }
 }
@@ -501,6 +580,7 @@ const userStore    = createStore(hydrate('users',     SEED_USERS))
 const subuserStore = createStore(hydrate('subusers',  SEED_SUBUSERS))
 const vehicleStore = createStore(hydrate('vehicles',  SEED_VEHICLES))
 const alertStore   = createStore(hydrate('alerts',    SEED_ALERTS))
+const geofenceStore = createStore(hydrate('geofences', SEED_GEOFENCES))
 
 let nextId = Number.isFinite(saved?.nextId) ? saved.nextId : 100
 const makeId = prefix => `${prefix}${nextId++}`
@@ -525,6 +605,7 @@ const STORES = {
   subusers: subuserStore,
   vehicles: vehicleStore,
   alerts: alertStore,
+  geofences: geofenceStore,
 }
 
 export function __replaceStore(key, rows) {
@@ -1083,4 +1164,27 @@ export function updateAlert(id, patch) {
 
 export function removeAlert(id) {
   alertStore.set(list => list.filter(a => a.id !== id))
+}
+
+export function useGeofences() {
+  return useSyncExternalStore(geofenceStore.subscribe, geofenceStore.get, geofenceStore.get)
+}
+
+export function addGeofence(geofence) {
+  const row = { ...geofence, id: makeId('gf') }
+  geofenceStore.set(list => [...list, row])
+  return row
+}
+
+export function updateGeofence(id, patch) {
+  geofenceStore.set(list => list.map(g => (g.id === id ? { ...g, ...patch, id } : g)))
+}
+
+export function removeGeofence(id) {
+  geofenceStore.set(list => list.filter(g => g.id !== id))
+}
+
+/** Every geofence belonging to one BG — the editor map's context layer. */
+export function geofencesForCompany(companyId) {
+  return geofenceStore.get().filter(g => g.companyId === companyId)
 }

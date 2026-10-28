@@ -1,32 +1,12 @@
-import Sidebar from '../../components/Sidebar'
-import Header  from '../../components/Header'
+import PageShell from '../../components/PageShell'
 
 /**
- * Page chrome for every Settings leaf — the same Sidebar + Header + <main>
- * shell the rest of the app builds by hand (see pages/Charts.jsx), factored out
- * because Phase 1 adds six pages that would otherwise copy it six times.
+ * Page chrome for every Settings leaf.
  *
- * Phase 1 renders the title and nothing else. `children` is here so Phase 2 can
- * drop a table or form underneath without touching any of these page files.
+ * The chrome itself moved to components/PageShell.jsx when the Reports
+ * placeholders needed the same shell. This stays as the name the nine Settings
+ * pages already import, so the move cost them nothing.
  */
-export default function SettingsLayout({ title, children, isDark, toggleTheme, themeMode, setTheme }) {
-  return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--c-page)' }}>
-      <Sidebar />
-      <div className="flex flex-1 flex-col min-w-0">
-        <Header
-          isDark={isDark}
-          toggleTheme={toggleTheme}
-          themeMode={themeMode}
-          setTheme={setTheme}
-        />
-        <main className="flex-1 overflow-y-auto" style={{ padding: '24px 20px 40px' }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--c-text1)', margin: 0 }}>
-            {title}
-          </h1>
-          {children}
-        </main>
-      </div>
-    </div>
-  )
+export default function SettingsLayout(props) {
+  return <PageShell {...props} />
 }

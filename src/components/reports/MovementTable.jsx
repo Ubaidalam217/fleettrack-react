@@ -101,7 +101,10 @@ function MovementTable({ report, filters, limit, onShowMore }) {
       }}>
         <div>Selection&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;{filters.selection}</div>
         <div>Apply Tolerance&nbsp;&nbsp;:&nbsp;&nbsp;{filters.applyTolerance ? 'True' : 'False'}</div>
-        <div>Tolerance (m)&nbsp;:&nbsp;&nbsp;{filters.toleranceMeters}</div>
+        <div>
+          Tolerance (m)&nbsp;:&nbsp;&nbsp;{filters.toleranceMeters}
+          {filters.intervalSec > 0 && <>&nbsp;&nbsp;&nbsp;Interval&nbsp;:&nbsp;&nbsp;{filters.intervalLabel}</>}
+        </div>
         <div>From Date&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;{filters.fromLabel}</div>
         <div>To Date&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;{filters.toLabel}</div>
         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={filters.statusesLabel}>

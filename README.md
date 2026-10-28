@@ -48,7 +48,7 @@ npm run preview
 
 | Variable | Description |
 |---|---|
-| `VITE_FLESPI_TOKEN` | Flespi API token (must start with `VITE_` to be exposed to the client) |
+| `FLESPI_TOKEN` | The one Flespi key. Server-side only (dev proxy / Netlify function); never prefix it with `VITE_` |
 
 ## Demo Credentials
 
@@ -64,7 +64,7 @@ The project is configured for Netlify via `netlify.toml`. The `/flespi/*` proxy 
 To deploy:
 1. Push to GitHub
 2. Connect repo to Netlify (auto-detects build settings from `netlify.toml`)
-3. Set `VITE_FLESPI_TOKEN` in Netlify site environment variables
+3. Set `FLESPI_TOKEN` in Netlify environment variables as a **secret**, scope Functions
 4. Deploy
 
 ## Project Structure

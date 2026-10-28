@@ -4,6 +4,7 @@
 // 429 backoff schedule as replay.js, since it's the same endpoint and the same
 // per-account rate limit.
 import { BASE_URL, HEADERS } from '../hooks/flespiConfig'
+import { createDistanceStepper } from './distance'
 
 const MAX_MESSAGES = 3000
 const RETRY_DELAYS_SEC = [30, 60, 120]
@@ -155,8 +156,12 @@ export function computeUsage(messages, nowMs = Date.now()) {
     return result
   }
 
-  let firstMileage = null
+  // Absolute odometer for display; distance is summed per interval instead
+  // (distance.js), so a device with no odometer still gets a GPS distance.
   let lastMileage = null
+  const step = createDistanceStepper()
+  let distanceSum = 0
+  let distanceMeasured = false
   // Averaged over moving samples only. Including the stationary ones would
   // report the average of "driving and sitting at lights", which reads as
   // implausibly slow for a vehicle that spent the day on the highway.
@@ -170,10 +175,9 @@ export function computeUsage(messages, nowMs = Date.now()) {
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i]
     const mileage = num(m['vehicle.mileage'])
-    if (mileage != null) {
-      if (firstMileage == null) firstMileage = mileage
-      lastMileage = mileage
-    }
+    if (mileage != null) lastMileage = mileage
+    const d = step(m)
+    if (d.source) { distanceSum += d.km; distanceMeasured = true }
 
     const speed = num(m['position.speed']) ?? 0
     const ignition = m['engine.ignition.status'] ?? null
@@ -207,8 +211,8 @@ export function computeUsage(messages, nowMs = Date.now()) {
     }
   }
 
-  if (firstMileage != null && lastMileage != null) {
-    result.distanceKm = lastMileage - firstMileage
+  if (distanceMeasured) {
+    result.distanceKm = distanceSum
   }
   result.odometerKm = lastMileage
   result.avgSpeed = movingSpeedCount > 0 ? movingSpeedSum / movingSpeedCount : null

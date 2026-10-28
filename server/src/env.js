@@ -107,6 +107,19 @@ const schema = z.object({
    * unmatchable.
    */
   FLESPI_DEVICE_CACHE_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
+
+  /**
+   * Reverse geocoder for report addresses (lib/geocoder.js). The default is the
+   * public OpenStreetMap Nominatim, whose usage policy allows 1 request/second —
+   * hence the 1100 ms spacing and a single lane. A self-hosted Nominatim or
+   * Photon on the production VPS has no such limit: point GEOCODER_URL at it and
+   * set GEOCODER_MIN_INTERVAL_MS=0 and GEOCODER_CONCURRENCY=8, and a fleet-day's
+   * addresses resolve in seconds instead of half an hour.
+   */
+  GEOCODER_URL: z.string().url().default('https://nominatim.openstreetmap.org'),
+  GEOCODER_MIN_INTERVAL_MS: z.coerce.number().int().min(0).default(1100),
+  GEOCODER_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(1),
+  GEOCODER_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
 })
 
 const parsed = schema.safeParse(process.env)

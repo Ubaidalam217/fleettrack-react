@@ -318,6 +318,57 @@ export const subuser = {
   toApiUpdate: r => subuser.fields(r),
 }
 
+// ── Geofence ────────────────────────────────────────────────────────────────
+
+export const geofence = {
+  toFe: r => ({
+    id: r.id,
+    companyId: r.bgId ?? '',
+    kind: r.kind ?? 'GEOFENCE',
+    shape: r.shape ?? 'POLYGON',
+    name: r.name ?? '',
+    points: Array.isArray(r.points) ? r.points.map(p => ({ ...p })) : [],
+    centerLat: r.centerLat ?? null,
+    centerLng: r.centerLng ?? null,
+    // A text input, like Vehicle.odometer — the editor's radius box is a
+    // number input, but '' reads as empty rather than as "0".
+    radius: r.radius ?? null,
+    category: orBlank(r.category),
+    color: orBlank(r.color) || '#2563eb',
+    description: orBlank(r.description),
+    active: r.active ?? true,
+  }),
+  toApiCreate: r => ({
+    bgId: r.companyId,
+    ...geofence.fields(r),
+  }),
+  toApiUpdate: r => geofence.fields(r),
+  /** Everything except bgId, which only a create may set. */
+  fields: r => ({
+    name: r.name,
+    kind: r.kind,
+    shape: r.shape,
+    // Only the fields the current shape actually uses are sent — the server
+    // nulls out the other set regardless, but sending stale polygon points on
+    // a row just switched to CIRCLE would round-trip through validation for
+    // fields it is about to discard.
+    points: r.shape === 'POLYGON' ? r.points : null,
+    centerLat: r.shape === 'CIRCLE' ? numOrNull(r.centerLat) : null,
+    centerLng: r.shape === 'CIRCLE' ? numOrNull(r.centerLng) : null,
+    radius: r.shape === 'CIRCLE' ? numOrNull(r.radius) : null,
+    category: orNull(r.category),
+    color: orNull(r.color),
+    description: orNull(r.description),
+    active: !!r.active,
+  }),
+}
+
+const numOrNull = v => {
+  if (v === '' || v === null || v === undefined) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
 // ── Alert ───────────────────────────────────────────────────────────────────
 
 export const alert = {

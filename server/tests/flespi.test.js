@@ -1,5 +1,6 @@
 /**
- * Per-user Flespi ACL tokens: scope, caching, and invalidation.
+ * Flespi access: the scope each role reaches (buildAcl), the single-token proxy
+ * that enforces it, and the retired per-user token endpoints.
  *
  * ── Why Flespi is mocked ────────────────────────────────────────────────────
  *
@@ -52,7 +53,7 @@ vi.mock('../src/env.js', async importOriginal => {
 
 const { createApp } = await import('../src/app.js')
 const { default: prisma } = await import('../src/prisma.js')
-import { auth, resetDb, seedFixture } from './factories.js'
+import { auth, resetDb, seedFixture, TEST_PASSWORD } from './factories.js'
 import { clearDeviceCache } from '../src/lib/flespi.js'
 import { buildAcl, scopeHash, methodsForRole, expiryFor } from '../src/lib/flespiGrant.js'
 import { buildScope, ROLES } from '../src/lib/scope.js'
@@ -118,6 +119,24 @@ function installFlespiMock({ failCreate = false } = {}) {
     if (u.endsWith('/platform/tokens') && method === 'POST') {
       if (failCreate) return json({ errors: [{ reason: 'nope' }] }, 500)
       const spec = body[0]
+
+      /**
+       * The real API REFUSES an empty id list, verbatim as below.
+       *
+       * Mirrored here because the mock's permissiveness is what let the bug ship:
+       * an account whose scope reached no device sent `ids: []`, Flespi rejected it,
+       * the endpoint answered 502, and the browser sat on "Reconnecting…" forever.
+       * With this, any future attempt to mint for an empty scope fails in the suite.
+       */
+      const emptyIds = (spec.access?.acl ?? []).some(e => Array.isArray(e.ids) && e.ids.length === 0)
+      if (emptyIds) {
+        return json({
+          errors: [{
+            reason: '#/[0]/access/acl[0]/ids: array items number 0 is less than allowed minimum 1',
+          }],
+        }, 400)
+      }
+
       const id = nextTokenId++
       const key = `mock-key-${id}`
       minted.set(id, { key, acl: spec.access.acl, expire: spec.expire, info: spec.info, deleted: false })
@@ -138,6 +157,9 @@ function installFlespiMock({ failCreate = false } = {}) {
       if (t) t.deleted = true
       return json({ result: {} })
     }
+
+    // Anything else under gw/devices: what the proxy forwards. Echoed back.
+    if (u.includes('/gw/devices/')) return json({ result: [{ forwarded: u, method }] })
 
     return json({ errors: [{ reason: `unmocked ${method} ${u}` }] }, 500)
   })
@@ -288,238 +310,168 @@ describe('expiryFor', () => {
   })
 })
 
-// ── The endpoint ────────────────────────────────────────────────────────────
+// ── Per-user tokens are retired ─────────────────────────────────────────────
+//
+// The client asked for ONE Flespi key. Every login used to mint a token, which
+// filled the Flespi panel with them; now nothing mints and the browser goes
+// through /api/flespi/proxy with the single server-side Master token.
 
-describe('POST /api/flespi/token', () => {
-  it('issues a token scoped to the sub-user’s two devices', async () => {
-    const res = await request(app).post('/api/flespi/token').set(auth(fx.tokens.subUserA1a))
-    expect(res.status).toBe(200)
-    expect(res.body.data.token).toMatch(/^mock-key-\d+$/)
-    expect(res.body.data.deviceCount).toBe(2)
-    expect(res.body.data.role).toBe('SUB_USER')
-    expect(lastMintedAcl()).toEqual([{ uri: 'gw/devices', ids: [101, 102], methods: ['GET'] }])
-  })
-
-  it('issues GET+PUT over its own BG for a BG user', async () => {
+describe('per-user Flespi tokens are retired', () => {
+  it('POST /api/flespi/token answers 410 and mints nothing', async () => {
     const res = await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    expect(res.status).toBe(200)
-    expect(res.body.data.deviceCount).toBe(4)
-    expect(lastMintedAcl()).toEqual([
-      { uri: 'gw/devices', ids: [101, 102, 103, 104], methods: ['GET', 'PUT'] },
-    ])
+    expect(res.status).toBe(410)
+    expect(res.body.error.code).toBe('FLESPI_TOKENS_RETIRED')
+    expect(mintCount()).toBe(0)
   })
 
-  it('never mints a Master token', async () => {
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.superAdmin))
-    const mint = calls.find(c => c.method === 'POST' && c.url.endsWith('/platform/tokens'))
-    expect(mint.body[0].access.type).toBe(2)
-    expect(mint.body[0].access.type).not.toBe(1)
-  })
-
-  it('sets the Flespi expiry from the caller’s JWT', async () => {
-    const res = await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    const mint = calls.find(c => c.method === 'POST' && c.url.endsWith('/platform/tokens'))
-    const expMs = new Date(res.body.data.expiresAt).getTime()
-    expect(mint.body[0].expire * 1000).toBe(expMs)
-    // JWT_EXPIRES_IN is 12h in test env; well inside a day either way.
-    expect(expMs).toBeGreaterThan(Date.now())
-    expect(expMs).toBeLessThan(Date.now() + 25 * 3600 * 1000)
-  })
-
-  it('requires a token', async () => {
-    expect((await request(app).post('/api/flespi/token')).status).toBe(401)
-  })
-
-  it('is blocked behind the first-login gate', async () => {
-    const res = await request(app).post('/api/flespi/token').set(auth(fx.tokens.freshUser))
-    expect(res.status).toBe(428)
-  })
-
-  it('answers 503 when Flespi is not configured, without touching other routes', async () => {
-    H.flespiToken = undefined
-    const res = await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    expect(res.status).toBe(503)
-    expect(res.body.error.code).toBe('FLESPI_NOT_CONFIGURED')
-    // The rest of the API is unaffected — a missing Flespi key is not an outage.
-    expect((await request(app).get('/api/vehicles').set(auth(fx.tokens.bgUserA1a))).status).toBe(200)
-  })
-
-  it('surfaces a Flespi failure as 502 rather than a silent empty token', async () => {
-    installFlespiMock({ failCreate: true })
-    const res = await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    expect(res.status).toBe(502)
-    expect(res.body.data?.token).toBeUndefined()
-  })
-})
-
-// ── Caching ─────────────────────────────────────────────────────────────────
-
-describe('token reuse', () => {
-  it('reuses a valid cached token instead of minting per request', async () => {
-    const a = await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    const b = await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    expect(a.body.data.token).toBe(b.body.data.token)
-    expect(a.body.data.reused).toBe(false)
-    expect(b.body.data.reused).toBe(true)
-    expect(mintCount()).toBe(1)
-  })
-
-  it('keeps one grant row per user', async () => {
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    expect(await prisma.flespiGrant.count({ where: { userId: fx.users.bgUserA1a.id } })).toBe(1)
-  })
-
-  it('mints a fresh one when the cached Flespi token has been deleted externally', async () => {
-    const a = await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    const grant = await prisma.flespiGrant.findUnique({ where: { userId: fx.users.bgUserA1a.id } })
-    minted.get(grant.flespiTokenId).deleted = true // somebody deleted it in the panel
-
-    const b = await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    expect(b.status).toBe(200)
-    expect(b.body.data.token).not.toBe(a.body.data.token)
-    expect(mintCount()).toBe(2)
-  })
-
-  it('mints a fresh one once the cached grant has expired', async () => {
-    const a = await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    await prisma.flespiGrant.update({
-      where: { userId: fx.users.bgUserA1a.id },
-      data: { expiresAt: new Date(Date.now() - 1000) },
-    })
-    const b = await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    expect(b.body.data.token).not.toBe(a.body.data.token)
-    expect(deleteCount()).toBe(1) // the stale one was revoked, not abandoned
-  })
-
-  it('does not store the token key in our database', async () => {
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    const grant = await prisma.flespiGrant.findUnique({ where: { userId: fx.users.bgUserA1a.id } })
-    expect(Object.values(grant).join('|')).not.toContain('mock-key-')
-    expect(grant.flespiTokenId).toBeTypeOf('number')
-  })
-})
-
-// ── Invalidation ────────────────────────────────────────────────────────────
-
-describe('invalidation', () => {
-  const grantOf = userId => prisma.flespiGrant.findUnique({ where: { userId } })
-
-  it('revokes on explicit sign-out', async () => {
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    const before = await grantOf(fx.users.bgUserA1a.id)
-
-    const res = await request(app).post('/api/flespi/revoke').set(auth(fx.tokens.bgUserA1a))
-    expect(res.body.data.revoked).toBe(true)
-    expect(await grantOf(fx.users.bgUserA1a.id)).toBeNull()
-    expect(minted.get(before.flespiTokenId).deleted).toBe(true)
-  })
-
-  it('revokes when a sub-user’s vehicle assignments change', async () => {
-    const r = await request(app).post('/api/flespi/token').set(auth(fx.tokens.subUserA1a))
-    expect(r.body.data.deviceCount).toBe(2)
-    const before = await grantOf(fx.users.subUserA1a.id)
-
-    await request(app)
-      .put(`/api/users/${fx.users.subUserA1a.id}/vehicles`)
-      .set(auth(fx.tokens.bgUserA1a))
-      .send({ ids: [fx.vehicles.v3.id] })
-
-    expect(await grantOf(fx.users.subUserA1a.id)).toBeNull()
-    expect(minted.get(before.flespiTokenId).deleted).toBe(true)
-
-    // The next refresh describes the NEW assignment, not the old one.
-    const after = await request(app).post('/api/flespi/token').set(auth(fx.tokens.subUserA1a))
-    expect(after.body.data.deviceCount).toBe(1)
-    expect(lastMintedAcl()).toEqual([{ uri: 'gw/devices', ids: [103], methods: ['GET'] }])
-  })
-
-  it('revokes everyone in the BG when a vehicle is added', async () => {
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.subUserA1a))
-
-    await request(app)
-      .post('/api/vehicles')
-      .set(auth(fx.tokens.bgUserA1a))
-      .send({ bgId: fx.bgA1a.id, imei: '863071011234509', plateNo: 'X' })
-      .expect(409) // that IMEI is v9's; the point is the next one
-
-    await request(app)
-      .post('/api/vehicles')
-      .set(auth(fx.tokens.bgUserA1a))
-      .send({ bgId: fx.bgA1a.id, imei: '999999999999999', plateNo: 'NEW' })
-      .expect(201)
-
-    expect(await grantOf(fx.users.bgUserA1a.id)).toBeNull()
-    expect(await grantOf(fx.users.subUserA1a.id)).toBeNull()
-  })
-
-  it('revokes everyone in the BG when a vehicle is deleted', async () => {
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.bgUserA1a))
-    await request(app).delete(`/api/vehicles/${fx.vehicles.v4.id}`).set(auth(fx.tokens.bgUserA1a))
-    expect(await grantOf(fx.users.bgUserA1a.id)).toBeNull()
-  })
-
-  it('revokes when a user’s role changes', async () => {
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.subUserA1a))
-    await request(app)
-      .put(`/api/users/${fx.users.subUserA1a.id}`)
-      .set(auth(fx.tokens.ggbAdminA))
-      .send({ role: 'BG_USER', bgId: fx.bgA1a.id })
-      .expect(200)
-    expect(await grantOf(fx.users.subUserA1a.id)).toBeNull()
-  })
-
-  it('revokes at Flespi before a cascade deletes the account', async () => {
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.subUserA1a))
-    const before = await grantOf(fx.users.subUserA1a.id)
-
-    // Deleting the BG cascades the user away; the Flespi token must not survive it.
-    await request(app).delete(`/api/bgs/${fx.bgA1a.id}`).set(auth(fx.tokens.ggbAdminA)).expect(200)
-
-    expect(minted.get(before.flespiTokenId).deleted).toBe(true)
-    expect(await prisma.flespiGrant.count()).toBe(0)
-  })
-
-  it('revokes at Flespi before a user is deleted directly', async () => {
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.subUserA1a))
-    const before = await grantOf(fx.users.subUserA1a.id)
-    await request(app)
-      .delete(`/api/users/${fx.users.subUserA1a.id}`)
-      .set(auth(fx.tokens.bgUserA1a))
-      .expect(200)
-    expect(minted.get(before.flespiTokenId).deleted).toBe(true)
-  })
-
-  it('a vehicle change does not disturb a Super Admin’s all-devices grant', async () => {
-    await request(app).post('/api/flespi/token').set(auth(fx.tokens.superAdmin))
-    await request(app)
-      .post('/api/vehicles')
-      .set(auth(fx.tokens.bgUserA1a))
-      .send({ bgId: fx.bgA1a.id, imei: '888888888888888', plateNo: 'N2' })
-      .expect(201)
-    // Still there: "all devices" cannot go stale, so churning it would be waste.
-    expect(await grantOf(fx.users.superAdmin.id)).not.toBeNull()
-  })
-})
-
-describe('login', () => {
-  it('returns a grant alongside the session', async () => {
+  it('login no longer mints a token', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email: 'dispatch@alhabtoorlog.ae', password: 'Test@123456' })
-    expect(res.status).toBe(200)
-    expect(res.body.flespi?.token).toMatch(/^mock-key-\d+$/)
-    expect(res.body.flespi?.deviceCount).toBe(2)
-  })
-
-  it('still logs in when Flespi is down — auth does not depend on it', async () => {
-    installFlespiMock({ failCreate: true })
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({ email: 'dispatch@alhabtoorlog.ae', password: 'Test@123456' })
+      .send({ email: 'dispatch@alhabtoorlog.ae', password: TEST_PASSWORD })
     expect(res.status).toBe(200)
     expect(res.body.token).toBeTruthy()
     expect(res.body.flespi).toBeNull()
+    expect(mintCount()).toBe(0)
+  })
+
+  it('sign-out still deletes a token left over from before, at Flespi too', async () => {
+    minted.set(777, { key: 'mock-key-777', acl: [], expire: 0, deleted: false })
+    await prisma.flespiGrant.create({
+      data: {
+        userId: fx.users.bgUserA1a.id,
+        flespiTokenId: 777,
+        expiresAt: new Date(Date.now() + 3600_000),
+        scopeHash: 'legacy',
+      },
+    })
+    const res = await request(app).post('/api/flespi/revoke').set(auth(fx.tokens.bgUserA1a))
+    expect(res.body.data.revoked).toBe(true)
+    expect(minted.get(777).deleted).toBe(true)
+    expect(await prisma.flespiGrant.count()).toBe(0)
+  })
+})
+
+// ── The proxy ───────────────────────────────────────────────────────────────
+
+/** Requests the proxy forwarded, i.e. everything except deviceMap()'s lookup. */
+const forwards = () => calls.filter(c => !c.url.includes('fields=id,configuration'))
+const proxy = path => `/api/flespi/proxy${path}`
+
+describe('GET /api/flespi/proxy', () => {
+  it('narrows "all" to a sub-user’s own devices and uses the Master token', async () => {
+    const seen = []
+    const base = globalThis.fetch
+    vi.stubGlobal('fetch', (url, init = {}) => {
+      seen.push({ url: String(url), auth: init.headers?.Authorization })
+      return base(url, init)
+    })
+    const res = await request(app)
+      .get(proxy('/gw/devices/all/telemetry/position.latitude'))
+      .set(auth(fx.tokens.subUserA1a))
+    expect(res.status).toBe(200)
+    const fwd = seen.find(s => !s.url.includes('fields=id,configuration'))
+    expect(fwd.url).toBe('https://flespi.io/gw/devices/101,102/telemetry/position.latitude')
+    expect(fwd.auth).toBe('FlespiToken mock-master-token')
+  })
+
+  it('keeps the query string', async () => {
+    const data = encodeURIComponent(JSON.stringify({ from: 1, to: 2 }))
+    await request(app).get(proxy(`/gw/devices/101/messages?data=${data}`)).set(auth(fx.tokens.subUserA1a)).expect(200)
+    expect(forwards().at(-1).url).toBe(`https://flespi.io/gw/devices/101/messages?data=${data}`)
+  })
+
+  it('answers 404 for a device outside the caller’s scope, without asking Flespi', async () => {
+    const res = await request(app).get(proxy('/gw/devices/103/messages')).set(auth(fx.tokens.subUserA1a))
+    expect(res.status).toBe(404)
+    expect(forwards()).toHaveLength(0)
+  })
+
+  it('answers 404 when one id of a list is outside the scope', async () => {
+    const res = await request(app).get(proxy('/gw/devices/101,103/messages')).set(auth(fx.tokens.subUserA1a))
+    expect(res.status).toBe(404)
+    expect(forwards()).toHaveLength(0)
+  })
+
+  it('answers an empty result for an account that reaches no device', async () => {
+    const res = await request(app).get(proxy('/gw/devices/all')).set(auth(fx.tokens.groupAdminA2))
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ result: [] })
+    expect(forwards()).toHaveLength(0)
+  })
+
+  it('lets a Super Admin keep "all", so devices not in Settings stay visible', async () => {
+    await request(app).get(proxy('/gw/devices/all/telemetry/x')).set(auth(fx.tokens.superAdmin)).expect(200)
+    expect(forwards().at(-1).url).toBe('https://flespi.io/gw/devices/all/telemetry/x')
+  })
+
+  it('only reaches gw/devices', async () => {
+    const res = await request(app).get(proxy('/platform/customer')).set(auth(fx.tokens.superAdmin))
+    expect(res.status).toBe(404)
+    expect(forwards()).toHaveLength(0)
+  })
+
+  it('rejects a malformed selector', async () => {
+    const res = await request(app).get(proxy('/gw/devices/abc/messages')).set(auth(fx.tokens.superAdmin))
+    expect(res.status).toBe(404)
+  })
+
+  it('passes a Flespi rate limit through as 429', async () => {
+    vi.stubGlobal('fetch', url => {
+      calls.push({ url: String(url), method: 'GET' })
+      return Promise.resolve(new Response(JSON.stringify({ errors: [{ reason: 'blocked' }] }), {
+        status: 429, headers: { 'Content-Type': 'application/json' },
+      }))
+    })
+    const res = await request(app).get(proxy('/gw/devices/all')).set(auth(fx.tokens.superAdmin))
+    expect(res.status).toBe(429)
+  })
+
+  it('requires a login', async () => {
+    expect((await request(app).get(proxy('/gw/devices/all'))).status).toBe(401)
+  })
+
+  it('answers 503 when Flespi is not configured', async () => {
+    H.flespiToken = undefined
+    const res = await request(app).get(proxy('/gw/devices/all')).set(auth(fx.tokens.superAdmin))
+    expect(res.status).toBe(503)
+  })
+})
+
+describe('PUT /api/flespi/proxy', () => {
+  it('a sub-user is read-only', async () => {
+    const res = await request(app).put(proxy('/gw/devices/101/settings/getgps'))
+      .set(auth(fx.tokens.subUserA1a)).send({ address: 'connection' })
+    expect(res.status).toBe(403)
+    expect(forwards()).toHaveLength(0)
+  })
+
+  it('a BG user can send Poll (a device setting) to its own device', async () => {
+    await request(app).put(proxy('/gw/devices/101/settings/getgps'))
+      .set(auth(fx.tokens.bgUserA1a)).send({ address: 'connection' }).expect(200)
+    const fwd = forwards().at(-1)
+    expect(fwd.method).toBe('PUT')
+    expect(fwd.url).toBe('https://flespi.io/gw/devices/101/settings/getgps')
+    expect(fwd.body).toEqual({ address: 'connection' })
+  })
+
+  it('a BG user can save its own device’s metadata', async () => {
+    await request(app).put(proxy('/gw/devices/101'))
+      .set(auth(fx.tokens.bgUserA1a)).send({ metadata: { fleet: {} } }).expect(200)
+    expect(forwards().at(-1).url).toBe('https://flespi.io/gw/devices/101')
+  })
+
+  it('cannot write to another BG’s device', async () => {
+    const res = await request(app).put(proxy('/gw/devices/105'))
+      .set(auth(fx.tokens.bgUserA1a)).send({ metadata: {} })
+    expect(res.status).toBe(404)
+    expect(forwards()).toHaveLength(0)
+  })
+
+  it('cannot write to anything but a device or its setting', async () => {
+    for (const path of ['/gw/devices/101/messages', '/gw/devices/all', '/gw/devices/101,102']) {
+      const res = await request(app).put(proxy(path)).set(auth(fx.tokens.bgUserA1a)).send({})
+      expect(res.status).toBe(403)
+    }
+    expect(forwards()).toHaveLength(0)
   })
 })

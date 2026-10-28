@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { MapContainer, TileLayer, Polyline, ZoomControl, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Polyline, Polygon, Circle, Tooltip, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import Sidebar from '../components/Sidebar'
@@ -25,6 +25,7 @@ import {
 import { fetchDeviceTrack, buildSegments } from '../utils/replay'
 import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/traces'
 import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
+import { useGeofences } from '../data/settings'
 
 // Points per second at 1x. The playback effect derives its tick interval and
 // its stride from this and the chosen speed multiplier.
@@ -363,11 +364,20 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     () => typeof window !== 'undefined' && window.innerWidth >= DESKTOP_MIN
   )
 
+  // Off by default — most sessions are not drawing geofences, and an extra
+  // polygon/circle layer on every render is pure cost until asked for.
+  // Backed by the same scoped store Settings > Address - Geofence reads (see
+  // data/settings.js): a BG user sees its own BG's shapes, Super Admin sees
+  // every tenant's (consistent with how it sees every device — see
+  // data/fleetScope.js), mock mode sees the seeded demo shapes.
+  const [showGeofences, setShowGeofences] = useState(false)
+  const geofences = useGeofences()
+
   // Live vehicle data, shared MQTT session, no REST polling. The map and shell
   // render immediately — nothing here gates the UI. Vehicles appear as MQTT
   // messages arrive; the hook's background REST bootstrap only fills in names
   // and last-known positions if and when it returns.
-  const { vehicles: liveVehicles, isConnected, error } = useFlespiMQTT()
+  const { vehicles: liveVehicles, isConnected, error, noVehicles, tokenError } = useFlespiMQTT()
 
   // The Console writes to Flespi and gets the saved record back, but the MQTT
   // store is module-level and only reads device metadata once at startup.
@@ -915,7 +925,11 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
 
   // Only live-connection failures reach the UI. Background REST bootstrap
   // failures are swallowed by the hook by design.
-  const statusMessage = error
+  //
+  // A failed Flespi grant counts: without it the live feed was never opened, so
+  // saying nothing would leave an empty map with no explanation. `noVehicles` is
+  // deliberately NOT here — it is not an error and gets its own empty state.
+  const statusMessage = error || tokenError
   const sheetOpen = !!selected
 
   // Mobile keeps the fixed bottom sheet it always had and only gains minimise;
@@ -1073,6 +1087,33 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           transform: translateX(-8px);
         }
 
+        /* Geofences layer toggle. Sits under Leaflet's own topright zoom
+           control (two 26px buttons) rather than beside the list toggle,
+           whose width changes with its label and would otherwise collide. */
+        .track-geofence-toggle {
+          position: absolute;
+          top: 92px;
+          right: 10px;
+          z-index: 900;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 7px 11px;
+          border-radius: 10px;
+          border: 1px solid var(--c-border2);
+          background-color: var(--c-card);
+          color: var(--c-text2);
+          font-size: 11.5px;
+          font-weight: 700;
+          cursor: pointer;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+        }
+        .track-geofence-toggle[data-on="true"] {
+          background-color: var(--ft-accent);
+          border-color: var(--ft-accent);
+          color: #fff;
+        }
+
         /* Replay dock — floats over the bottom of the map, above the sheet. */
         .track-replay-dock {
           position: absolute;
@@ -1166,6 +1207,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
             setTheme={setTheme}
             onMenuClick={() => setSidebarOpen(s => !s)}
             isConnected={isConnected}
+            noVehicles={noVehicles}
           />
 
           {/* Tracking body */}
@@ -1277,7 +1319,20 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     </div>
                   ) : filtered.length === 0 ? (
                     <div style={{ padding: 32, color: 'var(--c-text3)', fontSize: 12, textAlign: 'center', lineHeight: 1.7 }}>
-                      {vehicles.length === 0 ? 'Waiting for live data…' : 'No vehicles found'}
+                      {/* "Waiting for live data…" is only true while something is
+                          actually being waited for. With no vehicles assigned,
+                          nothing is coming and the list says so. */}
+                      {vehicles.length > 0
+                        ? 'No vehicles found'
+                        : noVehicles
+                          ? <>
+                              <strong style={{ color: 'var(--c-text2)', display: 'block', marginBottom: 6 }}>
+                                No vehicles assigned to your account yet
+                              </strong>
+                              Ask your administrator to register a vehicle to your
+                              business group under Settings → Vehicle.
+                            </>
+                          : 'Waiting for live data…'}
                     </div>
                   ) : (
                     filtered.map((v, idx) => {
@@ -1414,6 +1469,20 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   {listOpen ? 'Hide list' : `Vehicles (${filtered.length})`}
                 </button>
 
+                <button
+                  type="button"
+                  className="track-geofence-toggle"
+                  data-on={showGeofences ? 'true' : 'false'}
+                  onClick={() => setShowGeofences(v => !v)}
+                  title={showGeofences ? 'Hide geofences' : 'Show geofences'}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                    <circle cx="12" cy="10" r="2.5" />
+                  </svg>
+                  Geofences
+                </button>
+
                 {/* Status banner — live connection errors only. Non-blocking:
                     the map stays interactive underneath. */}
                 {statusMessage && (
@@ -1425,6 +1494,22 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     whiteSpace: 'nowrap',
                   }}>
                     {statusMessage}
+                  </div>
+                )}
+
+                {/* Same position, neutral treatment: an account with no vehicles
+                    is a normal state, so this must not look like the red banner
+                    above. Non-blocking too — the map stays pannable. */}
+                {noVehicles && !statusMessage && (
+                  <div style={{
+                    position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
+                    zIndex: 890, backgroundColor: 'var(--c-card)', color: 'var(--c-text2)',
+                    border: '1px solid var(--c-border)',
+                    padding: '8px 18px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+                    maxWidth: 'calc(100% - 32px)', textAlign: 'center',
+                  }}>
+                    No vehicles assigned to your account yet
                   </div>
                 )}
 
@@ -1452,6 +1537,25 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   <MapAutoSize />
                   {/* Keeps whichever popup is open clear of every map edge. */}
                   <PopupFit />
+
+                  {showGeofences && geofences.map(g => {
+                    const pathOptions = { color: g.color || '#2563eb', weight: 2, fillOpacity: 0.12 }
+                    if (g.shape === 'POLYGON' && Array.isArray(g.points) && g.points.length >= 3) {
+                      return (
+                        <Polygon key={g.id} positions={g.points.map(p => [p.lat, p.lng])} pathOptions={pathOptions}>
+                          <Tooltip sticky>{g.name}</Tooltip>
+                        </Polygon>
+                      )
+                    }
+                    if (g.shape === 'CIRCLE' && g.centerLat != null && g.centerLng != null && g.radius) {
+                      return (
+                        <Circle key={g.id} center={[g.centerLat, g.centerLng]} radius={g.radius} pathOptions={pathOptions}>
+                          <Tooltip sticky>{g.name}</Tooltip>
+                        </Circle>
+                      )
+                    }
+                    return null
+                  })}
 
                   {mapped.map(v => (
                     <VehicleMarker

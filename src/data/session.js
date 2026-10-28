@@ -24,7 +24,6 @@
 import { useSyncExternalStore } from 'react'
 import { IS_REAL } from './mode.js'
 import { configureHttp, request } from './http.js'
-import { adoptLoginGrant, clearLocal as clearFlespiToken } from './flespiToken.js'
 
 /**
  * The auth endpoints answer with their fields at the top level — { token, user,
@@ -128,11 +127,6 @@ function phaseFor(user) {
  */
 export function logout(notice = null) {
   clearStored()
-  // Drop the Flespi token with the session. Deliberately the LOCAL clear, not the
-  // server revoke: this runs on a 401 too, where the JWT is already dead and the
-  // revoke call could not authenticate. UserDropdown calls revoke() explicitly for
-  // a deliberate sign-out, which is the path that can still reach the server.
-  clearFlespiToken()
   setState({ phase: PHASE.ANON, token: null, user: null, expiredNotice: notice })
 }
 
@@ -147,10 +141,6 @@ export async function login(email, password) {
     user: data.user,
     expiredNotice: null,
   })
-  // The login response carries this account's limited Flespi token (best effort on
-  // the server), so the Live Map has live data on first render instead of after a
-  // second round trip. Null is fine — ensureToken() fills in.
-  adoptLoginGrant(data.flespi)
   return data.user
 }
 

@@ -7,7 +7,7 @@
  *
  *   1. observable stores + ~30 PURE selectors over them (branchTreeForCompany,
  *      groupsForReseller, isImeiTaken, settingsProfileForImei, vehicleLabel…)
- *   2. a data source (seed rows + localStorage) and 24 mutators
+ *   2. a data source (seed rows + localStorage) and 27 mutators
  *
  * Only (2) is mode-specific. So this file re-exports all of (1) verbatim and
  * replaces (2): in real mode the stores are filled from the API — translated into
@@ -15,7 +15,7 @@
  *
  * The payoff is that `useCompanies()`, `branchTreeForCompany(id)` and
  * `settingsProfileForImei(imei)` behave identically against live data, so the
- * eight Settings pages, the Live Map's vehicle Console and the alert scope picker
+ * nine Settings pages, the Live Map's vehicle Console and the alert scope picker
  * keep every field reference they already had.
  *
  * ── What changes for a page ─────────────────────────────────────────────────
@@ -39,12 +39,12 @@ import { PHASE, useSession } from './session.js'
 export {
   // Blank-record factories — the field contract each form binds to.
   emptyReseller, emptyGroup, emptyCompany, emptyBranch,
-  emptyUser, emptySubuser, emptyVehicle, emptyAlert,
+  emptyUser, emptySubuser, emptyVehicle, emptyAlert, emptyGeofence,
   normalizeSubuser,
 
   // Read hooks. Backed by the same stores in both modes.
   useResellers, useGroups, useCompanies, useBranches,
-  useUsers, useSubusers, useVehicles, useAlerts,
+  useUsers, useSubusers, useVehicles, useAlerts, useGeofences,
 
   // Name lookups, tolerant of an id that no longer resolves.
   resellerNameFor, groupNameFor, companyNameFor, branchNameFor,
@@ -53,12 +53,13 @@ export {
   groupsForReseller, groupsForCompany, groupIdForCompany, groupLabelForCompany,
   branchesForCompany, branchTreeForCompany, branchDescendantIds, branchSubtreeIds,
   branchOptionLabel, vehiclesForCompany, vehicleLabel, vehicleSubLabel,
+  geofencesForCompany,
 
   // The Flespi ↔ Settings join, keyed on IMEI.
   imeiKey, vehicleByImei, settingsProfileForImei, useSettingsProfile,
 
   // Constants and registries.
-  DEFAULT_PASSWORD, ALERT_TYPES, alertTypeLabel,
+  DEFAULT_PASSWORD, ALERT_TYPES, alertTypeLabel, GEOFENCE_CATEGORIES,
 } from '../pages/settings/mockData'
 
 /**
@@ -90,6 +91,7 @@ const COLLECTIONS = [
   { key: 'users', path: '/api/users', toFe: A.user.toFe, query: { role: 'BG_USER' } },
   { key: 'subusers', path: '/api/users', toFe: A.subuser.toFe, query: { role: 'SUB_USER' } },
   { key: 'alerts', path: '/api/alerts', toFe: A.alert.toFe },
+  { key: 'geofences', path: '/api/geofences', toFe: A.geofence.toFe },
 ]
 
 /** Load status, so a page can show a spinner and a retry instead of an empty table. */
@@ -402,4 +404,23 @@ export function updateAlert(id, patch) {
 export function removeAlert(id) {
   if (!IS_REAL) return done(mock.removeAlert(id))
   return write(() => del(`/api/alerts/${id}`))
+}
+
+// Geofence ─────────────────────────────────────────────────────────────────
+
+export function addGeofence(row) {
+  if (!IS_REAL) return done(mock.addGeofence(row))
+  return write(async () => A.geofence.toFe(await post('/api/geofences', A.geofence.toApiCreate(row))))
+}
+
+export function updateGeofence(id, patch) {
+  if (!IS_REAL) return done(mock.updateGeofence(id, patch))
+  return write(async () =>
+    A.geofence.toFe(await put(`/api/geofences/${id}`, A.geofence.toApiUpdate(patch)))
+  )
+}
+
+export function removeGeofence(id) {
+  if (!IS_REAL) return done(mock.removeGeofence(id))
+  return write(() => del(`/api/geofences/${id}`))
 }

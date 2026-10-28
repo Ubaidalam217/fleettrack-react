@@ -44,8 +44,14 @@ export function methodsForRole(role) {
  *
  * Returns `{ acl, deviceIds, methods, unmatchedImeis }`. `deviceIds` is null for a
  * Super Admin, meaning "all devices" — null and [] are emphatically different
- * here, exactly as in the frontend's fleetScope: [] must mint a token that can
- * reach nothing, which is the correct token for a sub-user with no assignments.
+ * here, exactly as in the frontend's fleetScope: null reaches everything, [] must
+ * reach nothing.
+ *
+ * [] is still built and returned, because it is the honest description of an
+ * account that may see no devices. It is NOT sent to Flespi: `POST /platform/tokens`
+ * rejects an empty `ids` array outright ("array items number 0 is less than allowed
+ * minimum 1"), so there is no such thing as a token that can reach nothing.
+ * ensureGrant() turns that case into a no-token grant instead — see NO_DEVICES.
  */
 export async function buildAcl(scope) {
   const methods = methodsForRole(scope.role)
@@ -124,6 +130,17 @@ export function expiryFor(jwtExpSeconds) {
 }
 
 /**
+ * There is nothing to mint a token for: the account's scope reaches no Flespi
+ * device at all. Either it has no vehicles, or none of its vehicles' IMEIs exist
+ * in the Flespi account.
+ *
+ * `token: null` with this code, rather than an error, because it is not a failure —
+ * it is a complete and correct answer to "what may I see". The client needs to tell
+ * the two apart: an error means retry, this means show an empty state and stop.
+ */
+export const NO_DEVICES = 'NO_DEVICES'
+
+/**
  * The token this account should use, minting one only when necessary.
  *
  * Reuse requires all three of: a cached grant, not expired, and the same
@@ -131,7 +148,8 @@ export function expiryFor(jwtExpSeconds) {
  * old one alive would accumulate tokens in the account that nothing ever deletes,
  * and each is a live credential for a scope the user may no longer have.
  *
- * @returns { token, expiresAt, deviceCount, reused, unmatchedImeis }
+ * @returns { token, expiresAt, deviceCount, reused, unmatchedImeis, code }
+ *          `token` and `expiresAt` are null when `code` is NO_DEVICES.
  */
 export async function ensureGrant(user, scope, jwtExpSeconds) {
   if (!flespi.isConfigured()) {
@@ -142,6 +160,30 @@ export async function ensureGrant(user, scope, jwtExpSeconds) {
   }
 
   const built = await buildAcl(scope)
+
+  /**
+   * No reachable device — answer without calling Flespi.
+   *
+   * Flespi refuses `ids: []`, so the previous behaviour was to attempt the mint,
+   * get a 400 back, and surface it as a 502. The client then held no token, never
+   * opened MQTT, and sat on "Reconnecting…" forever: an ordinary account with no
+   * vehicles looked exactly like an outage.
+   *
+   * Any grant already on file is revoked first. A user who HAD devices and no
+   * longer does must not keep a live token describing the scope they lost.
+   */
+  if (Array.isArray(built.deviceIds) && built.deviceIds.length === 0) {
+    await revokeGrant(user.id)
+    return {
+      token: null,
+      expiresAt: null,
+      deviceCount: 0,
+      reused: false,
+      unmatchedImeis: built.unmatchedImeis,
+      code: NO_DEVICES,
+    }
+  }
+
   const hash = scopeHash(built)
   const existing = await prisma.flespiGrant.findUnique({ where: { userId: user.id } })
 
@@ -157,6 +199,7 @@ export async function ensureGrant(user, scope, jwtExpSeconds) {
         deviceCount: existing.deviceCount,
         reused: true,
         unmatchedImeis: built.unmatchedImeis,
+        code: null,
       }
     }
   }
@@ -193,6 +236,7 @@ export async function ensureGrant(user, scope, jwtExpSeconds) {
     deviceCount,
     reused: false,
     unmatchedImeis: built.unmatchedImeis,
+    code: null,
   }
 }
 

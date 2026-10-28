@@ -1,50 +1,38 @@
-// In dev the Vite proxy forwards /flespi → https://flespi.io (avoids CORS).
-// In production the browser calls Flespi directly (Flespi supports CORS).
-export const BASE_URL = import.meta.env.DEV ? '/flespi' : 'https://flespi.io'
+// Where the browser sends Flespi requests — never to Flespi itself.
+//
+// The client asked for ONE Flespi key. So no Flespi token reaches the browser at
+// all any more; every call goes to a proxy that adds the single server-side key:
+//
+//   real mode → our backend, /api/flespi/proxy, authenticated with the login JWT.
+//               The backend narrows every request to the devices this account may
+//               see (server/src/routes/flespiProxy.js).
+//   mock mode → /flespi on the same origin. On Netlify that is a function holding
+//               the key as a secret env var (netlify/functions/flespi-proxy.mjs,
+//               read-only); in `vite dev` it is the dev-server proxy, which adds
+//               FLESPI_TOKEN from the local .env (vite.config.js).
+//
+// Every module builds its URLs from BASE_URL and sends HEADERS, so this file is
+// the only place that knows any of that.
 
-import { IS_REAL } from '../data/mode'
-import { currentToken } from '../data/flespiToken'
+import { IS_REAL, API_URL } from '../data/mode'
+import { getToken } from '../data/session'
 
-/**
- * The Flespi token this browser should use right now.
- *
- *   real mode → the per-user ACL token minted by our backend, restricted to the
- *               devices that account may see (data/flespiToken.js)
- *   mock mode → VITE_FLESPI_TOKEN, which for the deployed demo is a read-only ACL
- *               token covering the whole account
- *
- * Real mode deliberately IGNORES VITE_FLESPI_TOKEN rather than falling back to it.
- * A fallback would silently restore the old behaviour — every user sharing one
- * bundled token — on any day the backend was unreachable, which is exactly the
- * property this phase removes. No token is the correct answer; the Live Map shows
- * an explicable empty state.
- *
- * Note that a real-mode BUILD should also leave VITE_FLESPI_TOKEN unset: Vite
- * inlines it at build time, so a runtime check cannot remove it from the bundle.
- */
-export function flespiToken() {
-  if (IS_REAL) return currentToken()
-  return import.meta.env.VITE_FLESPI_TOKEN ?? null
-}
+export const BASE_URL = IS_REAL ? `${API_URL}/api/flespi/proxy` : '/flespi'
 
 /**
- * Request headers for Flespi, resolved at read time.
+ * Request headers, resolved at read time.
  *
- * `Authorization` is a GETTER on purpose. Seven modules already do
- * `fetch(url, { headers: HEADERS })`, and `fetch` reads the object's own
- * enumerable properties when it builds the Headers — which invokes getters. So the
- * token can now change per request (minted after login, refreshed before expiry)
- * without touching a single one of those call sites, and none of them can
- * accidentally capture a stale token in a module-level constant.
- *
- * In mock mode this resolves to exactly the value it always did.
+ * `Authorization` is a GETTER so it carries the login JWT of the moment —
+ * `fetch(url, { headers: HEADERS })` reads it when the request is built. In mock
+ * mode it is empty: the Netlify function ignores any client header and uses its
+ * own key.
  */
 export const HEADERS = {
   get Authorization() {
-    return `FlespiToken ${flespiToken() ?? ''}`
+    return IS_REAL ? `Bearer ${getToken() ?? ''}` : ''
   },
   'Content-Type': 'application/json',
 }
 
-/** True when a Flespi call can be expected to succeed. */
-export const hasFlespiToken = () => !!flespiToken()
+/** True when a Flespi call can be expected to succeed (real mode needs a login). */
+export const hasFlespiToken = () => (IS_REAL ? !!getToken() : true)

@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { FileDown, FileSpreadsheet, Printer, ChevronDown, X, AlertTriangle, MapPin } from 'lucide-react'
+import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle, MapPin } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import Header  from '../components/Header'
 import MovementTable from '../components/reports/MovementTable'
+// Shared with the Daywise reports — one copy of the chips, dropdowns and
+// toolbar buttons rather than one per report page.
+import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../components/reports/controls'
 import { useFlespiData } from '../hooks/useFlespiData'
 import {
   fetchMovementMessages,
@@ -13,6 +16,8 @@ import {
   formatPrintDate,
   STATUS_DEFS,
   AVAILABLE_STATUS_KEYS,
+  INTERVAL_OPTIONS,
+  intervalLabel,
   isAbortError,
 } from '../utils/movementReport'
 import { exportMovementPdf, exportMovementExcel, printMovementReport } from '../utils/reportExport'
@@ -72,135 +77,6 @@ function presetRange(key, now = new Date()) {
   }
 }
 
-// ── shared control styling ────────────────────────────────────────────────
-
-const LABEL = { display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--c-text2)', marginBottom: 6, letterSpacing: '0.02em' }
-
-const FIELD = {
-  width: '100%', boxSizing: 'border-box',
-  padding: '8px 10px', borderRadius: 8, outline: 'none',
-  border: '1px solid var(--c-border2)',
-  background: 'var(--c-input)', color: 'var(--c-text1)',
-  fontSize: 12.5, fontFamily: 'inherit',
-}
-
-function Chip({ active, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flexShrink: 0, padding: '5px 12px', borderRadius: 999,
-        border: `1px solid ${active ? 'var(--ft-accent)' : 'var(--c-border2)'}`,
-        background: active ? 'color-mix(in srgb, var(--ft-accent) 12%, transparent)' : 'var(--c-input)',
-        color: active ? 'var(--ft-accent)' : 'var(--c-text2)',
-        fontSize: 11.5, fontWeight: active ? 700 : 600,
-        cursor: 'pointer', whiteSpace: 'nowrap',
-        transition: 'background 0.15s, border-color 0.15s, color 0.15s',
-      }}
-    >
-      {children}
-    </button>
-  )
-}
-
-/** Dropdown with checkboxes. Closes on outside click and on Escape. */
-function MultiSelect({ label, summary, children, disabled }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = e => { if (!ref.current?.contains(e.target)) setOpen(false) }
-    const onKey = e => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <label style={LABEL}>{label}</label>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen(o => !o)}
-        style={{
-          ...FIELD, textAlign: 'left', cursor: disabled ? 'not-allowed' : 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-          opacity: disabled ? 0.6 : 1,
-        }}
-      >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</span>
-        <ChevronDown size={14} style={{ flexShrink: 0, color: 'var(--c-text3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', zIndex: 30, top: 'calc(100% + 4px)', left: 0, right: 0,
-          background: 'var(--c-card)', border: '1px solid var(--c-border2)', borderRadius: 10,
-          boxShadow: '0 12px 32px rgba(0,0,0,0.18)', padding: 6,
-          maxHeight: 280, overflowY: 'auto',
-        }}>
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function CheckRow({ checked, onChange, disabled, title, children, note }) {
-  return (
-    <label
-      title={title}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 7,
-        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.55 : 1,
-        fontSize: 12.5, color: 'var(--c-text1)',
-      }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'var(--c-hover)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={onChange}
-        style={{ marginTop: 2, accentColor: 'var(--ft-accent)', cursor: disabled ? 'not-allowed' : 'pointer' }}
-      />
-      <span style={{ minWidth: 0 }}>
-        <span style={{ display: 'block' }}>{children}</span>
-        {note && <span style={{ display: 'block', fontSize: 10.5, color: 'var(--c-text3)', marginTop: 1 }}>{note}</span>}
-      </span>
-    </label>
-  )
-}
-
-function ToolbarButton({ onClick, icon: Icon, children, disabled, primary }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 7,
-        padding: '8px 14px', borderRadius: 8,
-        border: primary ? 'none' : '1px solid var(--c-border2)',
-        background: primary ? 'var(--ft-accent)' : 'var(--c-card)',
-        color: primary ? '#fff' : 'var(--c-text1)',
-        fontSize: 12.5, fontWeight: 600,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      <Icon size={14} />
-      {children}
-    </button>
-  )
-}
-
 // ── page ──────────────────────────────────────────────────────────────────
 
 export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
@@ -223,7 +99,8 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   const [toTime,          setToTime]          = useState(() => timeStr(now))
   const [applyTolerance,  setApplyTolerance]  = useState(false)
   const [toleranceMeters, setToleranceMeters] = useState(0)
-  const [statuses,        setStatuses]        = useState(AVAILABLE_STATUS_KEYS)
+  const [intervalSec,     setIntervalSec]     = useState(0)
+  const [statuses,       setStatuses]        = useState(AVAILABLE_STATUS_KEYS)
   const [resolveAddr,     setResolveAddr]     = useState(true)
   const [geocodeLimit,    setGeocodeLimit]    = useState(DEFAULT_GEOCODE_LIMIT)
 
@@ -238,6 +115,10 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   const abortRef = useRef(null)
 
   const busy = progress !== null
+  // Exports stay available while addresses are still resolving — the client
+  // asked for an instant download. Rows not resolved yet export with their
+  // coordinates, exactly as the table shows them at that moment.
+  const fetching = busy && progress.phase !== 'geocode'
 
   const effectiveIds = selectedIds ?? vehicles.map(v => v.id)
   const allSelected  = selectedIds === null || selectedIds.length === vehicles.length
@@ -265,8 +146,8 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   // already in memory — no network, which is what makes the generated report
   // usable offline.
   const deriveSig = useMemo(
-    () => JSON.stringify([[...statuses].sort(), applyTolerance, toleranceMeters]),
-    [statuses, applyTolerance, toleranceMeters]
+    () => JSON.stringify([[...statuses].sort(), applyTolerance, toleranceMeters, intervalSec]),
+    [statuses, applyTolerance, toleranceMeters, intervalSec]
   )
 
   const applyPreset = key => {
@@ -315,7 +196,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
 
       setProgress({ phase: 'derive', done: 0, total: 1, text: 'Deriving movement rows...' })
       const built = deriveMovementReport(messages, {
-        vehicles, statuses, applyTolerance, toleranceMeters,
+        vehicles, statuses, applyTolerance, toleranceMeters, intervalSec,
       })
       built.deriveSig = deriveSig
       // `skipped` is what the "N locations unresolved" line reads, so seed it
@@ -330,6 +211,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
       setReport(built)
 
       if (resolveAddr && built.totalRows > 0) {
+        setProgress({ phase: 'geocode', done: 0, total: 1, text: 'Resolving addresses — you can download now...' })
         const result = await resolveReportLocations(built, {
           limit: geocodeLimit,
           signal: controller.signal,
@@ -349,7 +231,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
       abortRef.current = null
       setProgress(null)
     }
-  }, [rangeValid, effectiveIds, fromTs, toTs, selectionLabel, vehicles, statuses, applyTolerance, toleranceMeters, deriveSig, resolveAddr, geocodeLimit])
+  }, [rangeValid, effectiveIds, fromTs, toTs, selectionLabel, vehicles, statuses, applyTolerance, toleranceMeters, intervalSec, deriveSig, resolveAddr, geocodeLimit])
 
   const cancel = () => abortRef.current?.abort()
 
@@ -360,14 +242,14 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
     if (!byDevice || busy || !report) return
     if (report.deriveSig === deriveSig) return
 
-    const rebuilt = deriveMovementReport(byDevice, { vehicles, statuses, applyTolerance, toleranceMeters })
+    const rebuilt = deriveMovementReport(byDevice, { vehicles, statuses, applyTolerance, toleranceMeters, intervalSec })
     rebuilt.deriveSig = deriveSig
     resolveReportLocations(rebuilt, { limit: 0 }).then(result => {
       rebuilt.geocoded = { resolved: report.geocoded?.resolved ?? 0, skipped: result.skipped }
       setReport(rebuilt)
       setVisible(PAGE_ROWS)
     })
-  }, [byDevice, busy, report, deriveSig, vehicles, statuses, applyTolerance, toleranceMeters])
+  }, [byDevice, busy, report, deriveSig, vehicles, statuses, applyTolerance, toleranceMeters, intervalSec])
 
   // Resolve the addresses a capped run left behind.
   const resolveMore = async () => {
@@ -405,9 +287,11 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
     toLabel:         formatDateTime(applied.toTs),
     applyTolerance,
     toleranceMeters: applyTolerance ? toleranceMeters : 0,
+    intervalSec,
+    intervalLabel:   intervalLabel(intervalSec),
     statusesLabel,
     printDate:       applied.printDate,
-  }, [applied, applyTolerance, toleranceMeters, statusesLabel])
+  }, [applied, applyTolerance, toleranceMeters, intervalSec, statusesLabel])
 
   const exportMeta = { subtitle: 'AI Revofleet', systemName: 'FleetmaX', printDate: applied?.printDate }
 
@@ -570,6 +454,19 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                 </div>
 
                 <div>
+                  <label style={LABEL} title="Thin repeated Driving / Ignition off rows. Start up, every status change and Excessive Idling are always kept.">
+                    INTERVAL
+                  </label>
+                  <select
+                    style={FIELD}
+                    value={intervalSec}
+                    onChange={e => setIntervalSec(Number(e.target.value))}
+                  >
+                    {INTERVAL_OPTIONS.map(o => <option key={o.sec} value={o.sec}>{o.label}</option>)}
+                  </select>
+                </div>
+
+                <div>
                   <label style={LABEL}>ADDRESS LOOKUPS</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
@@ -676,13 +573,13 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                         Resolve addresses
                       </ToolbarButton>
                     )}
-                    <ToolbarButton onClick={handlePdf} icon={FileDown} disabled={busy} primary>
+                    <ToolbarButton onClick={handlePdf} icon={FileDown} disabled={fetching} primary>
                       Download PDF
                     </ToolbarButton>
-                    <ToolbarButton onClick={handleExcel} icon={FileSpreadsheet} disabled={busy}>
+                    <ToolbarButton onClick={handleExcel} icon={FileSpreadsheet} disabled={fetching}>
                       Download Excel
                     </ToolbarButton>
-                    <ToolbarButton onClick={handlePrint} icon={Printer} disabled={busy}>
+                    <ToolbarButton onClick={handlePrint} icon={Printer} disabled={fetching}>
                       Print
                     </ToolbarButton>
                   </div>

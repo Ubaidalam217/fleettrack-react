@@ -104,10 +104,11 @@ model BusinessGroup {
 
   ggb      Ggb       @relation(fields: [ggbId], references: [id], onDelete: Cascade)
   group    Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  branches Branch[]
-  vehicles Vehicle[]
-  users    User[]
-  alerts   Alert[]
+  branches  Branch[]
+  vehicles  Vehicle[]
+  users     User[]
+  alerts    Alert[]
+  geofences Geofence[]
 
   @@index([ggbId])
   @@index([groupId])
@@ -400,4 +401,87 @@ model AlertVehicle {
 
   @@id([alertId, vehicleId])
   @@index([vehicleId])
+}
+
+/// A named map shape watching one BG's territory — the geofence report module's
+/// foundation. Two conceptually distinct screens in the reference system
+/// ("Address" and "Geofence") share this one table, discriminated by `kind`,
+/// because they differ only in which fields are meaningful, not in shape:
+/// a named polygon or circle, owned by one BG, optionally tagged with a
+/// category. Splitting them into two tables would duplicate every column and
+/// every scope rule for no behavioural gain.
+enum GeofenceKind {
+  /// A zone watched for entry/exit — the reference's own "Geofence" screen.
+  /// Every sample in the reference's Geofence History report is a polygon.
+  GEOFENCE
+  /// A tagged point location watched for visits (arrival/departure/duration) —
+  /// the reference's own "Address" screen, where every sample carries a
+  /// category Type (Factory, Depot, ...).
+  ADDRESS
+}
+
+enum GeofenceShape {
+  POLYGON
+  CIRCLE
+}
+
+model Geofence {
+  id   String @id @default(cuid())
+  bgId String
+
+  kind  GeofenceKind
+  shape GeofenceShape
+
+  name String
+
+  /// Polygon vertices in order, `[{ lat, lng }, ...]`. Null unless shape is
+  /// POLYGON. A JSON column rather than a child table: the vertex count is
+  /// small (validated at write time — see lib/geofences.js) and nothing ever
+  /// queries into individual points, only reads the whole shape back.
+  points Json?
+
+  /// Circle center and radius in meters. Null unless shape is CIRCLE.
+  centerLat Float?
+  centerLng Float?
+  radius    Float?
+
+  /// Registry-driven on the frontend, same pattern as Alert.type — a string
+  /// rather than an enum so a new category (the client's list is already
+  /// described as "editable/extendable") is a frontend change, not a
+  /// migration. Most meaningful for kind ADDRESS (Factory, Depot, Warehouse,
+  /// Customer, Other, ...) but not restricted to it.
+  category String?
+
+  color       String?
+  description String?
+  active      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bg BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+
+  /// One name per BG, not global — two different BGs both naming a yard
+  /// "Main Gate" is not a collision the way two BGs sharing a login email
+  /// would be.
+  @@unique([bgId, name])
+  @@index([bgId])
+}
+
+/// Reverse-geocode results, shared by every user and every browser — the
+/// Movement Report's Location column and the Geo Zone reports' addresses.
+///
+/// Before this table the cache lived only in each browser's localStorage, so a
+/// client opening a report on a new machine waited out Nominatim's 1 request per
+/// second for every one of a fleet-day's ~2,000 points again. A street does not
+/// move, so an entry never goes stale; vehicles repeat their routes, so the hit
+/// rate climbs every day the fleet runs.
+model GeocodeCache {
+  /// "lat,lng" rounded to 4 decimal places (~11 m) — the same key the
+  /// frontend's geocode.js geocodeKey() builds, so the two caches agree.
+  key       String   @id
+  /// Null = the geocoder answered with no address (open desert, sea). Cached
+  /// too, so the point is not asked again; a failed REQUEST is never stored.
+  address   String?
+  createdAt DateTime @default(now())
 }
