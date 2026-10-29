@@ -210,6 +210,61 @@ async function fetchWithRetry(url, { signal, onStatus }) {
 }
 
 /**
+ * An unfinished day (today, and the two before it while late uploads can still
+ * land) is not cached in the browser, but asking Flespi again for every click is
+ * what made a re-run take ~2 s. It is kept in memory this long instead, so a
+ * re-run, or switching Work Hour <-> Distance, is instant and still fresh.
+ */
+const RECENT_TTL_MS = 5 * 60 * 1000
+const recentDays = new Map() // cacheKey -> { at, result }
+const inflight = new Map()   // cacheKey -> Promise<object[]>
+
+/** A day's messages: browser cache, memory, or Flespi, in that order. */
+async function loadDay(ids, dayStart, cacheKey, onStatus) {
+  // A finished day never changes, so it is read from the browser cache when it
+  // can be (utils/dayCache.js). Work Hour and Distance share the same fetch, so
+  // one run fills the cache for both.
+  const settled = isSettled((dayStart + 86400) * 1000)
+  if (settled) {
+    const hit = await readDay(cacheKey)
+    if (hit) return hit
+  } else {
+    const hit = recentDays.get(cacheKey)
+    if (hit && Date.now() - hit.at < RECENT_TTL_MS) return hit.result
+  }
+
+  const data = JSON.stringify({
+    from: dayStart,
+    to: dayStart + 86399,
+    count: MAX_MESSAGES,
+    fields: FIELDS,
+  })
+  const url = `${BASE_URL}/gw/devices/${ids}/messages?data=${encodeURIComponent(data)}`
+  const json = await fetchWithRetry(url, { onStatus })
+  const result = json.result || []
+
+  if (settled) {
+    writeDay(cacheKey, result)
+  } else {
+    const now = Date.now()
+    for (const [k, v] of recentDays) if (now - v.at >= RECENT_TTL_MS) recentDays.delete(k)
+    recentDays.set(cacheKey, { at: now, result })
+  }
+  return result
+}
+
+/** `promise`, or an AbortError as soon as `signal` fires. */
+function untilAborted(promise, signal) {
+  if (!signal) return promise
+  if (signal.aborted) return Promise.reject(abortError())
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+  })
+}
+
+/**
  * Every selected device's messages for one UAE day, grouped by device id.
  *
  * The selector is an explicit comma-separated id list rather than `all`, even
@@ -218,27 +273,21 @@ async function fetchWithRetry(url, { signal, onStatus }) {
  * URL means a token that is briefly wider than the account cannot widen the
  * report with it.
  */
-async function fetchDay(deviceIds, dayStart, opts) {
-  const data = JSON.stringify({
-    from: dayStart,
-    to: dayStart + 86399,
-    count: MAX_MESSAGES,
-    fields: FIELDS,
-  })
+async function fetchDay(deviceIds, dayStart, opts = {}) {
   const ids = [...deviceIds].sort((a, b) => a - b).join(',')
-  const url = `${BASE_URL}/gw/devices/${ids}/messages?data=${encodeURIComponent(data)}`
-
-  // A finished day never changes, so it is read from the browser cache when it
-  // can be (utils/dayCache.js). Work Hour and Distance share the same fetch, so
-  // one run fills the cache for both.
   const cacheKey = `${FIELDS}|${ids}|${dayStart}`
-  const settled = isSettled((dayStart + 86400) * 1000)
-  let result = settled ? await readDay(cacheKey) : null
-  if (!result) {
-    const json = await fetchWithRetry(url, opts)
-    result = json.result || []
-    if (settled) writeDay(cacheKey, result)
+
+  // One request per day however many callers want it: the background warm-up
+  // and a Generate click asking for the same day share it. The request itself
+  // is never aborted — it is one day, and finishing it fills the cache — the
+  // caller just stops waiting for it.
+  let pending = inflight.get(cacheKey)
+  if (!pending) {
+    pending = loadDay(ids, dayStart, cacheKey, opts.onStatus)
+      .finally(() => inflight.delete(cacheKey))
+    inflight.set(cacheKey, pending)
   }
+  const result = await untilAborted(pending, opts.signal)
 
   const byDevice = new Map()
   for (const m of result) {
@@ -265,10 +314,7 @@ export async function fetchDaywiseMonth(deviceIds, year, month, opts = {}) {
   const { signal, onProgress } = opts
   if (!deviceIds.length) return { byDevice: new Map(), capped: false }
 
-  const total = daysInMonth(year, month)
-  // Never ask for days that have not happened: on the current month that is up
-  // to 30 pointless requests, and each one still costs the rate limit.
-  const lastDay = Math.min(total, lastElapsedDay(year, month) || total)
+  const lastDay = lastFetchDay(year, month)
 
   const byDevice = new Map()
   let capped = false
@@ -313,6 +359,70 @@ export async function fetchDaywiseMonth(deviceIds, year, month, opts = {}) {
   }
 
   return { byDevice, capped }
+}
+
+/**
+ * The last day of a month worth asking for. Never days that have not happened:
+ * on the current month that is up to 30 pointless requests, and each one still
+ * costs the rate limit.
+ */
+function lastFetchDay(year, month) {
+  const total = daysInMonth(year, month)
+  return Math.min(total, lastElapsedDay(year, month) || total)
+}
+
+/**
+ * Finished month reports, per fleet and month: `{ at, done, promise }`.
+ *
+ * Even with every day in the browser cache, a month is ~150k messages: reading
+ * them back takes ~1.8 s and deriving them ~0.8 s. The derived result is a few
+ * numbers per vehicle per day, so it is kept here instead, and Generate on a
+ * month that is already computed is instant. A month still inside the
+ * unfinished-day window is recomputed after RECENT_TTL_MS so today keeps moving.
+ */
+const months = new Map()
+
+/**
+ * A month's per-device derivation, computed once and shared by every caller —
+ * the background warm-up, the page opening, and Generate.
+ *
+ * The computation itself is not cancelled by `signal`: it finishes into the
+ * cache, and the caller just stops waiting for it.
+ *
+ * @returns {Promise<{ derived: Map<number, ReturnType<typeof deriveDeviceMonth>>, capped: boolean }>}
+ */
+export function loadDaywiseMonth(deviceIds, year, month, opts = {}) {
+  const ids = [...deviceIds].sort((a, b) => a - b)
+  const key = `${ids.join(',')}|${year}-${month}`
+  const hit = months.get(key)
+  const monthEndMs = uaeDayStart(year, month, daysInMonth(year, month)) * 1000 + 86400 * 1000
+  const fresh = hit && (!hit.done || isSettled(monthEndMs) || Date.now() - hit.at < RECENT_TTL_MS)
+  if (fresh) return untilAborted(hit.promise, opts.signal)
+
+  const entry = { at: Date.now(), done: false, promise: null }
+  entry.promise = fetchDaywiseMonth(ids, year, month, { onProgress: opts.onProgress })
+    .then(({ byDevice, capped }) => {
+      const derived = new Map()
+      for (const id of ids) derived.set(id, deriveDeviceMonth(byDevice.get(id) ?? [], year, month))
+      entry.at = Date.now()
+      entry.done = true
+      return { derived, capped }
+    })
+  // A failed month must not stay cached as a failure.
+  entry.promise.catch(() => { if (months.get(key) === entry) months.delete(key) })
+  months.set(key, entry)
+  return untilAborted(entry.promise, opts.signal)
+}
+
+/**
+ * Compute a month in the background, so Generate finds it ready.
+ *
+ * The app runs this quietly after sign-in and again when a Daywise page opens.
+ * Errors are swallowed: if the warm-up fails, Generate simply fetches as before.
+ */
+export function warmDaywiseMonth(deviceIds, year, month) {
+  if (!deviceIds.length) return
+  loadDaywiseMonth(deviceIds, year, month).catch(() => {})
 }
 
 // ── Derivation ──────────────────────────────────────────────────────────────
@@ -421,8 +531,15 @@ export function deriveDeviceMonth(messages, year, month) {
  * @returns {{ rows: object[], days: number, year: number, month: number }}
  */
 export function buildDaywiseRows(byDevice, vehicles, year, month) {
+  const derivedById = new Map(vehicles.map(v => [v.id, deriveDeviceMonth(byDevice.get(v.id) ?? [], year, month)]))
+  return rowsFromDerived(derivedById, vehicles, year, month)
+}
+
+/** The table model from loadDaywiseMonth's per-device derivation. */
+export function rowsFromDerived(derivedById, vehicles, year, month) {
+  const empty = () => deriveDeviceMonth([], year, month)
   const rows = vehicles.map(v => {
-    const derived = deriveDeviceMonth(byDevice.get(v.id) ?? [], year, month)
+    const derived = derivedById.get(v.id) ?? empty()
     return {
       deviceId: v.id,
       label: v.label,

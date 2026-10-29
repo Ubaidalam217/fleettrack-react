@@ -29,6 +29,7 @@ import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
 import AuthGate            from './components/AuthGate'
 import { useNotificationEngine } from './hooks/useNotificationEngine'
+import { useReportWarmup } from './hooks/useReportWarmup'
 import * as store from './services/notificationStore'
 import { shouldShowPrompt } from './services/pushNotifications'
 import { IS_REAL } from './data/mode'
@@ -79,6 +80,7 @@ function seedAnnouncements() {
 // ── Inner component — needs BrowserRouter context for hooks + prompt ───────
 function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
   useNotificationEngine()
+  useReportWarmup()
 
   const location = useLocation()
   const session  = useSession()

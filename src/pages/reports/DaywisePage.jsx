@@ -9,7 +9,7 @@ import {
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { settingsProfileForImei, useVehicles, useCompanies } from '../../data/settings'
 import {
-  fetchDaywiseMonth, buildDaywiseRows,
+  loadDaywiseMonth, warmDaywiseMonth, rowsFromDerived,
   currentUaeMonth, daysInMonth, lastElapsedDay, monthLabel,
   formatHoursMinutes, formatKm, isAbortError,
 } from '../../utils/daywise'
@@ -210,12 +210,16 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
     setProgress({ done: 0, total: daysInMonth(year, monthNo), text: 'Generating report...' })
 
     try {
-      const { byDevice, capped } = await fetchDaywiseMonth(effectiveIds, year, monthNo, {
+      // The whole fleet is fetched even for a narrower selection: it is the same
+      // one request per day, and it is what the background warm-up cached, so
+      // any selection is served from the cache.
+      const allIds = vehicles.map(v => v.id)
+      const { derived, capped } = await loadDaywiseMonth(allIds, year, monthNo, {
         signal: controller.signal,
         onProgress: p => setProgress(p),
       })
       const selected = vehicles.filter(v => effectiveIds.includes(v.id))
-      setReport({ ...buildDaywiseRows(byDevice, selected, year, monthNo), capped })
+      setReport({ ...rowsFromDerived(derived, selected, year, monthNo), capped })
     } catch (err) {
       if (!isAbortError(err)) setError(err.message || String(err))
     } finally {
@@ -226,9 +230,17 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
 
   const cancel = () => abortRef.current?.abort()
 
-  // Abort an in-flight month if the page unmounts mid-fetch, rather than letting
-  // thirty requests finish into a component that is gone.
+  // Stop waiting if the page unmounts mid-run. The month itself still finishes
+  // into the cache (utils/daywise.js loadDaywiseMonth), so coming back is instant.
   useEffect(() => () => abortRef.current?.abort(), [])
+
+  // Compute the picked month in the background while the filters are being set,
+  // so Generate finds it ready. A month already computed costs nothing.
+  const fleetKey = vehicles.map(v => v.id).join(',')
+  useEffect(() => {
+    if (!fleetKey) return
+    warmDaywiseMonth(fleetKey.split(',').map(Number), year, monthNo)
+  }, [fleetKey, year, monthNo])
 
   // ── view model ──
   const visibleRows = useMemo(() => {
