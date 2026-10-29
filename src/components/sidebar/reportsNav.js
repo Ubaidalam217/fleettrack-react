@@ -39,7 +39,7 @@ export const REPORTS_MENU = [
   { id: 'movement',      label: 'Movement Report',       icon: Route,         path: '/reports/movement' },
   { id: 'vehicle-list',  label: 'List of Vehicles',      icon: Car,           path: '/reports/vehicles' },
   { id: 'usage-full',    label: 'Full Usage Report',     icon: FileBarChart,  path: '/reports/usage-full' },
-  { id: 'usage-summary', label: 'Summary Usage Report',  icon: FileText,      path: '/reports/usage-summary' },
+  { id: 'daywise-distance', label: 'Daywise Distance Report', icon: FileText, path: '/reports/daywise-distance' },
   { id: 'trip',          label: 'Trip Report',           icon: Navigation,    path: '/reports/trip' },
   // Excess Idle, Speed Violation, Harsh Braking, Harsh Acceleration, etc. —
   // one page with an event-type filter rather than four sibling rows, per the

@@ -194,7 +194,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
       })
       if (controller.signal.aborted) return
 
-      setProgress({ phase: 'derive', done: 0, total: 1, text: 'Deriving movement rows...' })
+      setProgress({ phase: 'derive', done: 0, total: 1, text: 'Generating report...' })
       const built = deriveMovementReport(messages, {
         vehicles, statuses, applyTolerance, toleranceMeters, intervalSec,
       })
@@ -494,10 +494,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                     <><AlertTriangle size={13} color="#f97316" /> From must be earlier than To.</>
                   )}
                   {rangeValid && requestCount > WARN_REQUESTS && (
-                    <><AlertTriangle size={13} color="#f97316" /> {requestCount} Flespi requests for this range — this may hit the rate limit and take a few minutes.</>
-                  )}
-                  {rangeValid && requestCount <= WARN_REQUESTS && effectiveIds.length > 0 && (
-                    <>{requestCount} Flespi request{requestCount === 1 ? '' : 's'} · {effectiveIds.length} vehicle{effectiveIds.length === 1 ? '' : 's'}</>
+                    <><AlertTriangle size={13} color="#f97316" /> Long date range — this report may take a few minutes.</>
                   )}
                 </div>
 

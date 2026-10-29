@@ -171,7 +171,9 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
             components/sidebar/reportsNav.js, which is the client's order. */}
         <Route path="/reports/vehicles"      element={guard(<ReportPlaceholder  {...themeProps} />)} />
         <Route path="/reports/usage-full"    element={guard(<ReportPlaceholder  {...themeProps} />)} />
-        <Route path="/reports/usage-summary" element={guard(<SummaryUsageReport {...themeProps} />)} />
+        <Route path="/reports/daywise-distance" element={guard(<SummaryUsageReport {...themeProps} />)} />
+        {/* The client renamed "Summary Usage Report" to "Daywise Distance Report"; old links still land. */}
+        <Route path="/reports/usage-summary" element={<Navigate to="/reports/daywise-distance" replace />} />
         <Route path="/reports/trip"          element={guard(<ReportPlaceholder  {...themeProps} />)} />
         <Route path="/reports/event"         element={guard(<ReportPlaceholder  {...themeProps} />)} />
         <Route path="/reports/working-hour"  element={guard(<WorkingHourReport  {...themeProps} />)} />

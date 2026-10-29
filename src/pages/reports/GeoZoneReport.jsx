@@ -480,10 +480,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                     <><AlertTriangle size={13} color="#ef4444" /> Date range cannot exceed {MAX_RANGE_DAYS} days (currently {days}).</>
                   )}
                   {rangeValid && !rangeTooLong && requestCount > WARN_REQUESTS && (
-                    <><AlertTriangle size={13} color="#f97316" /> {requestCount} Flespi requests for this range — this may take a few minutes.</>
-                  )}
-                  {rangeValid && !rangeTooLong && requestCount <= WARN_REQUESTS && effectiveVehicleIds.length > 0 && (
-                    <>{requestCount} Flespi request{requestCount === 1 ? '' : 's'} · {effectiveVehicleIds.length} vehicle{effectiveVehicleIds.length === 1 ? '' : 's'}</>
+                    <><AlertTriangle size={13} color="#f97316" /> Long date range — this report may take a few minutes.</>
                   )}
                 </div>
 

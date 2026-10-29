@@ -55,18 +55,17 @@ export async function fetchGeoZoneMessages(deviceIds, fromTs, toTs, opts = {}) {
       throw err
     }
     const id = deviceIds[i]
-    const prefix = deviceIds.length > 1 ? `Vehicle ${i + 1}/${deviceIds.length} — ` : ''
-    onProgress?.({ done: i, total: deviceIds.length, text: `${prefix}fetching messages...` })
+    onProgress?.({ done: i, total: deviceIds.length, text: 'Generating report...' })
 
     const result = await fetchDeviceMessages(id, fromTs, toTs, {
       fields: GEO_ZONE_FIELDS,
       signal,
-      onStatus: text => onProgress?.({ done: i, total: deviceIds.length, text: `${prefix}${text}` }),
+      onStatus: text => onProgress?.({ done: i, total: deviceIds.length, text }),
     })
     byDevice.set(id, result)
   }
 
-  onProgress?.({ done: deviceIds.length, total: deviceIds.length, text: 'Messages loaded' })
+  onProgress?.({ done: deviceIds.length, total: deviceIds.length, text: 'Generating report...' })
   return byDevice
 }
 

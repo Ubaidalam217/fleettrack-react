@@ -68,7 +68,7 @@ const VARIANTS = {
   },
 
   distance: {
-    title: 'Daywise Distance',
+    title: 'Daywise Distance Report',
     subtitle: 'Kilometres driven per vehicle per day, for the selected month.',
     exportName: 'Daywise_Distance',
     totalLabel: 'Total Distance',
@@ -77,10 +77,9 @@ const VARIANTS = {
     totalOf: row => row.totalKm,
     // The reference pads the day columns to 01..31 on this sheet.
     dayLabel: d => String(d).padStart(2, '0'),
-    identity: [
-      { key: 'company', label: 'Company', width: 180, get: r => r.company },
-      { key: 'label', label: 'Vehicle', width: 150, get: r => r.label },
-    ],
+    // The client asked for the company in the report HEADER, not as a column:
+    // it is shown once above the table and in the PDF/Excel band (bgLabel).
+    identity: [{ key: 'label', label: 'Vehicle', width: 190, get: r => r.label }],
     help: (
       <>
         <p style={{ margin: '0 0 8px' }}>
@@ -176,7 +175,11 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
       ? (vehicles.find(v => v.id === effectiveIds[0])?.label ?? '1 vehicle')
       : `${effectiveIds.length} vehicles`
 
-  const bgLabel = allBgs ? `All (${bgOptions.length})` : selectedBgs.length === 0 ? 'None' : selectedBgs.join(', ')
+  // Shown in the report header (screen, PDF, Excel), so it names the company
+  // rather than counting them.
+  const bgLabel = allBgs
+    ? (bgOptions.length === 1 ? bgOptions[0] : 'All companies')
+    : selectedBgs.length === 0 ? 'None' : selectedBgs.join(', ')
 
   // ── report state ──
   const [report, setReport] = useState(null) // { rows, days, year, month, capped }
@@ -204,7 +207,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
 
     setError(null)
     setReport(null)
-    setProgress({ done: 0, total: daysInMonth(year, monthNo), text: 'Starting...' })
+    setProgress({ done: 0, total: daysInMonth(year, monthNo), text: 'Generating report...' })
 
     try {
       const { byDevice, capped } = await fetchDaywiseMonth(effectiveIds, year, monthNo, {
@@ -367,9 +370,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
               {/* ── actions ── */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginTop: 16 }}>
                 <div style={{ fontSize: 11.5, color: 'var(--c-text3)', display: 'flex', alignItems: 'center', gap: 6, minHeight: 18 }}>
-                  {vehicles.length === 0
-                    ? 'No vehicles assigned to your account yet.'
-                    : `${Math.min(days, lastElapsed || days)} Flespi request${(lastElapsed || days) === 1 ? '' : 's'} · ${effectiveIds.length} vehicle${effectiveIds.length === 1 ? '' : 's'}`}
+                  {vehicles.length === 0 && 'No vehicles assigned to your account yet.'}
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -428,6 +429,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
                   <div style={{ fontSize: 12.5, color: 'var(--c-text2)' }}>
                     <strong style={{ color: 'var(--c-text1)' }}>{visibleRows.length}</strong>
                     {' '}vehicle{visibleRows.length === 1 ? '' : 's'} · {monthLabel(year, monthNo)}
+                    {' · '}Company: <strong style={{ color: 'var(--c-text1)' }}>{bgLabel}</strong>
                     {report.capped && (
                       <span style={{ color: '#f97316' }}> · truncated at Flespi&apos;s 3,000-message cap on at least one day</span>
                     )}

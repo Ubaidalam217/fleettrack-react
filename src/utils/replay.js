@@ -81,18 +81,17 @@ async function fetchWithRetry(url, onStatus, signal) {
     const res = await fetch(url, { headers: HEADERS, signal })
     if (res.status !== 429) {
       if (!res.ok) {
-        const body = await res.text()
-        throw new Error(`Flespi /messages ${res.status}: ${body}`)
+        throw new Error(`Could not load the data (error ${res.status}). Please try again.`)
       }
       return res.json()
     }
 
     if (attempt >= RETRY_DELAYS_SEC.length) {
-      throw new Error('Flespi is still rate-limiting requests after several retries. Try again in a minute, or narrow the date range.')
+      throw new Error('The server is busy. Please try again in a minute, or choose a shorter date range.')
     }
     const waitSec = RETRY_DELAYS_SEC[attempt]
     for (let remaining = waitSec; remaining > 0; remaining--) {
-      onStatus?.(`Rate limit reached, retrying in ${remaining}s...`)
+      onStatus?.(`Server busy — retrying in ${remaining}s...`)
       await sleep(1000, signal)
     }
   }

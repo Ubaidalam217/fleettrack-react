@@ -1,10 +1,8 @@
 import DaywisePage from './DaywisePage'
 
 /**
- * /reports/usage-summary — the client's "Daywise Distance" sheet.
- *
- * Named for the menu entry it sits on (Summary Usage Report) while the page
- * titles itself Daywise Distance, which is what the reference calls it.
+ * /reports/daywise-distance — the "Daywise Distance Report" (renamed by the
+ * client from "Summary Usage Report"; the old path redirects here).
  */
 export default function SummaryUsageReport(props) {
   return <DaywisePage variant="distance" {...props} />

@@ -293,18 +293,17 @@ export async function fetchMovementMessages(deviceIds, fromTs, toTs, opts = {}) 
   for (let i = 0; i < deviceIds.length; i++) {
     if (signal?.aborted) throw abortError()
     const id = deviceIds[i]
-    const prefix = deviceIds.length > 1 ? `Vehicle ${i + 1}/${deviceIds.length} — ` : ''
-    onProgress?.({ phase: 'fetch', done: i, total: deviceIds.length, text: `${prefix}fetching messages...` })
+    onProgress?.({ phase: 'fetch', done: i, total: deviceIds.length, text: 'Generating report...' })
 
     const result = await fetchDeviceMessages(id, fromTs, toTs, {
       fields:   MOVEMENT_FIELDS,
       signal,
-      onStatus: text => onProgress?.({ phase: 'fetch', done: i, total: deviceIds.length, text: `${prefix}${text}` }),
+      onStatus: text => onProgress?.({ phase: 'fetch', done: i, total: deviceIds.length, text }),
     })
     byDevice.set(id, result)
   }
 
-  onProgress?.({ phase: 'fetch', done: deviceIds.length, total: deviceIds.length, text: 'Messages loaded' })
+  onProgress?.({ phase: 'fetch', done: deviceIds.length, total: deviceIds.length, text: 'Generating report...' })
   return byDevice
 }
 
@@ -475,7 +474,7 @@ export async function buildMovementReport(deviceIds, fromTs, toTs, statuses, tol
 
   const byDevice = await fetchMovementMessages(deviceIds, fromTs, toTs, { onProgress, signal })
 
-  onProgress?.({ phase: 'derive', done: 0, total: 1, text: 'Deriving movement rows...' })
+  onProgress?.({ phase: 'derive', done: 0, total: 1, text: 'Generating report...' })
   const report = deriveMovementReport(byDevice, { vehicles, statuses, applyTolerance, toleranceMeters })
   report.byDevice = byDevice
   report.geocoded = { resolved: 0, skipped: 0 }

@@ -59,6 +59,7 @@
 
 import { BASE_URL, HEADERS } from '../hooks/flespiConfig'
 import { DISTANCE_FIELDS, createDistanceStepper } from './distance'
+import { isSettled, readDay, writeDay } from './dayCache'
 
 /** Asia/Dubai. Fixed offset — the UAE has no DST, so no zone table is needed. */
 export const UAE_OFFSET_SEC = 4 * 3600
@@ -74,10 +75,12 @@ const MAX_GAP_SEC = 30 * 60
 
 /**
  * Days fetched at once. Flespi's REST limit is per account, so this is the knob
- * that trades wall-clock against the chance of a 429; three keeps a 31-day month
- * inside a few seconds and has not tripped the limit in testing.
+ * that trades wall-clock against the chance of a 429. A day for ten vehicles is
+ * ~1 MB, so six at once keeps a full month (~30 MB) inside the free plan's
+ * 50 MiB/min while halving the wait of the old three; past days then come from
+ * the browser cache (utils/dayCache.js) on every later run.
  */
-const CONCURRENCY = 3
+const CONCURRENCY = 6
 
 // Only what the two reports read. Comma-separated STRING: Flespi rejects an
 // array outright ("#/fields: invalid type 'array', allowed only string").
@@ -192,16 +195,15 @@ async function fetchWithRetry(url, { signal, onStatus }) {
     const res = await fetch(url, { headers: HEADERS, signal })
     if (res.status !== 429) {
       if (!res.ok) {
-        const body = await res.text()
-        throw new Error(`Flespi /messages ${res.status}: ${body.slice(0, 200)}`)
+        throw new Error(`Could not load the report data (error ${res.status}). Please try again.`)
       }
       return res.json()
     }
     if (attempt >= RETRY_DELAYS_SEC.length) {
-      throw new Error('Flespi is still rate-limiting requests after several retries. Try again in a minute, or pick a shorter month.')
+      throw new Error('The server is busy. Please try again in a minute.')
     }
     for (let left = RETRY_DELAYS_SEC[attempt]; left > 0; left--) {
-      onStatus?.(`Rate limited by Flespi — retrying in ${left}s...`)
+      onStatus?.(`Server busy — retrying in ${left}s...`)
       await sleep(1000, signal)
     }
   }
@@ -223,10 +225,23 @@ async function fetchDay(deviceIds, dayStart, opts) {
     count: MAX_MESSAGES,
     fields: FIELDS,
   })
-  const url = `${BASE_URL}/gw/devices/${deviceIds.join(',')}/messages?data=${encodeURIComponent(data)}`
-  const json = await fetchWithRetry(url, opts)
+  const ids = [...deviceIds].sort((a, b) => a - b).join(',')
+  const url = `${BASE_URL}/gw/devices/${ids}/messages?data=${encodeURIComponent(data)}`
+
+  // A finished day never changes, so it is read from the browser cache when it
+  // can be (utils/dayCache.js). Work Hour and Distance share the same fetch, so
+  // one run fills the cache for both.
+  const cacheKey = `${FIELDS}|${ids}|${dayStart}`
+  const settled = isSettled((dayStart + 86400) * 1000)
+  let result = settled ? await readDay(cacheKey) : null
+  if (!result) {
+    const json = await fetchWithRetry(url, opts)
+    result = json.result || []
+    if (settled) writeDay(cacheKey, result)
+  }
+
   const byDevice = new Map()
-  for (const m of json.result || []) {
+  for (const m of result) {
     const id = m['device.id']
     if (id == null) continue
     if (!byDevice.has(id)) byDevice.set(id, [])
@@ -263,7 +278,7 @@ export async function fetchDaywiseMonth(deviceIds, year, month, opts = {}) {
   for (let d = 1; d <= lastDay; d++) days.push(d)
 
   const report = text => onProgress?.({ done, total: lastDay, text })
-  report('Fetching...')
+  report('Generating report...')
 
   // A fixed pool rather than Promise.all over everything: thirty simultaneous
   // requests is the quickest way to earn the 429 this whole module is shaped
@@ -285,7 +300,7 @@ export async function fetchDaywiseMonth(deviceIds, year, month, opts = {}) {
         byDevice.get(id).push(...msgs)
       }
       done += 1
-      report(`Fetching day ${done} of ${lastDay}...`)
+      report('Generating report...')
     }
   }
 
