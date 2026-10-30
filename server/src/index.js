@@ -5,6 +5,7 @@
 import env from './env.js'
 import prisma from './prisma.js'
 import { createApp } from './app.js'
+import { startDailyUsageJob } from './lib/dailyUsage.js'
 
 const app = createApp()
 
@@ -16,6 +17,9 @@ const server = app.listen(env.PORT, () => {
       : '[fleetmax] CORS allowlist is empty — no browser origin may call this API'
   )
 })
+
+// Precomputes the Daywise reports' figures in the background (lib/dailyUsage.js).
+const stopDailyUsage = startDailyUsageJob()
 
 /**
  * Graceful shutdown.
@@ -31,6 +35,7 @@ async function shutdown(signal) {
   if (shuttingDown) return
   shuttingDown = true
   console.log(`[fleetmax] ${signal} received, shutting down`)
+  stopDailyUsage()
 
   const forceExit = setTimeout(() => {
     console.error('[fleetmax] shutdown timed out, exiting')

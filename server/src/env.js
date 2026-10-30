@@ -120,6 +120,21 @@ const schema = z.object({
   GEOCODER_MIN_INTERVAL_MS: z.coerce.number().int().min(0).default(1100),
   GEOCODER_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(1),
   GEOCODER_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+
+  /**
+   * The Daywise reports' background job (lib/dailyUsage.js). It keeps this many
+   * UAE days, up to today, computed in the DailyUsage table — the default covers
+   * this month and the last two. Older months are computed the first time someone
+   * asks for them. "false" turns the job off (the reports then fetch in the
+   * browser, as before); it never runs under test.
+   */
+  DAILY_USAGE_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform(v => v === 'true'),
+  DAILY_USAGE_BACKFILL_DAYS: z.coerce.number().int().min(1).max(400).default(92),
+  /** How often today and the last two days, which can still change, are recomputed. */
+  DAILY_USAGE_REFRESH_MS: z.coerce.number().int().min(30_000).default(5 * 60 * 1000),
 })
 
 const parsed = schema.safeParse(process.env)

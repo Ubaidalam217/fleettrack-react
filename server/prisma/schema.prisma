@@ -485,3 +485,34 @@ model GeocodeCache {
   address   String?
   createdAt DateTime @default(now())
 }
+
+/// One Flespi device's distance and engine-on time for one UAE day, computed by
+/// src/lib/dailyUsage.js so the Daywise reports read a month in one query
+/// instead of fetching ~30 days of raw messages per click.
+///
+/// A derived summary, not telemetry: the positions themselves stay in Flespi
+/// (see the header), and every row can be rebuilt from there. Keyed by Flespi
+/// device id rather than Vehicle, because a device that is not registered in
+/// Settings yet is still on a Super Admin's report, and report scoping already
+/// works in device ids (lib/flespiGrant.js buildAcl).
+model DailyUsage {
+  deviceId    Int
+  /// UAE calendar date, "YYYY-MM-DD".
+  day         String  @db.VarChar(10)
+  distanceKm  Float
+  ignitionSec Int
+  /// The device hit Flespi's per-request message cap that day, so it may be short.
+  capped      Boolean @default(false)
+
+  @@id([deviceId, day])
+  @@index([day])
+}
+
+/// Which UAE days dailyUsage.js has computed. A day absent here has no figures
+/// yet; a final one ended over 48 h ago, so late uploads are in and it is never
+/// computed again.
+model UsageDay {
+  day        String   @id @db.VarChar(10)
+  final      Boolean  @default(false)
+  computedAt DateTime @default(now())
+}
