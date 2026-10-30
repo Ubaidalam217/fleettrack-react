@@ -100,13 +100,22 @@ const PHOTON_WIDE_RADIUS_KM = 5
  *          answered but has nothing for the point
  * @throws  on a network error, timeout or non-2xx — never cached
  */
-async function lookup(lat, lng, options = {}) {
-  const base = env.GEOCODER_URL.replace(/\/+$/, '')
-  // English either way: without it both answer in the local script, which for
-  // this fleet's region means Arabic in every row of the report.
-  const url = env.GEOCODER_KIND === 'photon'
-    ? `${base}/reverse?lat=${lat}&lon=${lng}&lang=en&limit=1${options.widened ? `&radius=${PHOTON_WIDE_RADIUS_KM}` : ''}`
-    : `${base}/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=0&accept-language=en`
+async function lookup(lat, lng) {
+  if (env.GEOCODER_KIND !== 'photon') return askNominatim(env.GEOCODER_URL, lat, lng)
+  // GEOCODER_URL may list several Photon instances, one per region (the fleet
+  // drives in the UAE and in The Gambia, and each regional dump is its own
+  // database). Each is asked in turn — first at Photon's default 1 km, then
+  // widened — and the first address wins. A miss costs milliseconds.
+  for (const base of geocoderUrls()) {
+    const found = (await askPhoton(base, lat, lng, false)) ?? (await askPhoton(base, lat, lng, true))
+    if (found) return found
+  }
+  return null
+}
+
+const geocoderUrls = () => env.GEOCODER_URL.split(',').map(u => u.trim().replace(/\/+$/, '')).filter(Boolean)
+
+async function getJson(url) {
   const res = await fetch(url, {
     headers: {
       Accept: 'application/json',
@@ -116,17 +125,26 @@ async function lookup(lat, lng, options = {}) {
     signal: AbortSignal.timeout(env.GEOCODER_TIMEOUT_MS),
   })
   if (!res.ok) throw new Error(`Geocoder answered ${res.status}`)
-  const json = await res.json()
-  if (env.GEOCODER_KIND !== 'photon') {
-    return typeof json?.display_name === 'string' ? json.display_name : null
-  }
-  const found = formatPhotonAddress(json?.features?.[0]?.properties)
-  if (found || options.widened) return found
-  // Photon only looks 1 km out by default, and the industrial and desert roads
-  // this fleet drives (ICAD, truck routes) have nothing named that close —
-  // measured, those rows came back empty and showed raw coordinates. The
-  // nearest named street or site within 5 km is what the client wants instead.
-  return lookup(lat, lng, { widened: true })
+  return res.json()
+}
+
+// English either way: without it both answer in the local script, which for
+// this fleet's region means Arabic in every row of the report.
+async function askNominatim(base, lat, lng) {
+  const json = await getJson(`${base.replace(/\/+$/, '')}/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=0&accept-language=en`)
+  return typeof json?.display_name === 'string' ? json.display_name : null
+}
+
+/**
+ * Photon only looks 1 km out by default, and the industrial and desert roads
+ * this fleet drives (ICAD, truck routes) have nothing named that close —
+ * measured, those rows came back empty and showed raw coordinates — so a miss
+ * is asked again at PHOTON_WIDE_RADIUS_KM for the nearest named street or site.
+ */
+async function askPhoton(base, lat, lng, widened) {
+  const radius = widened ? `&radius=${PHOTON_WIDE_RADIUS_KM}` : ''
+  const json = await getJson(`${base}/reverse?lat=${lat}&lon=${lng}&lang=en&limit=1${radius}`)
+  return formatPhotonAddress(json?.features?.[0]?.properties)
 }
 
 /**

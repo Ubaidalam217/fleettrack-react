@@ -59,6 +59,8 @@ describe('deriveMovementReport', () => {
     expect(deriveMovementReport(trip(), { vehicles }).vehicles[0].driverId).toBe('Legacy Name')
     const named = deriveMovementReport(trip(), { vehicles, driverNameFor: v => (v.ident === '863071011234501' ? 'Ahmed Khan' : '') })
     expect(named.vehicles[0].driverId).toBe('Ahmed Khan')
+    // Every printed row carries it too — the table and the PDF/Excel read row.driverId.
+    expect(named.vehicles[0].dates.flatMap(d => d.rows).every(r => r.driverId === 'Ahmed Khan')).toBe(true)
     // A device with no metadata row at all still renders, with a blank cell.
     expect(deriveMovementReport(trip(), { driverNameFor: () => 'x' }).vehicles[0].driverId).toBe('')
   })

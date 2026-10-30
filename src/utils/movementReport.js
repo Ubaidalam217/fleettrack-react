@@ -359,6 +359,10 @@ export function deriveMovementReport(byDevice, opts = {}) {
 
     const rows = allRows.filter(r => keep.has(r.statusKey))
     if (rows.length === 0) continue
+    // The Driver ID column is printed per row (screen, PDF, Excel), so every row
+    // carries the vehicle's driver. deriveRows builds fresh rows on each call,
+    // so stamping them here never leaks into another derivation.
+    for (const r of rows) r.driverId = driverId
 
     const dates = []
     let current = null

@@ -116,7 +116,11 @@ const schema = z.object({
    * set GEOCODER_MIN_INTERVAL_MS=0 and GEOCODER_CONCURRENCY=8, and a fleet-day's
    * addresses resolve in seconds instead of half an hour.
    */
-  GEOCODER_URL: z.string().url().default('https://nominatim.openstreetmap.org'),
+  /** One URL, or (Photon) a comma-separated list asked in order — one instance per region. */
+  GEOCODER_URL: z
+    .string()
+    .default('https://nominatim.openstreetmap.org')
+    .refine(v => v.split(',').every(u => z.string().url().safeParse(u.trim()).success), 'Each GEOCODER_URL entry must be a URL'),
   /** Which API GEOCODER_URL speaks: the public Nominatim, or a self-hosted Photon. */
   GEOCODER_KIND: z.enum(['nominatim', 'photon']).default('nominatim'),
   GEOCODER_MIN_INTERVAL_MS: z.coerce.number().int().min(0).default(1100),
