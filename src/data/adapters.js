@@ -44,7 +44,7 @@
  * wipe a shortName set from somewhere else.
  */
 
-import { DEFAULT_PASSWORD } from '../pages/settings/mockData'
+import { DEFAULT_PASSWORD, alertTypeOf } from '../pages/settings/mockData'
 
 /** '' / null / undefined → null, for a nullable foreign key or text column. */
 const orNull = v => {
@@ -371,39 +371,93 @@ const numOrNull = v => {
 
 // ── Alert ───────────────────────────────────────────────────────────────────
 
-export const alert = {
-  toFe: r => ({
-    id: r.id,
-    name: r.name ?? '',
-    type: r.type ?? 'temperature',
-    companyId: r.bgId ?? '',
-    allVehicles: !!r.allVehicles,
-    vehicleIds: Array.isArray(r.vehicleIds) ? [...r.vehicleIds] : [],
+/**
+ * The form keeps one flat `settings` bag per type; the API splits it in two.
+ * Temperature bounds are columns of their own (minTemp / maxTemp, which predate
+ * the other types), and everything else rides in the `params` JSON whose shape
+ * the server's cleanParams() checks per type.
+ */
+function alertSettingsToFe(type, r) {
+  const defaults = alertTypeOf(type)?.defaults() ?? {}
+  if (type === 'temperature') {
     // The form's bounds are text inputs, so a numeric column has to arrive as a
     // string — and null has to arrive as '' for a one-sided rule to render empty
     // rather than as "null".
-    settings: {
-      minTemp: numToText(r.minTemp),
-      maxTemp: numToText(r.maxTemp),
-    },
-    notify: { ...DEFAULT_NOTIFY, ...(r.notify ?? {}) },
-    status: r.status ?? 'Active',
-  }),
+    return { ...defaults, minTemp: numToText(r.minTemp), maxTemp: numToText(r.maxTemp) }
+  }
+  const out = { ...defaults }
+  for (const [k, v] of Object.entries(r.params ?? {})) {
+    out[k] = Array.isArray(v) ? [...v] : typeof v === 'number' ? String(v) : v
+  }
+  if (Array.isArray(out.geofenceIds)) out.allGeofences = out.geofenceIds.length === 0
+  return out
+}
+
+function alertParams(type, s) {
+  switch (type) {
+    case 'overspeed':
+      return { speedKmh: numOrNull(s.speedKmh) }
+    case 'idle':
+    case 'offline':
+      return { minutes: numOrNull(s.minutes) }
+    case 'geofence_enter':
+    case 'geofence_exit':
+      // [] is the server's "every geofence of the BG", so the All box sends that
+      // rather than today's ids — a fence drawn next month is covered too.
+      return { geofenceIds: s.allGeofences ? [] : [...(s.geofenceIds ?? [])] }
+    case 'night_driving':
+      return { from: s.from, to: s.to, minSpeedKmh: numOrNull(s.minSpeedKmh) }
+    case 'license_expiry':
+      return { days: numOrNull(s.days) }
+    default:
+      return {}
+  }
+}
+
+export const alert = {
+  toFe: r => {
+    const type = r.type ?? 'temperature'
+    return {
+      id: r.id,
+      name: r.name ?? '',
+      type,
+      severity: r.severity ?? 'Medium',
+      companyId: r.bgId ?? '',
+      allVehicles: !!r.allVehicles,
+      vehicleIds: Array.isArray(r.vehicleIds) ? [...r.vehicleIds] : [],
+      settings: alertSettingsToFe(type, r),
+      notify: { ...DEFAULT_NOTIFY, ...(r.notify ?? {}) },
+      emails: Array.isArray(r.emails) ? [...r.emails] : [],
+      status: r.status ?? 'Active',
+    }
+  },
   toApiCreate: r => ({
     bgId: r.companyId,
     ...alert.fields(r),
   }),
   toApiUpdate: r => alert.fields(r),
-  fields: r => ({
-    name: r.name,
-    type: r.type || 'temperature',
-    allVehicles: !!r.allVehicles,
-    // Only read by the server when allVehicles is false, but sent either way so
-    // toggling the mode back and forth in one edit session cannot lose the list.
-    vehicleIds: r.vehicleIds ?? [],
-    minTemp: orNull(r.settings?.minTemp),
-    maxTemp: orNull(r.settings?.maxTemp),
-    notify: r.notify ?? DEFAULT_NOTIFY,
-    status: r.status || 'Active',
-  }),
+  fields: r => {
+    const type = r.type || 'temperature'
+    const s = r.settings ?? {}
+    // Licence expiry watches drivers, not vehicles: it is always sent as
+    // all-vehicles so a stale explicit list from another type is not validated.
+    const byVehicle = alertTypeOf(type)?.vehicles !== false
+    return {
+      name: r.name,
+      type,
+      severity: r.severity || 'Medium',
+      params: alertParams(type, s),
+      emails: r.emails ?? [],
+      allVehicles: byVehicle ? !!r.allVehicles : true,
+      // Only read by the server when allVehicles is false, but sent either way so
+      // toggling the mode back and forth in one edit session cannot lose the list.
+      vehicleIds: byVehicle ? (r.vehicleIds ?? []) : [],
+      // A PUT that leaves these out clears them anyway (see the note at the top);
+      // sending null for other types says so on purpose.
+      minTemp: type === 'temperature' ? orNull(s.minTemp) : null,
+      maxTemp: type === 'temperature' ? orNull(s.maxTemp) : null,
+      notify: r.notify ?? DEFAULT_NOTIFY,
+      status: r.status || 'Active',
+    }
+  },
 }
