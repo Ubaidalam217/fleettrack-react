@@ -113,6 +113,30 @@ async function lookup(lat, lng) {
   return null
 }
 
+/**
+ * Last resort for what the regional Photon extracts do not cover: rural Gambia
+ * has only ~5,000 places in OpenStreetMap's Photon dump (1,158 points of one day
+ * came back empty), and a route can cross into Senegal. The public Nominatim
+ * has the full map; it is asked only for these leftovers, one lookup at a time
+ * at its 1-per-second policy, and only while a report is waiting for them —
+ * never from the background job — so it never sees bulk traffic.
+ */
+const hasFallback = () => env.GEOCODER_KIND === 'photon' && !!env.GEOCODER_FALLBACK_URL
+
+/** One public-Nominatim request at a time, at least 1.1 s apart, process-wide. */
+let nominatimChain = Promise.resolve()
+let nominatimLast = 0
+function nominatimSlot(task) {
+  const run = nominatimChain.then(async () => {
+    const wait = nominatimLast + 1100 - Date.now()
+    if (wait > 0) await new Promise(r => setTimeout(r, wait))
+    nominatimLast = Date.now()
+    return task()
+  })
+  nominatimChain = run.catch(() => {})
+  return run
+}
+
 const geocoderUrls = () => env.GEOCODER_URL.split(',').map(u => u.trim().replace(/\/+$/, '')).filter(Boolean)
 
 async function getJson(url) {
@@ -157,7 +181,7 @@ async function askPhoton(base, lat, lng, widened) {
  *          `addresses` holds every key now known (null = no address exists);
  *          `pending` counts keys still unknown
  */
-export async function reverseGeocodePoints(points, { resolve = 0, budgetMs = 20000 } = {}) {
+export async function reverseGeocodePoints(points, { resolve = 0, budgetMs = 20000, fallback = true } = {}) {
   const startedAt = Date.now()
 
   const order = []
@@ -170,6 +194,10 @@ export async function reverseGeocodePoints(points, { resolve = 0, budgetMs = 200
   }
 
   const addresses = {}
+  const store = async (key, address) => {
+    addresses[key] = address
+    await prisma.geocodeCache.upsert({ where: { key }, create: { key, address }, update: { address } })
+  }
   const rows = await prisma.geocodeCache.findMany({ where: { key: { in: order } } })
   for (const r of rows) addresses[r.key] = r.address
 
@@ -183,18 +211,31 @@ export async function reverseGeocodePoints(points, { resolve = 0, budgetMs = 200
     const { lat, lng } = coordsByKey.get(key)
     try {
       const address = await lookup(lat, lng)
-      addresses[key] = address
-      await prisma.geocodeCache.upsert({
-        where: { key },
-        create: { key, address },
-        update: { address },
-      })
+      // Nothing from Photon: leave it to the fallback below rather than caching
+      // "no address" — the fallback may well have one.
+      if (address === null && hasFallback()) return
+      await store(key, address)
     } catch {
       // One failed lookup is not worth failing the report over: the row shows
       // its coordinates, nothing is cached, and a later call retries it.
     }
   }))
   await Promise.all(lookups)
+
+  // The leftovers, outside the Photon lanes so they never hold up the fast
+  // lookups of another report, and only for a caller that is waiting.
+  if (fallback && hasFallback()) {
+    const left = batch.filter(k => !(k in addresses))
+    for (const key of left) {
+      if (Date.now() - startedAt > budgetMs) break
+      const { lat, lng } = coordsByKey.get(key)
+      try {
+        await store(key, await nominatimSlot(() => askNominatim(env.GEOCODER_FALLBACK_URL, lat, lng)))
+      } catch {
+        // Same as above: retried on the next call.
+      }
+    }
+  }
 
   return { addresses, pending: order.filter(k => !(k in addresses)).length }
 }

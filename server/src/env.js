@@ -121,6 +121,12 @@ const schema = z.object({
     .string()
     .default('https://nominatim.openstreetmap.org')
     .refine(v => v.split(',').every(u => z.string().url().safeParse(u.trim()).success), 'Each GEOCODER_URL entry must be a URL'),
+  /**
+   * Photon only: asked when no Photon instance has an address for a point (a
+   * region its extracts do not cover). Rate-limited to 1/s in lib/geocoder.js.
+   * Set to "" to turn the fallback off.
+   */
+  GEOCODER_FALLBACK_URL: z.string().default('https://nominatim.openstreetmap.org'),
   /** Which API GEOCODER_URL speaks: the public Nominatim, or a self-hosted Photon. */
   GEOCODER_KIND: z.enum(['nominatim', 'photon']).default('nominatim'),
   GEOCODER_MIN_INTERVAL_MS: z.coerce.number().int().min(0).default(1100),

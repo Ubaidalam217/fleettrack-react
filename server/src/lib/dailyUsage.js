@@ -248,7 +248,7 @@ async function resolveQueuedAddresses() {
       const points = addressQueue.shift()
       for (let i = 0; i < points.length; i += PREGEOCODE_BATCH) {
         const batch = points.slice(i, i + PREGEOCODE_BATCH)
-        await reverseGeocodePoints(batch, { resolve: batch.length, budgetMs: 60_000 })
+        await reverseGeocodePoints(batch, { resolve: batch.length, budgetMs: 60_000, fallback: false })
       }
     }
   } catch (err) {
