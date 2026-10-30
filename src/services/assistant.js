@@ -5,6 +5,9 @@
 // is what keeps React Fast Refresh working (same reason useToasts is split out
 // of Toasts.jsx).
 
+import { IS_REAL } from '../data/mode'
+import { request } from '../data/http'
+
 const ENDPOINT = '/.netlify/functions/ai-assistant'
 
 const FALLBACK = 'Assistant is unavailable right now. Please try again in a moment.'
@@ -16,6 +19,19 @@ const FALLBACK = 'Assistant is unavailable right now. Please try again in a mome
  * @throws  {Error} with a message safe to render in the UI
  */
 export async function askAssistant(messages) {
+  // Real mode: the backend serves the same handler at /api/assistant behind the
+  // login (routes/assistant.js), so the self-hosted site needs no Netlify.
+  if (IS_REAL) {
+    let data
+    try {
+      data = await request('/api/assistant', { method: 'POST', body: { messages }, unwrap: false })
+    } catch (err) {
+      throw new Error(err?.message && err.status !== 503 ? err.message : FALLBACK)
+    }
+    if (!data?.reply) throw new Error(FALLBACK)
+    return data.reply
+  }
+
   let res
   try {
     res = await fetch(ENDPOINT, {

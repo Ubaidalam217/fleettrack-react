@@ -35,6 +35,7 @@ import flespiProxyRoutes from './routes/flespiProxy.js'
 import reportRoutes from './routes/reports.js'
 import driverRoutes from './routes/drivers.js'
 import alertEventRoutes from './routes/alertEvents.js'
+import assistantRoutes from './routes/assistant.js'
 
 /**
  * CORS, from FRONTEND_ORIGINS.
@@ -134,6 +135,7 @@ export function createApp() {
   app.use('/api/reports', reportRoutes)
   app.use('/api/drivers', driverRoutes)
   app.use('/api/alert-events', alertEventRoutes)
+  app.use('/api/assistant', assistantRoutes)
 
   app.use(notFoundHandler)
   app.use(errorHandler)
