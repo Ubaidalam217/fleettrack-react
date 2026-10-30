@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUp, ArrowDown } from 'lucide-react'
 
 /**
@@ -29,10 +29,24 @@ import { ArrowUp, ArrowDown } from 'lucide-react'
 
 const MAX_WASH = 26 // percent of --ft-accent on the busiest cell
 
+/**
+ * Fitting the month on screen. The client asked for no horizontal scroll, so
+ * the day columns share whatever width the identity columns leave, and their
+ * font is sized so the longest value still fits its cell. A digit in the
+ * table's tabular figures is ~0.58em wide; DAY_PAD is a cell's side padding.
+ * Below MIN_FONT (a phone) the grid falls back to scrolling, because 7-pixel
+ * numbers would be unreadable.
+ */
+const DIGIT_EM = 0.58
+const DAY_PAD = 4
+const MIN_FONT = 8
+const MAX_FONT = 11.5
+
 const CSS = `
   .dw-wrap {
     position: relative;
     overflow: auto;
+    scrollbar-width: none;
     background: var(--c-card);
     border: 1px solid var(--c-border);
     border-radius: 12px;
@@ -114,6 +128,18 @@ const CSS = `
 
   .dw-sub { display: block; font-size: 10px; color: var(--c-text3); font-weight: 500; }
 
+  /* Fit mode: a fixed layout sharing the width, day cells sized by the inline
+     font, identity cells cut with an ellipsis rather than pushing days out. */
+  .dw-wrap::-webkit-scrollbar { display: none; }
+  .dw.dw-fit { table-layout: fixed; width: 100%; min-width: 0; }
+  .dw.dw-fit th.dw-dayh, .dw.dw-fit td.dw-day, .dw.dw-fit tfoot td:not(.dw-fix) {
+    padding-left: ${DAY_PAD / 2}px; padding-right: ${DAY_PAD / 2}px;
+    font-size: var(--dw-day-font); overflow: hidden;
+  }
+  .dw.dw-fit tfoot td:not(.dw-fix) { font-size: var(--dw-foot-font); }
+  .dw.dw-fit .dw-fix { overflow: hidden; text-overflow: ellipsis; }
+  .dw.dw-fit thead th { white-space: normal; line-height: 1.25; }
+
   /* Print: the app chrome is dropped by the page, and the grid loses its
      scroller so every day column lands on paper. */
   @media print {
@@ -190,6 +216,34 @@ export default function DaywiseTable({
 
   const grandTotal = useMemo(() => rows.reduce((a, r) => a + totalOf(r), 0), [rows, totalOf])
 
+  // How wide the grid may be, followed as the window or the sidebar changes.
+  const wrapRef = useRef(null)
+  const [wrapW, setWrapW] = useState(0)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([entry]) => setWrapW(entry.contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // The longest value a day cell and a footer cell will print, in characters.
+  const fit = useMemo(() => {
+    if (!wrapW) return null
+    let rowChars = 4
+    for (const r of rows) {
+      for (let d = 1; d <= Math.min(days, lastElapsed); d++) rowChars = Math.max(rowChars, format(valueOf(r, d)).length)
+    }
+    let footChars = rowChars
+    for (let d = 1; d <= Math.min(days, lastElapsed); d++) footChars = Math.max(footChars, format(dayTotals[d]).length)
+    const fixedW = columns.reduce((a, c) => a + c.width, 0)
+    const dayW = (wrapW - fixedW - 2) / days
+    const fontFor = chars => Math.min(MAX_FONT, (dayW - DAY_PAD) / (chars * DIGIT_EM))
+    const dayFont = fontFor(rowChars)
+    if (dayFont < MIN_FONT) return null
+    return { dayFont, footFont: Math.max(7, fontFor(footChars)) }
+  }, [wrapW, rows, days, lastElapsed, format, valueOf, dayTotals, columns])
+
   const wash = v => {
     if (!peak || v <= 0) return undefined
     // sqrt, not linear: most days cluster low, and a linear ramp leaves all of
@@ -199,9 +253,18 @@ export default function DaywiseTable({
   }
 
   return (
-    <div className="dw-wrap">
+    <div className="dw-wrap" ref={wrapRef}>
       <style>{CSS}</style>
-      <table className="dw">
+      <table
+        className={fit ? 'dw dw-fit' : 'dw'}
+        style={fit ? { '--dw-day-font': `${fit.dayFont.toFixed(2)}px`, '--dw-foot-font': `${fit.footFont.toFixed(2)}px` } : undefined}
+      >
+        {fit && (
+          <colgroup>
+            {columns.map(c => <col key={c.key} style={{ width: c.width }} />)}
+            {Array.from({ length: days }, (_, i) => <col key={`d${i}`} />)}
+          </colgroup>
+        )}
         <thead>
           <tr>
             {columns.map((c, i) => (
@@ -216,7 +279,7 @@ export default function DaywiseTable({
               />
             ))}
             {Array.from({ length: days }, (_, i) => i + 1).map(d => (
-              <th key={d} scope="col" className={d > lastElapsed ? 'dw-future' : undefined} style={{ minWidth: 52 }}>
+              <th key={d} scope="col" className={`dw-dayh${d > lastElapsed ? ' dw-future' : ''}`} style={fit ? undefined : { minWidth: 52 }}>
                 {dayLabel(d)}
               </th>
             ))}

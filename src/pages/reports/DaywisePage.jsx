@@ -42,7 +42,7 @@ import { exportDaywiseExcel, exportDaywisePdf, printDaywiseReport } from '../../
  * point of width it takes comes out of the 31 day columns in the PDF. It is the
  * CURRENT assignment — nothing on these trackers records who drove a past day.
  */
-const DRIVER_COLUMN = { key: 'driver', label: 'Driver', width: 120, get: r => r.driver || '—' }
+const DRIVER_COLUMN = { key: 'driver', label: 'Driver', width: 104, get: r => r.driver || '—' }
 
 const VARIANTS = {
   workHour: {
@@ -57,7 +57,7 @@ const VARIANTS = {
     // The reference's Work Hour sheet identifies a row by "Object" alone; the
     // client asked for the driver beside it.
     identity: [
-      { key: 'label', label: 'Object', width: 190, get: r => r.label },
+      { key: 'label', label: 'Object', width: 150, get: r => r.label },
       DRIVER_COLUMN,
     ],
     help: (
@@ -94,7 +94,7 @@ const VARIANTS = {
     // The client asked for the company in the report HEADER, not as a column:
     // it is shown once above the table and in the PDF/Excel band (bgLabel).
     identity: [
-      { key: 'label', label: 'Vehicle', width: 190, get: r => r.label },
+      { key: 'label', label: 'Vehicle', width: 150, get: r => r.label },
       DRIVER_COLUMN,
     ],
     help: (
@@ -298,7 +298,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
 
   const columns = useMemo(() => [
     ...V.identity,
-    { key: 'total', label: V.totalLabel, width: 110, align: 'right', get: r => V.format(V.totalOf(r)) },
+    { key: 'total', label: V.totalLabel, width: 92, align: 'right', get: r => V.format(V.totalOf(r)) },
   ], [V])
 
   const title = `${V.title} — ${monthLabel(year, monthNo)}`
