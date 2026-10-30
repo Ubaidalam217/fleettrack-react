@@ -147,7 +147,9 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
   // ── filter form state ──
   const now = useRef(new Date()).current
   const [activeTab,        setActiveTab]        = useState('trip')
-  const [selectedVehicleIds, setSelectedVehicleIds] = useState(null) // null = all
+  // null = all. Starts empty on every report: the client wants the vehicles
+  // picked on purpose, not the whole fleet selected by default.
+  const [selectedVehicleIds, setSelectedVehicleIds] = useState([])
   const [selectedGeoIds,   setSelectedGeoIds]   = useState(null) // null = all (Set<string> to narrow)
   const [selectedAddrIds,  setSelectedAddrIds]  = useState(null)
   const [preset,           setPreset]           = useState('today')
@@ -170,7 +172,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
   const busy = progress !== null
 
   const effectiveVehicleIds = selectedVehicleIds ?? vehicles.map(v => v.id)
-  const allVehiclesSelected = selectedVehicleIds === null || selectedVehicleIds.length === vehicles.length
+  const allVehiclesSelected = selectedVehicleIds === null || (vehicles.length > 0 && selectedVehicleIds.length === vehicles.length)
 
   const fromTs = useMemo(() => Math.floor(new Date(`${fromDate}T${fromTime}:00`).getTime() / 1000), [fromDate, fromTime])
   const toTs   = useMemo(() => Math.floor(new Date(`${toDate}T${toTime}:59`).getTime() / 1000),   [toDate, toTime])
@@ -181,7 +183,9 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
 
   const vehicleSelectionLabel = allVehiclesSelected
     ? `All (${vehicles.length})`
-    : effectiveVehicleIds.length === 1
+    : effectiveVehicleIds.length === 0
+      ? 'Select vehicles'
+      : effectiveVehicleIds.length === 1
       ? (vehicles.find(v => v.id === effectiveVehicleIds[0])?.master?.plateNo || vehicles.find(v => v.id === effectiveVehicleIds[0])?.name || '1 vehicle')
       : `${effectiveVehicleIds.length} vehicles`
 

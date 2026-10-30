@@ -175,7 +175,9 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
   const today = useRef(currentUaeMonth()).current
   const [month, setMonth] = useState(() => `${today.year}-${String(today.month).padStart(2, '0')}`)
   const [search, setSearch] = useState('')
-  const [selectedIds, setSelectedIds] = useState(null) // null = all
+  // null = all. Starts empty on every report: the client wants the vehicles
+  // picked on purpose, not the whole fleet selected by default.
+  const [selectedIds, setSelectedIds] = useState([])
   const [selectedBgs, setSelectedBgs] = useState(null) // null = all
   const [sort, setSort] = useState({ key: 'total', dir: 'desc' })
 
@@ -185,12 +187,14 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
   }, [month])
 
   const effectiveIds = selectedIds ?? vehicles.map(v => v.id)
-  const allSelected = selectedIds === null || selectedIds.length === vehicles.length
+  const allSelected = selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
   const allBgs = selectedBgs === null || selectedBgs.length === bgOptions.length
 
   const selectionLabel = allSelected
     ? `All (${vehicles.length})`
-    : effectiveIds.length === 1
+    : effectiveIds.length === 0
+      ? 'Select vehicles'
+      : effectiveIds.length === 1
       ? (vehicles.find(v => v.id === effectiveIds[0])?.label ?? '1 vehicle')
       : `${effectiveIds.length} vehicles`
 

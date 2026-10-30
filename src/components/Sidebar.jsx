@@ -225,10 +225,10 @@ function SupportModal({ onClose }) {
 // this component, and keeping it beside the markup is what stops the hover and
 // active states drifting apart from the tokens they are built on.
 const SIDEBAR_CSS = `
-  .ft-sb-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.16) transparent; }
-  .ft-sb-scroll::-webkit-scrollbar { width: 6px; }
-  .ft-sb-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 3px; }
-  .ft-sb-scroll::-webkit-scrollbar-track { background: transparent; }
+  /* The menu still scrolls with the wheel or a swipe; the client asked for no
+     visible scrollbar (2026-10-31), the same as the page itself (.no-scrollbar). */
+  .ft-sb-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+  .ft-sb-scroll::-webkit-scrollbar { display: none; }
 
   .ft-sb-item {
     display: flex; align-items: center; gap: 11px;

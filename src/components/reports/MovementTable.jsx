@@ -112,7 +112,8 @@ function MovementTable({ report, filters, limit, onShowMore }) {
         </div>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
+      {/* Scrolls sideways on a narrow screen, with the bar hidden as the client asked. */}
+      <div className="no-scrollbar" style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 900 }}>
           <colgroup>
             {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
