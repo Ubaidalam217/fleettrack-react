@@ -35,3 +35,6 @@ deno.lock
 docs/SESSION-*
 docs/aitracking-reference*
 docs/FleetmaX-What-We-Built.*
+
+# Claude Code local state (agent worktrees)
+.claude/
