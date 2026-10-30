@@ -94,7 +94,9 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
 
   // ── filter form state ──
   const now = useRef(new Date()).current
-  const [selectedIds,     setSelectedIds]     = useState(null) // null = all
+  // null = all. Starts empty: the client wants the vehicles picked on purpose,
+  // not every vehicle fetched by default.
+  const [selectedIds,     setSelectedIds]     = useState([])
   const [preset,          setPreset]          = useState('today')
   const [fromDate,        setFromDate]        = useState(() => dateStr(startOfDay(now)))
   const [toDate,          setToDate]          = useState(() => dateStr(now))
@@ -124,7 +126,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   const fetching = busy && progress.phase !== 'geocode'
 
   const effectiveIds = selectedIds ?? vehicles.map(v => v.id)
-  const allSelected  = selectedIds === null || selectedIds.length === vehicles.length
+  const allSelected  = selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
 
   const fromTs = useMemo(() => Math.floor(new Date(`${fromDate}T${fromTime}:00`).getTime() / 1000), [fromDate, fromTime])
   const toTs   = useMemo(() => Math.floor(new Date(`${toDate}T${toTime}:59`).getTime() / 1000),   [toDate, toTime])
@@ -134,7 +136,9 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
 
   const selectionLabel = allSelected
     ? `All (${vehicles.length})`
-    : effectiveIds.length === 1
+    : effectiveIds.length === 0
+      ? 'Select vehicles'
+      : effectiveIds.length === 1
       ? (vehicles.find(v => v.id === effectiveIds[0])?.master?.plateNo || vehicles.find(v => v.id === effectiveIds[0])?.name || '1 vehicle')
       : `${effectiveIds.length} vehicles`
 
