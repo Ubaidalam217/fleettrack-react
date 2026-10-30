@@ -151,6 +151,7 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
             one URL for the Movement Report and the sidebar highlights one row. */}
         <Route path="/reports"        element={<Navigate to={REPORTS_DEFAULT_PATH} replace />} />
         <Route path="/settings"       element={guard(<SettingsPage   {...themeProps} />)} />
+        <Route path="/settings/profile" element={guard(<SettingsPage {...themeProps} />)} />
         <Route path="/notifications"  element={guard(<Notifications  {...themeProps} />)} />
         <Route path="/announcements"  element={guard(<Announcements  {...themeProps} />)} />
 

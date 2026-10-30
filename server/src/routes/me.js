@@ -9,9 +9,13 @@
  */
 
 import { Router } from 'express'
+import { z } from 'zod'
 import prisma from '../prisma.js'
 import { asyncHandler } from '../lib/http.js'
+import { optionalText } from '../lib/fields.js'
 import { scopedWhere } from '../lib/scope.js'
+import { publicUser } from '../lib/serialize.js'
+import { validate } from '../middleware/validate.js'
 
 const router = Router()
 
@@ -54,6 +58,30 @@ router.get(
       count: rows.length,
       role: req.scope.role,
     })
+  })
+)
+
+/**
+ * PATCH /api/me — the signed-in account's own display name and mobile, from
+ * Account Settings. Any role, itself only: PUT /api/users/:id is the admin
+ * path and needs a higher role than the account being edited, which would
+ * leave a BG user unable to fix their own name. Role, scope, email and
+ * password are deliberately not editable here.
+ */
+const profileSchema = z.object({
+  shortName: optionalText(120),
+  mobile: optionalText(40),
+})
+
+router.patch(
+  '/',
+  validate(profileSchema),
+  asyncHandler(async (req, res) => {
+    const row = await prisma.user.update({
+      where: { id: req.scope.userId },
+      data: { shortName: req.body.shortName, mobile: req.body.mobile },
+    })
+    res.json({ data: publicUser(row) })
   })
 )
 

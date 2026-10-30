@@ -232,3 +232,20 @@ describe('first login', () => {
     expect(res.status).toBe(401)
   })
 })
+
+describe('PATCH /api/me — own profile', () => {
+  it('lets any role change its own name and mobile, and nothing else', async () => {
+    const res = await request(app)
+      .patch('/api/me')
+      .set(auth(fx.tokens.subUserA1a))
+      .send({ shortName: '  Hassan  ', mobile: '+971 50 000 0000', role: 'SUPER_ADMIN', email: 'x@y.z' })
+    expect(res.status).toBe(200)
+    expect(res.body.data).toMatchObject({ shortName: 'Hassan', mobile: '+971 50 000 0000', role: 'SUB_USER' })
+    expect(res.body.data.email).toBe(fx.users.subUserA1a.email)
+    expect(res.body.data.passwordHash).toBeUndefined()
+  })
+
+  it('needs a login', async () => {
+    expect((await request(app).patch('/api/me').send({ shortName: 'X' })).status).toBe(401)
+  })
+})
