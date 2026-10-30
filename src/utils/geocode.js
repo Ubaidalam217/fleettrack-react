@@ -25,6 +25,8 @@ const cache = new Map() // "lat,lng" (rounded) -> address string
 
 /** Points per cache-only request; the server accepts up to 2000. */
 const SERVER_CACHE_CHUNK = 1000
+/** Cache-only requests in flight at once. */
+const SERVER_CACHE_PARALLEL = 4
 /**
  * Live lookups per request, the server's maximum. With the self-hosted Photon
  * on the VPS a batch takes ~1 s; against the public Nominatim (a dev server)
@@ -261,14 +263,23 @@ async function resolveViaServer(pending, addresses, { limit, signal, onProgress 
   const points = p => p.map(({ lat, lng }) => ({ lat, lng }))
 
   try {
-    for (let i = 0; i < pending.length; i += SERVER_CACHE_CHUNK) {
-      if (signal?.aborted) throw abortError()
-      const res = await request('/api/geocode/reverse', {
-        method: 'POST',
-        body: { points: points(pending.slice(i, i + SERVER_CACHE_CHUNK)), resolve: 0 },
-      })
-      absorb(res.addresses, addresses)
+    // Cache-only chunks, a few at once: a week for ten vehicles is ~20k points,
+    // and twenty of these one after another took ~5 s by themselves.
+    const starts = []
+    for (let i = 0; i < pending.length; i += SERVER_CACHE_CHUNK) starts.push(i)
+    let next = 0
+    const worker = async () => {
+      while (next < starts.length) {
+        if (signal?.aborted) throw abortError()
+        const i = starts[next++]
+        const res = await request('/api/geocode/reverse', {
+          method: 'POST',
+          body: { points: points(pending.slice(i, i + SERVER_CACHE_CHUNK)), resolve: 0 },
+        })
+        absorb(res.addresses, addresses)
+      }
     }
+    await Promise.all(Array.from({ length: Math.min(SERVER_CACHE_PARALLEL, starts.length) }, worker))
   } catch (err) {
     if (err?.name === 'AbortError') throw err
     // Server unreachable: the rows keep their coordinates.
