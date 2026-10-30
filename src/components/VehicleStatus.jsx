@@ -61,8 +61,10 @@ export default function VehicleStatus({ vehicles, loading }) {
         <a href="/tracking" className="ft-link shrink-0">View all →</a>
       </div>
 
-      <div className="overflow-x-auto" style={{ flex: '1 1 auto' }}>
-        <table style={{ width: '100%', fontSize: 12, minWidth: 480 }}>
+      {/* Fits the card: no minimum width, and a long location is cut with an
+          ellipsis (full text on hover). The client asked for no scrollbar here. */}
+      <div className="overflow-x-auto no-scrollbar" style={{ flex: '1 1 auto' }}>
+        <table style={{ width: '100%', fontSize: 12 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--c-border2)', background: 'var(--c-thead)' }}>
               {['Vehicle', 'Status', 'Location', 'Speed', 'Updated'].map(h => (
@@ -119,7 +121,7 @@ export default function VehicleStatus({ vehicles, loading }) {
                     </td>
 
                     {/* Location */}
-                    <td className="px-3 py-2.5" style={{ color: 'var(--c-text2)', whiteSpace: 'nowrap' }}>
+                    <td className="px-3 py-2.5" title={locationStr(v)} style={{ color: 'var(--c-text2)', whiteSpace: 'nowrap', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {locationStr(v)}
                     </td>
 
