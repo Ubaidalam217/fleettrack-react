@@ -117,6 +117,8 @@ const schema = z.object({
    * addresses resolve in seconds instead of half an hour.
    */
   GEOCODER_URL: z.string().url().default('https://nominatim.openstreetmap.org'),
+  /** Which API GEOCODER_URL speaks: the public Nominatim, or a self-hosted Photon. */
+  GEOCODER_KIND: z.enum(['nominatim', 'photon']).default('nominatim'),
   GEOCODER_MIN_INTERVAL_MS: z.coerce.number().int().min(0).default(1100),
   GEOCODER_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(1),
   GEOCODER_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),

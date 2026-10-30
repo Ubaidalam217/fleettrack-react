@@ -56,16 +56,54 @@ function throttled(task) {
 }
 
 /**
+ * A Photon feature's properties as one comma-separated address, most specific
+ * first — the same shape as Nominatim's display_name ("3, Al Awsimah Street,
+ * Mussafah, Abu Dhabi, United Arab Emirates"), so cached rows from either
+ * geocoder read alike and the frontend's shortenAddress() trims both the same.
+ */
+export function formatPhotonAddress(p) {
+  if (!p) return null
+  const parts = [
+    p.housenumber,
+    p.name && p.name !== p.street ? p.name : null,
+    p.street,
+    p.locality,
+    p.district,
+    p.city,
+    p.county,
+    p.state,
+    p.postcode,
+    p.country,
+  ]
+  const seen = new Set()
+  const out = []
+  for (const part of parts) {
+    const v = typeof part === 'string' ? part.trim() : ''
+    if (!v || seen.has(v.toLowerCase())) continue
+    seen.add(v.toLowerCase())
+    out.push(v)
+  }
+  return out.length ? out.join(', ') : null
+}
+
+/**
  * One lookup against the configured geocoder.
+ *
+ * GEOCODER_KIND picks the API: `nominatim` (the public default) or `photon` —
+ * the self-hosted one on the VPS, which answers in milliseconds with no usage
+ * limit, so a report's addresses fill in at once instead of at 1 per second.
  *
  * @returns {Promise<string|null>} the address, or null when the geocoder
  *          answered but has nothing for the point
  * @throws  on a network error, timeout or non-2xx — never cached
  */
 async function lookup(lat, lng) {
-  // accept-language=en: without it Nominatim answers in the local script, which
-  // for this fleet's region means Arabic in every row of the report.
-  const url = `${env.GEOCODER_URL.replace(/\/+$/, '')}/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=0&accept-language=en`
+  const base = env.GEOCODER_URL.replace(/\/+$/, '')
+  // English either way: without it both answer in the local script, which for
+  // this fleet's region means Arabic in every row of the report.
+  const url = env.GEOCODER_KIND === 'photon'
+    ? `${base}/reverse?lat=${lat}&lon=${lng}&lang=en&limit=1`
+    : `${base}/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=0&accept-language=en`
   const res = await fetch(url, {
     headers: {
       Accept: 'application/json',
@@ -76,6 +114,7 @@ async function lookup(lat, lng) {
   })
   if (!res.ok) throw new Error(`Geocoder answered ${res.status}`)
   const json = await res.json()
+  if (env.GEOCODER_KIND === 'photon') return formatPhotonAddress(json?.features?.[0]?.properties)
   return typeof json?.display_name === 'string' ? json.display_name : null
 }
 

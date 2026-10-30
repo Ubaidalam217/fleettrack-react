@@ -74,3 +74,31 @@ describe('POST /api/geocode/reverse', () => {
     expect((await post(fx.tokens.superAdmin, { points: [{ lat: 24, lng: 54 }], resolve: 500 })).status).toBe(400)
   })
 })
+
+describe('formatPhotonAddress', () => {
+  it('reads like a Nominatim display_name, most specific first, without repeats', async () => {
+    const { formatPhotonAddress } = await import('../src/lib/geocoder.js')
+    expect(formatPhotonAddress({
+      housenumber: '3',
+      street: 'Al Awsimah Street',
+      name: 'Al Awsimah Street',
+      district: 'Mussafah Commercial',
+      city: 'Abu Dhabi',
+      state: 'Abu Dhabi Emirate',
+      postcode: '20610',
+      country: 'United Arab Emirates',
+    })).toBe('3, Al Awsimah Street, Mussafah Commercial, Abu Dhabi, Abu Dhabi Emirate, 20610, United Arab Emirates')
+  })
+
+  it('keeps a place name that is not the street, and drops a city repeated as the state', async () => {
+    const { formatPhotonAddress } = await import('../src/lib/geocoder.js')
+    expect(formatPhotonAddress({ name: 'ADNOC Station', street: 'E11', city: 'Dubai', state: 'Dubai', country: 'United Arab Emirates' }))
+      .toBe('ADNOC Station, E11, Dubai, United Arab Emirates')
+  })
+
+  it('answers null for an empty feature', async () => {
+    const { formatPhotonAddress } = await import('../src/lib/geocoder.js')
+    expect(formatPhotonAddress(undefined)).toBeNull()
+    expect(formatPhotonAddress({})).toBeNull()
+  })
+})
