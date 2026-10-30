@@ -24,7 +24,7 @@
 // the reported range (its first row is 0.000 and its last equals the vehicle
 // group row's total), NOT the absolute odometer — so that is what is computed.
 
-import { fetchDeviceMessages, isAbortError } from './replay'
+import { fetchFleetMessages, isAbortError } from './replay'
 import { reverseGeocodeMany, geocodeKey, shortenAddress, countUncached } from './geocode'
 import { haversineMeters, createDistanceStepper } from './distance'
 
@@ -277,40 +277,24 @@ function deriveRows(messages, { applyTolerance, toleranceMeters, intervalSec = 0
 // ── fetch ─────────────────────────────────────────────────────────────────
 
 /**
- * Fetch raw messages for every selected device, sequentially.
- *
- * Sequential on purpose: Flespi's REST rate limit is per-account, so firing ten
- * devices' chunks in parallel is the fastest way to earn a 429 on all of them.
- * fetchDeviceMessages already chunks per calendar day and survives 429 with a
- * visible countdown, and that countdown is forwarded through onProgress.
+ * Fetch raw messages for every selected device: one request per day for the
+ * whole fleet (replay.js fetchFleetMessages), a few days at a time. It replaced
+ * one device after another, which made a single day for ten vehicles ten
+ * sequential requests — 6.9 s measured, against ~1 s now. The 429 countdown is
+ * still forwarded through onProgress.
  *
  * @returns {Promise<Map<number, {messages: object[], truncated: boolean}>>}
  */
 export async function fetchMovementMessages(deviceIds, fromTs, toTs, opts = {}) {
   const { onProgress, signal } = opts
-  const byDevice = new Map()
-
-  for (let i = 0; i < deviceIds.length; i++) {
-    if (signal?.aborted) throw abortError()
-    const id = deviceIds[i]
-    onProgress?.({ phase: 'fetch', done: i, total: deviceIds.length, text: 'Generating report...' })
-
-    const result = await fetchDeviceMessages(id, fromTs, toTs, {
-      fields:   MOVEMENT_FIELDS,
-      signal,
-      onStatus: text => onProgress?.({ phase: 'fetch', done: i, total: deviceIds.length, text }),
-    })
-    byDevice.set(id, result)
-  }
-
-  onProgress?.({ phase: 'fetch', done: deviceIds.length, total: deviceIds.length, text: 'Generating report...' })
+  onProgress?.({ phase: 'fetch', done: 0, total: 1, text: 'Generating report...' })
+  const byDevice = await fetchFleetMessages(deviceIds, fromTs, toTs, {
+    fields: MOVEMENT_FIELDS,
+    signal,
+    onStatus: text => onProgress?.({ phase: 'fetch', done: 0, total: 1, text: /busy/i.test(text) ? text : 'Generating report...' }),
+  })
+  onProgress?.({ phase: 'fetch', done: 1, total: 1, text: 'Generating report...' })
   return byDevice
-}
-
-function abortError() {
-  const err = new Error('Cancelled')
-  err.name = 'AbortError'
-  return err
 }
 
 // ── grouping ──────────────────────────────────────────────────────────────

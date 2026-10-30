@@ -46,6 +46,7 @@
 import env from '../env.js'
 import prisma from '../prisma.js'
 import * as flespi from './flespi.js'
+import { geocodeKey, reverseGeocodePoints } from './geocoder.js'
 import {
   DAYWISE_FIELDS, MAX_MESSAGES, UAE_OFFSET_SEC,
   daysInMonth, deriveDeviceMonth, lastElapsedDay,
@@ -194,6 +195,66 @@ async function computeDays(dayStarts) {
         update: { final, computedAt: new Date() },
       }),
     ])
+    queueAddresses(ds, await get(ds))
+  }
+}
+
+// ── Addresses in advance ────────────────────────────────────────────────────
+//
+// The Movement Report shows an address on every row, and the first report of
+// a day had to look up its ~4,000 new positions while the client waited (~2 min
+// with the self-hosted Photon). This job already holds every message of the
+// day, so it looks them up here instead and the report finds them cached.
+// Only against the self-hosted Photon — never as bulk traffic to the public
+// Nominatim — and only for recent days, the ones reports are opened for; an
+// older day still resolves on demand the first time.
+
+/** Days back from today whose positions are looked up in advance. */
+const PREGEOCODE_DAYS = 7
+/**
+ * Points per call. Small, because the lookups share the geocoder's queue with
+ * reports being opened right now, which then wait behind at most one batch.
+ */
+const PREGEOCODE_BATCH = 50
+
+const addressQueue = []
+let resolvingAddresses = false
+
+function queueAddresses(dayStart, dayMsgs) {
+  if (env.GEOCODER_KIND !== 'photon') return
+  if (dayStart < uaeDayStartFor(nowSec()) - (PREGEOCODE_DAYS - 1) * DAY) return
+  const seen = new Set()
+  const points = []
+  for (const msgs of dayMsgs.values()) {
+    for (const m of msgs) {
+      const lat = m['position.latitude']
+      const lng = m['position.longitude']
+      if (lat == null || lng == null) continue
+      const key = geocodeKey(lat, lng)
+      if (seen.has(key)) continue
+      seen.add(key)
+      points.push({ lat, lng })
+    }
+  }
+  if (points.length) addressQueue.push(points)
+  resolveQueuedAddresses()
+}
+
+async function resolveQueuedAddresses() {
+  if (resolvingAddresses) return
+  resolvingAddresses = true
+  try {
+    while (addressQueue.length) {
+      const points = addressQueue.shift()
+      for (let i = 0; i < points.length; i += PREGEOCODE_BATCH) {
+        const batch = points.slice(i, i + PREGEOCODE_BATCH)
+        await reverseGeocodePoints(batch, { resolve: batch.length, budgetMs: 60_000 })
+      }
+    }
+  } catch (err) {
+    console.error(`[fleetmax] address pre-lookup failed: ${err.message}`)
+  } finally {
+    resolvingAddresses = false
   }
 }
 
@@ -202,6 +263,7 @@ async function computeDays(dayStarts) {
 /** Days a report asked for that the backfill window does not cover. */
 const wanted = new Set()
 let running = false
+let addressesPrimed = false
 let kick = null
 
 /** One pass: every non-final day in the window, plus any day a report asked for. */
@@ -218,6 +280,16 @@ export async function refreshDailyUsage() {
     select: { day: true },
   })
   for (const { day } of final) candidates.delete(day)
+
+  // Once per process: the recent days that are already final are fetched again
+  // too, so their addresses get looked up in advance (queueAddresses) after a
+  // restart or a deploy, not only the two or three days still changing.
+  if (!addressesPrimed) {
+    addressesPrimed = true
+    if (env.GEOCODER_KIND === 'photon') {
+      for (let ds = today - (PREGEOCODE_DAYS - 1) * DAY; ds <= today; ds += DAY) candidates.add(dayKey(ds))
+    }
+  }
 
   const todo = [...candidates].map(dayStartOf).sort((a, b) => a - b)
   if (!todo.length) return 0
