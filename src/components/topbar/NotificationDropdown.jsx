@@ -1,7 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useNotifications } from '../../hooks/useNotifications'
+import { IS_REAL } from '../../data/mode'
+import { useAlertEvents, markAlertEventsRead, markAllAlertEventsRead } from '../../data/alertEvents'
+import { severityTone, alertTypeIcon } from '../alerts/alertStyle'
+import { eventVehicleName, eventDetail } from '../alerts/alertFormat'
 
 // ── Severity display config ────────────────────────────────────────────────
 const SEV = {
@@ -19,7 +23,7 @@ function relTime(ts) {
   if (diff < 60_000)         return 'Just now'
   if (diff < 3_600_000)      return `${Math.floor(diff / 60_000)} min ago`
   if (diff < 86_400_000)     return `${Math.floor(diff / 3_600_000)} hr ago`
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} days ago`
+  if (diff < 7 * 86_400_000) { const d = Math.floor(diff / 86_400_000); return `${d} day${d === 1 ? '' : 's'} ago` }
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
@@ -46,9 +50,29 @@ function groupItems(items) {
   return groups
 }
 
+/**
+ * A server alert event in this list's item shape. `tone` carries its own colour
+ * and type icon, because the server's Low…Critical scale and its ten alert types
+ * are not the browser engine's info/warning/critical.
+ */
+function serverItem(e) {
+  const tone = severityTone(e.severity)
+  const Icon = alertTypeIcon(e.type)
+  return {
+    id:          e.id,
+    title:       e.title,
+    // Without the vehicle the server folds in: it is shown on its own line.
+    message:     eventDetail(e),
+    timestamp:   Date.parse(e.occurredAt),
+    read:        !!e.readAt,
+    vehicleName: eventVehicleName(e),
+    tone:        { color: tone.color, bg: tone.bg, icon: <Icon size={13} strokeWidth={2.4} /> },
+  }
+}
+
 // ── Item row ───────────────────────────────────────────────────────────────
 function NotifItem({ item, onRead }) {
-  const sev = SEV[item.severity] || SEV.info
+  const sev = item.tone || SEV[item.severity] || SEV.info
   return (
     <button
       onClick={() => onRead(item.id)}
@@ -102,7 +126,11 @@ function EmptyState({ tab }) {
         {tab === 'alerts' ? 'No alerts yet' : 'No announcements'}
       </p>
       <p style={{ fontSize: 11, color: 'var(--c-text3)', margin: '4px 0 0', opacity: 0.7 }}>
-        {tab === 'alerts' ? 'Live fleet alerts appear here within 60 seconds.' : 'Check back later for updates.'}
+        {tab !== 'alerts'
+          ? 'Check back later for updates.'
+          : IS_REAL
+            ? 'Alerts appear here when a rule in Settings > Alerts fires.'
+            : 'Live fleet alerts appear here within 60 seconds.'}
       </p>
     </div>
   )
@@ -156,7 +184,27 @@ export default function NotificationDropdown() {
   const panelRef   = useRef(null)
   const navigate   = useNavigate()
 
-  const { alerts, announcements, unreadAlerts, unreadAnnouncements, markRead, markAllRead } = useNotifications()
+  const local  = useNotifications()
+  const server = useAlertEvents()
+
+  // Real mode: the Alerts tab is the server's alert history and its unread
+  // count; announcements stay in the browser store in both modes.
+  const serverAlerts = useMemo(
+    () => (IS_REAL ? server.events.map(serverItem) : []),
+    [server.events]
+  )
+  const alerts       = IS_REAL ? serverAlerts : local.alerts
+  const unreadAlerts = IS_REAL ? server.unreadCount : local.unreadAlerts
+  const { announcements, unreadAnnouncements } = local
+
+  const markRead = id => {
+    if (IS_REAL && tab === 'alerts') markAlertEventsRead([id])
+    else local.markRead(id)
+  }
+  const markAllRead = () => {
+    if (IS_REAL && tab === 'alerts') markAllAlertEventsRead()
+    else local.markAllRead(tab === 'alerts' ? 'alert' : 'announcement')
+  }
 
   const totalUnread = unreadAlerts + unreadAnnouncements
   const items = tab === 'alerts' ? alerts : announcements
@@ -229,7 +277,13 @@ export default function NotificationDropdown() {
           color: 'var(--c-text2)',
           background: open ? 'color-mix(in srgb, var(--ft-accent) 8%, transparent)' : 'transparent',
         }}
-        title={totalUnread > 0 ? `${totalUnread} alert${totalUnread !== 1 ? 's' : ''} in last 24 hours` : 'Notifications'}
+        title={
+          totalUnread === 0
+            ? 'Notifications'
+            : IS_REAL
+              ? `${totalUnread} unread notification${totalUnread !== 1 ? 's' : ''}`
+              : `${totalUnread} alert${totalUnread !== 1 ? 's' : ''} in last 24 hours`
+        }
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
           <path fillRule="evenodd" clipRule="evenodd" d="M10.75 2.29a.75.75 0 00-1.5 0v.54A6.92 6.92 0 003.62 9.17v5.29H3.33a.75.75 0 000 1.5h17.34a.75.75 0 000-1.5h-.29V9.17A6.92 6.92 0 0014.75 2.83v-.54a.75.75 0 00-1.5 0v.28c-.41-.07-.83-.11-1.25-.11-.42 0-.84.04-1.25.11v-.28zM5.12 9.17a5.38 5.38 0 0113.76 0v5.29H5.12V9.17zM8 18.46a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 018 18.46z" fill="currentColor"/>
@@ -273,7 +327,7 @@ export default function NotificationDropdown() {
               </div>
               {totalUnread > 0 && (
                 <button
-                  onClick={() => markAllRead(tab === 'alerts' ? 'alert' : 'announcement')}
+                  onClick={markAllRead}
                   style={{ fontSize: 11, color: 'var(--ft-accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
                 >
                   Mark all as read

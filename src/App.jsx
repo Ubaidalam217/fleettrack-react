@@ -37,6 +37,7 @@ import { IS_REAL } from './data/mode'
 import { PHASE, restore, useSession } from './data/session'
 import { useSettingsData } from './data/settings'
 import { useFleetScopeLoader } from './data/fleetScope'
+import { useAlertEventsLoader } from './data/alertEvents'
 
 // ── Seed announcements once on first load ──────────────────────────────────
 const SEED_KEY = 'announcements_seeded'
@@ -99,6 +100,8 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
    */
   useSettingsData()
   useFleetScopeLoader()
+  // The server's alert history for the bell and the Notifications page.
+  useAlertEventsLoader()
 
   // Seed once on mount
   useEffect(() => {

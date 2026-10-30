@@ -55,26 +55,99 @@ ported hooks and
  */
 
 /**
- * Alert types. Temperature is the only one the client needs today, but the
- * registry is the extension point: a new type is one entry here, one settings
- * block and one validator in Alerts.jsx. The dropdown, the table's Type column
- * and the conditional settings section all read from this list, so nothing
- * else has to learn the new name.
+ * Alert types — the frontend half of TYPES in server/src/lib/alertEngine.js.
+ * Keep the values and the defaults in step with it: the server fills a missing
+ * parameter from its own defaults, so a drift here shows the user one number
+ * and evaluates another.
+ *
+ * The registry is the extension point: a new type is one entry here, one
+ * settings block and one validator in Alerts.jsx. The dropdown, the table's
+ * Type column, the conditional settings section and the Notifications page's
+ * type filter all read from this list, so nothing else has to learn the name.
  *
  * `defaults()` returns the blank `settings` bag for that type, which is what
- * the form swaps in when the type changes.
+ * the form swaps in when the type changes. Numbers are strings because they
+ * are bound to inputs; adapters.js converts them on the way to the API.
+ * `vehicles: false` marks a type that is not scoped to vehicles at all.
+ * `hint` is the one-line explanation shown under the Alert Type dropdown.
  */
 export const ALERT_TYPES = [
   {
+    value: 'overspeed',
+    label: 'Over Speed',
+    hint: 'Raised when a vehicle goes faster than the speed limit.',
+    defaults: () => ({ speedKmh: '120' }),
+  },
+  {
+    value: 'idle',
+    label: 'Idle',
+    hint: 'Raised when the engine runs with the vehicle standing still.',
+    defaults: () => ({ minutes: '15' }),
+  },
+  {
+    value: 'geofence_enter',
+    label: 'Geofence Entry',
+    hint: 'Raised when a vehicle enters one of the chosen geofences.',
+    // allGeofences is form-only: it tells "all of them" apart from "chose some
+    // and then unticked the last one". An empty geofenceIds is what the server
+    // reads as all.
+    defaults: () => ({ geofenceIds: [], allGeofences: true }),
+  },
+  {
+    value: 'geofence_exit',
+    label: 'Geofence Exit',
+    hint: 'Raised when a vehicle leaves one of the chosen geofences.',
+    defaults: () => ({ geofenceIds: [], allGeofences: true }),
+  },
+  {
+    value: 'ignition_on',
+    label: 'Ignition On',
+    hint: 'Raised each time a vehicle’s ignition is switched on.',
+    defaults: () => ({}),
+  },
+  {
+    value: 'ignition_off',
+    label: 'Ignition Off',
+    hint: 'Raised each time a vehicle’s ignition is switched off.',
+    defaults: () => ({}),
+  },
+  {
+    value: 'offline',
+    label: 'Offline (no data)',
+    hint: 'Raised when a tracker stops sending data for longer than the set time.',
+    defaults: () => ({ minutes: '60' }),
+  },
+  {
     value: 'temperature',
     label: 'Temperature High/Low',
+    hint: 'Raised when the temperature probe reads outside the range.',
     defaults: () => ({ minTemp: '', maxTemp: '' }),
+  },
+  {
+    value: 'night_driving',
+    label: 'Night Driving',
+    hint: 'Raised once a night when a vehicle is driven inside the night window (UAE time).',
+    defaults: () => ({ from: '23:00', to: '05:00', minSpeedKmh: '10' }),
+  },
+  {
+    value: 'license_expiry',
+    label: 'Driver Licence Expiry',
+    hint: 'Raised when a driver’s licence is about to expire, and again when it has expired.',
+    defaults: () => ({ days: '30' }),
+    vehicles: false,
   },
 ]
 
 export function alertTypeLabel(value) {
   return ALERT_TYPES.find(t => t.value === value)?.label || '—'
 }
+
+export function alertTypeOf(value) {
+  return ALERT_TYPES.find(t => t.value === value) ?? null
+}
+
+/** Mirror of SEVERITIES in server/src/lib/alertEngine.js, lowest first. */
+export const ALERT_SEVERITIES = ['Low', 'Medium', 'High', 'Critical']
 
 /**
  * Geofence/Address categories. Deliberately a flat string list rather than an
@@ -250,13 +323,45 @@ export function emptyAlert() {
     id: null,
     name:        '',
     type:        ALERT_TYPES[0].value,
+    severity:    'Medium',
     companyId:   '',
     allVehicles: true,
     vehicleIds:  [],
     settings:    ALERT_TYPES[0].defaults(),
-    // UI only this phase — nothing dispatches on these yet.
+    // Where the alert goes. `emails` is only read while notify.email is on; it is
+    // kept when email is switched off so turning it back on does not lose the list.
     notify:      { inApp: true, email: false, sms: false },
+    emails:      [],
     status:      'Active',
+  }
+}
+
+/**
+ * A stored alert widened to the full shape, with every array copied.
+ *
+ * Rows saved before severity, emails and the per-type settings existed — the
+ * seeds, and anything in a browser's localStorage from an older build — come
+ * through here, so the form can read every key without guarding. The copies
+ * mean an edit never mutates the stored row, so Back really discards it.
+ */
+export function normalizeAlert(row) {
+  const base = emptyAlert()
+  if (!row) return base
+  const type = alertTypeOf(row.type) ? row.type : base.type
+  const settings = { ...alertTypeOf(type).defaults(), ...(row.settings ?? {}) }
+  if (Array.isArray(settings.geofenceIds)) {
+    settings.geofenceIds = [...settings.geofenceIds]
+    settings.allGeofences = settings.geofenceIds.length === 0
+  }
+  return {
+    ...base,
+    ...row,
+    type,
+    severity:   ALERT_SEVERITIES.includes(row.severity) ? row.severity : base.severity,
+    vehicleIds: [...(row.vehicleIds ?? [])],
+    settings,
+    notify:     { ...base.notify, ...(row.notify ?? {}) },
+    emails:     [...(row.emails ?? [])],
   }
 }
 
@@ -440,16 +545,22 @@ const SEED_VEHICLES = [
 
 const SEED_ALERTS = [
   {
-    id: 'a1', name: 'Reefer temperature breach', type: 'temperature',
+    id: 'a1', name: 'Reefer temperature breach', type: 'temperature', severity: 'High',
     companyId: 'c3', allVehicles: true, vehicleIds: [],
     settings: { minTemp: '-18', maxTemp: '-2' },
-    notify: { inApp: true, email: true, sms: false }, status: 'Active',
+    notify: { inApp: true, email: true, sms: false }, emails: ['ops@example.com'], status: 'Active',
   },
   {
-    id: 'a2', name: 'Cabin overheat — city vans', type: 'temperature',
+    id: 'a2', name: 'Cabin overheat — city vans', type: 'temperature', severity: 'Medium',
     companyId: 'c2', allVehicles: false, vehicleIds: ['v6'],
     settings: { minTemp: '', maxTemp: '45' },
-    notify: { inApp: true, email: false, sms: false }, status: 'Inactive',
+    notify: { inApp: true, email: false, sms: false }, emails: [], status: 'Inactive',
+  },
+  {
+    id: 'a3', name: 'Highway over speed', type: 'overspeed', severity: 'Critical',
+    companyId: 'c1', allVehicles: true, vehicleIds: [],
+    settings: { speedKmh: '120' },
+    notify: { inApp: true, email: false, sms: false }, emails: [], status: 'Active',
   },
 ]
 
@@ -1236,6 +1347,8 @@ export function useAlerts() {
   return useSyncExternalStore(alertStore.subscribe, alertStore.get, alertStore.get)
 }
 
+// Rows are stored whole, so severity, emails and each type's settings persist
+// without the store knowing about them; normalizeAlert() widens older rows.
 export function addAlert(alert) {
   const row = { ...alert, id: makeId('a') }
   alertStore.set(list => [...list, row])

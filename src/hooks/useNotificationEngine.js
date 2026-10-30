@@ -3,6 +3,7 @@ import { generateNotifications } from '../services/notificationEngine'
 import * as store from '../services/notificationStore'
 import { sendPushNotification } from '../services/pushNotifications'
 import { useFlespiMQTT } from './useFlespiMQTT'
+import { IS_REAL } from '../data/mode'
 
 const PREV_KEY = 'ft_eng_prev_snap'
 const TIME_KEY = 'ft_eng_time_tracking'
@@ -91,13 +92,23 @@ export function useNotificationEngine() {
 
       if (newNotifs.length) {
         store.addMany(newNotifs)
-        newNotifs.forEach(notif =>
-          sendPushNotification(notif.title, {
-            body:     notif.message,
-            tag:      `${notif.ruleId}-${notif.vehicleId}`,
-            severity: notif.severity,
-          })
-        )
+        // Real mode: the server's alert engine raises the alerts users act on —
+        // the bell, the Notifications page and the desktop notifications all
+        // come from it (data/alertEvents.js). This engine keeps running only
+        // because the Dashboard's Alerts Overview, Alert Markers and AI
+        // Insights cards are built on its rule ids and local store; it is not
+        // shown as a notification anywhere in real mode, so it must not pop a
+        // desktop notification either, or every over-speed would arrive twice
+        // (once at this engine's fixed 80 km/h, once at the rule's own limit).
+        if (!IS_REAL) {
+          newNotifs.forEach(notif =>
+            sendPushNotification(notif.title, {
+              body:     notif.message,
+              tag:      `${notif.ruleId}-${notif.vehicleId}`,
+              severity: notif.severity,
+            })
+          )
+        }
       }
 
       devLog(currentSnap, ruleResults ?? [], newNotifs)
