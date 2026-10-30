@@ -11,7 +11,8 @@ import {
 import { useAddress } from '../../hooks/useAddress'
 import { useVisible } from '../../hooks/useVisible'
 import { shortenAddress } from '../../utils/geocode'
-import { useSettingsProfile } from '../../data/settings'
+import { useSettingsProfile, useDriverForImei } from '../../data/settings'
+import { licenceExpiryState, formatExpiryDate } from '../../utils/licenceExpiry'
 
 // Replay used to be a tab here. It now lives in its own dock over the map and
 // is started from the vehicle's card in the list or from its marker popup.
@@ -236,33 +237,75 @@ function VehicleInfo({ v }) {
   )
 }
 
+const EXPIRY_COLOR = { valid: '#16a34a', expiring: '#d97706', expired: '#ef4444' }
+
+/** A phone number as a tap-to-call link, or null when there is none. */
+function telLink(mobile) {
+  if (!mobile) return null
+  return (
+    <a href={`tel:${mobile.replace(/[^\d+]/g, '')}`} style={{ color: 'var(--ft-accent)', textDecoration: 'none' }}>
+      {mobile}
+    </a>
+  )
+}
+
+/**
+ * The driver from Settings > Driver, joined to this device by IMEI → vehicle.
+ *
+ * The device's own Flespi metadata (`master.driver`) is the fallback: it is
+ * where a driver was typed before the Driver page existed, and a vehicle that
+ * still has one there should not go blank. The caption says which is shown.
+ */
 function DriverInfo({ v }) {
+  const driver = useDriverForImei(v.ident)
   const d = v.master.driver
 
-  if (!hasDriver(v.master)) {
+  if (!driver && !hasDriver(v.master)) {
     return (
       <div style={{ padding: '28px 4px', textAlign: 'center' }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text1)', marginBottom: 8 }}>
           No Driver Assigned
         </div>
         <div style={{ fontSize: 12, color: 'var(--c-text3)', lineHeight: 1.7, maxWidth: 420, margin: '0 auto' }}>
-          Driver details are stored per vehicle in Flespi metadata. Assigning a driver
-          and uploading their documents is wired up in Phase 5.
+          Assign a driver to this vehicle under Settings &gt; Driver.
         </div>
       </div>
     )
   }
 
+  const expiry = driver ? licenceExpiryState(driver.licenseExpiry) : null
+
   return (
     <>
-      <Section title="Driver">
-        <Grid>
-          <Field label="Name"           value={d.name} />
-          <Field label="Mobile"         value={d.mobile} />
-          <Field label="Nationality"    value={d.nationality} />
-          <Field label="License Expiry" value={d.licenseExpiry} />
-        </Grid>
-      </Section>
+      {driver ? (
+        <Section title="Driver" caption="from Settings > Driver">
+          <Grid>
+            <Field label="Name"       value={driver.name} />
+            <Field label="Mobile"     value={telLink(driver.mobile)} />
+            <Field label="Licence No" value={driver.licenseNo} />
+            <Field
+              label="Licence Expiry"
+              value={expiry.state === 'none' ? null : `${formatExpiryDate(driver.licenseExpiry)} · ${expiry.label}`}
+              color={EXPIRY_COLOR[expiry.state]}
+            />
+            <Field label="Status"     value={driver.status} />
+          </Grid>
+          {driver.notes && (
+            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--c-text2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+              {driver.notes}
+            </div>
+          )}
+        </Section>
+      ) : (
+        <Section title="Driver" caption="from the device's Flespi metadata">
+          <Grid>
+            <Field label="Name"           value={d.name} />
+            <Field label="Mobile"         value={telLink(d.mobile)} />
+            <Field label="Nationality"    value={d.nationality} />
+            <Field label="License Expiry" value={d.licenseExpiry} />
+          </Grid>
+        </Section>
+      )}
       <Section title="Activity">
         <Pending note="Vehicles Driven Today requires scanning every device's driver assignment against today's trips — Phase 5." />
       </Section>

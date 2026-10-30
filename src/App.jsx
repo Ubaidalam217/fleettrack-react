@@ -18,6 +18,7 @@ import SettingsBranch         from './pages/settings/Branch'
 import SettingsVehicle        from './pages/settings/Vehicle'
 import SettingsAlerts         from './pages/settings/Alerts'
 import SettingsGeofence       from './pages/settings/Geofence'
+import SettingsDriver         from './pages/settings/Driver'
 import SettingsComingSoon     from './pages/settings/ComingSoon'
 // Reports module — Movement Report, plus the two Daywise sheets (step 2)
 import ReportPlaceholder       from './pages/reports/ReportPlaceholder'
@@ -160,8 +161,8 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/settings/vehicle"         element={guard(<SettingsVehicle        {...themeProps} />)} />
         <Route path="/settings/alerts"          element={guard(<SettingsAlerts         {...themeProps} />)} />
         <Route path="/settings/geofence"        element={guard(<SettingsGeofence       {...themeProps} />)} />
+        <Route path="/settings/driver"          element={guard(<SettingsDriver         {...themeProps} />)} />
         {/* …and the branches that share one placeholder until they get built. */}
-        <Route path="/settings/driver"          element={guard(<SettingsComingSoon     {...themeProps} />)} />
         <Route path="/settings/master"          element={guard(<SettingsComingSoon     {...themeProps} />)} />
         <Route path="/settings/technician"      element={guard(<SettingsComingSoon     {...themeProps} />)} />
         <Route path="/settings/bulk-action"     element={guard(<SettingsComingSoon     {...themeProps} />)} />

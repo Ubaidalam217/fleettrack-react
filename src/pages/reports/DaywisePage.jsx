@@ -7,7 +7,9 @@ import {
   LABEL, FIELD, MultiSelect, CheckRow, ToolbarButton, HelpTip,
 } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
-import { settingsProfileForImei, useVehicles, useCompanies } from '../../data/settings'
+import {
+  settingsProfileForImei, driverNameForDevice, useVehicles, useCompanies, useDrivers,
+} from '../../data/settings'
 import {
   loadDaywiseMonth, warmDaywiseMonth, rowsFromDerived,
   currentUaeMonth, daysInMonth, lastElapsedDay, monthLabel,
@@ -34,6 +36,14 @@ import { exportDaywiseExcel, exportDaywisePdf, printDaywiseReport } from '../../
  * public read-only token covers it — same code path either way.
  */
 
+/**
+ * The vehicle's driver today, from Settings > Driver (legacy device metadata as
+ * the fallback). Narrow on purpose: it is a label beside the vehicle, and every
+ * point of width it takes comes out of the 31 day columns in the PDF. It is the
+ * CURRENT assignment — nothing on these trackers records who drove a past day.
+ */
+const DRIVER_COLUMN = { key: 'driver', label: 'Driver', width: 120, get: r => r.driver || '—' }
+
 const VARIANTS = {
   workHour: {
     title: 'Daywise Work Hour',
@@ -44,8 +54,12 @@ const VARIANTS = {
     valueOf: (row, day) => row.ignitionSec[day] ?? 0,
     totalOf: row => row.totalSec,
     dayLabel: d => String(d),
-    // The reference's Work Hour sheet identifies a row by "Object" alone.
-    identity: [{ key: 'label', label: 'Object', width: 190, get: r => r.label }],
+    // The reference's Work Hour sheet identifies a row by "Object" alone; the
+    // client asked for the driver beside it.
+    identity: [
+      { key: 'label', label: 'Object', width: 190, get: r => r.label },
+      DRIVER_COLUMN,
+    ],
     help: (
       <>
         <p style={{ margin: '0 0 8px' }}>
@@ -79,7 +93,10 @@ const VARIANTS = {
     dayLabel: d => String(d).padStart(2, '0'),
     // The client asked for the company in the report HEADER, not as a column:
     // it is shown once above the table and in the PDF/Excel band (bgLabel).
-    identity: [{ key: 'label', label: 'Vehicle', width: 190, get: r => r.label }],
+    identity: [
+      { key: 'label', label: 'Vehicle', width: 190, get: r => r.label },
+      DRIVER_COLUMN,
+    ],
     help: (
       <>
         <p style={{ margin: '0 0 8px' }}>
@@ -122,6 +139,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
   // settingsProfileForImei reads both stores.
   const settingsVehicles = useVehicles()
   const companies = useCompanies()
+  const drivers = useDrivers()
 
   /**
    * The live fleet, joined to its Settings registration.
@@ -138,14 +156,15 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
         ident: v.ident,
         label: profile.plateNo || v.master?.plateNo || profile.fleetNo || v.name,
         company: profile.linked ? (profile.bgName || NOT_ASSIGNED) : NOT_ASSIGNED,
+        driver: driverNameForDevice(v),
       }
     })
     return list.sort((a, b) => a.label.localeCompare(b.label))
-    // settingsVehicles and companies are not read directly here — they are the
-    // stores settingsProfileForImei reads, so they belong in the deps even
-    // though the linter cannot see through the call.
+    // settingsVehicles, companies and drivers are not read directly here — they
+    // are the stores settingsProfileForImei and driverNameForDevice read, so they
+    // belong in the deps even though the linter cannot see through the call.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, settingsVehicles, companies])
+  }, [data, settingsVehicles, companies, drivers])
 
   const bgOptions = useMemo(
     () => [...new Set(vehicles.map(v => v.company))].sort((a, b) => a.localeCompare(b)),
@@ -251,6 +270,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
       rows = rows.filter(r =>
         r.label.toLowerCase().includes(q) ||
         r.company.toLowerCase().includes(q) ||
+        r.driver.toLowerCase().includes(q) ||
         String(r.ident ?? '').includes(q)
       )
     }
@@ -371,7 +391,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
                     <input
                       type="search"
                       style={{ ...FIELD, paddingLeft: 30 }}
-                      placeholder="Vehicle, company or IMEI"
+                      placeholder="Vehicle, driver, company or IMEI"
                       value={search}
                       onChange={e => setSearch(e.target.value)}
                     />

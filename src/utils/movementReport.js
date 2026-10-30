@@ -308,6 +308,10 @@ export async function fetchMovementMessages(deviceIds, fromTs, toTs, opts = {}) 
  * @param {object} opts
  * @param {object[]} opts.vehicles  from useFlespiData — supplies name + master
  * @param {string[]} opts.statuses  status keys to keep
+ * @param {(vehicle) => string} opts.driverNameFor  the Driver ID column. Injected
+ *        so this file stays free of the Settings store; the page passes
+ *        driverNameForDevice. It is the vehicle's driver NOW — there is no
+ *        driver-tag hardware to say who drove a past trip.
  * @returns {{vehicles: object[], totalRows: number, truncated: boolean}}
  */
 export function deriveMovementReport(byDevice, opts = {}) {
@@ -317,6 +321,7 @@ export function deriveMovementReport(byDevice, opts = {}) {
     applyTolerance = false,
     toleranceMeters = 0,
     intervalSec = 0,
+    driverNameFor = v => v?.master?.driver?.name || '',
   } = opts
 
   const metaById = new Map(vehicles.map(v => [v.id, v]))
@@ -331,7 +336,7 @@ export function deriveMovementReport(byDevice, opts = {}) {
     const meta   = metaById.get(deviceId)
     const master = meta?.master
     const vehicleId = master?.plateNo || meta?.name || `Device ${deviceId}`
-    const driverId  = master?.driver?.name || ''
+    const driverId  = (meta && driverNameFor(meta)) || ''
 
     const allRows = deriveRows(messages, { applyTolerance, toleranceMeters, intervalSec })
     if (allRows.length === 0) continue

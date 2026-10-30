@@ -53,4 +53,13 @@ describe('deriveMovementReport', () => {
     // Distance is identical — thinning drops rows, not kilometres.
     expect(thin.vehicles[0].totalDistanceKm).toBeCloseTo(full.vehicles[0].totalDistanceKm, 9)
   })
+
+  it('fills Driver ID from the injected lookup, else the device metadata', () => {
+    const vehicles = [{ id: 1, name: 'Unit 1', ident: '863071011234501', master: { driver: { name: 'Legacy Name' } } }]
+    expect(deriveMovementReport(trip(), { vehicles }).vehicles[0].driverId).toBe('Legacy Name')
+    const named = deriveMovementReport(trip(), { vehicles, driverNameFor: v => (v.ident === '863071011234501' ? 'Ahmed Khan' : '') })
+    expect(named.vehicles[0].driverId).toBe('Ahmed Khan')
+    // A device with no metadata row at all still renders, with a blank cell.
+    expect(deriveMovementReport(trip(), { driverNameFor: () => 'x' }).vehicles[0].driverId).toBe('')
+  })
 })

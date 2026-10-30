@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from 'react'
 import { defaultUserSetting } from './subuserSchema'
+import { isoDateFromToday } from '../../utils/licenceExpiry'
 // Real mode keeps the stores and selectors below but replaces their data source.
 // See the note above the localStorage section for what that changes.
 import { IS_REAL as REAL_MODE } from '../../data/mode'
@@ -259,6 +260,32 @@ export function emptyAlert() {
   }
 }
 
+/**
+ * A driver on one BG's books, optionally assigned to one of its vehicles.
+ *
+ * `vehicleId` here is a vehicle's record id (the same id sub-user and alert
+ * `vehicleIds` hold) — NOT the vehicle row's own `vehicleId` field, which is the
+ * operator's fleet number. The name is the API's, kept so the boundary has one
+ * less translation; the comment is the price.
+ *
+ * A vehicle has at most one driver. Assigning one that is already driven MOVES
+ * it — see assignDriverVehicle() below, and the same rule on the server.
+ * `licenseExpiry` is a calendar date, "YYYY-MM-DD", or ''.
+ */
+export function emptyDriver() {
+  return {
+    id: null,
+    companyId:     '',
+    name:          '',
+    mobile:        '',
+    licenseNo:     '',
+    licenseExpiry: '',
+    vehicleId:     '',
+    notes:         '',
+    status:        'Active',
+  }
+}
+
 // A restricted account under a company, limited to the vehicles assigned to it.
 //
 // The six-tab form (see subuserSchema.js) added everything below the original
@@ -465,6 +492,18 @@ const SEED_GEOFENCES = [
   },
 ]
 
+// Expiry dates are relative to the first load, so a fresh demo always shows all
+// three chip states — valid, expiring soon and expired — whatever the date is.
+// v3 and the c3 fleet are left undriven on purpose: the vehicle picker and the
+// Live Map both have a "no driver" case to render from first load.
+const SEED_DRIVERS = [
+  { id: 'd1', companyId: 'c1', name: 'Ahmed Khan',     mobile: '+971 50 220 4411', licenseNo: 'AD-4471920', licenseExpiry: isoDateFromToday(540), vehicleId: 'v1', notes: '',                         status: 'Active'   },
+  { id: 'd2', companyId: 'c1', name: 'Rashid Ali',     mobile: '+971 50 220 4412', licenseNo: 'AD-5520183', licenseExpiry: isoDateFromToday(18),  vehicleId: 'v2', notes: 'Night shift, Mussafah.',  status: 'Active'   },
+  { id: 'd3', companyId: 'c1', name: 'Imran Siddiqui', mobile: '+971 52 118 9034', licenseNo: 'AD-3308871', licenseExpiry: isoDateFromToday(-12), vehicleId: '',   notes: 'Renewal in progress.',    status: 'Inactive' },
+  { id: 'd4', companyId: 'c2', name: 'Faisal Mahmood', mobile: '+971 55 404 1180', licenseNo: 'DXB-881204', licenseExpiry: isoDateFromToday(300), vehicleId: 'v5', notes: '',                         status: 'Active'   },
+  { id: 'd5', companyId: 'c2', name: 'Joseph Mathew',  mobile: '+971 55 404 1181', licenseNo: 'DXB-772019', licenseExpiry: '',                    vehicleId: 'v6', notes: '',                         status: 'Active'   },
+]
+
 const SEED_SUBUSERS = [
   { id: 's1', companyId: 'c1', name: 'Mussafah Dispatch', email: 'dispatch@alhabtoorlog.ae', password: DEFAULT_PASSWORD, vehicleIds: ['v1', 'v2'], branchIds: ['b1'] },
   { id: 's2', companyId: 'c2', name: 'Jebel Ali Ops',     email: 'jebelali@desertrose.ae',   password: DEFAULT_PASSWORD, vehicleIds: ['v5', 'v6', 'v7'], branchIds: ['b3'] },
@@ -546,6 +585,7 @@ function persist() {
       vehicles:  vehicleStore.get(),
       alerts:    alertStore.get(),
       geofences: geofenceStore.get(),
+      drivers:   driverStore.get(),
     }))
   } catch { /* private mode or quota — the session still works in memory */ }
 }
@@ -581,6 +621,9 @@ const subuserStore = createStore(hydrate('subusers',  SEED_SUBUSERS))
 const vehicleStore = createStore(hydrate('vehicles',  SEED_VEHICLES))
 const alertStore   = createStore(hydrate('alerts',    SEED_ALERTS))
 const geofenceStore = createStore(hydrate('geofences', SEED_GEOFENCES))
+// Added after v3 shipped. No key bump needed: a saved blob without `drivers`
+// simply fails hydrate's Array.isArray check and this one slice starts at seed.
+const driverStore  = createStore(hydrate('drivers',   SEED_DRIVERS))
 
 let nextId = Number.isFinite(saved?.nextId) ? saved.nextId : 100
 const makeId = prefix => `${prefix}${nextId++}`
@@ -606,6 +649,7 @@ const STORES = {
   vehicles: vehicleStore,
   alerts: alertStore,
   geofences: geofenceStore,
+  drivers: driverStore,
 }
 
 export function __replaceStore(key, rows) {
@@ -650,6 +694,7 @@ export function resetMockData() {
   subuserStore.set([...SEED_SUBUSERS])
   vehicleStore.set([...SEED_VEHICLES])
   alertStore.set([...SEED_ALERTS])
+  driverStore.set([...SEED_DRIVERS])
   // Each set() above persisted already; this one carries the reset counter.
   persist()
 }
@@ -911,6 +956,8 @@ export function removeVehicle(id) {
       ? { ...a, vehicleIds: a.vehicleIds.filter(x => x !== id) }
       : a
   )))
+  // The driver stays on the books, unassigned — the server's SetNull does the same.
+  driverStore.set(list => list.map(d => (d.vehicleId === id ? { ...d, vehicleId: '' } : d)))
 }
 
 /** Every vehicle belonging to one BG; empty array for an unknown id. */
@@ -1006,6 +1053,43 @@ export function settingsProfileForImei(imei) {
     // Vehicle form collects it), but the Live Map's ODO Reading is the
     // tracker's own figure — one odometer, from the device that measures it.
   }
+}
+
+/** The driver assigned to a Settings vehicle (by record id), or null. */
+export function driverForVehicleId(vehicleId) {
+  if (!vehicleId) return null
+  return driverStore.get().find(d => d.vehicleId === vehicleId) ?? null
+}
+
+/** The driver of the Settings vehicle registered to this IMEI, or null. */
+export function driverForVehicleImei(imei) {
+  return driverForVehicleId(vehicleByImei(imei)?.id)
+}
+
+/**
+ * A Live Map / report device's driver name, for display.
+ *
+ * Settings > Driver first. The older per-device Flespi metadata
+ * (services/vehicleMaster.js `master.driver`) is the fallback, so a device that
+ * had a name typed into it before the Driver page existed does not go blank.
+ */
+export function driverNameForDevice(device) {
+  return driverForVehicleImei(device?.ident)?.name || device?.master?.driver?.name || ''
+}
+
+/**
+ * Live driver lookup for one device. Subscribes to drivers AND vehicles: the
+ * IMEI → vehicle half of the join can change without any driver row changing.
+ */
+export function useDriverForImei(imei) {
+  const drivers  = useDrivers()
+  const vehicles = useVehicles()
+  return useMemo(
+    () => driverForVehicleImei(imei),
+    // Not read directly — they are the stores driverForVehicleImei reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [imei, drivers, vehicles]
+  )
 }
 
 /**
@@ -1187,4 +1271,48 @@ export function removeGeofence(id) {
 /** Every geofence belonging to one BG — the editor map's context layer. */
 export function geofencesForCompany(companyId) {
   return geofenceStore.get().filter(g => g.companyId === companyId)
+}
+
+// ── Drivers ────────────────────────────────────────────────────────────────
+
+export function useDrivers() {
+  return useSyncExternalStore(driverStore.subscribe, driverStore.get, driverStore.get)
+}
+
+/**
+ * The one-driver-per-vehicle rule, as the server applies it: whoever held this
+ * vehicle (other than `driverId` itself) is unassigned. Returns who lost it, in
+ * the server's `movedFrom` shape, so the page's toast reads the same in both modes.
+ */
+function assignDriverVehicle(vehicleId, driverId) {
+  if (!vehicleId) return null
+  const previous = driverStore.get().find(d => d.vehicleId === vehicleId && d.id !== driverId)
+  if (!previous) return null
+  driverStore.set(list => list.map(d => (d.id === previous.id ? { ...d, vehicleId: '' } : d)))
+  return { id: previous.id, name: previous.name }
+}
+
+/** @returns {{ row: object, movedFrom: {id, name} | null }} */
+export function addDriver(driver) {
+  const row = { ...driver, id: makeId('d') }
+  const movedFrom = assignDriverVehicle(row.vehicleId, row.id)
+  driverStore.set(list => [...list, row])
+  return { row, movedFrom }
+}
+
+/** @returns {{ row: object, movedFrom: {id, name} | null }} */
+export function updateDriver(id, patch) {
+  const movedFrom = assignDriverVehicle(patch.vehicleId, id)
+  driverStore.set(list => list.map(d => (d.id === id ? { ...d, ...patch, id } : d)))
+  return { row: driverStore.get().find(d => d.id === id) ?? null, movedFrom }
+}
+
+export function removeDriver(id) {
+  driverStore.set(list => list.filter(d => d.id !== id))
+}
+
+/** Every driver on one BG's books. */
+export function driversForCompany(companyId) {
+  if (!companyId) return []
+  return driverStore.get().filter(d => d.companyId === companyId)
 }

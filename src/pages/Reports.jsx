@@ -8,6 +8,7 @@ import MovementTable from '../components/reports/MovementTable'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../components/reports/controls'
 import { useFlespiData } from '../hooks/useFlespiData'
 import { IS_REAL } from '../data/mode'
+import { driverNameForDevice } from '../data/settings'
 import {
   fetchMovementMessages,
   deriveMovementReport,
@@ -199,6 +200,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
       setProgress({ phase: 'derive', done: 0, total: 1, text: 'Generating report...' })
       const built = deriveMovementReport(messages, {
         vehicles, statuses, applyTolerance, toleranceMeters, intervalSec,
+        driverNameFor: driverNameForDevice,
       })
       built.deriveSig = deriveSig
       // `skipped` is what the "N locations unresolved" line reads, so seed it
@@ -244,7 +246,10 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
     if (!byDevice || busy || !report) return
     if (report.deriveSig === deriveSig) return
 
-    const rebuilt = deriveMovementReport(byDevice, { vehicles, statuses, applyTolerance, toleranceMeters, intervalSec })
+    const rebuilt = deriveMovementReport(byDevice, {
+      vehicles, statuses, applyTolerance, toleranceMeters, intervalSec,
+      driverNameFor: driverNameForDevice,
+    })
     rebuilt.deriveSig = deriveSig
     resolveReportLocations(rebuilt, { limit: 0 }).then(result => {
       rebuilt.geocoded = { resolved: report.geocoded?.resolved ?? 0, skipped: result.skipped }

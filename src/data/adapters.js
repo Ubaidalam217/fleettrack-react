@@ -1,5 +1,5 @@
 /**
- * API shape ⇄ frontend shape, in both directions, for all eight entities.
+ * API shape ⇄ frontend shape, in both directions, for every Settings entity.
  *
  * ── Why this file exists ────────────────────────────────────────────────────
  *
@@ -367,6 +367,41 @@ const numOrNull = v => {
   if (v === '' || v === null || v === undefined) return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
+}
+
+// ── Driver ──────────────────────────────────────────────────────────────────
+// `vehicleId` is a vehicle RECORD id on both sides (see emptyDriver()), so it
+// crosses unrenamed — unlike Vehicle's own `vehicleId`, which is the fleet number.
+
+export const driver = {
+  toFe: r => ({
+    id: r.id,
+    companyId: r.bgId ?? '',
+    name: r.name ?? '',
+    mobile: orBlank(r.mobile),
+    licenseNo: orBlank(r.licenseNo),
+    // Already "YYYY-MM-DD" from the API, which is what <input type="date"> binds.
+    licenseExpiry: orBlank(r.licenseExpiry),
+    vehicleId: orBlank(r.vehicleId),
+    notes: orBlank(r.notes),
+    status: r.status ?? 'Active',
+  }),
+  toApiCreate: r => ({
+    bgId: r.companyId,
+    ...driver.fields(r),
+  }),
+  // bgId only at creation: the API keeps a driver in its BG, and a vehicle
+  // assignment is validated against it.
+  toApiUpdate: r => driver.fields(r),
+  fields: r => ({
+    name: r.name,
+    mobile: orNull(r.mobile),
+    licenseNo: orNull(r.licenseNo),
+    licenseExpiry: orNull(r.licenseExpiry),
+    vehicleId: orNull(r.vehicleId),
+    notes: orNull(r.notes),
+    status: r.status || 'Active',
+  }),
 }
 
 // ── Alert ───────────────────────────────────────────────────────────────────

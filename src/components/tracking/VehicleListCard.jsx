@@ -1,5 +1,6 @@
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { useAddress } from '../../hooks/useAddress'
+import { useDriverForImei } from '../../data/settings'
 
 // The open/close animation uses grid-template-rows 0fr -> 1fr, which is the one
 // way to transition to a content-determined height without measuring it or
@@ -60,6 +61,8 @@ function Cell({ label, value, color }) {
 export default function VehicleListCard({ v, open, onCenter }) {
   const address = useAddress(v.lat, v.lng, open)
   const hasCoords = v.lat != null && v.lng != null
+  // Settings > Driver first, the device's own metadata as the fallback.
+  const driverName = useDriverForImei(v.ident)?.name || v.master?.driver?.name || ''
 
   return (
     <div className="vl-card" data-open={open ? 'true' : 'false'}>
@@ -85,7 +88,7 @@ export default function VehicleListCard({ v, open, onCenter }) {
             <Cell label="Status"  value={statusLabel(v.status)} color={statusColor(v.status)} />
             <Cell label="Speed"   value={v.speed != null ? `${v.speed} km/h` : null} />
             <Cell label="Fleet No" value={v.master?.fleetNo || null} />
-            <Cell label="Driver"  value={v.master?.driver?.name || 'Unassigned'} />
+            <Cell label="Driver"  value={driverName || 'Unassigned'} />
             <Cell label="Heading" value={headingLabel(v.heading)} />
             <Cell label="Last Update" value={fmt(v.lastTs)} />
           </div>

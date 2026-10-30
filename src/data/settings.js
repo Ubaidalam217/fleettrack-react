@@ -27,7 +27,7 @@
 
 import { useEffect, useSyncExternalStore } from 'react'
 import { IS_REAL } from './mode.js'
-import { del, get, post, put } from './http.js'
+import { del, get, post, put, request } from './http.js'
 import * as A from './adapters.js'
 import * as mock from '../pages/settings/mockData'
 import { PHASE, useSession } from './session.js'
@@ -57,6 +57,10 @@ export {
 
   // The Flespi ↔ Settings join, keyed on IMEI.
   imeiKey, vehicleByImei, settingsProfileForImei, useSettingsProfile,
+
+  // Drivers: the store, and who drives which vehicle.
+  emptyDriver, useDrivers, driversForCompany,
+  driverForVehicleId, driverForVehicleImei, driverNameForDevice, useDriverForImei,
 
   // Constants and registries.
   DEFAULT_PASSWORD, ALERT_TYPES, alertTypeLabel, GEOFENCE_CATEGORIES,
@@ -92,7 +96,17 @@ const COLLECTIONS = [
   { key: 'subusers', path: '/api/users', toFe: A.subuser.toFe, query: { role: 'SUB_USER' } },
   { key: 'alerts', path: '/api/alerts', toFe: A.alert.toFe },
   { key: 'geofences', path: '/api/geofences', toFe: A.geofence.toFe },
+  // `optional`: the drivers API is newer than a server that may still be running
+  // somewhere. A 404 there means "no drivers yet", not "Settings is unavailable" —
+  // without this one missing route would blank every Settings page.
+  { key: 'drivers', path: '/api/drivers', toFe: A.driver.toFe, optional: true },
 ]
+
+/** One collection's rows; an optional collection's 404 reads as empty. */
+function fetchCollection(c) {
+  const rows = get(c.path, c.query).then(list => (list ?? []).map(c.toFe))
+  return c.optional ? rows.catch(err => (err?.status === 404 ? [] : Promise.reject(err))) : rows
+}
 
 /** Load status, so a page can show a spinner and a retry instead of an empty table. */
 let status = { loading: false, error: null, loaded: false }
@@ -137,9 +151,7 @@ export async function refreshAll() {
   if (!IS_REAL) return
   setStatus({ loading: true, error: null })
   try {
-    const results = await Promise.all(
-      COLLECTIONS.map(c => get(c.path, c.query).then(rows => (rows ?? []).map(c.toFe)))
-    )
+    const results = await Promise.all(COLLECTIONS.map(fetchCollection))
     COLLECTIONS.forEach((c, i) => mock.__replaceStore(c.key, results[i]))
     setStatus({ loading: false, error: null, loaded: true })
   } catch (err) {
@@ -423,4 +435,31 @@ export function updateGeofence(id, patch) {
 export function removeGeofence(id) {
   if (!IS_REAL) return done(mock.removeGeofence(id))
   return write(() => del(`/api/geofences/${id}`))
+}
+
+// Driver ───────────────────────────────────────────────────────────────────
+//
+// Add and update resolve to { row, movedFrom } in both modes. `movedFrom` sits
+// BESIDE `data` in the server's answer — who lost the vehicle this driver was
+// just given — so these two read the whole envelope (unwrap: false) instead of
+// the usual data-only reply. The page turns it into "Vehicle moved from Ahmed".
+
+async function driverWrite(method, path, body) {
+  const payload = await request(path, { method, body, unwrap: false })
+  return { row: A.driver.toFe(payload?.data ?? {}), movedFrom: payload?.movedFrom ?? null }
+}
+
+export function addDriver(row) {
+  if (!IS_REAL) return done(mock.addDriver(row))
+  return write(() => driverWrite('POST', '/api/drivers', A.driver.toApiCreate(row)))
+}
+
+export function updateDriver(id, patch) {
+  if (!IS_REAL) return done(mock.updateDriver(id, patch))
+  return write(() => driverWrite('PUT', `/api/drivers/${id}`, A.driver.toApiUpdate(patch)))
+}
+
+export function removeDriver(id) {
+  if (!IS_REAL) return done(mock.removeDriver(id))
+  return write(() => del(`/api/drivers/${id}`))
 }

@@ -25,7 +25,7 @@ import {
 import { fetchDeviceTrack, buildSegments } from '../utils/replay'
 import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/traces'
 import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
-import { useGeofences } from '../data/settings'
+import { useGeofences, useDrivers, useVehicles, driverNameForDevice } from '../data/settings'
 
 // Points per second at 1x. The playback effect derives its tick interval and
 // its stride from this and the chosen speed multiplier.
@@ -372,6 +372,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // data/fleetScope.js), mock mode sees the seeded demo shapes.
   const [showGeofences, setShowGeofences] = useState(false)
   const geofences = useGeofences()
+  // Subscribed so the list's Driver line and the driver search follow edits on
+  // Settings > Driver; the names themselves come from driverNameForDevice.
+  useDrivers()
+  useVehicles()
 
   // Live vehicle data, shared MQTT session, no REST polling. The map and shell
   // render immediately — nothing here gates the UI. Vehicles appear as MQTT
@@ -739,7 +743,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
         (v.ident            || '').toLowerCase().includes(q) ||
         (v.master?.plateNo  || '').toLowerCase().includes(q) ||
         (v.master?.fleetNo  || '').toLowerCase().includes(q) ||
-        (v.master?.driver?.name || '').toLowerCase().includes(q)
+        driverNameForDevice(v).toLowerCase().includes(q)
       )
     })
 
@@ -1426,7 +1430,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                             )}
                             <div style={{ fontSize: 11, color: 'var(--c-text2)', paddingLeft: 17, display: 'flex', flexDirection: 'column', gap: 2 }}>
                               {v.master?.fleetNo && <span>Fleet: {v.master.fleetNo}</span>}
-                              <span>Driver: {v.master?.driver?.name || 'Unassigned'}</span>
+                              <span>Driver: {driverNameForDevice(v) || 'Unassigned'}</span>
                               <span>Speed: {v.speed != null ? `${v.speed} km/h` : 'N/A'}</span>
                               <span>Last update: {fmt(v.lastTs)}</span>
                             </div>

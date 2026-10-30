@@ -411,7 +411,7 @@ export function warmDaywiseMonth(deviceIds, year, month) {
  * Build the table model for both reports in one pass.
  *
  * @param {Map<number, object[]>} byDevice   from fetchDaywiseMonth
- * @param {object[]} vehicles  { id, label, company, ident } already scoped
+ * @param {object[]} vehicles  { id, label, company, driver, ident } already scoped
  * @returns {{ rows: object[], days: number, year: number, month: number }}
  */
 export function buildDaywiseRows(byDevice, vehicles, year, month) {
@@ -428,6 +428,7 @@ export function rowsFromDerived(derivedById, vehicles, year, month) {
       deviceId: v.id,
       label: v.label,
       company: v.company,
+      driver: v.driver ?? '',
       ident: v.ident,
       ...derived,
     }
