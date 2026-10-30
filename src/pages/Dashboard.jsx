@@ -349,8 +349,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                 {lastUpdated && (
                   <div className="ft-chip">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span className="hidden sm:inline">{fmtUpdated(lastUpdated)} &middot; live via MQTT</span>
-                    <span className="sm:hidden">{fmtUpdated(lastUpdated)}</span>
+                    <span>{fmtUpdated(lastUpdated)}</span>
                     <button onClick={handleRefresh} title="Refresh now" disabled={refreshing} style={{ background: 'none', border: 'none', cursor: refreshing ? 'default' : 'pointer', color: 'var(--ft-accent)', padding: 0, display: 'flex', alignItems: 'center' }}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: refreshing ? 'db-spin 0.7s linear infinite' : 'none' }}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
                     </button>
