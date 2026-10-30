@@ -19,7 +19,7 @@ const NAV_SECTIONS = [
     id: 'general',
     title: 'General',
     items: [
-      { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+      { label: 'Snapshots', icon: LayoutDashboard, path: '/dashboard' },
       // Label only — the route stays /tracking so every existing link still works.
       { label: 'Live Map',  icon: MapPin,          path: '/tracking' },
       // Like Settings below: not a link but its own nested tree, so the section
