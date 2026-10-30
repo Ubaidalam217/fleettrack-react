@@ -71,11 +71,14 @@ export function MultiSelect({ label, summary, children, disabled }) {
         <ChevronDown size={14} style={{ flexShrink: 0, color: 'var(--c-text3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
       </button>
       {open && (
-        <div style={{
+        // Tall enough for a ten-vehicle fleet without scrolling, and the bar is
+        // hidden when a longer list does scroll — the client asked for no
+        // visible scrollbar on the report pages (2026-10-31).
+        <div className="no-scrollbar" style={{
           position: 'absolute', zIndex: 30, top: 'calc(100% + 4px)', left: 0, right: 0,
           background: 'var(--c-card)', border: '1px solid var(--c-border2)', borderRadius: 10,
           boxShadow: '0 12px 32px rgba(0,0,0,0.18)', padding: 6,
-          maxHeight: 280, overflowY: 'auto',
+          maxHeight: 'min(460px, 65vh)', overflowY: 'auto',
         }}>
           {children}
         </div>
