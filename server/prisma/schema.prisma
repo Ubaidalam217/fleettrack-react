@@ -109,6 +109,8 @@ model BusinessGroup {
   users     User[]
   alerts    Alert[]
   geofences Geofence[]
+  drivers     Driver[]
+  alertEvents AlertEvent[]
 
   @@index([ggbId])
   @@index([groupId])
@@ -199,6 +201,8 @@ model Vehicle {
   branch   Branch?          @relation(fields: [branchId], references: [id], onDelete: SetNull)
   subusers SubuserVehicle[]
   alerts   AlertVehicle[]
+  driver      Driver?
+  alertEvents AlertEvent[]
 
   @@index([bgId])
   @@index([branchId])
@@ -388,6 +392,20 @@ model Alert {
   bg       BusinessGroup  @relation(fields: [bgId], references: [id], onDelete: Cascade)
   vehicles AlertVehicle[]
 
+  /// Low | Medium | High | Critical — shown on every event this rule raises.
+  severity String @default("Medium")
+
+  /// The settings of `type` (lib/alertEngine.js TYPES), e.g. { speedKmh: 120 },
+  /// { minutes: 15 }, { geofenceIds: [...] }, { from: "23:00", to: "05:00" },
+  /// { days: 30 }. Temperature keeps its own minTemp / maxTemp columns.
+  params Json?
+
+  /// Who is emailed when the rule fires (when notify.email is on).
+  emails String[] @default([])
+
+  events AlertEvent[]
+  states AlertState[]
+
   @@index([bgId])
 }
 
@@ -515,4 +533,85 @@ model UsageDay {
   day        String   @id @db.VarChar(10)
   final      Boolean  @default(false)
   computedAt DateTime @default(now())
+}
+
+/// One time an alert rule fired: the history behind Notifications and the bell.
+///
+/// Written by lib/alertEngine.js, which evaluates every active rule on the
+/// server every ~30 s, so an alert is raised whether or not anyone has the app
+/// open, and every user of the BG sees the same history.
+model AlertEvent {
+  id        String  @id @default(cuid())
+  /// Null once the rule is deleted; the history stays.
+  alertId   String?
+  bgId      String
+  vehicleId String?
+  deviceId  Int?
+  driverId  String?
+
+  type     String
+  severity String
+  title    String
+  message  String
+  /// The measured value that tripped the rule (km/h, minutes, °C, days).
+  value    Float?
+  lat      Float?
+  lng      Float?
+
+  occurredAt DateTime  @default(now())
+  /// Shared, not per user: "read" means someone in the BG has seen it.
+  readAt     DateTime?
+  /// Set once the notification email went out; null when none was due or SMTP is off.
+  emailedAt  DateTime?
+
+  alert   Alert?        @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  bg      BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicle Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  driver  Driver?       @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([bgId, occurredAt])
+  @@index([alertId, occurredAt])
+}
+
+/// What the alert engine remembers per rule and subject (a device, or a driver
+/// for licence expiry) between passes — "was inside geofence X", "idle since",
+/// "last fired at" — so an alert fires on the change, not on every pass, and a
+/// restart does not fire everything again.
+model AlertState {
+  alertId   String
+  /// "d:<flespi device id>" or "drv:<driver id>".
+  subject   String
+  state     Json
+  updatedAt DateTime @updatedAt
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@id([alertId, subject])
+}
+
+/// A driver of one BG, optionally assigned to one of its vehicles.
+///
+/// One vehicle has at most one assigned driver (vehicleId is unique), which is
+/// what lets the Live Map and the reports print "the driver of this vehicle".
+model Driver {
+  id   String @id @default(cuid())
+  bgId String
+
+  name          String
+  mobile        String?
+  licenseNo     String?
+  /// Date only (stored at UTC midnight); drives the Driver Licence Expiry alert.
+  licenseExpiry DateTime?
+  vehicleId     String?   @unique
+  notes         String?
+  status        Status    @default(Active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bg      BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicle Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  events  AlertEvent[]
+
+  @@index([bgId])
 }

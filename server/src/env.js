@@ -137,6 +137,23 @@ const schema = z.object({
   DAILY_USAGE_BACKFILL_DAYS: z.coerce.number().int().min(1).max(400).default(92),
   /** How often today and the last two days, which can still change, are recomputed. */
   DAILY_USAGE_REFRESH_MS: z.coerce.number().int().min(30_000).default(5 * 60 * 1000),
+
+  /** The alert engine (lib/alertEngine.js): on unless "false"; never under test. */
+  ALERT_ENGINE_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform(v => v === 'true'),
+  ALERT_ENGINE_INTERVAL_MS: z.coerce.number().int().min(10_000).default(30_000),
+
+  /**
+   * Alert emails (lib/mailer.js). Off until SMTP_HOST and MAIL_FROM are set;
+   * any SMTP provider works (Brevo's free tier sends 300 a day).
+   */
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  MAIL_FROM: z.string().optional(),
 })
 
 const parsed = schema.safeParse(process.env)

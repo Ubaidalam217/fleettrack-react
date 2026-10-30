@@ -33,6 +33,8 @@ import flespiRoutes from './routes/flespi.js'
 import geocodeRoutes from './routes/geocode.js'
 import flespiProxyRoutes from './routes/flespiProxy.js'
 import reportRoutes from './routes/reports.js'
+import driverRoutes from './routes/drivers.js'
+import alertEventRoutes from './routes/alertEvents.js'
 
 /**
  * CORS, from FRONTEND_ORIGINS.
@@ -130,6 +132,8 @@ export function createApp() {
   app.use('/api/flespi', flespiRoutes)
   app.use('/api/geocode', geocodeRoutes)
   app.use('/api/reports', reportRoutes)
+  app.use('/api/drivers', driverRoutes)
+  app.use('/api/alert-events', alertEventRoutes)
 
   app.use(notFoundHandler)
   app.use(errorHandler)

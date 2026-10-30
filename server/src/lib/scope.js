@@ -77,6 +77,8 @@ const ENTITIES = Object.freeze({
   user: { delegate: 'user', label: 'User' },
   alert: { delegate: 'alert', label: 'Alert' },
   geofence: { delegate: 'geofence', label: 'Geofence' },
+  driver: { delegate: 'driver', label: 'Driver' },
+  alertEvent: { delegate: 'alertEvent', label: 'Alert event' },
 })
 
 /**
@@ -253,6 +255,24 @@ export function alertWhere(scope) {
   }
 }
 
+/**
+ * Drivers follow their BG. A sub-user sees the drivers of its assigned vehicles
+ * only — a driver record carries a mobile number and a licence, which are not
+ * the business of a sub-user watching some other part of the fleet.
+ */
+export function driverWhere(scope) {
+  const base = childBgWhere(scope)
+  if (!isSubUser(scope)) return base
+  return { AND: [base, { vehicleId: { in: scope.assignedVehicleIds ?? [] } }] }
+}
+
+/** Alert history follows its BG, narrowed for a sub-user to its own vehicles. */
+export function alertEventWhere(scope) {
+  const base = childBgWhere(scope)
+  if (!isSubUser(scope)) return base
+  return { AND: [base, { vehicleId: { in: scope.assignedVehicleIds ?? [] } }] }
+}
+
 const WHERE_BUILDERS = Object.freeze({
   ggb: ggbWhere,
   group: groupWhere,
@@ -262,6 +282,8 @@ const WHERE_BUILDERS = Object.freeze({
   user: userWhere,
   alert: alertWhere,
   geofence: geofenceWhere,
+  driver: driverWhere,
+  alertEvent: alertEventWhere,
 })
 
 /**
@@ -324,10 +346,10 @@ export async function findScoped(entity, id, scope, opts = {}) {
  * assertWritableParent() below. Flagged for the client to confirm.
  */
 const WRITABLE = Object.freeze({
-  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence']),
-  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence']),
-  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert', 'geofence']),
-  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert', 'geofence']),
+  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
+  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
+  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
+  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
   // Read-only, explicitly. An empty set rather than a missing key so a typo in a
   // role name can never be mistaken for "sub-user, therefore no writes".
   SUB_USER: new Set(),
