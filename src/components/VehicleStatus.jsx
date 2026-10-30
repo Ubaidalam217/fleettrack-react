@@ -68,7 +68,7 @@ export default function VehicleStatus({ vehicles, loading }) {
           <thead>
             <tr style={{ borderBottom: '1px solid var(--c-border2)', background: 'var(--c-thead)' }}>
               {['Vehicle', 'Status', 'Location', 'Speed', 'Updated'].map(h => (
-                <th key={h} className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text3)', whiteSpace: 'nowrap' }}>{h}</th>
+                <th key={h} className="text-left px-2 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text3)', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -77,7 +77,7 @@ export default function VehicleStatus({ vehicles, loading }) {
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid var(--c-border2)' }}>
                   {Array.from({ length: 5 }).map((__, c) => (
-                    <td key={c} className="px-3 py-2.5"><Skel/></td>
+                    <td key={c} className="px-2 py-2.5"><Skel/></td>
                   ))}
                 </tr>
               ))
@@ -105,12 +105,12 @@ export default function VehicleStatus({ vehicles, loading }) {
                     onMouseLeave={() => setHovered(null)}
                   >
                     {/* Vehicle name */}
-                    <td className="px-3 py-2.5 font-bold" style={{ color: 'var(--c-text1)', whiteSpace: 'nowrap' }}>
+                    <td className="px-2 py-2.5 font-bold" style={{ color: 'var(--c-text1)', whiteSpace: 'nowrap' }}>
                       {v.name || v.ident || `Device ${v.id}`}
                     </td>
 
                     {/* Status badge */}
-                    <td className="px-3 py-2.5" style={{ whiteSpace: 'nowrap' }}>
+                    <td className="px-2 py-2.5" style={{ whiteSpace: 'nowrap' }}>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${st.textColor}`}
                         style={{ background: st.bg, border: `1px solid ${st.border}` }}
@@ -121,17 +121,17 @@ export default function VehicleStatus({ vehicles, loading }) {
                     </td>
 
                     {/* Location */}
-                    <td className="px-3 py-2.5" title={locationStr(v)} style={{ color: 'var(--c-text2)', whiteSpace: 'nowrap', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <td className="px-2 py-2.5" title={locationStr(v)} style={{ color: 'var(--c-text2)', whiteSpace: 'nowrap', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {locationStr(v)}
                     </td>
 
                     {/* Speed */}
-                    <td className="px-3 py-2.5 font-semibold" style={{ color: v.status === 'Running' ? '#22c55e' : 'var(--c-text1)', whiteSpace: 'nowrap' }}>
+                    <td className="px-2 py-2.5 font-semibold" style={{ color: v.status === 'Running' ? '#22c55e' : 'var(--c-text1)', whiteSpace: 'nowrap' }}>
                       {v.speed != null ? `${v.speed} km/h` : '—'}
                     </td>
 
                     {/* Last updated */}
-                    <td className="px-3 py-2.5" style={{ color: 'var(--c-text3)', whiteSpace: 'nowrap' }}>
+                    <td className="px-2 py-2.5" style={{ color: 'var(--c-text3)', whiteSpace: 'nowrap' }}>
                       {relTime(v.lastTs)}
                     </td>
                   </tr>
