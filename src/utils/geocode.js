@@ -25,8 +25,12 @@ const cache = new Map() // "lat,lng" (rounded) -> address string
 
 /** Points per cache-only request; the server accepts up to 2000. */
 const SERVER_CACHE_CHUNK = 1000
-/** Live lookups per request — small, so progress moves and no request runs long. */
-const SERVER_RESOLVE_BATCH = 10
+/**
+ * Live lookups per request, the server's maximum. With the self-hosted Photon
+ * on the VPS a batch takes ~1 s; against the public Nominatim (a dev server)
+ * the server stops at its 20 s budget and the rest come back on a re-run.
+ */
+const SERVER_RESOLVE_BATCH = 50
 
 // v2: entries cached before accept-language=en was sent are in the local
 // script (Arabic in this fleet's region), which is not what the report wants.

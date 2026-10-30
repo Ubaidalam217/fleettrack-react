@@ -33,7 +33,9 @@ import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
 // unlike Movement Report's WARN_REQUESTS, which only ever warns.
 const MAX_RANGE_DAYS = 31
 const WARN_REQUESTS = 20
-const DEFAULT_GEOCODE_LIMIT = 600
+// Real mode geocodes through the backend's self-hosted Photon; mock mode asks the
+// public Nominatim at ~1/sec (see the same constant in pages/Reports.jsx).
+const DEFAULT_GEOCODE_LIMIT = IS_REAL ? 20000 : 600
 
 const SUB_REPORTS = [
   { key: 'trip',     label: 'Trip Report' },

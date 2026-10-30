@@ -7,6 +7,7 @@ import MovementTable from '../components/reports/MovementTable'
 // toolbar buttons rather than one per report page.
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../components/reports/controls'
 import { useFlespiData } from '../hooks/useFlespiData'
+import { IS_REAL } from '../data/mode'
 import {
   fetchMovementMessages,
   deriveMovementReport,
@@ -27,10 +28,11 @@ import { exportMovementPdf, exportMovementExcel, printMovementReport } from '../
 // rows before the user has decided the report is the one they wanted.
 const PAGE_ROWS = 800
 
-// Default cap on *network* reverse-geocode lookups per report. Nominatim allows
-// ~1/sec, so this is also a time budget: 600 lookups is ~11 minutes worst case,
-// far less in practice because an idling vehicle reuses one coordinate.
-const DEFAULT_GEOCODE_LIMIT = 600
+// Default cap on *network* reverse-geocode lookups per report. In mock mode the
+// browser asks the public Nominatim, which allows ~1/sec, so this is also a time
+// budget: 600 lookups is ~11 minutes worst case. Real mode asks the backend,
+// whose self-hosted Photon answers ~40 a second, so every row gets its address.
+const DEFAULT_GEOCODE_LIMIT = IS_REAL ? 20000 : 600
 
 // One /messages request per calendar day per vehicle. Past this many the report
 // is slow enough, and rate-limit-prone enough, to warn about before sending it.
