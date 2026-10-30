@@ -86,6 +86,9 @@ export function formatPhotonAddress(p) {
   return out.length ? out.join(', ') : null
 }
 
+/** How far a Photon lookup that found nothing within its default 1 km reaches. */
+const PHOTON_WIDE_RADIUS_KM = 5
+
 /**
  * One lookup against the configured geocoder.
  *
@@ -97,12 +100,12 @@ export function formatPhotonAddress(p) {
  *          answered but has nothing for the point
  * @throws  on a network error, timeout or non-2xx — never cached
  */
-async function lookup(lat, lng) {
+async function lookup(lat, lng, options = {}) {
   const base = env.GEOCODER_URL.replace(/\/+$/, '')
   // English either way: without it both answer in the local script, which for
   // this fleet's region means Arabic in every row of the report.
   const url = env.GEOCODER_KIND === 'photon'
-    ? `${base}/reverse?lat=${lat}&lon=${lng}&lang=en&limit=1`
+    ? `${base}/reverse?lat=${lat}&lon=${lng}&lang=en&limit=1${options.widened ? `&radius=${PHOTON_WIDE_RADIUS_KM}` : ''}`
     : `${base}/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=0&accept-language=en`
   const res = await fetch(url, {
     headers: {
@@ -114,8 +117,16 @@ async function lookup(lat, lng) {
   })
   if (!res.ok) throw new Error(`Geocoder answered ${res.status}`)
   const json = await res.json()
-  if (env.GEOCODER_KIND === 'photon') return formatPhotonAddress(json?.features?.[0]?.properties)
-  return typeof json?.display_name === 'string' ? json.display_name : null
+  if (env.GEOCODER_KIND !== 'photon') {
+    return typeof json?.display_name === 'string' ? json.display_name : null
+  }
+  const found = formatPhotonAddress(json?.features?.[0]?.properties)
+  if (found || options.widened) return found
+  // Photon only looks 1 km out by default, and the industrial and desert roads
+  // this fleet drives (ICAD, truck routes) have nothing named that close —
+  // measured, those rows came back empty and showed raw coordinates. The
+  // nearest named street or site within 5 km is what the client wants instead.
+  return lookup(lat, lng, { widened: true })
 }
 
 /**
