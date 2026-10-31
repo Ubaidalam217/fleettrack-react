@@ -54,7 +54,10 @@ export default function UserDropdown({ themeMode, setTheme }) {
   const panelRef   = useRef(null)
   const navigate   = useNavigate()
   const user       = useCurrentUser()
-  const avatar     = initials(user)
+  // The photo set in Account Settings or the mobile app; initials otherwise.
+  const avatar     = user.photo
+    ? <img src={user.photo} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
+    : initials(user)
 
   // Recalculate position anchored to the trigger button
   useEffect(() => {
@@ -151,7 +154,7 @@ export default function UserDropdown({ themeMode, setTheme }) {
         <div style={{
           display: 'flex', width: 28, height: 28,
           alignItems: 'center', justifyContent: 'center',
-          borderRadius: '50%', background: 'var(--ft-accent)',
+          borderRadius: '50%', background: 'var(--ft-accent)', overflow: 'hidden',
           fontSize: 12, fontWeight: 700, color: '#fff',
           border: open ? '2px solid color-mix(in srgb, var(--ft-accent) 55%, #fff)' : '2px solid transparent',
           transition: 'border-color 0.15s',
@@ -178,7 +181,7 @@ export default function UserDropdown({ themeMode, setTheme }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
                 width: 36, height: 36, borderRadius: '50%',
-                background: 'linear-gradient(135deg,var(--ft-accent),#1d4a63)',
+                background: 'linear-gradient(135deg,var(--ft-accent),#1d4a63)', overflow: 'hidden',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0,
               }}>{avatar}</div>

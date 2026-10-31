@@ -22,7 +22,7 @@
  */
 
 import { useSyncExternalStore } from 'react'
-import { IS_REAL } from './mode.js'
+import { API_URL, IS_REAL } from './mode.js'
 import { configureHttp, request } from './http.js'
 
 /**
@@ -244,6 +244,8 @@ export function displayProfile(user = state.user) {
     role: ROLE_LABELS[user.role] ?? user.role ?? '',
     /** The raw enum, for permission checks. */
     roleKey: user.role ?? null,
+    /** Profile photo (set here or in the mobile app), absolute, or null. */
+    photo: user.avatarUrl ? `${API_URL}${user.avatarUrl}` : null,
     scope: user.scope ?? null,
   }
 }

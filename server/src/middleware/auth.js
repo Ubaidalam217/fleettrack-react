@@ -23,6 +23,8 @@ const USER_SELECT = {
   mustChangePassword: true,
   shortName: true,
   mobile: true,
+  // So /api/auth/me hands the website and the app the profile photo URL.
+  avatarKey: true,
   ggbId: true,
   groupId: true,
   bgId: true,

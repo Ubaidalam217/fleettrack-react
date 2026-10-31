@@ -236,6 +236,12 @@ model User {
   shortName String?
   mobile    String?
 
+  /// Profile photo, set from the mobile app or Account Settings. A random key,
+  /// new on every upload: it is the photo's public URL (/api/avatars/<key>),
+  /// unguessable and safe to cache forever. The bytes live in UserAvatar so
+  /// ordinary user queries never carry an image.
+  avatarKey String? @unique
+
   /// Exactly one of these is set, chosen by `role`: GGB_ADMIN → ggbId,
   /// GROUP_ADMIN → groupId, BG_USER and SUB_USER → bgId, SUPER_ADMIN → none.
   ggbId   String?
@@ -277,6 +283,7 @@ model User {
   vehicles SubuserVehicle[]
   branches SubuserBranch[]
   flespiGrant FlespiGrant?
+  avatar      UserAvatar?
 
   @@index([ggbId])
   @@index([groupId])
@@ -614,4 +621,16 @@ model Driver {
   events  AlertEvent[]
 
   @@index([bgId])
+}
+
+/// The bytes of a user's profile photo (see User.avatarKey). One row per user,
+/// replaced on upload; at most a few hundred KB, already resized by the client.
+model UserAvatar {
+  userId    String   @id
+  key       String   @unique
+  mimeType  String
+  data      Bytes
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

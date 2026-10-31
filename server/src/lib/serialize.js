@@ -17,6 +17,8 @@ export function publicUser(user) {
     mustChangePassword: user.mustChangePassword,
     shortName: user.shortName ?? null,
     mobile: user.mobile ?? null,
+    // Relative, so it resolves against whichever domain served the API.
+    avatarUrl: user.avatarKey ? `/api/avatars/${user.avatarKey}` : null,
     scope: {
       ggbId: user.ggbId ?? null,
       groupId: user.groupId ?? null,

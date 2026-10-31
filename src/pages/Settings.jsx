@@ -59,6 +59,86 @@ function SaveRow({ saving, disabled, label = 'Save changes' }) {
 
 // ── Profile ─────────────────────────────────────────────────────────────────
 
+/**
+ * A picked image as a 320 px square JPEG (centre-cropped), base64 without the
+ * data: prefix. Resizing here keeps the upload to a few tens of KB whatever the
+ * camera produced, the same as the mobile app does.
+ */
+function squareJpegBase64(file, size = 320) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const side = Math.min(img.naturalWidth, img.naturalHeight)
+      const canvas = document.createElement('canvas')
+      canvas.width = canvas.height = size
+      canvas.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL('image/jpeg', 0.82).split(',')[1])
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not an image the browser can read')) }
+    img.src = url
+  })
+}
+
+/** The profile photo: shown here, in the header, and in the mobile app. */
+function PhotoRow({ push }) {
+  const shown = useCurrentUser()
+  const [busy, setBusy] = useState(false)
+
+  const upload = async e => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true)
+    try {
+      await request('/api/me/avatar', { method: 'PUT', body: { image: await squareJpegBase64(file) } })
+      await refreshMe()
+      push('Photo updated', { tone: 'success' })
+    } catch (err) {
+      push(errorMessage(err, 'Could not upload the photo'), { tone: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async () => {
+    setBusy(true)
+    try {
+      await request('/api/me/avatar', { method: 'DELETE' })
+      await refreshMe()
+      push('Photo removed', { tone: 'success' })
+    } catch (err) {
+      push(errorMessage(err, 'Could not remove the photo'), { tone: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const initial = (shown.name || '?').trim().slice(0, 2).toUpperCase()
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
+      <div style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'var(--ft-accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 800 }}>
+        {shown.photo ? <img src={shown.photo} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <label style={{ ...PRIMARY_BTN, opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer' }}>
+            {busy ? 'Saving…' : shown.photo ? 'Change photo' : 'Upload photo'}
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={upload} disabled={busy} style={{ display: 'none' }} />
+          </label>
+          {shown.photo ? (
+            <button type="button" onClick={remove} disabled={busy} style={{ padding: '9px 14px', borderRadius: 10, border: '1px solid var(--c-border)', background: 'transparent', color: 'var(--c-text2)', fontWeight: 600, cursor: 'pointer' }}>
+              Remove
+            </button>
+          ) : null}
+        </div>
+        <span style={{ fontSize: 12, color: 'var(--c-text3)' }}>JPEG, PNG or WebP. Also shows in the FleetmaX mobile app.</span>
+      </div>
+    </div>
+  )
+}
+
 function ProfileSection({ push }) {
   const session = useSession()
   const shown = useCurrentUser()
@@ -96,7 +176,8 @@ function ProfileSection({ push }) {
   }
 
   return (
-    <Section id="profile" icon={User} title="Profile" subtitle="Your name as it appears on the dashboard greeting and the sidebar.">
+    <Section id="profile" icon={User} title="Profile" subtitle="Your photo and name, as they appear on the dashboard, the header and the mobile app.">
+      {IS_REAL ? <PhotoRow push={push} /> : null}
       <form onSubmit={submit} noValidate>
         <div style={GRID}>
           <Field label="Display name" required error={errors.shortName}>

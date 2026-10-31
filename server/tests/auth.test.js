@@ -249,3 +249,56 @@ describe('PATCH /api/me — own profile', () => {
     expect((await request(app).patch('/api/me').send({ shortName: 'X' })).status).toBe(401)
   })
 })
+
+describe('Profile photo — PUT/DELETE /api/me/avatar, GET /api/avatars/:key', () => {
+  // Only the first bytes decide the format; the rest can be anything.
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 7)])
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(200, 3)])
+
+  it('stores a photo, serves it publicly by an unguessable key, and shows it on the account', async () => {
+    const put = await request(app).put('/api/me/avatar').set(auth(fx.tokens.subUserA1a)).send({ image: jpeg.toString('base64') })
+    expect(put.status).toBe(200)
+    expect(put.body.data.avatarUrl).toMatch(/^\/api\/avatars\/[a-f0-9]{32}$/)
+
+    const img = await request(app).get(put.body.data.avatarUrl)   // no token
+    expect(img.status).toBe(200)
+    expect(img.headers['content-type']).toBe('image/jpeg')
+    expect(img.headers['cache-control']).toContain('immutable')
+    expect(Buffer.compare(img.body, jpeg)).toBe(0)
+
+    const me = await request(app).get('/api/auth/me').set(auth(fx.tokens.subUserA1a))
+    expect(me.body.user?.avatarUrl ?? me.body.data?.user?.avatarUrl ?? me.body.data?.avatarUrl).toBe(put.body.data.avatarUrl)
+  })
+
+  it('gives a new URL on every upload and retires the old one', async () => {
+    const first = await request(app).put('/api/me/avatar').set(auth(fx.tokens.subUserA1a)).send({ image: jpeg.toString('base64') })
+    const second = await request(app).put('/api/me/avatar').set(auth(fx.tokens.subUserA1a)).send({ image: `data:image/png;base64,${png.toString('base64')}` })
+    expect(second.status).toBe(200)
+    expect(second.body.data.avatarUrl).not.toBe(first.body.data.avatarUrl)
+    expect((await request(app).get(first.body.data.avatarUrl)).status).toBe(404)
+    const now = await request(app).get(second.body.data.avatarUrl)
+    expect(now.headers['content-type']).toBe('image/png')
+  })
+
+  it('refuses anything that is not an image, and oversized files', async () => {
+    const text = await request(app).put('/api/me/avatar').set(auth(fx.tokens.subUserA1a)).send({ image: Buffer.from('<svg onload=alert(1)>hello there</svg>').toString('base64') })
+    expect(text.status).toBe(400)
+    const big = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(530 * 1024)])
+    const tooBig = await request(app).put('/api/me/avatar').set(auth(fx.tokens.subUserA1a)).send({ image: big.toString('base64') })
+    expect([400, 413]).toContain(tooBig.status)
+  })
+
+  it('removes the photo', async () => {
+    const put = await request(app).put('/api/me/avatar').set(auth(fx.tokens.bgUserA1a)).send({ image: jpeg.toString('base64') })
+    const del = await request(app).delete('/api/me/avatar').set(auth(fx.tokens.bgUserA1a))
+    expect(del.status).toBe(200)
+    expect(del.body.data.avatarUrl).toBeNull()
+    expect((await request(app).get(put.body.data.avatarUrl)).status).toBe(404)
+  })
+
+  it('needs a login to change, and 404s a malformed key', async () => {
+    expect((await request(app).put('/api/me/avatar').send({ image: jpeg.toString('base64') })).status).toBe(401)
+    expect((await request(app).delete('/api/me/avatar')).status).toBe(401)
+    expect((await request(app).get('/api/avatars/not-a-key')).status).toBe(404)
+  })
+})

@@ -36,6 +36,7 @@ import reportRoutes from './routes/reports.js'
 import driverRoutes from './routes/drivers.js'
 import alertEventRoutes from './routes/alertEvents.js'
 import assistantRoutes from './routes/assistant.js'
+import avatarRoutes from './routes/avatars.js'
 
 /**
  * CORS, from FRONTEND_ORIGINS.
@@ -71,11 +72,17 @@ export function createApp() {
   // 100kb: the largest legitimate body here is a sub-user's screen-access map,
   // which is a few kilobytes. The default 100kb is already generous; stating it
   // keeps a future large-payload endpoint from being added by accident.
+  // The one exception, stated here: a profile photo upload (base64, capped at
+  // 512 KB of image in routes/me.js). Parsed first, so the 100kb parser below
+  // sees an already-read body and leaves it alone.
+  app.use('/api/me/avatar', express.json({ limit: '800kb' }))
   app.use(express.json({ limit: '100kb' }))
 
   if (!env.isTest) app.use(morgan(env.isProduction ? 'combined' : 'dev'))
 
   app.use('/api/health', healthRoutes)
+  // Public: profile photos by unguessable key, so <img src> works without a token.
+  app.use('/api/avatars', avatarRoutes)
 
   /**
    * Rate limit on login only.
