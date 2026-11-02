@@ -12,7 +12,7 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
-import NodeUsersPanel, { UsersButton, useNodeUserCount } from './NodeUsersPanel'
+import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions } from './NodeUsersPanel'
 import { useSession } from '../../data/session'
 import { sessionLevel as usersLevel } from '../../data/screens'
 
@@ -37,6 +37,8 @@ export default function Reseller(props) {
   const session = useSession()
   const countUsers = useNodeUserCount('ggb')
   const [usersOf, setUsersOf] = useState(null)
+  const [permsFor, setPermsFor] = useState(null)
+  const mayPerms = useCanSetPermissions()
   const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
 
   const [draft,   setDraft]   = useState(null)
@@ -152,8 +154,13 @@ export default function Reseller(props) {
 
               <SettingsTable
                 columns={showUsers ? [...COLUMNS, {
-                  key: '__users', label: 'Users',
-                  render: row => <UsersButton count={countUsers(row)} onClick={() => setUsersOf(row)} />,
+                  key: '__users', label: 'Manage',
+                  render: row => (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <UsersButton count={countUsers(row)} onClick={() => setUsersOf(row)} />
+                      {mayPerms && <PermissionsButton onClick={() => setPermsFor(row)} />}
+                    </div>
+                  ),
                 }] : COLUMNS}
                 rows={resellers}
                 onEdit={openEdit}
@@ -181,6 +188,17 @@ export default function Reseller(props) {
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}
+        />
+      )}
+
+      {permsFor && (
+        <NodePermissionsDialog
+          kind="ggb"
+          node={permsFor}
+          roleKey={access.roleKey}
+          push={push}
+          onOpenUsers={() => { setUsersOf(permsFor); setPermsFor(null) }}
+          onClose={() => setPermsFor(null)}
         />
       )}
 

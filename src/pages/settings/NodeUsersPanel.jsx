@@ -383,3 +383,139 @@ export default function NodeUsersPanel({ kind, node, bgId, roleKey, onClose, pus
     document.body,
   )
 }
+
+// ── Row shortcut: straight to an account's permissions ─────────────────────
+// Client, 2026-11-02: a "Permissions" button beside Users and Move on every
+// row, so giving access does not mean opening the panel first. One account
+// goes straight to its editor; several show a short picker first.
+
+/** The "Permissions" button for a table row. */
+export function PermissionsButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Set what this level's accounts may open and change"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 999,
+        border: '1px solid var(--c-border2)', background: 'var(--c-input)', color: 'var(--c-text2)',
+        fontSize: 11.5, fontWeight: 650, cursor: 'pointer', whiteSpace: 'nowrap',
+      }}
+    >
+      <ShieldCheck size={13} />
+      Permissions
+    </button>
+  )
+}
+
+const ROLE_NAME = { GGB_ADMIN: 'GGB Admin', GROUP_ADMIN: 'Group Admin', BG_USER: 'BG User', SUB_USER: 'Sub-user' }
+
+/** Whether the signed-in user may set permissions at all (User accounts: Edit). */
+export function useCanSetPermissions() {
+  const { user } = useSession()
+  return atLeast(sessionLevel(user, 'users'), 'modify')
+}
+
+export function NodePermissionsDialog({ kind, node, roleKey, onClose, onOpenUsers, push }) {
+  const { own, subs } = useNodeAccounts(kind, node)
+  const [editing, setEditing] = useState(null)
+  const isAdmin = kind === 'ggb' || kind === 'group'
+  const ownRole = KIND[kind].role
+
+  // Only accounts the signed-in role may manage (strictly below its own rank).
+  const accounts = [
+    ...(ownRole && canCreate(roleKey, ownRole) ? own.map(a => ({
+      account: { ...a, role: isAdmin ? a.role : 'BG_USER' },
+      title: a.shortName || a.email,
+      sub: a.shortName ? a.email : null,
+      save: perms => (isAdmin ? updateAdmin(a.id, { ...a, permissions: perms }) : updateUser(a.id, { ...a, permissions: perms })),
+    })) : []),
+    ...(canCreate(roleKey, 'SUB_USER') ? subs.map(s => ({
+      account: { ...s, role: 'SUB_USER' },
+      title: s.name || s.email,
+      sub: s.name ? s.email : null,
+      save: perms => updateSubuser(s.id, { ...s, permissions: perms }),
+    })) : []),
+  ]
+
+  const target = editing ?? (accounts.length === 1 ? accounts[0] : null)
+
+  // Esc closes the picker (the editor handles its own Esc).
+  useEffect(() => {
+    if (target) return
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [target, onClose])
+
+  const save = async perms => {
+    try {
+      await target.save(perms)
+      push?.(`Permissions saved for ${target.account.email}`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+      throw err
+    }
+  }
+
+  if (target) {
+    return <PermissionsEditor account={target.account} onSave={save} onClose={onClose} />
+  }
+
+  return createPortal(
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1600, background: 'rgba(5,20,28,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div
+        role="dialog" aria-modal="true" aria-label={`Permissions for ${node.name}`}
+        onClick={e => e.stopPropagation()}
+        style={{ width: 'min(460px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', borderRadius: 16, background: 'var(--c-card)', border: '1px solid var(--c-border)', boxShadow: '0 24px 60px rgba(0,0,0,0.35)' }}
+      >
+        <header style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '16px 18px', borderBottom: '1px solid var(--c-border)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--c-text3)' }}>{KIND[kind].noun} · Permissions</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--c-text1)', marginTop: 2 }}>{node.name}</div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" style={ICON_BTN}><X size={15} /></button>
+        </header>
+        <div style={{ overflowY: 'auto', padding: accounts.length ? '6px 0' : 18 }}>
+          {accounts.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: 'var(--c-text3)', lineHeight: 1.5 }}>
+              No accounts here yet. Add one first, then give it permissions.
+              {onOpenUsers && (
+                <div style={{ marginTop: 12 }}>
+                  <button type="button" onClick={onOpenUsers} style={{ ...PRIMARY_BTN, padding: '7px 14px', fontSize: 12 }}>
+                    <Plus size={13} strokeWidth={2.6} /> Add a user
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div style={{ padding: '6px 18px 8px', fontSize: 12, color: 'var(--c-text3)' }}>Choose an account:</div>
+              {accounts.map(a => (
+                <button
+                  key={a.account.id}
+                  type="button"
+                  onClick={() => setEditing(a)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 18px', border: 0, borderTop: '1px solid var(--c-border2)', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in srgb, var(--ft-accent) 14%, transparent)', color: 'var(--ft-accent)' }}>
+                    <UserRound size={15} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--c-text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--c-text3)' }}>{ROLE_NAME[a.account.role]}{a.sub ? ` · ${a.sub}` : ''}</div>
+                  </div>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: 'var(--c-text2)' }}>
+                    <ShieldCheck size={13} />
+                    {a.account.permissions && Object.keys(a.account.permissions).length ? `${openCount(a.account.permissions)}/${ALL_SCREENS.length}` : 'All'}
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}

@@ -13,7 +13,7 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
-import NodeUsersPanel, { UsersButton, useNodeUserCount } from './NodeUsersPanel'
+import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions } from './NodeUsersPanel'
 import { useSession } from '../../data/session'
 import { sessionLevel as usersLevel } from '../../data/screens'
 import MoveDialog, { MoveButton, canMove } from './MoveDialog'
@@ -55,6 +55,8 @@ export default function Group(props) {
   const session = useSession()
   const countUsers = useNodeUserCount('group')
   const [usersOf, setUsersOf] = useState(null)
+  const [permsFor, setPermsFor] = useState(null)
+  const mayPerms = useCanSetPermissions()
   // …and can be moved, with everything under it, to another parent.
   const [moving, setMoving] = useState(null)
   const mayMove = canMove(access.roleKey, 'group') && access.canWrite
@@ -179,10 +181,11 @@ export default function Group(props) {
 
               <SettingsTable
                 columns={showUsers ? [...COLUMNS, {
-                  key: '__users', label: mayMove ? 'Users / Move' : 'Users',
+                  key: '__users', label: 'Manage',
                   render: row => (
                     <div style={{ display: 'flex', gap: 6 }}>
                       <UsersButton count={countUsers(row)} onClick={() => setUsersOf(row)} />
+                      {mayPerms && <PermissionsButton onClick={() => setPermsFor(row)} />}
                       {mayMove && <MoveButton onClick={() => setMoving(row)} />}
                     </div>
                   ),
@@ -220,6 +223,17 @@ export default function Group(props) {
 
       {moving && (
         <MoveDialog kind="group" node={moving} push={push} onClose={() => setMoving(null)} />
+      )}
+
+      {permsFor && (
+        <NodePermissionsDialog
+          kind="group"
+          node={permsFor}
+          roleKey={access.roleKey}
+          push={push}
+          onOpenUsers={() => { setUsersOf(permsFor); setPermsFor(null) }}
+          onClose={() => setPermsFor(null)}
+        />
       )}
 
       {usersOf && (
