@@ -720,6 +720,7 @@ function persist() {
       alerts:    alertStore.get(),
       geofences: geofenceStore.get(),
       drivers:   driverStore.get(),
+      admins:    adminStore.get(),
     }))
   } catch { /* private mode or quota — the session still works in memory */ }
 }
@@ -758,6 +759,9 @@ const geofenceStore = createStore(hydrate('geofences', SEED_GEOFENCES))
 // Added after v3 shipped. No key bump needed: a saved blob without `drivers`
 // simply fails hydrate's Array.isArray check and this one slice starts at seed.
 const driverStore  = createStore(hydrate('drivers',   SEED_DRIVERS))
+// GGB Admin and Group Admin login accounts (2026-11-02). Starts empty in mock
+// mode; a saved blob without `admins` falls back to [] the same way.
+const adminStore   = createStore(hydrate('admins',    []))
 
 let nextId = Number.isFinite(saved?.nextId) ? saved.nextId : 100
 const makeId = prefix => `${prefix}${nextId++}`
@@ -784,6 +788,7 @@ const STORES = {
   alerts: alertStore,
   geofences: geofenceStore,
   drivers: driverStore,
+  admins: adminStore,
 }
 
 export function __replaceStore(key, rows) {
@@ -829,6 +834,7 @@ export function resetMockData() {
   vehicleStore.set([...SEED_VEHICLES])
   alertStore.set([...SEED_ALERTS])
   driverStore.set([...SEED_DRIVERS])
+  adminStore.set([])
   // Each set() above persisted already; this one carries the reset counter.
   persist()
 }
@@ -1032,6 +1038,66 @@ export function updateUser(id, patch) {
 
 export function removeUser(id) {
   userStore.set(list => list.filter(u => u.id !== id))
+}
+
+// ── Moves (mock mirror of server/src/lib/moves.js) ─────────────────────────
+
+/** Move a group, and every BG in it, to another GGB. */
+export function moveGroup(id, resellerId) {
+  groupStore.set(list => list.map(g => (g.id === id ? { ...g, resellerId } : g)))
+  companyStore.set(list => list.map(c => (c.groupId === id ? { ...c, resellerId } : c)))
+}
+
+/** Move a BG into a group, or straight under a GGB (groupId ''). */
+export function moveCompany(id, { resellerId, groupId }) {
+  const group = groupId ? groupStore.get().find(g => g.id === groupId) : null
+  const target = { resellerId: group ? group.resellerId : resellerId, groupId: groupId || '' }
+  companyStore.set(list => list.map(c => (c.id === id ? { ...c, ...target } : c)))
+  vehicleStore.set(list => list.map(v => (v.companyId === id ? { ...v, groupId: '' } : v)))
+}
+
+// ── Admin accounts (GGB Admin / Group Admin) ───────────────────────────────
+// One row per login account at the GGB or Group tier: { id, role, ggbId,
+// groupId, email, shortName, mobile, password, forceChange, status }. Managed
+// from the "Users" panel on the GGB and Group pages — there is no page of its own.
+
+export const ADMIN_ROLES = Object.freeze({ GGB_ADMIN: 'GGB_ADMIN', GROUP_ADMIN: 'GROUP_ADMIN' })
+
+export function emptyAdmin(role, parentId) {
+  return {
+    id: null,
+    role,
+    ggbId:   role === ADMIN_ROLES.GGB_ADMIN ? parentId : '',
+    groupId: role === ADMIN_ROLES.GROUP_ADMIN ? parentId : '',
+    email: '', shortName: '', mobile: '',
+    password: DEFAULT_PASSWORD, forceChange: true, status: 'Active',
+  }
+}
+
+export function useAdmins() {
+  return useSyncExternalStore(adminStore.subscribe, adminStore.get, adminStore.get)
+}
+
+export function addAdmin(admin) {
+  const row = { ...admin, id: makeId('a') }
+  adminStore.set(list => [...list, row])
+  return row
+}
+
+export function updateAdmin(id, patch) {
+  adminStore.set(list => list.map(a => (a.id === id ? { ...a, ...patch, id } : a)))
+}
+
+export function removeAdmin(id) {
+  adminStore.set(list => list.filter(a => a.id !== id))
+}
+
+/** True when any login account (admin, BG user or sub-user) already uses this email. */
+export function isLoginEmailTaken(email, exceptId = null) {
+  const v = normEmail(email)
+  if (!v) return false
+  return [...adminStore.get(), ...userStore.get(), ...subuserStore.get()]
+    .some(u => u.id !== exceptId && normEmail(u.email) === v)
 }
 
 // ── Sub-users ──────────────────────────────────────────────────────────────

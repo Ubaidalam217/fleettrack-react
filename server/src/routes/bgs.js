@@ -21,6 +21,7 @@ import {
   scopedWhere,
 } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { moveBg } from '../lib/moves.js'
 import { revokeGrantsUnderBg } from '../lib/flespiGrant.js'
 
 const router = Router()
@@ -242,6 +243,20 @@ router.delete(
 
     await prisma.businessGroup.delete({ where: { id: existing.id } })
     res.json({ data: { id: existing.id, removed: { branches, vehicles, users, alerts } } })
+  })
+)
+
+/**
+ * Move into another group, or directly under a GGB (groupId null), with every
+ * branch, vehicle, account and alert under it (lib/moves.js).
+ */
+router.post(
+  '/:id/move',
+  validate(z.object({ ggbId: optionalId(), groupId: optionalId() })),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'bg')
+    const existing = await findScopedOrThrow('bg', req.params.id, req.scope)
+    res.json({ data: await moveBg(req.scope, existing.id, req.body) })
   })
 )
 

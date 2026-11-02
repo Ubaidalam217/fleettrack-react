@@ -228,6 +228,35 @@ export const user = {
   }),
 }
 
+// ── Admin login account (API: User, role GGB_ADMIN or GROUP_ADMIN) ──────────
+
+export const admin = {
+  toFe: r => ({
+    id: r.id,
+    role: r.role,
+    ggbId: r.scope?.ggbId ?? '',
+    groupId: r.scope?.groupId ?? '',
+    email: r.email ?? '',
+    password: DEFAULT_PASSWORD,
+    forceChange: !!r.mustChangePassword,
+    status: r.status ?? 'Active',
+    shortName: orBlank(r.shortName),
+    mobile: orBlank(r.mobile),
+  }),
+  toApiCreate: r => ({
+    email: r.email,
+    ...admin.fields(r),
+  }),
+  toApiUpdate: r => admin.fields(r),
+  fields: r => ({
+    role: r.role,
+    ...(r.role === 'GGB_ADMIN' ? { ggbId: r.ggbId } : { groupId: r.groupId }),
+    status: r.status || 'Active',
+    shortName: orNull(r.shortName),
+    mobile: orNull(r.mobile),
+  }),
+}
+
 // ── Sub-user (API: User, role SUB_USER) ─────────────────────────────────────
 // The six-tab form. Four of the tabs are JSON columns on the server, which is why
 // the shapes below are assembled and disassembled here rather than being stored

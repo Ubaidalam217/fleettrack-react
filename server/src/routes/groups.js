@@ -1,10 +1,9 @@
 /**
  * /api/groups — the optional tier between a GGB and its BGs.
  *
- * A group's ggbId is fixed at creation. Moving a group to another GGB would move
- * every BG, branch, vehicle and account under it across a tenant boundary in one
- * request, which is not an edit — it is a migration, and it is not something the
- * Settings form offers.
+ * A group's ggbId is not editable through PUT. Moving a group to another GGB
+ * moves every BG, branch, vehicle and account under it across a tenant
+ * boundary, so it is its own explicit action: POST /:id/move (Super Admin).
  */
 
 import { Router } from 'express'
@@ -14,6 +13,7 @@ import { asyncHandler } from '../lib/http.js'
 import { requiredId, requiredText } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { moveGroup } from '../lib/moves.js'
 import { revokeGrantsUnderGroup } from '../lib/flespiGrant.js'
 
 const router = Router()
@@ -124,6 +124,20 @@ router.delete(
         groupAdminsRemoved: admins,
       },
     })
+  })
+)
+
+/**
+ * Move to another GGB, with every BG under the group and everything under
+ * those (lib/moves.js). Super Admin only.
+ */
+router.post(
+  '/:id/move',
+  validate(z.object({ ggbId: requiredId('GGB') })),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'group')
+    const existing = await findScopedOrThrow('group', req.params.id, req.scope)
+    res.json({ data: await moveGroup(req.scope, existing.id, req.body.ggbId) })
   })
 )
 

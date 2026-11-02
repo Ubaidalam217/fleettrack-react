@@ -14,6 +14,7 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import NodeUsersPanel, { UsersButton, useNodeUserCount } from './NodeUsersPanel'
 import { IS_REAL } from '../../data/mode'
 
 /**
@@ -70,6 +71,10 @@ export default function Branch(props) {
   const vehicles = useVehicles()
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('branch')
+  // Client, 2026-11-02: each row manages its own login accounts.
+  const countUsers = useNodeUserCount('branch')
+  const [usersOf, setUsersOf] = useState(null)
+  const showUsers = access.roleKey !== 'SUB_USER'
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
@@ -329,7 +334,10 @@ export default function Branch(props) {
               </TableToolbar>
 
               <SettingsTable
-                columns={COLUMNS}
+                columns={showUsers ? [...COLUMNS, {
+                  key: '__users', label: 'Users',
+                  render: row => <UsersButton count={countUsers(row)} onClick={() => setUsersOf(row)} />,
+                }] : COLUMNS}
                 rows={rows}
                 onEdit={openEdit}
                 onDelete={setPending}
@@ -365,6 +373,17 @@ export default function Branch(props) {
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}
+        />
+      )}
+
+      {usersOf && (
+        <NodeUsersPanel
+          kind="branch"
+          node={usersOf}
+          bgId={usersOf.companyId}
+          roleKey={access.roleKey}
+          push={push}
+          onClose={() => setUsersOf(null)}
         />
       )}
 

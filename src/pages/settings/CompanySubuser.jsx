@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
@@ -149,10 +150,10 @@ export default function CompanySubuser(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
-  const openAdd = () => {
+  const openAdd = (prefill = {}) => {
     setErrors({})
     setTab(TABS[0].id)
-    setDraft(emptySubuser())
+    setDraft({ ...emptySubuser(), ...prefill })
     // The password field opens prefilled with the default, so the retype does
     // too — making the operator copy a value the form just filled in for them
     // is friction without a safety gain.
@@ -170,6 +171,30 @@ export default function CompanySubuser(props) {
   }
 
   const closeForm = () => { setErrors({}); setDraft(null) }
+
+  // Deep links from the Users panel on the BG and Branch pages:
+  //   ?new=1&bg=<id>&branch=<id>  opens Add with the BG (and branch) filled in
+  //   ?edit=<id>                  opens that sub-user once it has loaded
+  // Each link is acted on once (`handledLink`), so a later store update — the
+  // save itself — cannot reopen the form.
+  const [params, setParams] = useSearchParams()
+  const handledLink = useRef(null)
+  useEffect(() => {
+    const key = params.toString()
+    if (!key || handledLink.current === key) return
+    const editId = params.get('edit')
+    if (params.get('new')) {
+      const branch = params.get('branch')
+      openAdd({ companyId: params.get('bg') || '', branchIds: branch ? [branch] : [] })
+    } else if (editId) {
+      const row = subusers.find(u => u.id === editId)
+      if (!row) return // not loaded yet; runs again when the list arrives
+      openEdit(row)
+    } else return
+    handledLink.current = key
+    setParams({}, { replace: true })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, subusers])
 
   const set = (key, value) => {
     setDraft(d => {
@@ -467,7 +492,7 @@ export default function CompanySubuser(props) {
                     style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
                     disabled={noCompanies}
                     title={noCompanies ? 'Add a BG first' : undefined}
-                    onClick={openAdd}
+                    onClick={() => openAdd()}
                   >
                     <Plus size={14} strokeWidth={2.6} />
                     Add Subuser

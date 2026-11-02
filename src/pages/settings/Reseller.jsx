@@ -12,6 +12,7 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import NodeUsersPanel, { UsersButton, useNodeUserCount } from './NodeUsersPanel'
 
 // Top of the org hierarchy below Super Admin: a GGB owns groups, which own
 // BGs. Stored as `reseller` rows — see the vocabulary note in mockData.js.
@@ -30,6 +31,10 @@ export default function Reseller(props) {
   const resellers = useResellers()
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('reseller')
+  // Client, 2026-11-02: each row manages its own login accounts.
+  const countUsers = useNodeUserCount('ggb')
+  const [usersOf, setUsersOf] = useState(null)
+  const showUsers = access.roleKey !== 'SUB_USER'
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
@@ -143,7 +148,10 @@ export default function Reseller(props) {
               </TableToolbar>
 
               <SettingsTable
-                columns={COLUMNS}
+                columns={showUsers ? [...COLUMNS, {
+                  key: '__users', label: 'Users',
+                  render: row => <UsersButton count={countUsers(row)} onClick={() => setUsersOf(row)} />,
+                }] : COLUMNS}
                 rows={resellers}
                 onEdit={openEdit}
                 onDelete={setPending}
@@ -170,6 +178,17 @@ export default function Reseller(props) {
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}
+        />
+      )}
+
+      {usersOf && (
+        <NodeUsersPanel
+          kind="ggb"
+          node={usersOf}
+          bgId={usersOf.companyId}
+          roleKey={access.roleKey}
+          push={push}
+          onClose={() => setUsersOf(null)}
         />
       )}
 

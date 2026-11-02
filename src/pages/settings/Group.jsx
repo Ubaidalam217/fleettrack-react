@@ -13,6 +13,8 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import NodeUsersPanel, { UsersButton, useNodeUserCount } from './NodeUsersPanel'
+import MoveDialog, { MoveButton, canMove } from './MoveDialog'
 import { IS_REAL } from '../../data/mode'
 
 // A group sits between a GGB and its BGs. A BG may skip it — one with no
@@ -47,6 +49,13 @@ export default function Group(props) {
   const resellers = useResellers()
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('group')
+  // Client, 2026-11-02: each row manages its own login accounts.
+  const countUsers = useNodeUserCount('group')
+  const [usersOf, setUsersOf] = useState(null)
+  // …and can be moved, with everything under it, to another parent.
+  const [moving, setMoving] = useState(null)
+  const mayMove = canMove(access.roleKey, 'group')
+  const showUsers = access.roleKey !== 'SUB_USER'
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
@@ -166,7 +175,15 @@ export default function Group(props) {
               </TableToolbar>
 
               <SettingsTable
-                columns={COLUMNS}
+                columns={showUsers ? [...COLUMNS, {
+                  key: '__users', label: mayMove ? 'Users / Move' : 'Users',
+                  render: row => (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <UsersButton count={countUsers(row)} onClick={() => setUsersOf(row)} />
+                      {mayMove && <MoveButton onClick={() => setMoving(row)} />}
+                    </div>
+                  ),
+                }] : COLUMNS}
                 rows={groups}
                 onEdit={openEdit}
                 onDelete={setPending}
@@ -195,6 +212,21 @@ export default function Group(props) {
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}
+        />
+      )}
+
+      {moving && (
+        <MoveDialog kind="group" node={moving} push={push} onClose={() => setMoving(null)} />
+      )}
+
+      {usersOf && (
+        <NodeUsersPanel
+          kind="group"
+          node={usersOf}
+          bgId={usersOf.companyId}
+          roleKey={access.roleKey}
+          push={push}
+          onClose={() => setUsersOf(null)}
         />
       )}
 

@@ -75,7 +75,10 @@ export {
  * passes. The server's unique index catches it and the mutators below surface the
  * 409 against the same field, so the user gets the same message either way.
  */
-export { isCompanyEmailTaken, isUserEmailTaken, isSubuserEmailTaken, isImeiTaken } from '../pages/settings/mockData'
+export { isCompanyEmailTaken, isUserEmailTaken, isSubuserEmailTaken, isImeiTaken, isLoginEmailTaken } from '../pages/settings/mockData'
+
+// Admin accounts (GGB Admin / Group Admin), for the Users panel.
+export { ADMIN_ROLES, emptyAdmin, useAdmins } from '../pages/settings/mockData'
 
 // The alert rule registry beyond the type list above: the per-type lookup, the
 // severity scale and the reader that widens a stored rule to the form's shape.
@@ -104,10 +107,20 @@ const COLLECTIONS = [
   // somewhere. A 404 there means "no drivers yet", not "Settings is unavailable" —
   // without this one missing route would blank every Settings page.
   { key: 'drivers', path: '/api/drivers', toFe: A.driver.toFe, optional: true },
+  // GGB and Group admin accounts, for the Users panel on those two pages. Two
+  // role-filtered reads; a role that sees none simply gets an empty list.
+  {
+    key: 'admins',
+    fetch: () => Promise.all([
+      get('/api/users', { role: 'GGB_ADMIN' }),
+      get('/api/users', { role: 'GROUP_ADMIN' }),
+    ]).then(lists => lists.flatMap(l => l ?? []).map(A.admin.toFe)),
+  },
 ]
 
 /** One collection's rows; an optional collection's 404 reads as empty. */
 function fetchCollection(c) {
+  if (c.fetch) return c.fetch()
   const rows = get(c.path, c.query).then(list => (list ?? []).map(c.toFe))
   return c.optional ? rows.catch(err => (err?.status === 404 ? [] : Promise.reject(err))) : rows
 }
@@ -354,6 +367,48 @@ export function updateUser(id, patch) {
 
 export function removeUser(id) {
   if (!IS_REAL) return done(mock.removeUser(id))
+  return write(() => del(`/api/users/${id}`))
+}
+
+// Move (a Group or a BG with everything under it) ───────────────────────────
+
+/** Move a group, its BGs and everything under them, to another GGB. */
+export function moveGroup(id, resellerId) {
+  if (!IS_REAL) return done(mock.moveGroup(id, resellerId))
+  return write(() => post(`/api/groups/${id}/move`, { ggbId: resellerId }))
+}
+
+/** Move a BG into a group, or straight under a GGB with groupId ''. */
+export function moveCompany(id, { resellerId, groupId }) {
+  if (!IS_REAL) return done(mock.moveCompany(id, { resellerId, groupId }))
+  return write(() => post(`/api/bgs/${id}/move`, groupId ? { groupId } : { ggbId: resellerId, groupId: null }))
+}
+
+// Admin (GGB Admin / Group Admin login) ──────────────────────────────────────
+
+export function addAdmin(row) {
+  if (!IS_REAL) return done(mock.addAdmin(row))
+  return write(async () => {
+    const body = A.admin.toApiCreate(row)
+    if (row.password && row.password !== mock.DEFAULT_PASSWORD) body.password = row.password
+    return A.admin.toFe(await post('/api/users', body))
+  })
+}
+
+/** Update, plus a password reset when the box was edited (see updateUser). */
+export function updateAdmin(id, patch) {
+  if (!IS_REAL) return done(mock.updateAdmin(id, patch))
+  return write(async () => {
+    const row = A.admin.toFe(await put(`/api/users/${id}`, A.admin.toApiUpdate(patch)))
+    if (patch.password && patch.password !== mock.DEFAULT_PASSWORD) {
+      await post(`/api/users/${id}/reset-password`, { password: patch.password })
+    }
+    return row
+  })
+}
+
+export function removeAdmin(id) {
+  if (!IS_REAL) return done(mock.removeAdmin(id))
   return write(() => del(`/api/users/${id}`))
 }
 

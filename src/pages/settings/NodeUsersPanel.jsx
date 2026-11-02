@@ -1,0 +1,344 @@
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
+import { X, Plus, Pencil, Trash2, UserRound, Users } from 'lucide-react'
+import { Field } from './FormKit'
+import { PRIMARY_BTN, SECONDARY_BTN, inputStyle } from './formStyles'
+import ConfirmDialog from '../../components/tracking/ConfirmDialog'
+import {
+  useAdmins, useUsers, useSubusers, ADMIN_ROLES, emptyAdmin, emptyUser,
+  addAdmin, updateAdmin, removeAdmin, addUser, updateUser, removeUser,
+  isLoginEmailTaken, DEFAULT_PASSWORD,
+} from '../../data/settings'
+import { handleApiError } from './pageChrome'
+import { IS_REAL } from '../../data/mode'
+
+/**
+ * The login accounts that belong to one GGB, Group, BG or Branch, managed
+ * from that node's own row (client, 2026-11-02: "add the users right there").
+ *
+ *   GGB    → GGB Admins           (simple form here)
+ *   Group  → Group Admins         (simple form here)
+ *   BG     → BG Users             (simple form here) + Sub-users
+ *   Branch → Sub-users assigned to that branch
+ *
+ * Sub-users keep their own form on the Company Subuser page; this panel lists
+ * them and opens that page with the BG (and branch) already filled in.
+ * Who may create what is the server's rule (only roles below your own); the
+ * buttons below just hide what the server would refuse.
+ */
+
+const RANK = { SUPER_ADMIN: 0, GGB_ADMIN: 1, GROUP_ADMIN: 2, BG_USER: 3, SUB_USER: 4 }
+const canCreate = (roleKey, role) => !IS_REAL || roleKey == null || RANK[roleKey] < RANK[role]
+
+const KIND = {
+  ggb:    { noun: 'GGB',    role: ADMIN_ROLES.GGB_ADMIN,   label: 'GGB Admins' },
+  group:  { noun: 'Group',  role: ADMIN_ROLES.GROUP_ADMIN, label: 'Group Admins' },
+  bg:     { noun: 'BG',     role: 'BG_USER',               label: 'BG Users' },
+  branch: { noun: 'Branch', role: null,                    label: null },
+}
+
+/** Rows and the account list a node shows. */
+function useNodeAccounts(kind, node) {
+  const admins = useAdmins()
+  const users = useUsers()
+  const subusers = useSubusers()
+  const own =
+    kind === 'ggb'   ? admins.filter(a => a.role === ADMIN_ROLES.GGB_ADMIN && a.ggbId === node.id) :
+    kind === 'group' ? admins.filter(a => a.role === ADMIN_ROLES.GROUP_ADMIN && a.groupId === node.id) :
+    kind === 'bg'    ? users.filter(u => u.companyId === node.id) : []
+  const subs =
+    kind === 'bg'     ? subusers.filter(s => s.companyId === node.id) :
+    kind === 'branch' ? subusers.filter(s => (s.branchIds ?? []).includes(node.id)) : []
+  return { own, subs }
+}
+
+/** How many accounts a node has — for the "Users (n)" button in each table. */
+export function useNodeUserCount(kind) {
+  const admins = useAdmins()
+  const users = useUsers()
+  const subusers = useSubusers()
+  return node => {
+    if (kind === 'ggb') return admins.filter(a => a.role === ADMIN_ROLES.GGB_ADMIN && a.ggbId === node.id).length
+    if (kind === 'group') return admins.filter(a => a.role === ADMIN_ROLES.GROUP_ADMIN && a.groupId === node.id).length
+    if (kind === 'bg') return users.filter(u => u.companyId === node.id).length + subusers.filter(s => s.companyId === node.id).length
+    return subusers.filter(s => (s.branchIds ?? []).includes(node.id)).length
+  }
+}
+
+/** The "Users (n)" button for a table row. */
+export function UsersButton({ count, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Manage this level's login accounts"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 999,
+        border: '1px solid var(--c-border2)', background: 'var(--c-input)', color: 'var(--c-text2)',
+        fontSize: 11.5, fontWeight: 650, cursor: 'pointer', whiteSpace: 'nowrap',
+      }}
+    >
+      <Users size={13} />
+      Users ({count})
+    </button>
+  )
+}
+
+function StatusPill({ status }) {
+  const on = status !== 'Inactive'
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+      color: on ? '#16a34a' : 'var(--c-text3)',
+      background: on ? 'rgba(16,185,129,0.1)' : 'var(--c-progress)',
+    }}>{on ? 'Active' : 'Inactive'}</span>
+  )
+}
+
+function AccountRow({ title, sub, status, onEdit, onDelete }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderTop: '1px solid var(--c-border2)' }}>
+      <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in srgb, var(--ft-accent) 14%, transparent)', color: 'var(--ft-accent)' }}>
+        <UserRound size={15} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--c-text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
+        {sub && <div style={{ fontSize: 11, color: 'var(--c-text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
+      </div>
+      <StatusPill status={status} />
+      {onEdit && <button type="button" onClick={onEdit} aria-label={`Edit ${title}`} title="Edit" style={ICON_BTN}><Pencil size={13} /></button>}
+      {onDelete && <button type="button" onClick={onDelete} aria-label={`Delete ${title}`} title="Delete" style={{ ...ICON_BTN, color: '#ef4444' }}><Trash2 size={13} /></button>}
+    </div>
+  )
+}
+
+const ICON_BTN = {
+  display: 'flex', padding: 6, borderRadius: 7, border: '1px solid var(--c-border2)',
+  background: 'transparent', color: 'var(--c-text2)', cursor: 'pointer',
+}
+
+function Section({ title, count, action, children, empty }) {
+  return (
+    <section style={{ border: '1px solid var(--c-border2)', borderRadius: 12, overflow: 'hidden', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 12px', background: 'var(--c-thead)' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--c-text2)' }}>
+          {title} <span style={{ color: 'var(--c-text3)' }}>({count})</span>
+        </span>
+        {action}
+      </div>
+      {count === 0 ? (
+        <div style={{ padding: '16px 12px', fontSize: 12, color: 'var(--c-text3)', borderTop: '1px solid var(--c-border2)' }}>{empty}</div>
+      ) : children}
+    </section>
+  )
+}
+
+/** Add / edit one GGB Admin, Group Admin or BG User. */
+function AccountForm({ draft, setDraft, onCancel, onSave, saving, errors }) {
+  const set = (k, v) => setDraft(d => ({ ...d, [k]: v }))
+  return (
+    <form
+      onSubmit={e => { e.preventDefault(); onSave() }}
+      noValidate
+      style={{ border: '1px solid var(--c-border2)', borderRadius: 12, padding: 14, marginBottom: 14, background: 'var(--c-card)' }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text1)', marginBottom: 12 }}>
+        {draft.id ? 'Edit account' : 'New account'}
+      </div>
+      <div style={{ display: 'grid', gap: 12 }}>
+        <Field label="Name" error={errors.shortName}>
+          <input autoFocus value={draft.shortName ?? ''} onChange={e => set('shortName', e.target.value)} style={inputStyle(!!errors.shortName)} placeholder="Full name" />
+        </Field>
+        <Field label="Email (sign-in)" required error={errors.email} hint={draft.id ? 'The sign-in email cannot be changed.' : undefined}>
+          <input type="email" value={draft.email} disabled={!!draft.id} onChange={e => set('email', e.target.value)} style={{ ...inputStyle(!!errors.email), opacity: draft.id ? 0.6 : 1 }} placeholder="name@company.com" />
+        </Field>
+        <Field label="Mobile" error={errors.mobile}>
+          <input value={draft.mobile ?? ''} onChange={e => set('mobile', e.target.value)} style={inputStyle(!!errors.mobile)} placeholder="+971 50 000 0000" />
+        </Field>
+        <Field label="Password" error={errors.password} hint={draft.id ? 'Type a new one only to reset it.' : 'They must change it at first sign-in.'}>
+          <input value={draft.password ?? ''} onChange={e => set('password', e.target.value)} style={inputStyle(!!errors.password)} />
+        </Field>
+        <Field label="Status">
+          <div style={{ display: 'flex', gap: 6 }}>
+            {['Active', 'Inactive'].map(s => (
+              <button key={s} type="button" className={`ft-btn${draft.status === s ? ' ft-btn--active' : ''}`} aria-pressed={draft.status === s}
+                onClick={() => set('status', s)} style={{ flex: 1, justifyContent: 'center', padding: '7px 10px' }}>{s}</button>
+            ))}
+          </div>
+        </Field>
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+        <button type="button" style={SECONDARY_BTN} onClick={onCancel}>Cancel</button>
+        <button type="submit" style={{ ...PRIMARY_BTN, opacity: saving ? 0.7 : 1 }} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+      </div>
+    </form>
+  )
+}
+
+/**
+ * @param {'ggb'|'group'|'bg'|'branch'} kind
+ * @param {object} node      the GGB / Group / BG / Branch row
+ * @param {string} [bgId]    for a branch, the BG it belongs to
+ * @param {string|null} roleKey  the signed-in role (null in mock mode)
+ */
+export default function NodeUsersPanel({ kind, node, bgId, roleKey, onClose, push }) {
+  const navigate = useNavigate()
+  const meta = KIND[kind]
+  const { own, subs } = useNodeAccounts(kind, node)
+  const [draft, setDraft] = useState(null)
+  const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [pending, setPending] = useState(null)
+
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape' && !draft && !pending) onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [draft, pending, onClose])
+
+  const isAdmin = kind === 'ggb' || kind === 'group'
+  const mayAddOwn = meta.role && canCreate(roleKey, meta.role)
+  const mayAddSub = (kind === 'bg' || kind === 'branch') && canCreate(roleKey, 'SUB_USER')
+  const subBg = kind === 'bg' ? node.id : bgId
+
+  const openAdd = () => {
+    setErrors({})
+    setDraft(isAdmin ? emptyAdmin(meta.role, node.id) : { ...emptyUser(), companyId: node.id, shortName: '', mobile: '' })
+  }
+  const openEdit = row => { setErrors({}); setDraft({ ...row, password: DEFAULT_PASSWORD }) }
+
+  const save = async () => {
+    const next = {}
+    const email = draft.email.trim()
+    if (!email) next.email = 'Email is required'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email = 'Enter a valid email'
+    else if (!draft.id && isLoginEmailTaken(email)) next.email = 'This email already has an account'
+    if (draft.password && draft.password.length < 8) next.password = 'At least 8 characters'
+    if (Object.keys(next).length) { setErrors(next); return }
+
+    const clean = { ...draft, email, shortName: (draft.shortName ?? '').trim(), mobile: (draft.mobile ?? '').trim() }
+    setSaving(true)
+    try {
+      if (isAdmin) await (draft.id ? updateAdmin(draft.id, clean) : addAdmin(clean))
+      else await (draft.id ? updateUser(draft.id, clean) : addUser(clean))
+      push?.(`${email} ${draft.id ? 'updated' : 'added'}`, { tone: 'success' })
+      setDraft(null)
+    } catch (err) {
+      handleApiError(err, { push, setErrors })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const confirmDelete = async () => {
+    const row = pending
+    setPending(null)
+    try {
+      await (isAdmin ? removeAdmin(row.id) : removeUser(row.id))
+      push?.(`${row.email} deleted`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+    }
+  }
+
+  const addSub = () => navigate(`/settings/company-subuser?new=1&bg=${encodeURIComponent(subBg ?? '')}${kind === 'branch' ? `&branch=${encodeURIComponent(node.id)}` : ''}`)
+  const editSub = s => navigate(`/settings/company-subuser?edit=${encodeURIComponent(s.id)}`)
+
+  return createPortal(
+    <div onClick={() => !draft && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(5,20,28,0.45)' }}>
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Users of ${node.name}`}
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: 'min(460px, 100%)',
+          background: 'var(--c-page)', borderLeft: '1px solid var(--c-border)', boxShadow: '-12px 0 40px rgba(0,0,0,0.25)',
+          display: 'flex', flexDirection: 'column',
+        }}
+      >
+        <header style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '16px 18px', borderBottom: '1px solid var(--c-border)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--c-text3)' }}>{meta.noun} · Users</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--c-text1)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" style={ICON_BTN}><X size={16} /></button>
+        </header>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          {draft && (
+            <AccountForm draft={draft} setDraft={setDraft} errors={errors} saving={saving}
+              onCancel={() => { setDraft(null); setErrors({}) }} onSave={save} />
+          )}
+
+          {meta.label && (
+            <Section
+              title={meta.label}
+              count={own.length}
+              empty={`No ${meta.label} yet.`}
+              action={mayAddOwn && !draft && (
+                <button type="button" onClick={openAdd} style={{ ...PRIMARY_BTN, padding: '6px 12px', fontSize: 11.5 }}>
+                  <Plus size={13} strokeWidth={2.6} /> Add
+                </button>
+              )}
+            >
+              {own.map(a => (
+                <AccountRow
+                  key={a.id}
+                  title={a.shortName || a.email}
+                  sub={a.shortName ? a.email : a.mobile}
+                  status={a.status}
+                  onEdit={mayAddOwn ? () => openEdit(a) : null}
+                  onDelete={mayAddOwn ? () => setPending(a) : null}
+                />
+              ))}
+            </Section>
+          )}
+
+          {(kind === 'bg' || kind === 'branch') && (
+            <Section
+              title="Sub-users"
+              count={subs.length}
+              empty={kind === 'branch' ? 'No sub-users assigned to this branch.' : 'No sub-users yet.'}
+              action={mayAddSub && !draft && (
+                <button type="button" onClick={addSub} style={{ ...PRIMARY_BTN, padding: '6px 12px', fontSize: 11.5 }}>
+                  <Plus size={13} strokeWidth={2.6} /> Add
+                </button>
+              )}
+            >
+              {subs.map(s => (
+                <AccountRow
+                  key={s.id}
+                  title={s.name || s.email}
+                  sub={s.name ? s.email : null}
+                  status={s.status}
+                  onEdit={mayAddSub ? () => editSub(s) : null}
+                />
+              ))}
+            </Section>
+          )}
+
+          {(kind === 'bg' || kind === 'branch') && mayAddSub && (
+            <p style={{ fontSize: 11.5, color: 'var(--c-text3)', margin: '0 2px', lineHeight: 1.5 }}>
+              {kind === 'branch'
+                ? 'Add opens the sub-user form with this BG filled in. A sub-user added here sees only this branch’s vehicles.'
+                : 'Add opens the sub-user form with this BG filled in. That sub-user sees every vehicle of the BG.'}
+            </p>
+          )}
+        </div>
+      </aside>
+
+      {pending && (
+        <ConfirmDialog
+          title="Delete account?"
+          body={`${pending.email} will no longer be able to sign in.`}
+          confirmLabel="Delete"
+          onConfirm={confirmDelete}
+          onClose={() => setPending(null)}
+        />
+      )}
+    </div>,
+    document.body,
+  )
+}

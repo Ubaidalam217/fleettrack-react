@@ -14,6 +14,8 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import NodeUsersPanel, { UsersButton, useNodeUserCount } from './NodeUsersPanel'
+import MoveDialog, { MoveButton, canMove } from './MoveDialog'
 import { IS_REAL } from '../../data/mode'
 
 // List and form live on one route. Settings' routing is Phase 1 work and the
@@ -75,6 +77,13 @@ export default function Company(props) {
   useGroups()
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('company')
+  // Client, 2026-11-02: each row manages its own login accounts.
+  const countUsers = useNodeUserCount('bg')
+  const [usersOf, setUsersOf] = useState(null)
+  // …and can be moved, with everything under it, to another parent.
+  const [moving, setMoving] = useState(null)
+  const mayMove = canMove(access.roleKey, 'bg')
+  const showUsers = access.roleKey !== 'SUB_USER'
 
   // null = list view. Otherwise the record being edited, with id null for a new
   // one — which is also what tells Save whether to add or update.
@@ -215,7 +224,15 @@ export default function Company(props) {
               </TableToolbar>
 
               <SettingsTable
-                columns={COLUMNS}
+                columns={showUsers ? [...COLUMNS, {
+                  key: '__users', label: mayMove ? 'Users / Move' : 'Users',
+                  render: row => (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <UsersButton count={countUsers(row)} onClick={() => setUsersOf(row)} />
+                      {mayMove && <MoveButton onClick={() => setMoving(row)} />}
+                    </div>
+                  ),
+                }] : COLUMNS}
                 rows={companies}
                 onEdit={openEdit}
                 onDelete={setPending}
@@ -242,6 +259,21 @@ export default function Company(props) {
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}
+        />
+      )}
+
+      {moving && (
+        <MoveDialog kind="bg" node={moving} push={push} onClose={() => setMoving(null)} />
+      )}
+
+      {usersOf && (
+        <NodeUsersPanel
+          kind="bg"
+          node={usersOf}
+          bgId={usersOf.companyId}
+          roleKey={access.roleKey}
+          push={push}
+          onClose={() => setUsersOf(null)}
         />
       )}
 
