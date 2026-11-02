@@ -7,6 +7,8 @@ import {
 import { useCurrentUser, initials, firstName } from '../services/authUser'
 import SettingsMenu from './sidebar/SettingsMenu'
 import ReportsMenu from './sidebar/ReportsMenu'
+import { REPORTS_MENU } from './sidebar/reportsNav'
+import { useCanOpen } from '../data/screens'
 
 export const SIDEBAR_WIDTH = 260
 
@@ -286,6 +288,8 @@ export default function Sidebar({ sidebarOpen }) {
     () => typeof window === 'undefined' || window.innerWidth >= DESKTOP_MIN
   )
   const user = useCurrentUser()
+  const canOpen = useCanOpen()
+  const anyReportOpen = REPORTS_MENU.some(r => canOpen(r.path))
 
   // Only matters in the uncontrolled case, but it is cheap and keeps the
   // fallback honest across a resize.
@@ -371,9 +375,11 @@ export default function Sidebar({ sidebarOpen }) {
                       return <SettingsMenu key={item.id} />
                     }
                     if (item.custom === 'reports-menu') {
-                      return <ReportsMenu key={item.id} />
+                      return anyReportOpen ? <ReportsMenu key={item.id} /> : null
                     }
 
+                    // Permissions: a screen this user has No Access to is not listed.
+                    if (!canOpen(item.path)) return null
                     const active = location.pathname === item.path
                     return (
                       <Link

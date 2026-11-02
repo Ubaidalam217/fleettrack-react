@@ -280,7 +280,7 @@ export default function User(props) {
           {!access.loading && (
             <>
               <TableToolbar count={users.length} noun="user" plural="users">
-                {access.canWrite && (
+                {access.canAdd && (
                   <button
                     type="button"
                     style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
@@ -301,7 +301,7 @@ export default function User(props) {
                 rows={users}
                 labelKey="email"
                 onEdit={openEdit}
-                onDelete={setPending}
+                onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
                 emptyLabel={
                   !access.canWrite

@@ -429,7 +429,7 @@ export default function Driver(props) {
               </div>
 
               <TableToolbar count={rows.length} noun="driver" plural="drivers">
-                {access.canWrite && (
+                {access.canAdd && (
                   <button
                     type="button"
                     style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
@@ -449,7 +449,7 @@ export default function Driver(props) {
                 columns={columns}
                 rows={rows}
                 onEdit={openEdit}
-                onDelete={setPending}
+                onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
                 emptyLabel={
                   filtering && drivers.length > 0

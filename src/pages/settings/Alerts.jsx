@@ -960,7 +960,7 @@ export default function Alerts(props) {
           {!access.loading && (
             <>
               <TableToolbar count={alerts.length} noun="alert" plural="alerts">
-                {access.canWrite && (
+                {access.canAdd && (
                   <button
                     type="button"
                     style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
@@ -980,7 +980,7 @@ export default function Alerts(props) {
                 columns={COLUMNS}
                 rows={alerts}
                 onEdit={openEdit}
-                onDelete={setPending}
+                onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
                 emptyLabel={
                   !access.canWrite

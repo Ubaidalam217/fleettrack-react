@@ -328,7 +328,7 @@ export default function Geofence(props) {
               </div>
 
               <TableToolbar count={rows.length} noun="geofence" plural="geofences">
-                {access.canWrite && (
+                {access.canAdd && (
                   <button
                     type="button"
                     style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
@@ -346,7 +346,7 @@ export default function Geofence(props) {
                 columns={COLUMNS}
                 rows={rows}
                 onEdit={openEdit}
-                onDelete={setPending}
+                onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
                 emptyLabel={
                   !access.canWrite

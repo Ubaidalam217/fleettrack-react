@@ -25,6 +25,9 @@ const USER_SELECT = {
   mobile: true,
   // So /api/auth/me hands the website and the app the profile photo URL.
   avatarKey: true,
+  // Per-screen permissions (lib/permissions.js): read on every request so a
+  // change applies at once, and handed back by /api/auth/me for the menus.
+  screenAccess: true,
   ggbId: true,
   groupId: true,
   bgId: true,

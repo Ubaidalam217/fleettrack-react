@@ -15,6 +15,8 @@ import {
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import NodeUsersPanel, { UsersButton, useNodeUserCount } from './NodeUsersPanel'
+import { useSession } from '../../data/session'
+import { sessionLevel as usersLevel } from '../../data/screens'
 import { IS_REAL } from '../../data/mode'
 
 /**
@@ -72,9 +74,10 @@ export default function Branch(props) {
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('branch')
   // Client, 2026-11-02: each row manages its own login accounts.
+  const session = useSession()
   const countUsers = useNodeUserCount('branch')
   const [usersOf, setUsersOf] = useState(null)
-  const showUsers = access.roleKey !== 'SUB_USER'
+  const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
@@ -317,7 +320,7 @@ export default function Branch(props) {
           {!access.loading && (
             <>
               <TableToolbar count={branches.length} noun="branch" plural="branches">
-                {access.canWrite && (
+                {access.canAdd && (
                   <button
                     type="button"
                     style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
@@ -340,7 +343,7 @@ export default function Branch(props) {
                 }] : COLUMNS}
                 rows={rows}
                 onEdit={openEdit}
-                onDelete={setPending}
+                onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
                 emptyLabel={
                   !access.canWrite

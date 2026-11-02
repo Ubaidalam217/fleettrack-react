@@ -18,6 +18,7 @@ import { IS_REAL } from '../../data/mode'
 import { useSession } from '../../data/session'
 import { useSettingsStatus, refreshAll } from '../../data/settings'
 import { canWritePage, isReadOnly } from '../../data/permissions'
+import { sessionLevel, screenForPath, atLeast } from '../../data/screens'
 import { ApiError } from '../../data/http'
 
 /**
@@ -43,9 +44,19 @@ export function usePageAccess(pageId) {
 
   const roleKey = IS_REAL ? (session.user?.role ?? null) : null
 
+  // Per-user permissions (data/screens.js) narrow what the role allows:
+  // View hides every write, Edit allows changes only, Full adds Add and Delete.
+  const level = sessionLevel(session.user, screenForPath(`/settings/${pageId}`))
+  const roleWrite = canWritePage(roleKey, pageId)
+  const canWrite = roleWrite && atLeast(level, 'modify')
+  const canFull = roleWrite && atLeast(level, 'addDelete')
+
   return {
     roleKey,
-    canWrite: canWritePage(roleKey, pageId),
+    level,
+    canWrite,
+    canAdd: canFull,
+    canDelete: canFull,
     readOnly: isReadOnly(roleKey),
     /**
      * True only on the FIRST load. A refresh after a mutation also sets

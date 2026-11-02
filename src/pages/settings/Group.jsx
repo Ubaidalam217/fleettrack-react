@@ -14,6 +14,8 @@ import {
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import NodeUsersPanel, { UsersButton, useNodeUserCount } from './NodeUsersPanel'
+import { useSession } from '../../data/session'
+import { sessionLevel as usersLevel } from '../../data/screens'
 import MoveDialog, { MoveButton, canMove } from './MoveDialog'
 import { IS_REAL } from '../../data/mode'
 
@@ -50,12 +52,13 @@ export default function Group(props) {
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('group')
   // Client, 2026-11-02: each row manages its own login accounts.
+  const session = useSession()
   const countUsers = useNodeUserCount('group')
   const [usersOf, setUsersOf] = useState(null)
   // …and can be moved, with everything under it, to another parent.
   const [moving, setMoving] = useState(null)
-  const mayMove = canMove(access.roleKey, 'group')
-  const showUsers = access.roleKey !== 'SUB_USER'
+  const mayMove = canMove(access.roleKey, 'group') && access.canWrite
+  const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
@@ -158,7 +161,7 @@ export default function Group(props) {
           {!access.loading && (
             <>
               <TableToolbar count={groups.length} noun="group" plural="groups">
-                {access.canWrite && (
+                {access.canAdd && (
                   <button
                     type="button"
                     style={{ ...PRIMARY_BTN, opacity: noResellers ? 0.5 : 1, cursor: noResellers ? 'not-allowed' : 'pointer' }}
@@ -186,7 +189,7 @@ export default function Group(props) {
                 }] : COLUMNS}
                 rows={groups}
                 onEdit={openEdit}
-                onDelete={setPending}
+                onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
                 emptyLabel={
                   !access.canWrite

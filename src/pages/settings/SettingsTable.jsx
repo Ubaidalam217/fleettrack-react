@@ -96,13 +96,16 @@ export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLa
                       >
                         <Pencil size={13} />
                       </IconButton>
-                      <IconButton
-                        label={`Delete ${row[labelKey]}`}
-                        tone="#ef4444"
-                        onClick={() => onDelete(row)}
-                      >
-                        <Trash2 size={13} />
-                      </IconButton>
+                      {/* No onDelete: the user may edit here but not delete (permissions). */}
+                      {onDelete && (
+                        <IconButton
+                          label={`Delete ${row[labelKey]}`}
+                          tone="#ef4444"
+                          onClick={() => onDelete(row)}
+                        >
+                          <Trash2 size={13} />
+                        </IconButton>
+                      )}
                     </div>
                   </td>
                 )}

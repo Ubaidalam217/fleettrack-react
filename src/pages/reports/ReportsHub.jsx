@@ -4,6 +4,7 @@ import { Search, Star, X, FilePlus2 } from 'lucide-react'
 import PageShell from '../../components/PageShell'
 import { REPORT_CATEGORIES, REPORTS_MENU } from '../../components/sidebar/reportsNav'
 import { useCurrentUser } from '../../services/authUser'
+import { useCanOpen } from '../../data/screens'
 
 /**
  * "Run a Report" — every report as a row in its category card.
@@ -101,14 +102,18 @@ export default function ReportsHub(props) {
     setFavState({ key, ids: next })
   }
 
+  // Permissions: reports this user has No Access to are not offered.
+  const canOpen = useCanOpen()
   const cards = useMemo(() => {
     if (tab === 'favs') {
-      const reports = REPORTS_MENU.filter(r => favs.includes(r.id) && matches(r, q))
+      const reports = REPORTS_MENU.filter(r => canOpen(r.path) && favs.includes(r.id) && matches(r, q))
       return reports.length ? [{ id: 'favs', title: 'My Favourites', desc: 'Reports you starred, for quick access.', reports }] : []
     }
     return REPORT_CATEGORIES
-      .map(c => ({ ...c, reports: c.reports.filter(r => matches(r, q)) }))
+      .map(c => ({ ...c, reports: c.reports.filter(r => canOpen(r.path) && matches(r, q)) }))
       .filter(c => c.reports.length)
+  // canOpen changes with the session only.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, favs, q])
 
   return (

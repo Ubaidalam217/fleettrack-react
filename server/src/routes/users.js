@@ -42,6 +42,7 @@ import {
   scopedWhere,
 } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { clampGrant } from '../lib/permissions.js'
 import { revokeGrant, revokeGrantsAround } from '../lib/flespiGrant.js'
 
 const router = Router()
@@ -290,7 +291,7 @@ router.post(
         userSetting: req.body.userSetting ?? undefined,
         authentication: req.body.authentication ?? undefined,
         sso: req.body.sso ?? undefined,
-        screenAccess: req.body.screenAccess ?? undefined,
+        screenAccess: clampGrant(req.user, req.body.screenAccess) ?? undefined,
         myAccount: req.body.myAccount ?? undefined,
         vehicles: { create: vehicleIds.map(vehicleId => ({ vehicleId })) },
         branches: { create: branchIds.map(branchId => ({ branchId })) },
@@ -346,7 +347,7 @@ router.put(
         userSetting: req.body.userSetting ?? undefined,
         authentication: req.body.authentication ?? undefined,
         sso: req.body.sso ?? undefined,
-        screenAccess: req.body.screenAccess ?? undefined,
+        screenAccess: clampGrant(req.user, req.body.screenAccess) ?? undefined,
         myAccount: req.body.myAccount ?? undefined,
         // Role changed away from sub-user: the assignments are meaningless on the
         // new role and would be read by nothing, so they go rather than linger.

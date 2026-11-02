@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { X, Plus, Pencil, Trash2, UserRound, Users } from 'lucide-react'
+import { X, Plus, Pencil, Trash2, UserRound, Users, ShieldCheck } from 'lucide-react'
 import { Field } from './FormKit'
 import { PRIMARY_BTN, SECONDARY_BTN, inputStyle } from './formStyles'
 import ConfirmDialog from '../../components/tracking/ConfirmDialog'
 import {
   useAdmins, useUsers, useSubusers, ADMIN_ROLES, emptyAdmin, emptyUser,
   addAdmin, updateAdmin, removeAdmin, addUser, updateUser, removeUser,
-  isLoginEmailTaken, DEFAULT_PASSWORD,
+  isLoginEmailTaken, DEFAULT_PASSWORD, updateSubuser,
 } from '../../data/settings'
+import PermissionsEditor from './PermissionsEditor'
+import { useSession } from '../../data/session'
+import { sessionLevel, atLeast, openCount, ALL_SCREENS } from '../../data/screens'
 import { handleApiError } from './pageChrome'
 import { IS_REAL } from '../../data/mode'
 
@@ -96,7 +99,7 @@ function StatusPill({ status }) {
   )
 }
 
-function AccountRow({ title, sub, status, onEdit, onDelete }) {
+function AccountRow({ title, sub, status, onEdit, onDelete, onPermissions, access }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderTop: '1px solid var(--c-border2)' }}>
       <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in srgb, var(--ft-accent) 14%, transparent)', color: 'var(--ft-accent)' }}>
@@ -107,6 +110,13 @@ function AccountRow({ title, sub, status, onEdit, onDelete }) {
         {sub && <div style={{ fontSize: 11, color: 'var(--c-text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
       </div>
       <StatusPill status={status} />
+      {onPermissions && (
+        <button type="button" onClick={onPermissions} title="Permissions" aria-label={`Permissions for ${title}`}
+          style={{ ...ICON_BTN, gap: 4, alignItems: 'center', fontSize: 10.5, fontWeight: 700, padding: '5px 7px' }}>
+          <ShieldCheck size={13} />
+          {access && Object.keys(access).length ? `${openCount(access)}/${ALL_SCREENS.length}` : 'All'}
+        </button>
+      )}
       {onEdit && <button type="button" onClick={onEdit} aria-label={`Edit ${title}`} title="Edit" style={ICON_BTN}><Pencil size={13} /></button>}
       {onDelete && <button type="button" onClick={onDelete} aria-label={`Delete ${title}`} title="Delete" style={{ ...ICON_BTN, color: '#ef4444' }}><Trash2 size={13} /></button>}
     </div>
@@ -190,16 +200,37 @@ export default function NodeUsersPanel({ kind, node, bgId, roleKey, onClose, pus
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
   const [pending, setPending] = useState(null)
+  const [permsOf, setPermsOf] = useState(null)   // { account, save }
+  // "User accounts" permission: Edit to change accounts, Full to add or delete.
+  const { user: me } = useSession()
+  const accountsLevel = sessionLevel(me, 'users')
+  const mayEditAccounts = atLeast(accountsLevel, 'modify')
+  const mayAddAccounts = atLeast(accountsLevel, 'addDelete')
 
   useEffect(() => {
-    const onKey = e => { if (e.key === 'Escape' && !draft && !pending) onClose() }
+    const onKey = e => { if (e.key === 'Escape' && !draft && !pending && !permsOf) onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [draft, pending, onClose])
+  }, [draft, pending, permsOf, onClose])
 
   const isAdmin = kind === 'ggb' || kind === 'group'
-  const mayAddOwn = meta.role && canCreate(roleKey, meta.role)
-  const mayAddSub = (kind === 'bg' || kind === 'branch') && canCreate(roleKey, 'SUB_USER')
+  const mayOwn = meta.role && canCreate(roleKey, meta.role)
+  const maySub = (kind === 'bg' || kind === 'branch') && canCreate(roleKey, 'SUB_USER')
+  const mayAddOwn = mayOwn && mayAddAccounts
+  const mayAddSub = maySub && mayAddAccounts
+  const mayEditOwn = mayOwn && mayEditAccounts
+  const mayEditSub = maySub && mayEditAccounts
+
+  const openPerms = (account, role, saveFn) => setPermsOf({ account: { ...account, role }, save: saveFn })
+  const savePerms = async (fn, label) => {
+    try {
+      await fn()
+      push?.(`Permissions saved for ${label}`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+      throw err
+    }
+  }
   const subBg = kind === 'bg' ? node.id : bgId
 
   const openAdd = () => {
@@ -246,7 +277,7 @@ export default function NodeUsersPanel({ kind, node, bgId, roleKey, onClose, pus
   const editSub = s => navigate(`/settings/company-subuser?edit=${encodeURIComponent(s.id)}`)
 
   return createPortal(
-    <div onClick={() => !draft && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(5,20,28,0.45)' }}>
+    <div onClick={() => !draft && !pending && !permsOf && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(5,20,28,0.45)' }}>
       <aside
         role="dialog"
         aria-modal="true"
@@ -289,8 +320,11 @@ export default function NodeUsersPanel({ kind, node, bgId, roleKey, onClose, pus
                   title={a.shortName || a.email}
                   sub={a.shortName ? a.email : a.mobile}
                   status={a.status}
-                  onEdit={mayAddOwn ? () => openEdit(a) : null}
+                  access={a.permissions}
+                  onEdit={mayEditOwn ? () => openEdit(a) : null}
                   onDelete={mayAddOwn ? () => setPending(a) : null}
+                  onPermissions={mayEditOwn ? () => openPerms(a, isAdmin ? a.role : 'BG_USER', perms =>
+                    savePerms(() => (isAdmin ? updateAdmin(a.id, { ...a, permissions: perms }) : updateUser(a.id, { ...a, permissions: perms })), a.email)) : null}
                 />
               ))}
             </Section>
@@ -313,7 +347,10 @@ export default function NodeUsersPanel({ kind, node, bgId, roleKey, onClose, pus
                   title={s.name || s.email}
                   sub={s.name ? s.email : null}
                   status={s.status}
-                  onEdit={mayAddSub ? () => editSub(s) : null}
+                  access={s.permissions}
+                  onEdit={mayEditSub ? () => editSub(s) : null}
+                  onPermissions={mayEditSub ? () => openPerms(s, 'SUB_USER', perms =>
+                    savePerms(() => updateSubuser(s.id, { ...s, permissions: perms }), s.email)) : null}
                 />
               ))}
             </Section>
@@ -328,6 +365,10 @@ export default function NodeUsersPanel({ kind, node, bgId, roleKey, onClose, pus
           )}
         </div>
       </aside>
+
+      {permsOf && (
+        <PermissionsEditor account={permsOf.account} onSave={permsOf.save} onClose={() => setPermsOf(null)} />
+      )}
 
       {pending && (
         <ConfirmDialog

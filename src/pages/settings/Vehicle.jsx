@@ -392,7 +392,7 @@ export default function Vehicle(props) {
           {!access.loading && (
             <>
               <TableToolbar count={vehicles.length} noun="vehicle" plural="vehicles">
-                {access.canWrite && (
+                {access.canAdd && (
                   <>
                     <button
                       type="button"
@@ -424,7 +424,7 @@ export default function Vehicle(props) {
                 // Rows are identified by their Vehicle Number, not a `name` field.
                 labelKey="vehicleNumber"
                 onEdit={openEdit}
-                onDelete={setPending}
+                onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
                 emptyLabel={
                   !access.canWrite

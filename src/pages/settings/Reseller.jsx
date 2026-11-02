@@ -13,6 +13,8 @@ import {
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import NodeUsersPanel, { UsersButton, useNodeUserCount } from './NodeUsersPanel'
+import { useSession } from '../../data/session'
+import { sessionLevel as usersLevel } from '../../data/screens'
 
 // Top of the org hierarchy below Super Admin: a GGB owns groups, which own
 // BGs. Stored as `reseller` rows — see the vocabulary note in mockData.js.
@@ -32,9 +34,10 @@ export default function Reseller(props) {
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('reseller')
   // Client, 2026-11-02: each row manages its own login accounts.
+  const session = useSession()
   const countUsers = useNodeUserCount('ggb')
   const [usersOf, setUsersOf] = useState(null)
-  const showUsers = access.roleKey !== 'SUB_USER'
+  const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
@@ -139,7 +142,7 @@ export default function Reseller(props) {
           {!access.loading && (
             <>
               <TableToolbar count={resellers.length} noun="GGB" plural="GGBs">
-                {access.canWrite && (
+                {access.canAdd && (
                   <button type="button" style={PRIMARY_BTN} onClick={openAdd}>
                     <Plus size={14} strokeWidth={2.6} />
                     Add GGB
@@ -154,7 +157,7 @@ export default function Reseller(props) {
                 }] : COLUMNS}
                 rows={resellers}
                 onEdit={openEdit}
-                onDelete={setPending}
+                onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
                 emptyLabel={
                   access.canWrite

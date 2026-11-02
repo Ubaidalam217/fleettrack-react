@@ -18,7 +18,7 @@ import {
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import { IS_REAL } from '../../data/mode'
-import { permissionFor, allScreens } from './subuserSchema'
+import { openCount, ALL_SCREENS } from '../../data/screens'
 
 // A sub-user is a restricted login under a BG, scoped to the vehicles AND the
 // branches assigned to it. The two scopes are independent lists.
@@ -72,11 +72,8 @@ const COLUMNS = [
   {
     key: 'access',
     label: 'Screen Access',
-    render: row => {
-      const total = allScreens().length
-      const open = allScreens().filter(s => permissionFor(row.permissions, s.id) !== 'none').length
-      return `${open} of ${total}`
-    },
+    // The same catalogue and reading the permission editor uses (data/screens.js).
+    render: row => `${openCount(row.permissions)} of ${ALL_SCREENS.length}`,
   },
 ]
 
@@ -486,7 +483,7 @@ export default function CompanySubuser(props) {
           {!access.loading && (
             <>
               <TableToolbar count={subusers.length} noun="sub-user" plural="sub-users">
-                {access.canWrite && (
+                {access.canAdd && (
                   <button
                     type="button"
                     style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
@@ -504,7 +501,7 @@ export default function CompanySubuser(props) {
                 columns={COLUMNS}
                 rows={subusers}
                 onEdit={openEdit}
-                onDelete={setPending}
+                onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
                 emptyLabel={
                   !access.canWrite

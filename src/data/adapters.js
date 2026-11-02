@@ -210,6 +210,8 @@ export const user = {
     // Not on the User form, but carried so an update cannot blank them.
     shortName: orBlank(r.shortName),
     mobile: orBlank(r.mobile),
+    // Per-screen permissions (data/screens.js); {} = unrestricted.
+    permissions: { ...(r.screenAccess ?? {}) },
   }),
   toApiCreate: r => ({
     email: r.email,
@@ -218,6 +220,7 @@ export const user = {
     status: r.status || 'Active',
     shortName: orNull(r.shortName),
     mobile: orNull(r.mobile),
+    ...(r.permissions ? { screenAccess: r.permissions } : {}),
   }),
   toApiUpdate: r => ({
     role: 'BG_USER',
@@ -225,6 +228,7 @@ export const user = {
     status: r.status || 'Active',
     shortName: orNull(r.shortName),
     mobile: orNull(r.mobile),
+    ...(r.permissions ? { screenAccess: r.permissions } : {}),
   }),
 }
 
@@ -242,6 +246,7 @@ export const admin = {
     status: r.status ?? 'Active',
     shortName: orBlank(r.shortName),
     mobile: orBlank(r.mobile),
+    permissions: { ...(r.screenAccess ?? {}) },
   }),
   toApiCreate: r => ({
     email: r.email,
@@ -254,6 +259,7 @@ export const admin = {
     status: r.status || 'Active',
     shortName: orNull(r.shortName),
     mobile: orNull(r.mobile),
+    ...(r.permissions ? { screenAccess: r.permissions } : {}),
   }),
 }
 

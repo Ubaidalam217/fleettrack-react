@@ -34,6 +34,7 @@ import geocodeRoutes from './routes/geocode.js'
 import flespiProxyRoutes from './routes/flespiProxy.js'
 import reportRoutes from './routes/reports.js'
 import driverRoutes from './routes/drivers.js'
+import { requireScreen, WRITE_SCREENS } from './lib/permissions.js'
 import alertEventRoutes from './routes/alertEvents.js'
 import assistantRoutes from './routes/assistant.js'
 import avatarRoutes from './routes/avatars.js'
@@ -124,14 +125,14 @@ export function createApp() {
   app.use('/api', requireAuth, requirePasswordChanged)
 
   app.use('/api/me', meRoutes)
-  app.use('/api/ggbs', ggbRoutes)
-  app.use('/api/groups', groupRoutes)
-  app.use('/api/bgs', bgRoutes)
-  app.use('/api/branches', branchRoutes)
-  app.use('/api/vehicles', vehicleRoutes)
-  app.use('/api/users', userRoutes)
-  app.use('/api/alerts', alertRoutes)
-  app.use('/api/geofences', geofenceRoutes)
+  app.use('/api/ggbs', requireScreen(WRITE_SCREENS['/api/ggbs']), ggbRoutes)
+  app.use('/api/groups', requireScreen(WRITE_SCREENS['/api/groups']), groupRoutes)
+  app.use('/api/bgs', requireScreen(WRITE_SCREENS['/api/bgs']), bgRoutes)
+  app.use('/api/branches', requireScreen(WRITE_SCREENS['/api/branches']), branchRoutes)
+  app.use('/api/vehicles', requireScreen(WRITE_SCREENS['/api/vehicles']), vehicleRoutes)
+  app.use('/api/users', requireScreen(WRITE_SCREENS['/api/users']), userRoutes)
+  app.use('/api/alerts', requireScreen(WRITE_SCREENS['/api/alerts']), alertRoutes)
+  app.use('/api/geofences', requireScreen(WRITE_SCREENS['/api/geofences']), geofenceRoutes)
   // Behind requireAuth + requirePasswordChanged like everything else: an account
   // still on its handed-over password must not be able to mint a live-data token.
   // Every Flespi call from the browser goes through here with the one server-side
@@ -140,7 +141,7 @@ export function createApp() {
   app.use('/api/flespi', flespiRoutes)
   app.use('/api/geocode', geocodeRoutes)
   app.use('/api/reports', reportRoutes)
-  app.use('/api/drivers', driverRoutes)
+  app.use('/api/drivers', requireScreen(WRITE_SCREENS['/api/drivers']), driverRoutes)
   app.use('/api/alert-events', alertEventRoutes)
   app.use('/api/assistant', assistantRoutes)
 

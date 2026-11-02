@@ -15,6 +15,8 @@ import {
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import NodeUsersPanel, { UsersButton, useNodeUserCount } from './NodeUsersPanel'
+import { useSession } from '../../data/session'
+import { sessionLevel as usersLevel } from '../../data/screens'
 import MoveDialog, { MoveButton, canMove } from './MoveDialog'
 import { IS_REAL } from '../../data/mode'
 
@@ -78,12 +80,13 @@ export default function Company(props) {
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('company')
   // Client, 2026-11-02: each row manages its own login accounts.
+  const session = useSession()
   const countUsers = useNodeUserCount('bg')
   const [usersOf, setUsersOf] = useState(null)
   // …and can be moved, with everything under it, to another parent.
   const [moving, setMoving] = useState(null)
-  const mayMove = canMove(access.roleKey, 'bg')
-  const showUsers = access.roleKey !== 'SUB_USER'
+  const mayMove = canMove(access.roleKey, 'bg') && access.canWrite
+  const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
 
   // null = list view. Otherwise the record being edited, with id null for a new
   // one — which is also what tells Save whether to add or update.
@@ -205,7 +208,7 @@ export default function Company(props) {
           {!access.loading && (
             <>
               <TableToolbar count={companies.length} noun="BG" plural="BGs">
-                {access.canWrite && (
+                {access.canAdd && (
                   <>
                     <button
                       type="button"
@@ -235,7 +238,7 @@ export default function Company(props) {
                 }] : COLUMNS}
                 rows={companies}
                 onEdit={openEdit}
-                onDelete={setPending}
+                onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
                 emptyLabel={
                   access.canWrite

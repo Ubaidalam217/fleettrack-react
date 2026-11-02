@@ -9,6 +9,7 @@ import TreeMenu from './TreeMenu'
 import { IS_REAL } from '../../data/mode'
 import { useSession } from '../../data/session'
 import { canSeePage } from '../../data/permissions'
+import { screenForPath, sessionLevel } from '../../data/screens'
 
 const EXPAND_KEY = 'ft-settings-menu'
 
@@ -33,8 +34,13 @@ export default function SettingsMenu() {
    */
   const menu = useMemo(() => {
     const roleKey = IS_REAL ? (session.user?.role ?? null) : null
-    return filterSettingsMenu(SETTINGS_MENU, id => !HIDDEN_SETTINGS_PAGES.has(id) && canSeePage(roleKey, id))
-  }, [session.user?.role])
+    // Role, then the user's own permissions: a No Access screen is not listed.
+    const open = id => {
+      const screen = screenForPath(`/settings/${id}`)
+      return !screen || sessionLevel(session.user, screen) !== 'none'
+    }
+    return filterSettingsMenu(SETTINGS_MENU, id => !HIDDEN_SETTINGS_PAGES.has(id) && canSeePage(roleKey, id) && open(id))
+  }, [session.user])
 
   return (
     <TreeMenu

@@ -33,6 +33,7 @@ import EventOccurrenceReport   from './pages/reports/EventOccurrenceReport'
 import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
 import AuthGate            from './components/AuthGate'
+import ScreenGate          from './components/ScreenGate'
 import { useNotificationEngine } from './hooks/useNotificationEngine'
 import { useReportWarmup } from './hooks/useReportWarmup'
 import * as store from './services/notificationStore'
@@ -140,7 +141,8 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
    * Every route below except /login goes through the gate, so a route added later
    * is protected by default rather than by remembering to wrap it.
    */
-  const guard = el => <AuthGate>{el}</AuthGate>
+  // AuthGate: signed in. ScreenGate: this user may open this screen (permissions).
+  const guard = el => <AuthGate><ScreenGate>{el}</ScreenGate></AuthGate>
 
   return (
     <>
