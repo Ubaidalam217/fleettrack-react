@@ -4,7 +4,7 @@ import { Settings } from 'lucide-react'
 // Named settingsNav, not settingsMenu: this folder is on a case-insensitive
 // filesystem, and "./SettingsMenu" resolved to the config instead of the
 // component when the two names differed only by case.
-import { SETTINGS_MENU, SETTINGS_ROOT_ID, ancestorIds, filterSettingsMenu } from './settingsNav'
+import { SETTINGS_MENU, SETTINGS_ROOT_ID, ancestorIds, filterSettingsMenu, HIDDEN_SETTINGS_PAGES } from './settingsNav'
 import TreeMenu from './TreeMenu'
 import { IS_REAL } from '../../data/mode'
 import { useSession } from '../../data/session'
@@ -33,7 +33,7 @@ export default function SettingsMenu() {
    */
   const menu = useMemo(() => {
     const roleKey = IS_REAL ? (session.user?.role ?? null) : null
-    return filterSettingsMenu(SETTINGS_MENU, id => canSeePage(roleKey, id))
+    return filterSettingsMenu(SETTINGS_MENU, id => !HIDDEN_SETTINGS_PAGES.has(id) && canSeePage(roleKey, id))
   }, [session.user?.role])
 
   return (

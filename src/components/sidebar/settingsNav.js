@@ -77,6 +77,18 @@ export const SETTINGS_ROOT_ID = 'settings'
  */
 export const filterSettingsMenu = filterMenu
 
+/**
+ * Leaves kept in the tree but not shown in the sidebar.
+ *
+ * Client, 2026-11-02: User and Company Subuser are no longer needed in the
+ * menu — BG users are managed from each BG's "Users" panel, and sub-users from
+ * the BG and Branch panels, which open the Company Subuser form. The pages and
+ * routes stay (that form is still used, and old links keep working), and so do
+ * the tree entries, so a deep link still expands Users and titles itself.
+ * Remove an id here to bring its row back.
+ */
+export const HIDDEN_SETTINGS_PAGES = new Set(['user', 'company-subuser'])
+
 export const ancestorIds = pathname => ancestorIdsIn(SETTINGS_MENU, SETTINGS_ROOT_ID, pathname)
 
 /** Human label for a settings path — lets ComingSoon title itself. */
