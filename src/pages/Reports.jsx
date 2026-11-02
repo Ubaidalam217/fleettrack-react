@@ -9,7 +9,7 @@ import LocationMapModal from '../components/reports/LocationMapModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../components/reports/controls'
 import { useFlespiData } from '../hooks/useFlespiData'
 import { IS_REAL } from '../data/mode'
-import { driverNameForDevice } from '../data/settings'
+import { driverNameForDevice, settingsProfileForImei } from '../data/settings'
 import {
   fetchMovementMessages,
   deriveMovementReport,
@@ -83,6 +83,20 @@ function presetRange(key, now = new Date()) {
 }
 
 // ── page ──────────────────────────────────────────────────────────────────
+
+/**
+ * The company line under the report title: the BG of the vehicles the report
+ * covers (client: the client's own name, not the old "AI Revofleet"). Several
+ * BGs are listed up to three, then counted.
+ */
+function companyLabelFor(vehicles) {
+  const names = [...new Set(vehicles.map(v => {
+    const p = settingsProfileForImei(v.ident)
+    return p.linked && p.bgName && p.bgName !== '—' ? p.bgName : null
+  }).filter(Boolean))]
+  if (names.length === 0) return 'FleetmaxX'
+  return names.length <= 3 ? names.join(', ') : `${names.length} BGs`
+}
 
 export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -196,6 +210,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
 
     const snapshot = {
       fromTs, toTs, selectionLabel,
+      company: companyLabelFor(vehicles.filter(v => effectiveIds.includes(v.id))),
       printDate: formatPrintDate(),
     }
 
@@ -307,9 +322,10 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
     intervalLabel:   intervalLabel(intervalSec),
     statusesLabel,
     printDate:       applied.printDate,
+    company:         applied.company,
   }, [applied, applyTolerance, toleranceMeters, intervalSec, statusesLabel])
 
-  const exportMeta = { subtitle: 'AI Revofleet', systemName: 'FleetmaX', printDate: applied?.printDate }
+  const exportMeta = { subtitle: applied?.company || 'FleetmaxX', systemName: 'FleetmaxX', printDate: applied?.printDate }
 
   const showMore = useCallback(() => setVisible(v => v + PAGE_ROWS * 2), [])
 

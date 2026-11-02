@@ -11,7 +11,7 @@ import { askAssistant, loadChat, saveChat, clearChat } from '../services/assista
 // VehicleConsole and ConfirmDialog.
 
 const WELCOME =
-  "Hi! I'm the FleetmaX Assistant. Ask me how to add a company, create a sub-user, set up an alert, and more."
+  "Hi! I'm the FleetmaxX Assistant. Ask me how to add a company, create a sub-user, set up an alert, and more."
 
 const welcomeChat = () => [{ role: 'assistant', text: WELCOME }]
 
@@ -193,7 +193,7 @@ export default function AssistantPanel({ onClose, isDark = false }) {
             <Sparkle size={15} />
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--c-text1)' }}>FleetmaX Assistant</div>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--c-text1)' }}>FleetmaxX Assistant</div>
             <div style={{ fontSize: 10.5, color: 'var(--c-text3)' }}>Answers questions about using the app</div>
           </div>
           {/* Same 27px bordered shape as Close below, so both read as one
@@ -317,7 +317,7 @@ export default function AssistantPanel({ onClose, isDark = false }) {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Ask how to use FleetmaX…"
+              placeholder="Ask how to use FleetmaxX…"
               aria-label="Your question"
               style={{
                 flex: 1, minWidth: 0, boxSizing: 'border-box',

@@ -64,8 +64,8 @@ const GROUP_GRAY  = [192, 192, 192]
 const LINK_BLUE   = [10, 126, 156]
 const DATE_YELLOW = [255, 255, 192]
 const ZEBRA_GRAY  = [230, 230, 230]
-const LOGO_GREEN  = [91, 163, 84]   // FleetmaX brand green, #5ba354
-const LOGO_SRC    = '/logo/fleetmax-logo.png'
+const LOGO_SEA    = [10, 143, 176]  // Sea Blue, #0a8fb0 — the light theme's brand colour
+const LOGO_SRC    = '/logo/fleetmax-logo-sea.png'
 
 // ── small helpers ─────────────────────────────────────────────────────────
 //
@@ -159,10 +159,10 @@ export function drawLogo(doc) {
     doc.addImage(logoDataUrl, 'JPEG', 803 - w, y, w, w * (273 / 863), 'fleetmax-logo', 'FAST')
     return
   }
-  doc.setTextColor(...LOGO_GREEN)
+  doc.setTextColor(...LOGO_SEA)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
-  doc.text('FleetmaX', 803, y + 12, { align: 'right' })
+  doc.text('FleetmaxX', 803, y + 12, { align: 'right' })
 }
 
 function drawChrome(doc, filters, meta) {
@@ -246,8 +246,8 @@ export async function buildMovementPdf(report, filters, meta = {}) {
   const [{ jsPDF }] = await Promise.all([import('jspdf'), loadLogo()])
 
   const resolved = {
-    subtitle:   meta.subtitle   ?? 'AI Revofleet',
-    systemName: meta.systemName ?? 'FleetmaX',
+    subtitle:   meta.subtitle   ?? 'FleetmaxX',
+    systemName: meta.systemName ?? 'FleetmaxX',
     printDate:  meta.printDate  ?? formatPrintDate(),
   }
 
@@ -414,8 +414,8 @@ function paint(row, argb, bold) {
  */
 export async function exportMovementExcel(report, filters, meta = {}) {
   const ExcelJS = (await import('exceljs')).default
-  const subtitle   = meta.subtitle   ?? 'AI Revofleet'
-  const systemName = meta.systemName ?? 'FleetmaX'
+  const subtitle   = meta.subtitle   ?? 'FleetmaxX'
+  const systemName = meta.systemName ?? 'FleetmaxX'
   const printDate  = meta.printDate  ?? formatPrintDate()
 
   const wb = new ExcelJS.Workbook()

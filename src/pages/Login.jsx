@@ -158,7 +158,7 @@ export default function Login() {
               Welcome Back
             </h2>
             <p style={{ fontSize: 14, color: 'var(--c-text2)', lineHeight: 1.5 }}>
-              Sign in to your FleetmaX account to continue
+              Sign in to your FleetmaxX account to continue
             </p>
           </div>
 
@@ -336,7 +336,7 @@ export default function Login() {
                 </>
               ) : (
                 <>
-                  Sign In to FleetmaX
+                  Sign In to FleetmaxX
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="5" y1="12" x2="19" y2="12"/>
                     <polyline points="12 5 19 12 12 19"/>
@@ -356,7 +356,7 @@ export default function Login() {
           {/* Powered by */}
           <div style={{ textAlign: 'center' }}>
             <span style={{ fontSize: 13, color: 'var(--c-text3)' }}>Powered by </span>
-            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ft-accent)', letterSpacing: '-0.01em' }}>FleetmaX</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ft-accent)', letterSpacing: '-0.01em' }}>FleetmaxX</span>
           </div>
 
         </div>

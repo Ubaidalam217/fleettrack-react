@@ -297,7 +297,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
 
   // ── export plumbing ──
   const exportMeta = useMemo(() => ({
-    subtitle: 'FleetmaX', systemName: 'FleetmaX',
+    subtitle: 'FleetmaxX', systemName: 'FleetmaxX',
     printDate: applied?.printDate ?? formatPrintDate(),
   }), [applied])
 

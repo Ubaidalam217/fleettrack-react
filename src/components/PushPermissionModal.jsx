@@ -127,7 +127,7 @@ export default function PushPermissionModal({ onClose }) {
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
             <span style={{ fontSize: 11, color: 'var(--c-text3)', lineHeight: 1.5 }}>
-              Alerts stay on-device only. No data leaves FleetmaX.
+              Alerts stay on-device only. No data leaves FleetmaxX.
             </span>
           </div>
 

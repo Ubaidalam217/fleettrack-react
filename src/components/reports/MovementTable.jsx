@@ -79,17 +79,11 @@ function MovementTable({ report, filters, limit, onShowMore, onLocate }) {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
           <div>
             <div style={{ fontSize: 19, fontWeight: 700, color: INK, lineHeight: 1.2 }}>Movement Report</div>
-            <div style={{ fontSize: 11, color: INK, marginTop: 3 }}>AI Revofleet</div>
+            <div style={{ fontSize: 11, color: INK, marginTop: 3 }}>{filters.company || 'FleetmaxX'}</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--ft-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M20 8H4L2 14h20L20 8z" fill="white" />
-                <circle cx="7" cy="18" r="2" fill="white" />
-                <circle cx="17" cy="18" r="2" fill="white" />
-              </svg>
-            </div>
-            <span style={{ fontSize: 12, fontWeight: 700, color: INK }}>FleetmaX</span>
+            {/* The paper is white in both themes, so the light-theme logo. */}
+            <img src="/logo/fleetmax-logo-sea.png" alt="FleetmaxX" style={{ height: 26, width: 'auto' }} />
           </div>
         </div>
       </div>
@@ -223,7 +217,7 @@ function MovementTable({ report, filters, limit, onShowMore, onLocate }) {
         fontSize: 10, color: INK,
       }}>
         <span>Print Date : {filters.printDate}</span>
-        <span>FleetmaX</span>
+        <span>FleetmaxX</span>
         <span style={{ fontWeight: 700 }}>END OF REPORT</span>
       </div>
     </div>

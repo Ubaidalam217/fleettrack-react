@@ -125,7 +125,7 @@ export async function buildDaywisePdf(model, meta) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7)
     doc.text(`Print Date : ${printDate}`, BORDER.x + 6, FOOTER_Y)
-    doc.text('FleetmaX', PAGE.w / 2, FOOTER_Y, { align: 'center' })
+    doc.text('FleetmaxX', PAGE.w / 2, FOOTER_Y, { align: 'center' })
     doc.text(String(pageNo), BORDER.x + BORDER.w - 6, FOOTER_Y, { align: 'right' })
   }
 
@@ -201,7 +201,7 @@ export async function exportDaywiseExcel(model, meta) {
   const printDate = meta.printDate ?? formatPrintDate()
 
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'FleetmaX'
+  wb.creator = 'FleetmaxX'
   const ws = wb.addWorksheet(meta.title.slice(0, 31), {
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
     // Freeze the identity columns and the header, so scrolling to day 31 keeps
@@ -277,7 +277,7 @@ export async function exportDaywiseExcel(model, meta) {
   }
 
   ws.addRow([])
-  const stamp = ws.addRow([`Print Date : ${printDate}`, '', 'FleetmaX'])
+  const stamp = ws.addRow([`Print Date : ${printDate}`, '', 'FleetmaxX'])
   stamp.font = { size: 8 }
 
   const buffer = await wb.xlsx.writeBuffer()

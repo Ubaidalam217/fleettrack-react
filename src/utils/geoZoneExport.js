@@ -132,7 +132,7 @@ function drawSummaryCards(doc, y, cards) {
  */
 export async function buildGeoZonePdf(opts) {
   const [{ jsPDF }] = await Promise.all([import('jspdf'), loadLogo()])
-  const { title, subtitle = 'FleetmaX', filtersText = '', printDate, systemName = 'FleetmaX', summaryCards = [], tables = [] } = opts
+  const { title, subtitle = 'FleetmaxX', filtersText = '', printDate, systemName = 'FleetmaxX', summaryCards = [], tables = [] } = opts
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
   let pageNo = 0
@@ -241,7 +241,7 @@ function fill(argb) {
 
 export async function exportGeoZoneExcel(opts, filenameBase) {
   const ExcelJS = (await import('exceljs')).default
-  const { title, subtitle = 'FleetmaX', filtersText = '', printDate, systemName = 'FleetmaX', summaryCards = [], tables = [] } = opts
+  const { title, subtitle = 'FleetmaxX', filtersText = '', printDate, systemName = 'FleetmaxX', summaryCards = [], tables = [] } = opts
 
   const wb = new ExcelJS.Workbook()
   wb.creator = systemName

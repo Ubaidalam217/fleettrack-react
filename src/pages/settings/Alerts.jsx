@@ -184,6 +184,29 @@ const SETTINGS_RENDERERS = {
 // list is a full-width picker below the grid.
 const GEOFENCE_TYPES = new Set(['geofence'])
 
+const DIR_SET = { enter: ['enter'], exit: ['exit'], both: ['enter', 'exit'] }
+
+/**
+ * Other active Geo Zone rules in the same BG that would fire for the same
+ * vehicle, fence and direction as `draft` — each such event then arrives twice.
+ * (Live, 2026-11-02: two "Enter" rules both on All geofences did exactly that.)
+ */
+function overlappingGeoRules(draft, alerts, bgFenceIds) {
+  if (!GEOFENCE_TYPES.has(draft.type) || !draft.companyId) return []
+  const fencesOf = r => (r.settings?.allGeofences || !(r.settings?.geofenceIds ?? []).length ? bgFenceIds : r.settings.geofenceIds)
+  const mine = new Set(fencesOf(draft))
+  const myDirs = DIR_SET[draft.settings?.direction] ?? []
+  return alerts
+    .filter(r => r.id !== draft.id && r.status === 'Active' && GEOFENCE_TYPES.has(r.type) && r.companyId === draft.companyId)
+    .map(r => {
+      const dirs = (DIR_SET[r.settings?.direction] ?? []).filter(d => myDirs.includes(d))
+      const fences = fencesOf(r).filter(id => mine.has(id))
+      const vehicles = draft.allVehicles || r.allVehicles || draft.vehicleIds.some(id => r.vehicleIds.includes(id))
+      return dirs.length && fences.length && vehicles ? { rule: r, fences, dirs } : null
+    })
+    .filter(Boolean)
+}
+
 /** "Geo Zone · Enter and Exit" for a Geo Zone rule, the plain label otherwise. */
 function typeLabelOf(row) {
   const dir = row.type === 'geofence' && GEO_DIRECTIONS.find(d => d.value === row.settings?.direction)
@@ -504,6 +527,10 @@ export default function Alerts(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
+  const overlaps = useMemo(
+    () => (draft ? overlappingGeoRules(draft, alerts, (draft.companyId ? geofences.filter(g => g.companyId === draft.companyId) : []).map(g => g.id)) : []),
+    [draft, alerts, geofences]
+  )
   const bgGeofences = useMemo(
     () => (draft?.companyId ? geofences.filter(g => g.companyId === draft.companyId) : []),
     [geofences, draft?.companyId]
@@ -857,6 +884,23 @@ export default function Alerts(props) {
                 itemLabel={g => g.name}
                 itemSub={geofenceSub}
               />
+            )}
+
+            {overlaps.length > 0 && (
+              <div role="note" style={{
+                marginTop: 12, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5,
+                background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: 'var(--c-text1)',
+              }}>
+                <strong style={{ color: '#d97706' }}>Alerts will arrive twice.</strong>{' '}
+                {overlaps.map((o, i) => (
+                  <span key={o.rule.id}>
+                    {i > 0 && '; '}
+                    “{o.rule.name}” already alerts on {o.dirs.map(d => (d === 'enter' ? 'entering' : 'leaving')).join(' and ')}{' '}
+                    {o.fences.map(id => bgGeofences.find(g => g.id === id)?.name).filter(Boolean).join(', ')}
+                  </span>
+                ))}
+                {' '}for the same vehicles. Pick different geofences here, or change that rule.
+              </div>
             )}
 
             {byVehicle ? (

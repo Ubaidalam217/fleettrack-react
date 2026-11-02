@@ -133,7 +133,7 @@ function PhotoRow({ push }) {
             </button>
           ) : null}
         </div>
-        <span style={{ fontSize: 12, color: 'var(--c-text3)' }}>JPEG, PNG or WebP. Also shows in the FleetmaX mobile app.</span>
+        <span style={{ fontSize: 12, color: 'var(--c-text3)' }}>JPEG, PNG or WebP. Also shows in the FleetmaxX mobile app.</span>
       </div>
     </div>
   )
@@ -260,7 +260,7 @@ const THEMES = [
 
 function AppearanceSection({ themeMode, setTheme }) {
   return (
-    <Section id="appearance" icon={Palette} title="Appearance" subtitle="How FleetmaX looks on this device.">
+    <Section id="appearance" icon={Palette} title="Appearance" subtitle="How FleetmaxX looks on this device.">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
         {THEMES.map(t => {
           const on = themeMode === t.value
