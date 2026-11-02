@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, BarChart2,
@@ -280,6 +280,15 @@ const DESKTOP_MIN = 1024
  *        would instead park a panel across the whole phone screen with no
  *        control wired up to dismiss it.
  */
+/**
+ * The nav's scroll position, kept across pages.
+ *
+ * Every page renders its own <Sidebar />, so following a link mounts a fresh
+ * one that starts at the top — the menu jumped back up on every click (client,
+ * 2026-11-02). Module scope outlives that remount for the life of the tab.
+ */
+let savedNavScroll = 0
+
 export default function Sidebar({ sidebarOpen }) {
   const location = useLocation()
   const [supportOpen, setSupportOpen] = useState(false)
@@ -289,6 +298,18 @@ export default function Sidebar({ sidebarOpen }) {
   )
   const user = useCurrentUser()
   const canOpen = useCanOpen()
+
+  // Put the menu back where it was before this page mounted (see savedNavScroll).
+  // Before paint, so it never flashes at the top; once more on the next frame in
+  // case a nested menu finished opening after the first layout.
+  const navRef = useRef(null)
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    nav.scrollTop = savedNavScroll
+    const id = requestAnimationFrame(() => { if (navRef.current) navRef.current.scrollTop = savedNavScroll })
+    return () => cancelAnimationFrame(id)
+  }, [])
   const anyReportOpen = REPORTS_MENU.some(r => canOpen(r.path))
 
   // Only matters in the uncontrolled case, but it is cheap and keeps the
@@ -356,7 +377,12 @@ export default function Sidebar({ sidebarOpen }) {
 
           {/* Nav — starts directly under the logo now that the search box is
               gone, so the sections gain its row back. */}
-          <nav className="ft-sb-scroll" style={{ flex: 1, overflowY: 'auto', padding: '12px 10px 10px', minHeight: 0 }}>
+          <nav
+            ref={navRef}
+            onScroll={e => { savedNavScroll = e.currentTarget.scrollTop }}
+            className="ft-sb-scroll"
+            style={{ flex: 1, overflowY: 'auto', padding: '12px 10px 10px', minHeight: 0 }}
+          >
             {NAV_SECTIONS.map(section => {
               const open = !collapsed.has(section.id)
               return (
