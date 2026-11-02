@@ -2,7 +2,7 @@ const STATUS_ROWS = [
   { key: 'running',  label: 'Running',  color: '#22c55e' },
   { key: 'idle',     label: 'Idle',     color: '#f59e0b' },
   { key: 'stopped',  label: 'Stopped',  color: '#ef4444' },
-  { key: 'inactive', label: 'Inactive', color: '#9ca3af' },
+  { key: 'inactive', label: 'Inactive', color: '#3b82f6' },
   { key: 'noData',   label: 'No Data',  color: '#6b7280' },
 ]
 

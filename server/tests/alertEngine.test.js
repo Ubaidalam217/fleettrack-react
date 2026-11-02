@@ -116,6 +116,23 @@ describe('evaluate', () => {
     expect(e.fire.message).toBe('Left Mussafah Depot')
   })
 
+  it('Geo Zone fires on the chosen direction: Enter, Exit, or Enter and Exit', () => {
+    const fence = { id: 'g1', name: 'Mussafah Depot', shape: 'CIRCLE', centerLat: 24.4, centerLng: 54.4, radius: 500 }
+    const ctx = { geofences: [fence] }
+    const inside = { inside: { g1: true } }, outside = { inside: { g1: false } }
+    const rule = direction => ({ type: 'geofence', params: { geofenceIds: [], direction } })
+    const away = tel({ lat: 24.5 })
+
+    expect(evaluate(rule('enter'), tel(), outside, NOW, ctx).fire.message).toBe('Entered Mussafah Depot')
+    expect(evaluate(rule('enter'), away, inside, NOW, ctx).fire).toBeNull()
+    expect(evaluate(rule('exit'), away, inside, NOW, ctx).fire.message).toBe('Left Mussafah Depot')
+    expect(evaluate(rule('exit'), tel(), outside, NOW, ctx).fire).toBeNull()
+    expect(evaluate(rule('both'), tel(), outside, NOW, ctx).fire.message).toBe('Entered Mussafah Depot')
+    expect(evaluate(rule('both'), away, inside, NOW, ctx).fire.message).toBe('Left Mussafah Depot')
+    // The default is both.
+    expect(evaluate({ type: 'geofence', params: {} }, away, inside, NOW, ctx).fire.message).toBe('Left Mussafah Depot')
+  })
+
   it('Ignition On fires on the change only, never on the first sight', () => {
     const a = { type: 'ignition_on' }
     let r = evaluate(a, tel({ ignition: false }), {}, NOW)
@@ -196,6 +213,24 @@ describe('runAlertPass + /api/alert-events', () => {
     expect(read.body.data.updated).toBe(1)
     const after = await request(app).get('/api/alert-events').set(auth(fx.tokens.bgUserA1a))
     expect(after.body.unreadCount).toBe(0)
+  })
+
+  it('narrows the history to a time range and to some devices (Event Occurrence Report)', async () => {
+    const at = sec => new Date(sec * 1000)
+    const base = { bgId: fx.bgA1a.id, type: 'overspeed', severity: 'High', title: 'Speeding', message: 'x' }
+    await prisma.alertEvent.createMany({ data: [
+      { ...base, deviceId: 101, occurredAt: at(NOW - 3600) },
+      { ...base, deviceId: 101, occurredAt: at(NOW - 60) },
+      { ...base, deviceId: 202, occurredAt: at(NOW - 60) },
+    ] })
+    const get = query => request(app).get('/api/alert-events').query(query).set(auth(fx.tokens.bgUserA1a))
+
+    const recent = await get({ from: at(NOW - 600).toISOString(), to: at(NOW).toISOString(), limit: 2000 })
+    expect(recent.status).toBe(200)
+    expect(recent.body.data).toHaveLength(2)
+    const one = await get({ from: at(NOW - 7200).toISOString(), deviceIds: '101' })
+    expect(one.body.data.map(e => e.deviceId)).toEqual([101, 101])
+    expect((await get({ deviceIds: '1,x' })).status).toBe(400)
   })
 
   it('does nothing for an inactive rule', async () => {

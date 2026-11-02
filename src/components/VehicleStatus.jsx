@@ -4,7 +4,7 @@ const STATUS_STYLE = {
   Running:  { label: 'Moving',  textColor: 'text-emerald-600', bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.2)', dot: '#22c55e', blink: true  },
   Idle:     { label: 'Idle',    textColor: 'text-amber-600',   bg: 'rgba(245,158,11,0.1)',   border: 'rgba(245,158,11,0.2)', dot: '#f59e0b', blink: false },
   Stopped:  { label: 'Stopped', textColor: 'text-red-600',     bg: 'rgba(239,68,68,0.1)',    border: 'rgba(239,68,68,0.2)', dot: '#ef4444', blink: false },
-  Inactive: { label: 'Offline', textColor: 'text-gray-400',    bg: 'var(--c-progress)',       border: 'transparent',          dot: '#9ca3af', blink: false },
+  Inactive: { label: 'Offline', textColor: 'text-blue-500',    bg: 'rgba(59,130,246,0.1)',   border: 'rgba(59,130,246,0.2)', dot: '#3b82f6', blink: false },
   NoData:   { label: 'No Data', textColor: 'text-gray-400',    bg: 'var(--c-progress)',       border: 'transparent',          dot: '#9ca3af', blink: false },
 }
 

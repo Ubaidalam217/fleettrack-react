@@ -26,6 +26,7 @@ import {
   printGeoZoneReport,
 } from '../../utils/geoZoneExport'
 import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
+import ReportsBackLink from '../../components/reports/ReportsBackLink'
 
 // Hard cap the user explicitly asked for: a long range across many vehicles
 // can hammer Flespi (each day of range is one request per vehicle), so the
@@ -377,6 +378,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
           <div style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 16px 48px' }}>
 
             <div className="report-screen-only" style={{ marginBottom: 16 }}>
+              <ReportsBackLink />
               <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>Geo Zone Visit Report</h1>
               <p style={{ fontSize: 12.5, color: 'var(--c-text3)', margin: '4px 0 0' }}>
                 Trips, visits and dwell time at your geofences and addresses, derived from one Flespi fetch per run.

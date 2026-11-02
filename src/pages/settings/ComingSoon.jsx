@@ -4,7 +4,7 @@ import { labelForPath } from '../../components/sidebar/settingsNav'
 
 /**
  * Shared stand-in for the Settings branches that have no page yet — Master,
- * Technician, Bulk Action.
+ * Bulk Action.
  *
  * Each of them keeps its own route rather than sharing one /settings/soon URL,
  * so the sidebar can highlight exactly the row you clicked; the title is read

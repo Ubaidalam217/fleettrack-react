@@ -16,11 +16,13 @@
 // 2026-11-02, client: ignition Off is RED (it was blue), the same as the mobile
 // app and the Dashboard. No Data therefore moved off red to a light grey, so the
 // two never look alike on the map; Inactive stays the darker grey.
+//
+// 2026-11-02, client (later the same day): Inactive is BLUE.
 export const STATUS = {
   Running:  { label: 'Driving',  color: '#22c55e' },  // green
   Idle:     { label: 'Idle',     color: '#eab308' },  // yellow
   Stopped:  { label: 'Off',      color: '#ef4444' },  // red
-  Inactive: { label: 'Inactive', color: '#6b7280' },  // dark grey
+  Inactive: { label: 'Inactive', color: '#3b82f6' },  // blue
   NoData:   { label: 'No Data',  color: '#94a3b8' },  // light grey
 }
 

@@ -70,8 +70,10 @@ const VALIDATORS = {
   overspeed:      s => only('speedKmh', rangeError(s.speedKmh, 10, 300, 'km/h')),
   idle:           s => only('minutes', rangeError(s.minutes, 1, 1440, 'minutes')),
   offline:        s => only('minutes', rangeError(s.minutes, 1, 1440, 'minutes')),
-  geofence_enter: validateGeofences,
-  geofence_exit:  validateGeofences,
+  geofence:       s => ({
+    ...(['enter', 'exit', 'both'].includes(s.direction) ? {} : { direction: 'Choose Enter, Exit or Enter and Exit.' }),
+    ...validateGeofences(s),
+  }),
   temperature:    validateTemperature,
   night_driving:  validateNight,
   license_expiry: s => only('days', rangeError(s.days, 1, 365, 'days')),

@@ -42,7 +42,7 @@ const STATUS_COLOR = {
   Running:  '#22c55e',
   Idle:     '#f59e0b',
   Stopped:  '#ef4444',
-  Inactive: '#6b7280',
+  Inactive: '#3b82f6',
   NoData:   '#94a3b8',
 }
 

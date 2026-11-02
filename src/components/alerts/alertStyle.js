@@ -12,7 +12,7 @@
  */
 
 import {
-  Gauge, Hourglass, LogIn, LogOut, Power, PowerOff, WifiOff,
+  Gauge, Hourglass, LogIn, LogOut, MapPin, Power, PowerOff, WifiOff,
   Thermometer, Moon, IdCard, Bell,
 } from 'lucide-react'
 
@@ -29,6 +29,7 @@ export const severityTone = s => SEVERITY_TONE[s] ?? SEVERITY_TONE.Medium
 export const ALERT_TYPE_ICON = {
   overspeed:      Gauge,
   idle:           Hourglass,
+  geofence:       MapPin,
   geofence_enter: LogIn,
   geofence_exit:  LogOut,
   ignition_on:    Power,

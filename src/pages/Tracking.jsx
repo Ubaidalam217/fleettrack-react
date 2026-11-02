@@ -27,6 +27,11 @@ import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/t
 import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
 import { useGeofences, useDrivers, useVehicles, driverNameForDevice } from '../data/settings'
 
+// Client, 2026-11-02: hide the details card that opens under a selected vehicle
+// in the list (Status, Speed, Fleet No, Driver, Heading, Last Update, Location,
+// Center). Hidden, not deleted — set this back to true to bring it back.
+const SHOW_VEHICLE_LIST_CARD = false
+
 // Points per second at 1x. The playback effect derives its tick interval and
 // its stride from this and the chosen speed multiplier.
 const REPLAY_BASE_STEP_MS = 400
@@ -1374,17 +1379,20 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                               <span style={{ fontSize: 10, color: statusColor(v.status), fontWeight: 700, flexShrink: 0 }}>
                                 {statusLabel(v.status)}
                               </span>
-                              <svg
-                                width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                stroke="var(--c-text3)" strokeWidth="2.6" strokeLinecap="round"
-                                style={{
-                                  flexShrink: 0,
-                                  transform: sel ? 'rotate(180deg)' : 'rotate(0deg)',
-                                  transition: 'transform 0.25s ease',
-                                }}
-                              >
-                                <polyline points="6 9 12 15 18 9" />
-                              </svg>
+                              {/* The chevron opens the card below, so it hides with it. */}
+                              {SHOW_VEHICLE_LIST_CARD && (
+                                <svg
+                                  width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                  stroke="var(--c-text3)" strokeWidth="2.6" strokeLinecap="round"
+                                  style={{
+                                    flexShrink: 0,
+                                    transform: sel ? 'rotate(180deg)' : 'rotate(0deg)',
+                                    transition: 'transform 0.25s ease',
+                                  }}
+                                >
+                                  <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                              )}
 
                               <VehicleActionMenu
                                 items={menuItemsFor(v)}
@@ -1436,11 +1444,13 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                             </div>
                           </div>
 
-                          <VehicleListCard
-                            v={v}
-                            open={sel}
-                            onCenter={flyTo}
-                          />
+                          {SHOW_VEHICLE_LIST_CARD && (
+                            <VehicleListCard
+                              v={v}
+                              open={sel}
+                              onCenter={flyTo}
+                            />
+                          )}
                         </div>
                       )
                     })

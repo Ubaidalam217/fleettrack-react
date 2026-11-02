@@ -16,6 +16,7 @@ import {
   formatHoursMinutes, formatKm, isAbortError,
 } from '../../utils/daywise'
 import { exportDaywiseExcel, exportDaywisePdf, printDaywiseReport } from '../../utils/daywiseExport'
+import ReportsBackLink from '../../components/reports/ReportsBackLink'
 
 /**
  * Daywise Work Hour and Daywise Distance.
@@ -331,6 +332,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
 
             {/* ── header ── */}
             <div className="report-screen-only" style={{ marginBottom: 16 }}>
+              <ReportsBackLink />
               <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>{V.title}</h1>
               <p style={{ fontSize: 12.5, color: 'var(--c-text3)', margin: '4px 0 0' }}>{V.subtitle}</p>
             </div>

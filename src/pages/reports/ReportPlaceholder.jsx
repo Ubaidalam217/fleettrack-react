@@ -1,9 +1,10 @@
 import { useLocation } from 'react-router-dom'
 import PageShell from '../../components/PageShell'
 import { labelForPath } from '../../components/sidebar/reportsNav'
+import ReportsBackLink from '../../components/reports/ReportsBackLink'
 
 /**
- * Shared stand-in for the eleven reports that have no page yet.
+ * Shared stand-in for the reports that have no page yet.
  *
  * Each keeps its own route rather than sharing one /reports/soon URL, so the
  * sidebar highlights exactly the row you clicked; the title is read back out of
@@ -24,6 +25,7 @@ export default function ReportPlaceholder(props) {
       <p style={{ fontSize: 14, color: 'var(--c-text3)', margin: '12px 0 0' }}>
         Report structure coming soon.
       </p>
+      <div style={{ marginTop: 14 }}><ReportsBackLink /></div>
     </PageShell>
   )
 }

@@ -23,7 +23,8 @@
 // and the repeated page chrome are less code drawn directly than they are as
 // autotable hook overrides, and this way the positions are exact.
 
-import { rowLocation, formatPrintDate } from './movementReport'
+import { rowLocation, formatPrintDate, formatDateTime } from './movementReport'
+import { locationUrl } from './mapLink'
 
 // ── geometry ──────────────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ const FOOTER_Y    = 568.8
 
 const BAND_BLUE   = [176, 196, 222]
 const GROUP_GRAY  = [192, 192, 192]
+const LINK_BLUE   = [10, 126, 156]
 const DATE_YELLOW = [255, 255, 192]
 const ZEBRA_GRAY  = [230, 230, 230]
 const LOGO_GREEN  = [91, 163, 84]   // FleetmaX brand green, #5ba354
@@ -346,7 +348,14 @@ export async function buildMovementPdf(report, filters, meta = {}) {
         doc.text(clip(doc, row.status, WIDTH.status), COL.status, base)
         doc.text(String(row.speed), COL.speedRight, base, { align: 'right' })
         doc.text(row.odoKm.toFixed(3), COL.odoRight, base, { align: 'right' })
+        // Client, 2026-11-02: a location in the PDF opens the point on our map.
+        const href = locationUrl({ lat: row.lat, lng: row.lng, vehicle: vehicle.vehicleId, time: formatDateTime(row.ts), address: rowLocation(row) })
+        if (href) doc.setTextColor(...LINK_BLUE)
         lines.forEach((line, i) => doc.text(line, COL.location, base + i * LINE_H))
+        if (href) {
+          doc.link(COL.location, y, WIDTH.location, h, { url: href })
+          doc.setTextColor(0, 0, 0)
+        }
 
         y += h
       }
@@ -473,6 +482,11 @@ export async function exportMovementExcel(report, filters, meta = {}) {
         stamp = false
         r.font = { size: 9 }
         r.getCell(7).alignment = { wrapText: true, vertical: 'top' }
+        const href = locationUrl({ lat: row.lat, lng: row.lng, vehicle: vehicle.vehicleId, time: formatDateTime(row.ts), address: rowLocation(row) })
+        if (href) {
+          r.getCell(7).value = { text: rowLocation(row), hyperlink: href, tooltip: 'Show on the FleetmaxX map' }
+          r.getCell(7).font = { size: 9, color: { argb: 'FF0A7E9C' }, underline: true }
+        }
       }
     }
   }

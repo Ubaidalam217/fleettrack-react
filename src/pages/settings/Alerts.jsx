@@ -13,7 +13,7 @@ import {
   addAlert, updateAlert, removeAlert,
   companyNameFor, vehiclesForCompany, emptyAlert, normalizeAlert,
   vehicleLabel, vehicleSubLabel,
-  ALERT_TYPES, ALERT_SEVERITIES, alertTypeLabel, alertTypeOf,
+  ALERT_TYPES, ALERT_SEVERITIES, GEO_DIRECTIONS, alertTypeLabel, alertTypeOf,
 } from '../../data/settings'
 import { validateAlertSettings, parseEmails, MAX_RECIPIENTS } from './alertRules'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
@@ -148,7 +148,30 @@ function LicenceSettings({ settings, errors, onChange }) {
   )
 }
 
+// Client, 2026-11-02: a Geo Zone rule fires on Enter, on Exit, or on both.
+function GeoZoneSettings({ settings, errors, onChange }) {
+  return (
+    <Field label="Alert On" required error={errors.direction}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {GEO_DIRECTIONS.map(d => (
+          <button
+            key={d.value}
+            type="button"
+            className={`ft-btn${settings.direction === d.value ? ' ft-btn--active' : ''}`}
+            aria-pressed={settings.direction === d.value}
+            onClick={() => onChange('direction', d.value)}
+            style={{ flex: 1, justifyContent: 'center', padding: '8px 10px', whiteSpace: 'nowrap' }}
+          >
+            {d.label}
+          </button>
+        ))}
+      </div>
+    </Field>
+  )
+}
+
 const SETTINGS_RENDERERS = {
+  geofence:       GeoZoneSettings,
   overspeed:      OverspeedSettings,
   idle:           IdleSettings,
   offline:        OfflineSettings,
@@ -157,9 +180,15 @@ const SETTINGS_RENDERERS = {
   license_expiry: LicenceSettings,
 }
 
-// The geofence types render their own full-width picker below the grid rather
-// than a grid cell, so they are not in SETTINGS_RENDERERS.
-const GEOFENCE_TYPES = new Set(['geofence_enter', 'geofence_exit'])
+// The Geo Zone type's direction is a grid cell (SETTINGS_RENDERERS); its fence
+// list is a full-width picker below the grid.
+const GEOFENCE_TYPES = new Set(['geofence'])
+
+/** "Geo Zone · Enter and Exit" for a Geo Zone rule, the plain label otherwise. */
+function typeLabelOf(row) {
+  const dir = row.type === 'geofence' && GEO_DIRECTIONS.find(d => d.value === row.settings?.direction)
+  return dir ? `${alertTypeLabel(row.type)} · ${dir.label}` : alertTypeLabel(row.type)
+}
 
 const watchesVehicles = type => alertTypeOf(type)?.vehicles !== false
 
@@ -205,7 +234,7 @@ function notifyLabel(row) {
 
 const COLUMNS = [
   { key: 'name',     label: 'Name',       bold: true },
-  { key: 'type',     label: 'Alert Type', render: row => alertTypeLabel(row.type) },
+  { key: 'type',     label: 'Alert Type', render: typeLabelOf },
   { key: 'severity', label: 'Severity',   render: row => <SeverityChip severity={row.severity} /> },
   { key: 'company',  label: 'BG',         render: row => companyNameFor(row.companyId) },
   { key: 'vehicles', label: 'Vehicles',   render: vehiclesLabel },

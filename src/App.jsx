@@ -25,7 +25,11 @@ import ReportPlaceholder       from './pages/reports/ReportPlaceholder'
 import WorkingHourReport       from './pages/reports/WorkingHourReport'
 import SummaryUsageReport      from './pages/reports/SummaryUsageReport'
 import GeoZoneReport           from './pages/reports/GeoZoneReport'
-import { REPORTS_DEFAULT_PATH } from './components/sidebar/reportsNav'
+import ReportsHub              from './pages/reports/ReportsHub'
+import LocationPage            from './pages/LocationPage'
+import VehicleListReport       from './pages/reports/VehicleListReport'
+import DriverListReport        from './pages/reports/DriverListReport'
+import EventOccurrenceReport   from './pages/reports/EventOccurrenceReport'
 import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
 import AuthGate            from './components/AuthGate'
@@ -143,13 +147,13 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
       <Routes>
         <Route path="/"               element={<Navigate to="/login" replace />} />
         <Route path="/login"          element={<Login />} />
+        {/* Public: where a location link in an exported report opens (utils/mapLink.js). */}
+        <Route path="/location"       element={<LocationPage />} />
         <Route path="/dashboard"      element={guard(<Dashboard      {...themeProps} />)} />
         <Route path="/tracking"       element={guard(<Tracking       {...themeProps} />)} />
         <Route path="/charts"         element={guard(<Charts         {...themeProps} />)} />
-        {/* Bare /reports is where every pre-existing link and bookmark points.
-            It redirects into the menu rather than rendering, so there is exactly
-            one URL for the Movement Report and the sidebar highlights one row. */}
-        <Route path="/reports"        element={<Navigate to={REPORTS_DEFAULT_PATH} replace />} />
+        {/* "Run a Report": the category cards every report is opened from. */}
+        <Route path="/reports"        element={guard(<ReportsHub {...themeProps} />)} />
         <Route path="/settings"       element={guard(<SettingsPage   {...themeProps} />)} />
         <Route path="/settings/profile" element={guard(<SettingsPage {...themeProps} />)} />
         <Route path="/notifications"  element={guard(<Notifications  {...themeProps} />)} />
@@ -168,7 +172,8 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/settings/driver"          element={guard(<SettingsDriver         {...themeProps} />)} />
         {/* …and the branches that share one placeholder until they get built. */}
         <Route path="/settings/master"          element={guard(<SettingsComingSoon     {...themeProps} />)} />
-        <Route path="/settings/technician"      element={guard(<SettingsComingSoon     {...themeProps} />)} />
+        {/* Technician was removed from Settings (client, 2026-11-02); old links land on Settings. */}
+        <Route path="/settings/technician"      element={<Navigate to="/settings" replace />} />
         <Route path="/settings/bulk-action"     element={guard(<SettingsComingSoon     {...themeProps} />)} />
 
         {/* Reports module — Movement Report is the page that already existed… */}
@@ -176,18 +181,18 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         {/* …the rest share one placeholder, each on its own path so the sidebar
             can highlight exactly the row that was clicked. Order matches
             components/sidebar/reportsNav.js, which is the client's order. */}
-        <Route path="/reports/vehicles"      element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/vehicles"      element={guard(<VehicleListReport  {...themeProps} />)} />
         <Route path="/reports/usage-full"    element={guard(<ReportPlaceholder  {...themeProps} />)} />
         <Route path="/reports/daywise-distance" element={guard(<SummaryUsageReport {...themeProps} />)} />
         {/* The client renamed "Summary Usage Report" to "Daywise Distance Report"; old links still land. */}
         <Route path="/reports/usage-summary" element={<Navigate to="/reports/daywise-distance" replace />} />
         <Route path="/reports/trip"          element={guard(<ReportPlaceholder  {...themeProps} />)} />
-        <Route path="/reports/event"         element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/event"         element={guard(<EventOccurrenceReport {...themeProps} />)} />
         <Route path="/reports/working-hour"  element={guard(<WorkingHourReport  {...themeProps} />)} />
         <Route path="/reports/private-usage" element={guard(<ReportPlaceholder  {...themeProps} />)} />
         <Route path="/reports/geo-zone"      element={guard(<GeoZoneReport      {...themeProps} />)} />
         <Route path="/reports/time-sheet"    element={guard(<ReportPlaceholder  {...themeProps} />)} />
-        <Route path="/reports/drivers"       element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/drivers"       element={guard(<DriverListReport   {...themeProps} />)} />
         <Route path="/reports/gyr"           element={guard(<ReportPlaceholder  {...themeProps} />)} />
 
         <Route path="*"               element={<Navigate to="/login" replace />} />

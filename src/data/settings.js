@@ -79,7 +79,7 @@ export { isCompanyEmailTaken, isUserEmailTaken, isSubuserEmailTaken, isImeiTaken
 
 // The alert rule registry beyond the type list above: the per-type lookup, the
 // severity scale and the reader that widens a stored rule to the form's shape.
-export { alertTypeOf, ALERT_SEVERITIES, normalizeAlert } from '../pages/settings/mockData'
+export { alertTypeOf, ALERT_SEVERITIES, GEO_DIRECTIONS, normalizeAlert } from '../pages/settings/mockData'
 
 // ── Real-mode hydration ─────────────────────────────────────────────────────
 

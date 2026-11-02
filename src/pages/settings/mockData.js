@@ -85,19 +85,15 @@ export const ALERT_TYPES = [
     defaults: () => ({ minutes: '15' }),
   },
   {
-    value: 'geofence_enter',
-    label: 'Geofence Entry',
-    hint: 'Raised when a vehicle enters one of the chosen geofences.',
+    // Client, 2026-11-02: one "Geo Zone" type with Enter / Exit / Enter and
+    // Exit, in place of the separate Entry and Exit types.
+    value: 'geofence',
+    label: 'Geo Zone',
+    hint: 'Raised when a vehicle enters or leaves one of the chosen geofences.',
     // allGeofences is form-only: it tells "all of them" apart from "chose some
     // and then unticked the last one". An empty geofenceIds is what the server
     // reads as all.
-    defaults: () => ({ geofenceIds: [], allGeofences: true }),
-  },
-  {
-    value: 'geofence_exit',
-    label: 'Geofence Exit',
-    hint: 'Raised when a vehicle leaves one of the chosen geofences.',
-    defaults: () => ({ geofenceIds: [], allGeofences: true }),
+    defaults: () => ({ geofenceIds: [], allGeofences: true, direction: 'both' }),
   },
   {
     value: 'ignition_on',
@@ -138,8 +134,34 @@ export const ALERT_TYPES = [
   },
 ]
 
+/**
+ * Types the form no longer offers, kept so their stored rules and past events
+ * still read correctly. Both are a Geo Zone rule with a fixed direction.
+ */
+const LEGACY_ALERT_TYPES = {
+  geofence_enter: { label: 'Geofence Entry', direction: 'enter' },
+  geofence_exit:  { label: 'Geofence Exit',  direction: 'exit' },
+}
+
+/** Geo Zone directions, in the order the form shows them. */
+export const GEO_DIRECTIONS = [
+  { value: 'enter', label: 'Enter' },
+  { value: 'exit',  label: 'Exit' },
+  { value: 'both',  label: 'Enter and Exit' },
+]
+
+/**
+ * A stored rule's type and settings in today's vocabulary: a legacy
+ * Entry/Exit rule becomes a Geo Zone rule with that direction, so editing and
+ * saving it moves it onto the new type.
+ */
+export function upgradeAlertType(type, settings = {}) {
+  const legacy = LEGACY_ALERT_TYPES[type]
+  return legacy ? { type: 'geofence', settings: { ...settings, direction: legacy.direction } } : { type, settings }
+}
+
 export function alertTypeLabel(value) {
-  return ALERT_TYPES.find(t => t.value === value)?.label || '—'
+  return ALERT_TYPES.find(t => t.value === value)?.label || LEGACY_ALERT_TYPES[value]?.label || '—'
 }
 
 export function alertTypeOf(value) {
@@ -347,8 +369,9 @@ export function emptyAlert() {
 export function normalizeAlert(row) {
   const base = emptyAlert()
   if (!row) return base
-  const type = alertTypeOf(row.type) ? row.type : base.type
-  const settings = { ...alertTypeOf(type).defaults(), ...(row.settings ?? {}) }
+  const up = upgradeAlertType(row.type, row.settings ?? {})
+  const type = alertTypeOf(up.type) ? up.type : base.type
+  const settings = { ...alertTypeOf(type).defaults(), ...up.settings }
   if (Array.isArray(settings.geofenceIds)) {
     settings.geofenceIds = [...settings.geofenceIds]
     settings.allGeofences = settings.geofenceIds.length === 0

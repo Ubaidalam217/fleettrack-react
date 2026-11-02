@@ -36,7 +36,7 @@ export const DEFAULT_PERMISSION = 'view'
  * sidebar (Sidebar.jsx) plus the Settings tree (settingsNav.js).
  *
  * Only screens with a real page are listed. The Settings tree also carries
- * Driver, Master, Address-Geofence, Technician and Bulk Action, but those all
+ * Driver, Master, Address-Geofence and Bulk Action, but those all
  * resolve to the shared ComingSoon placeholder, and a permission row governing
  * a placeholder governs nothing.
  *

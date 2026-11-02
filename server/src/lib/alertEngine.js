@@ -51,6 +51,10 @@ const TELEMETRY_FIELDS = [
 export const TYPES = Object.freeze({
   overspeed:      { label: 'Over Speed',            defaults: { speedKmh: 120 } },
   idle:           { label: 'Idle',                  defaults: { minutes: 15 } },
+  // Client, 2026-11-02: one "Geo Zone" type with Enter / Exit / Enter and Exit.
+  // The two older single-direction types stay so rules saved under them still
+  // run; the form now saves every geofence rule as `geofence`.
+  geofence:       { label: 'Geo Zone',              defaults: { geofenceIds: [], direction: 'both' } },
   geofence_enter: { label: 'Geofence Entry',        defaults: { geofenceIds: [] } },
   geofence_exit:  { label: 'Geofence Exit',         defaults: { geofenceIds: [] } },
   ignition_on:    { label: 'Ignition On',           defaults: {} },
@@ -163,8 +167,12 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
       return none
     }
 
+    case 'geofence':
     case 'geofence_enter':
     case 'geofence_exit': {
+      const dir = alert.type === 'geofence_enter' ? 'enter' : alert.type === 'geofence_exit' ? 'exit' : p.direction
+      const onEnter = dir === 'enter' || dir === 'both'
+      const onExit  = dir === 'exit'  || dir === 'both'
       const lat = num(tel?.lat), lng = num(tel?.lng)
       if (!fresh || lat === null || lng === null) return none
       const wanted = Array.isArray(p.geofenceIds) && p.geofenceIds.length ? new Set(p.geofenceIds) : null
@@ -176,8 +184,8 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
         const inside = inGeofence(lat, lng, g)
         next[g.id] = inside
         if (!(g.id in prev) || fire) continue // baseline, or one event per pass
-        if (alert.type === 'geofence_enter' && inside && !prev[g.id]) fire = { message: `Entered ${g.name}`, value: null }
-        if (alert.type === 'geofence_exit' && !inside && prev[g.id]) fire = { message: `Left ${g.name}`, value: null }
+        if (onEnter && inside && !prev[g.id]) fire = { message: `Entered ${g.name}`, value: null }
+        else if (onExit && !inside && prev[g.id]) fire = { message: `Left ${g.name}`, value: null }
       }
       s.inside = next
       return { state: s, fire }
@@ -293,7 +301,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
 
   const bgIds = [...new Set(alerts.map(a => a.bgId))]
   const needsTelemetry = alerts.some(a => a.type !== 'license_expiry')
-  const needsFences = alerts.some(a => a.type.startsWith('geofence_'))
+  const needsFences = alerts.some(a => a.type.startsWith('geofence'))
 
   const [vehicles, drivers, geofences, states, telemetry, deviceByImei] = await Promise.all([
     prisma.vehicle.findMany({

@@ -30,6 +30,7 @@ const HEADER_MIN_H = 16
 
 const BAND_BLUE = [176, 196, 222]
 const ZEBRA_GRAY = [232, 232, 232]
+const LINK_BLUE = [10, 126, 156]
 
 function clip(doc, text, width) {
   const s = String(text ?? '')
@@ -206,8 +207,14 @@ export async function buildGeoZonePdf(opts) {
       zebra = !zebra
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(FONT_SIZE)
+      cols.forEach((c, i) => {
+        // A column with `hrefKey` links its cell, e.g. a location to our map.
+        const href = c.hrefKey ? row[c.hrefKey] : null
+        doc.setTextColor(...(href ? LINK_BLUE : [0, 0, 0]))
+        drawCellLines(doc, cellLines[i], c, y)
+        if (href) doc.link(c.x, y, c.w, rowH, { url: href })
+      })
       doc.setTextColor(0, 0, 0)
-      cols.forEach((c, i) => drawCellLines(doc, cellLines[i], c, y))
       y += rowH
     }
     y += 10
@@ -272,6 +279,13 @@ export async function exportGeoZoneExcel(opts, filenameBase) {
     for (const row of table.rows) {
       const r = ws.addRow(cols.map(c => row[c.key] ?? ''))
       r.font = { size: 9 }
+      cols.forEach((c, i) => {
+        const href = c.hrefKey ? row[c.hrefKey] : null
+        if (!href) return
+        const cell = r.getCell(i + 1)
+        cell.value = { text: String(row[c.key] ?? ''), hyperlink: href }
+        cell.font = { size: 9, color: { argb: 'FF0A7E9C' }, underline: true }
+      })
     }
     ws.addRow([])
   }

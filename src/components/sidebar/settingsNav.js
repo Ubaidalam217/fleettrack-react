@@ -1,6 +1,6 @@
 import {
   Layers, Users, Car, Bell, IdCard,
-  Database, MapPinned, Wrench, ListChecks,
+  Database, MapPinned, ListChecks,
 } from 'lucide-react'
 import { filterMenu, ancestorIdsIn, labelForPathIn } from './navTree'
 
@@ -57,7 +57,6 @@ export const SETTINGS_MENU = [
   },
   { id: 'master',     label: 'Master',             icon: Database,   path: '/settings/master' },
   { id: 'geofence',   label: 'Address - Geofence', icon: MapPinned,  path: '/settings/geofence' },
-  { id: 'technician', label: 'Technician',         icon: Wrench,     path: '/settings/technician' },
   { id: 'bulk',       label: 'Bulk Action',        icon: ListChecks, path: '/settings/bulk-action' },
 ]
 

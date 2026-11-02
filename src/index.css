@@ -437,3 +437,56 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
   .ft-greet-wave { animation: none; }
   .ft-card:hover { transform: none; }
 }
+
+/* ── Run a Report hub (pages/reports/ReportsHub.jsx) ── */
+.ft-report-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 0 0;
+  border-left: 3px solid transparent;
+  transition: background .12s, border-color .12s;
+}
+.ft-report-row:hover {
+  background: color-mix(in srgb, var(--ft-accent) 8%, transparent);
+  border-left-color: var(--ft-accent);
+}
+.ft-report-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 6px 11px 13px;
+  color: var(--c-text1);
+  text-decoration: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+.ft-report-link:focus-visible { outline: 2px solid var(--ft-accent); outline-offset: -2px; border-radius: 6px; }
+.ft-report-soon {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--c-text3);
+  background: var(--c-progress);
+  flex-shrink: 0;
+}
+.ft-report-star {
+  display: flex;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--c-text3);
+  opacity: .35;
+  transition: opacity .12s, color .12s;
+}
+.ft-report-row:hover .ft-report-star,
+.ft-report-star:focus-visible { opacity: 1; }
+.ft-report-star[data-on="true"] { color: #f59e0b; opacity: 1; }

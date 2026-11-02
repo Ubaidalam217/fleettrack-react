@@ -24,6 +24,7 @@ import {
   isAbortError,
 } from '../utils/movementReport'
 import { exportMovementPdf, exportMovementExcel, printMovementReport } from '../utils/reportExport'
+import ReportsBackLink from '../components/reports/ReportsBackLink'
 
 // How many rows the on-screen table renders before asking. Exports and Print
 // always emit everything; this only keeps the DOM from carrying five thousand
@@ -360,6 +361,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
 
             {/* ── Page header ── */}
             <div className="report-screen-only" style={{ marginBottom: 16 }}>
+              <ReportsBackLink />
               <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>Movement Report</h1>
               <p style={{ fontSize: 12.5, color: 'var(--c-text3)', margin: '4px 0 0' }}>
                 Per-vehicle movement log derived from Flespi telemetry — start-ups, driving, idling and ignition-off events with cumulative distance and location.

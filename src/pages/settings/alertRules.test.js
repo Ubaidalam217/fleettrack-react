@@ -27,9 +27,14 @@ describe('validateAlertSettings — mirrors the server', () => {
   })
 
   it('needs a geofence unless All is ticked', () => {
-    expect(validateAlertSettings('geofence_exit', { allGeofences: true, geofenceIds: [] })).toEqual({})
-    expect(validateAlertSettings('geofence_exit', { allGeofences: false, geofenceIds: [] })).toHaveProperty('geofenceIds')
-    expect(validateAlertSettings('geofence_enter', { allGeofences: false, geofenceIds: ['g1'] })).toEqual({})
+    expect(validateAlertSettings('geofence', { direction: 'exit', allGeofences: true, geofenceIds: [] })).toEqual({})
+    expect(validateAlertSettings('geofence', { direction: 'exit', allGeofences: false, geofenceIds: [] })).toHaveProperty('geofenceIds')
+    expect(validateAlertSettings('geofence', { direction: 'enter', allGeofences: false, geofenceIds: ['g1'] })).toEqual({})
+  })
+
+  it('needs a Geo Zone direction', () => {
+    expect(validateAlertSettings('geofence', { direction: 'both', allGeofences: true })).toEqual({})
+    expect(validateAlertSettings('geofence', { direction: '', allGeofences: true })).toHaveProperty('direction')
   })
 
   it('checks the night window and its speed', () => {
@@ -70,10 +75,19 @@ describe('alert adapter', () => {
   })
 
   it('sends [] for All geofences and the ids otherwise', () => {
-    const base = { ...emptyAlert(), type: 'geofence_enter' }
-    expect(A.fields({ ...base, settings: { allGeofences: true, geofenceIds: ['g1'] } }).params).toEqual({ geofenceIds: [] })
-    expect(A.fields({ ...base, settings: { allGeofences: false, geofenceIds: ['g1'] } }).params).toEqual({ geofenceIds: ['g1'] })
-    expect(A.toFe({ type: 'geofence_enter', params: { geofenceIds: [] } }).settings.allGeofences).toBe(true)
+    const base = { ...emptyAlert(), type: 'geofence' }
+    expect(A.fields({ ...base, settings: { direction: 'enter', allGeofences: true, geofenceIds: ['g1'] } }).params).toEqual({ geofenceIds: [], direction: 'enter' })
+    expect(A.fields({ ...base, settings: { direction: 'both', allGeofences: false, geofenceIds: ['g1'] } }).params).toEqual({ geofenceIds: ['g1'], direction: 'both' })
+    expect(A.toFe({ type: 'geofence', params: { geofenceIds: [], direction: 'exit' } }).settings).toMatchObject({ allGeofences: true, direction: 'exit' })
+  })
+
+  it('reads a legacy Entry/Exit rule as a Geo Zone rule with that direction', () => {
+    const fe = A.toFe({ type: 'geofence_exit', params: { geofenceIds: ['g1'] } })
+    expect(fe.type).toBe('geofence')
+    expect(fe.settings).toMatchObject({ direction: 'exit', geofenceIds: ['g1'], allGeofences: false })
+    const mock = normalizeAlert({ type: 'geofence_enter', settings: { geofenceIds: [] } })
+    expect(mock.type).toBe('geofence')
+    expect(mock.settings.direction).toBe('enter')
   })
 
   it('keeps temperature on its own columns', () => {

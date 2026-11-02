@@ -44,7 +44,7 @@
  * wipe a shortName set from somewhere else.
  */
 
-import { DEFAULT_PASSWORD, alertTypeOf } from '../pages/settings/mockData'
+import { DEFAULT_PASSWORD, alertTypeOf, upgradeAlertType } from '../pages/settings/mockData'
 
 /** '' / null / undefined → null, for a nullable foreign key or text column. */
 const orNull = v => {
@@ -435,11 +435,10 @@ function alertParams(type, s) {
     case 'idle':
     case 'offline':
       return { minutes: numOrNull(s.minutes) }
-    case 'geofence_enter':
-    case 'geofence_exit':
+    case 'geofence':
       // [] is the server's "every geofence of the BG", so the All box sends that
       // rather than today's ids — a fence drawn next month is covered too.
-      return { geofenceIds: s.allGeofences ? [] : [...(s.geofenceIds ?? [])] }
+      return { geofenceIds: s.allGeofences ? [] : [...(s.geofenceIds ?? [])], direction: s.direction || 'both' }
     case 'night_driving':
       return { from: s.from, to: s.to, minSpeedKmh: numOrNull(s.minSpeedKmh) }
     case 'license_expiry':
@@ -451,7 +450,7 @@ function alertParams(type, s) {
 
 export const alert = {
   toFe: r => {
-    const type = r.type ?? 'temperature'
+    const { type, settings } = upgradeAlertType(r.type ?? 'temperature', alertSettingsToFe(r.type ?? 'temperature', r))
     return {
       id: r.id,
       name: r.name ?? '',
@@ -460,7 +459,7 @@ export const alert = {
       companyId: r.bgId ?? '',
       allVehicles: !!r.allVehicles,
       vehicleIds: Array.isArray(r.vehicleIds) ? [...r.vehicleIds] : [],
-      settings: alertSettingsToFe(type, r),
+      settings,
       notify: { ...DEFAULT_NOTIFY, ...(r.notify ?? {}) },
       emails: Array.isArray(r.emails) ? [...r.emails] : [],
       status: r.status ?? 'Active',

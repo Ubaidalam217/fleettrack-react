@@ -73,6 +73,9 @@ const ALERT_INCLUDE = {
 const positive = (v, min, max) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 
+/** What a Geo Zone rule watches for. */
+const GEO_DIRECTIONS = ['enter', 'exit', 'both']
+
 /** The type's own settings, filled from its defaults and checked; returns them clean. */
 function cleanParams(body) {
   const p = { ...TYPES[body.type].defaults, ...(body.params ?? {}) }
@@ -85,6 +88,14 @@ function cleanParams(body) {
     case 'offline':
       if (!positive(num('minutes'), 1, 1440)) throw badRequest('Set the minutes between 1 and 1440', { minutes: '1–1440 minutes' })
       return { minutes: num('minutes') }
+    case 'geofence':
+      if (!GEO_DIRECTIONS.includes(p.direction)) {
+        throw badRequest('Choose Enter, Exit or Enter and Exit', { direction: 'enter | exit | both' })
+      }
+      return {
+        geofenceIds: Array.isArray(p.geofenceIds) ? [...new Set(p.geofenceIds.map(String))] : [],
+        direction: p.direction,
+      }
     case 'geofence_enter':
     case 'geofence_exit':
       return { geofenceIds: Array.isArray(p.geofenceIds) ? [...new Set(p.geofenceIds.map(String))] : [] }

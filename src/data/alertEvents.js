@@ -234,3 +234,57 @@ export function useAlertEventsLoader() {
     }
   }, [ready, userId])
 }
+
+/** Most rows the Event Occurrence Report asks for; more means the range is cut. */
+export const REPORT_EVENT_LIMIT = 2000
+
+/**
+ * Alert events for a report: those raised between fromTs and toTs (unix
+ * seconds) on the given Flespi devices, oldest first. Mock mode has no alert
+ * engine, so it has no history: [].
+ *
+ * @returns {Promise<{ events: object[], truncated: boolean }>}
+ */
+export async function fetchAlertEventsInRange({ fromTs, toTs, deviceIds }) {
+  if (!IS_REAL || !deviceIds?.length) return { events: [], truncated: false }
+  let rows
+  try {
+    rows = await request('/api/alert-events', {
+      query: {
+        limit: REPORT_EVENT_LIMIT,
+        from: new Date(fromTs * 1000).toISOString(),
+        to: new Date(toTs * 1000).toISOString(),
+        deviceIds: deviceIds.join(','),
+      },
+    })
+  } catch (err) {
+    // A server older than the range query rejects its parameters (400). Walk
+    // the plain newest-first list back to fromTs instead and filter here.
+    if (err?.status !== 400) throw err
+    rows = await pageBackTo(fromTs)
+  }
+  const wanted = new Set(deviceIds.map(Number))
+  const events = (Array.isArray(rows) ? rows : [])
+    .filter(e => {
+      const t = Date.parse(e.occurredAt) / 1000
+      return t >= fromTs && t <= toTs && wanted.has(Number(e.deviceId))
+    })
+    .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt))
+  return { events, truncated: events.length >= REPORT_EVENT_LIMIT }
+}
+
+/** Fallback for an older server: 200 at a time, newest first, until older than fromTs. */
+async function pageBackTo(fromTs) {
+  const PAGE = 200
+  const out = []
+  let before
+  while (out.length < REPORT_EVENT_LIMIT * 5) {
+    const page = await request('/api/alert-events', { query: before ? { limit: PAGE, before } : { limit: PAGE } })
+    const list = Array.isArray(page) ? page : []
+    out.push(...list)
+    if (list.length < PAGE) break
+    before = list[list.length - 1].occurredAt
+    if (Date.parse(before) / 1000 < fromTs) break
+  }
+  return out
+}

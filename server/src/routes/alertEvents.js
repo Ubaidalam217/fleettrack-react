@@ -4,6 +4,8 @@
  *   GET  /api/alert-events?limit=50&before=<ISO>&unread=true
  *        newest first, scoped to the caller's BGs (and a sub-user's vehicles);
  *        `unreadCount` rides along so the bell needs no second request.
+ *        &from=<ISO>&to=<ISO>&deviceIds=1,2,3 narrow it to a range and to some
+ *        trackers — the Event Occurrence Report's query (up to 2000 rows).
  *   POST /api/alert-events/read   { ids?: string[] }   — omit ids to mark all read
  *
  * "Read" is shared by the BG rather than per user, the way a control room works:
@@ -20,8 +22,11 @@ import { validate } from '../middleware/validate.js'
 const router = Router()
 
 const listQuery = z.object({
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+  limit: z.coerce.number().int().min(1).max(2000).default(50),
   before: z.string().datetime().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  deviceIds: z.string().trim().regex(/^\d+(,\d+)*$/).max(4000).optional(),
   unread: z.enum(['true', 'false']).optional(),
   type: z.string().trim().min(1).optional(),
 })
@@ -40,7 +45,7 @@ router.get(
   '/',
   validate(listQuery, 'query'),
   asyncHandler(async (req, res) => {
-    const { limit, before, unread, type } = req.validatedQuery
+    const { limit, before, unread, type, from, to, deviceIds } = req.validatedQuery
     const scope = scopedWhere('alertEvent', req.scope)
     const where = {
       AND: [
@@ -48,6 +53,9 @@ router.get(
         before ? { occurredAt: { lt: new Date(before) } } : {},
         unread === 'true' ? { readAt: null } : {},
         type ? { type } : {},
+        from ? { occurredAt: { gte: new Date(from) } } : {},
+        to ? { occurredAt: { lte: new Date(to) } } : {},
+        deviceIds ? { deviceId: { in: deviceIds.split(',').map(Number) } } : {},
       ],
     }
     const [rows, unreadCount] = await Promise.all([
