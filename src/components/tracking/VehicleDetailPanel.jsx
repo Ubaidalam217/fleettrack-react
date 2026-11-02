@@ -583,7 +583,7 @@ function Alerts({ v }) {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {SEVERITY_FILTERS.map(s => {
             const active = severityFilter === s
-            const color = s === 'All' ? '#5ba354' : SEVERITY[s].color
+            const color = s === 'All' ? 'var(--ft-accent)' : SEVERITY[s].color
             return (
               <button
                 key={s}

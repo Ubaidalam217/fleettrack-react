@@ -57,7 +57,8 @@ function Splash() {
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         gap: 18, width: '100%', minHeight: '100vh', backgroundColor: 'var(--c-page)',
       }}>
-        <img src="/logo/fleetmax-logo.png" alt="FleetmaX" style={{ height: 34, width: 'auto', opacity: 0.9 }} />
+        <img className="ft-logo-light" src="/logo/fleetmax-logo-sea.png" alt="FleetmaX" style={{ height: 34, width: 'auto', opacity: 0.9 }} />
+<img className="ft-logo-dark" src="/logo/fleetmax-logo-aqua-white.png" alt="FleetmaX" style={{ height: 34, width: 'auto', opacity: 0.9 }} />
         <div style={{
           width: 22, height: 22, borderRadius: '50%',
           border: '2.5px solid var(--c-border2)',

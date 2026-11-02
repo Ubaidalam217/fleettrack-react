@@ -16,87 +16,123 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
    slate, which is what stops the light theme reading as "grey app with a
    green button".
 
-   The sidebar keeps its own --c-sb-* tokens and is dark in BOTH themes, so
-   those live outside the light/dark split and are declared once here.
+   The sidebar keeps its own --c-sb-* tokens; it is dark in BOTH themes, in
+   the navy of the light theme or the deep teal of the dark one.
    ══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* Brand constants — identical in both themes. */
-  --ft-navy:       #0f2437;
-  --ft-navy-soft:  #16314a;
-  --ft-green:      #5ba354;
+  /* ── FleetmaxX themes, the SAME as the mobile app (client, 2026-11-02) ──
+     Light = "Sea Blue"  (issue/mobile light theme.jpeg): deep navy chrome,
+             sea-blue accent, a light blue-white page.
+     Dark  = "Midnight Aqua" (theme-options 02): deep teal chrome and page,
+             aqua accent.
+     The mobile tokens live in FleetmaX-Android/fleetmax-mobile/src/constants/theme.ts;
+     keep the two in step. */
+  --ft-navy:       #05293a;
+  --ft-navy-soft:  #0b3a50;
+  --ft-sea:        #0a8fb0;
 
-  --c-page:    #f5f7fa;
+  --c-page:    #f2f8fa;
   --c-sidebar: var(--ft-navy);
-  --c-header:  #ffffff;
+  /* Dark in both themes, like the sidebar; .ft-topbar re-tints its contents. */
+  --c-header:  #05293a;
   --c-card:    #ffffff;
-  --c-card2:   #f5f7fa;
-  --c-border:  #dfe5ec;
-  --c-border2: #eaeff4;
-  --c-text1:   #0f2437;
-  --c-text2:   #55697d;
-  --c-text3:   #8496a8;
-  --c-hover:   #edf1f6;
-  --c-thead:   #f5f7fa;
-  --c-progress:#e3e9f0;
-  --c-input:   #f0f3f7;
+  --c-card2:   #f2f8fa;
+  --c-border:  #dde9ee;
+  --c-border2: #ebf3f6;
+  --c-text1:   #05293a;
+  --c-text2:   #4f6f7e;
+  --c-text3:   #83a0ad;
+  --c-hover:   #eaf3f6;
+  --c-thead:   #f2f8fa;
+  --c-progress:#e2eef2;
+  --c-input:   #eef5f8;
 
   /* ── Dashboard design tokens (see "Card system" below) ── */
   --ft-radius:       16px;
   --ft-radius-inner: 12px;
   --ft-pad:          20px;
   --ft-gap:          20px;
-  --ft-shadow:       0 1px 2px rgba(15,36,55,.04), 0 6px 20px -12px rgba(15,36,55,.16);
-  --ft-shadow-hover: 0 1px 3px rgba(15,36,55,.06), 0 18px 38px -18px rgba(15,36,55,.28);
-  --ft-border-hover: #c6d2de;
-  --ft-inset:        #f5f7fa;
-  --ft-inset-border: #edf1f6;
+  --ft-shadow:       0 1px 2px rgba(5,41,58,.04), 0 6px 20px -12px rgba(5,41,58,.18);
+  --ft-shadow-hover: 0 1px 3px rgba(5,41,58,.06), 0 18px 38px -18px rgba(5,41,58,.30);
+  --ft-border-hover: #c3d8e0;
+  --ft-inset:        #f2f8fa;
+  --ft-inset-border: #e6f0f4;
 
-  --ft-accent:          var(--ft-green);
-  --ft-accent-hover:    #4a8f45;
+  --ft-accent:          var(--ft-sea);
+  --ft-accent-hover:    #087a96;
   --ft-accent-contrast: #ffffff;
+
+  /* Sidebar: navy into ocean blue, the current page lit in cyan. A gradient, so
+     it is applied with `background`, not `background-color`. */
+  --c-sb-bg:                  linear-gradient(180deg, #05293a 0%, #063a50 55%, #08506a 100%);
+  --c-sb-elev:                var(--ft-navy-soft);
+  --c-sb-active:              rgba(56,212,240,.18);
+  --c-sb-active-text:         #7fe6f8;
+  --c-sb-active-edge:         #38d4f0;
+  --c-sb-inactive:            rgba(255,255,255,.70);
+  --c-sb-inactive-hover:      rgba(255,255,255,.08);
+  --c-sb-inactive-hover-text: #ffffff;
+  --c-sb-section:             rgba(255,255,255,.45);
+  --c-sb-divider:             rgba(255,255,255,.10);
 }
 
 .dark {
-  --c-page:    #0b1622;
-  --c-header:  var(--ft-navy);
-  --c-card:    #142637;
-  --c-card2:   #101e2c;
-  --c-border:  #1e3448;
-  --c-border2: #24405a;
-  --c-text1:   #ffffff;
-  --c-text2:   #9db0c2;
-  --c-text3:   #6b8299;
-  --c-hover:   #1a3047;
-  --c-thead:   #101e2c;
-  --c-progress:#24405a;
-  --c-input:   #0b1622;
+  --c-page:    #061416;
+  --c-header:  #071c1e;
+  --c-card:    #0f2627;
+  --c-card2:   #0a1d1f;
+  --c-border:  #1a393a;
+  --c-border2: #224849;
+  --c-text1:   #f2fffc;
+  --c-text2:   #a3c4be;
+  --c-text3:   #6f9690;
+  --c-hover:   #14302f;
+  --c-thead:   #0a1d1f;
+  --c-progress:#1f4141;
+  --c-input:   #0a1d1f;
 
-  --ft-shadow:       0 1px 2px rgba(0,0,0,.28), 0 8px 24px -14px rgba(0,0,0,.6);
-  --ft-shadow-hover: 0 1px 3px rgba(0,0,0,.34), 0 20px 40px -18px rgba(0,0,0,.75);
-  --ft-border-hover: #2d4f6d;
+  --ft-shadow:       0 1px 2px rgba(0,0,0,.30), 0 8px 24px -14px rgba(0,0,0,.65);
+  --ft-shadow-hover: 0 1px 3px rgba(0,0,0,.36), 0 20px 40px -18px rgba(0,0,0,.80);
+  --ft-border-hover: #2c5a59;
   --ft-inset:        rgba(255,255,255,.035);
   --ft-inset-border: rgba(255,255,255,.07);
 
-  /* Lifted slightly: var(--ft-accent) on a near-black panel sits under 4.5:1 for the
-     small label text that rides on top of it. */
-  --ft-accent:       #6fbb67;
-  --ft-accent-hover: #7fc877;
+  /* Aqua, a shade deeper than the mobile #2fd3ad so the white labels that sit
+     on accent buttons across the website stay readable. */
+  --ft-accent:       #17b08f;
+  --ft-accent-hover: #2fd3ad;
+
+  --c-sb-bg:                  linear-gradient(180deg, #071819 0%, #0a2425 60%, #0d3231 100%);
+  --c-sb-elev:                #0d2a2b;
+  --c-sb-active:              rgba(47,211,173,.20);
+  --c-sb-active-text:         #7cf2cf;
+  --c-sb-active-edge:         #2fd3ad;
+  --c-sb-inactive:            rgba(220,255,247,.62);
+  --c-sb-inactive-hover:      rgba(255,255,255,.06);
+  --c-sb-inactive-hover-text: #ffffff;
+  --c-sb-section:             rgba(200,255,240,.38);
+  --c-sb-divider:             rgba(255,255,255,.07);
 }
 
-/* ── Sidebar tokens — dark panel in both themes ──
-   Declared after .dark so a theme switch cannot reassign them. */
-:root,
-.dark {
-  --c-sb-bg:                  var(--ft-navy);
-  --c-sb-elev:                var(--ft-navy-soft);
-  --c-sb-active:              var(--ft-green);
-  --c-sb-active-text:         #ffffff;
-  --c-sb-inactive:            rgba(255,255,255,.62);
-  --c-sb-inactive-hover:      rgba(255,255,255,.07);
-  --c-sb-inactive-hover-text: #ffffff;
-  --c-sb-section:             rgba(255,255,255,.40);
-  --c-sb-divider:             rgba(255,255,255,.09);
+/* ── Top bar — dark in both themes ──
+   The header's controls read the shared text/border tokens, so they are
+   re-pointed to light-on-navy here instead of in every control. The dropdown
+   panels portal to <body>, outside this scope, and keep the page theme. */
+/* Logos follow the theme like the mobile app: sea blue in light, aqua in dark.
+   Both <img>s render and CSS shows the theme's one, so no component needs
+   to know which theme is on (the .dark class is on <html> too, for portals). */
+.ft-logo-dark { display: none !important; }
+.dark .ft-logo-dark { display: block !important; }
+.dark .ft-logo-light { display: none !important; }
+
+.ft-topbar {
+  --c-text1:   #ffffff;
+  --c-text2:   rgba(255,255,255,.78);
+  --c-text3:   rgba(255,255,255,.62);
+  --c-border:  rgba(255,255,255,.08);
+  --c-border2: rgba(255,255,255,.16);
+  --c-hover:   rgba(255,255,255,.08);
 }
 
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }

@@ -79,7 +79,7 @@ export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMen
 
   return (
     <header
-      className="sticky top-0 z-30 flex h-14 md:h-16 items-center justify-between px-3 md:px-4 lg:px-6"
+      className="ft-topbar sticky top-0 z-30 flex h-14 md:h-16 items-center justify-between px-3 md:px-4 lg:px-6"
       style={{ backgroundColor: 'var(--c-header)', borderBottom: '1px solid var(--c-border)' }}
     >
       {/* Left — sidebar toggle only */}

@@ -12,12 +12,16 @@
 // leaves them alone: they have to stay mutually distinguishable on the map, and
 // "Off" recoloured to the brand green would be all but indistinguishable from
 // "Driving" at the size these dots actually render.
+//
+// 2026-11-02, client: ignition Off is RED (it was blue), the same as the mobile
+// app and the Dashboard. No Data therefore moved off red to a light grey, so the
+// two never look alike on the map; Inactive stays the darker grey.
 export const STATUS = {
   Running:  { label: 'Driving',  color: '#22c55e' },  // green
   Idle:     { label: 'Idle',     color: '#eab308' },  // yellow
-  Stopped:  { label: 'Off',      color: '#3b82f6' },  // blue
-  Inactive: { label: 'Inactive', color: '#6b7280' },  // gray
-  NoData:   { label: 'No Data',  color: '#ef4444' },  // red
+  Stopped:  { label: 'Off',      color: '#ef4444' },  // red
+  Inactive: { label: 'Inactive', color: '#6b7280' },  // dark grey
+  NoData:   { label: 'No Data',  color: '#94a3b8' },  // light grey
 }
 
 // Canonical keys in the order the spec lists its filters.

@@ -247,7 +247,8 @@ const SIDEBAR_CSS = `
     background: var(--c-sb-active);
     color: var(--c-sb-active-text);
     font-weight: 700;
-    box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--c-sb-active) 55%, transparent);
+    /* A lit edge on the current page, as in the client's mobile reference. */
+    box-shadow: inset 3px 0 0 var(--c-sb-active-edge);
   }
   .ft-sb-item:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
 
@@ -318,7 +319,7 @@ export default function Sidebar({ sidebarOpen }) {
           minWidth: isOpen ? SIDEBAR_WIDTH : 0,
           overflow: 'hidden',
           transition: 'width 0.3s ease, min-width 0.3s ease',
-          backgroundColor: 'var(--c-sb-bg)',
+          background: 'var(--c-sb-bg)',
           height: '100vh',
         }}
       >
@@ -335,7 +336,14 @@ export default function Sidebar({ sidebarOpen }) {
           }}>
             <Link to="/dashboard" style={{ display: 'block', lineHeight: 0 }} aria-label="FleetmaX Solutions — go to dashboard">
               <img
-                src="/logo/fleetmax-logo-white.png"
+                className="ft-logo-light"
+                src="/logo/fleetmax-logo-sea-white.png"
+                alt="FleetmaX Solutions"
+                style={{ height: 34, width: 'auto', display: 'block' }}
+              />
+              <img
+                className="ft-logo-dark"
+                src="/logo/fleetmax-logo-aqua-white.png"
                 alt="FleetmaX Solutions"
                 style={{ height: 34, width: 'auto', display: 'block' }}
               />
@@ -393,7 +401,7 @@ export default function Sidebar({ sidebarOpen }) {
               <div style={{
                 display: 'flex', height: 34, width: 34, flexShrink: 0,
                 alignItems: 'center', justifyContent: 'center', borderRadius: '50%',
-                background: 'var(--c-sb-active)',
+                background: 'var(--ft-accent)',
                 fontSize: 12, fontWeight: 700, color: '#fff',
               }}>
                 {initials(user)}

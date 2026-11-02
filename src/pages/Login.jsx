@@ -138,7 +138,12 @@ export default function Login() {
               so the name is never set in a font that is not the brand's. */}
           <div style={{ marginBottom: 32 }}>
             <img
-              src="/logo/fleetmax-logo.png"
+              className="ft-logo-light" src="/logo/fleetmax-logo-sea.png"
+              alt="FleetmaX Solutions"
+              style={{ height: 44, width: 'auto', display: 'block' }}
+            />
+<img
+              className="ft-logo-dark" src="/logo/fleetmax-logo-aqua-white.png"
               alt="FleetmaX Solutions"
               style={{ height: 44, width: 'auto', display: 'block' }}
             />

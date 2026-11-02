@@ -82,7 +82,12 @@ export default function ChangePassword() {
         }}>
           <div style={{ marginBottom: 28 }}>
             <img
-              src="/logo/fleetmax-logo.png"
+              className="ft-logo-light" src="/logo/fleetmax-logo-sea.png"
+              alt="FleetmaX Solutions"
+              style={{ height: 38, width: 'auto', display: 'block', marginBottom: 22 }}
+            />
+<img
+              className="ft-logo-dark" src="/logo/fleetmax-logo-aqua-white.png"
               alt="FleetmaX Solutions"
               style={{ height: 38, width: 'auto', display: 'block', marginBottom: 22 }}
             />

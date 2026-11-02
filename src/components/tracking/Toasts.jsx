@@ -10,7 +10,7 @@ const TONES = {
   // Deliberately distinct from success. A queued command has NOT reached the
   // vehicle, and showing it green would tell the operator something untrue.
   pending: { bg: '#f59e0b', icon: 'clock' },
-  info:    { bg: '#5ba354', icon: 'info'  },
+  info:    { bg: 'var(--ft-accent)', icon: 'info'  },
 }
 
 function Icon({ kind }) {

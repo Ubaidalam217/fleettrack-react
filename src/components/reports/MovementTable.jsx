@@ -65,7 +65,7 @@ function toItems(report) {
 // every telemetry push. `tick` is the deliberate escape hatch — geocoding fills
 // the Location column by mutating rows in place, and bumping tick is what tells
 // this component those mutations happened.
-function MovementTable({ report, filters, limit, onShowMore }) {
+function MovementTable({ report, filters, limit, onShowMore, onLocate }) {
   const items = useMemo(() => toItems(report), [report])
   const shown = limit >= items.length ? items : items.slice(0, limit)
 
@@ -179,7 +179,19 @@ function MovementTable({ report, filters, limit, onShowMore }) {
                   <td style={cellBase}>{row.status}</td>
                   <td style={{ ...cellBase, textAlign: 'right' }}>{row.speed}</td>
                   <td style={{ ...cellBase, textAlign: 'right' }}>{row.odoKm.toFixed(3)}</td>
-                  <td style={{ ...cellBase, wordBreak: 'break-word' }}>{rowLocation(row)}</td>
+                  <td style={{ ...cellBase, wordBreak: 'break-word' }}>
+                    {/* Client 2026-11-02: clicking a location shows it on our own map. */}
+                    {onLocate && row.lat != null && row.lng != null ? (
+                      <button
+                        type="button"
+                        onClick={() => onLocate({ lat: row.lat, lng: row.lng, ts: row.ts, time: row.time, status: row.status, vehicleId: item.vehicleId, location: rowLocation(row) })}
+                        title="Show this location on the map"
+                        style={{ padding: 0, border: 0, background: 'none', font: 'inherit', textAlign: 'left', cursor: 'pointer', color: '#0a7e9c', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 2 }}
+                      >
+                        {rowLocation(row)}
+                      </button>
+                    ) : rowLocation(row)}
+                  </td>
                 </tr>
               )
             })}

@@ -84,7 +84,7 @@ export default function ConfirmDialog({
               border: '1px solid color-mix(in srgb, var(--ft-accent) 22%, transparent)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5ba354" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ft-accent)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 4h16v12H5.17L4 17.17V4z" />
                 <line x1="8" y1="9" x2="16" y2="9" />
               </svg>

@@ -17,7 +17,7 @@ function relTime(ts) {
 }
 
 const SEV_META = {
-  info:    { color: '#5ba354', bg: 'rgba(91,163,84,0.1)',  label: 'Info' },
+  info:    { color: 'var(--ft-accent)', bg: 'color-mix(in srgb, var(--ft-accent) 10%, transparent)',  label: 'Info' },
   warning: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', label: 'Warning' },
   success: { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',  label: 'Update' },
   critical:{ color: '#ef4444', bg: 'rgba(239,68,68,0.1)',  label: 'Urgent' },

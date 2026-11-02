@@ -3,6 +3,7 @@ import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle, MapPin } from 'lu
 import Sidebar from '../components/Sidebar'
 import Header  from '../components/Header'
 import MovementTable from '../components/reports/MovementTable'
+import LocationMapModal from '../components/reports/LocationMapModal'
 // Shared with the Daywise reports — one copy of the chips, dropdowns and
 // toolbar buttons rather than one per report page.
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../components/reports/controls'
@@ -116,6 +117,9 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   const [progress,  setProgress]  = useState(null)
   const [error,     setError]     = useState(null)
   const [visible,   setVisible]   = useState(PAGE_ROWS)
+  // The location row clicked in the table, shown on the map (null = closed).
+  const [located,   setLocated]   = useState(null)
+  const closeLocated = useCallback(() => setLocated(null), [])
   const [geoTick,   setGeoTick]   = useState(0)      // forces a re-render as addresses land
   const abortRef = useRef(null)
 
@@ -599,7 +603,9 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                   limit={visible}
                   tick={geoTick}
                   onShowMore={showMore}
+                  onLocate={setLocated}
                 />
+                <LocationMapModal point={located} onClose={closeLocated} />
               </>
             )}
 
