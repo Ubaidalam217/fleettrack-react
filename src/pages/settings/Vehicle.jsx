@@ -16,6 +16,7 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import { ObjectTabs } from './OrgTabs'
 import { IS_REAL } from '../../data/mode'
 
 // The fleet register. Writes to the same vehicle store the sub-user assignment
@@ -387,6 +388,7 @@ export default function Vehicle(props) {
         </form>
       ) : (
         <>
+          <ObjectTabs />
           <PageNotice {...access} />
 
           {!access.loading && (

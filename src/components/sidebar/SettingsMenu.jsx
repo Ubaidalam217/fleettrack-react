@@ -10,6 +10,7 @@ import { IS_REAL } from '../../data/mode'
 import { useSession } from '../../data/session'
 import { canSeePage } from '../../data/permissions'
 import { screenForPath, sessionLevel } from '../../data/screens'
+import { visibleOrgPages } from '../../pages/settings/OrgTabs'
 
 const EXPAND_KEY = 'ft-settings-menu'
 
@@ -39,7 +40,13 @@ export default function SettingsMenu() {
       const screen = screenForPath(`/settings/${id}`)
       return !screen || sessionLevel(session.user, screen) !== 'none'
     }
-    return filterSettingsMenu(SETTINGS_MENU, id => !HIDDEN_SETTINGS_PAGES.has(id) && canSeePage(roleKey, id) && open(id))
+    const orgPages = visibleOrgPages(session.user)
+    const tree = filterSettingsMenu(SETTINGS_MENU, id =>
+      id === 'users' ? orgPages.length > 0 : !HIDDEN_SETTINGS_PAGES.has(id) && canSeePage(roleKey, id) && open(id))
+    // "Users" opens the first of GGB / Group / BG / Branch this user may open.
+    const point = nodes => nodes.map(n =>
+      n.id === 'users' ? { ...n, path: orgPages[0].path } : n.children ? { ...n, children: point(n.children) } : n)
+    return point(tree)
   }, [session.user])
 
   return (

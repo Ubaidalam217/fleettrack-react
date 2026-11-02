@@ -12,6 +12,7 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import OrgTabs from './OrgTabs'
 import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions } from './NodeUsersPanel'
 import { useSession } from '../../data/session'
 import { sessionLevel as usersLevel } from '../../data/screens'
@@ -139,6 +140,7 @@ export default function Reseller(props) {
         </form>
       ) : (
         <>
+          <OrgTabs />
           <PageNotice {...access} />
 
           {!access.loading && (

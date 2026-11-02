@@ -23,34 +23,24 @@ export const SETTINGS_MENU = [
     label: 'General',
     icon: Layers,
     children: [
+      // Client, 2026-11-02: one row, not a nested list. GGB / Group / BG /
+      // Branch are tabs across the top of those pages (pages/settings/OrgTabs.jsx).
+      // `path` is rewritten per user to the first of them they may open
+      // (SettingsMenu.jsx); `matchPaths` keeps this row lit on all of them, and on
+      // the two account pages that are reached from their Users panels.
       {
         id: 'users',
         label: 'Users',
         icon: Users,
-        // Ordered top-down through the org hierarchy — GGB > Group > BG >
-        // Branch > the accounts that sit under a BG — so the menu reads the
-        // same way the data nests.
-        //
-        // The ids and paths are the pre-rename names on purpose: they are what
-        // the router, the sidebar highlight and every existing bookmark match
-        // on, and none of them is ever shown to a user. Only `label` is.
-        children: [
-          { id: 'reseller',        label: 'GGB (Group Global Admin)', path: '/settings/reseller' },
-          { id: 'group',           label: 'Group',                    path: '/settings/group' },
-          { id: 'company',         label: 'BG (Business Group)',      path: '/settings/company' },
-          { id: 'branch',          label: 'Branch',                   path: '/settings/branch' },
-          { id: 'user',            label: 'User',                     path: '/settings/user' },
-          { id: 'company-subuser', label: 'Company Subuser',          path: '/settings/company-subuser' },
+        path: '/settings/reseller',
+        matchPaths: [
+          '/settings/reseller', '/settings/group', '/settings/company', '/settings/branch',
+          '/settings/user', '/settings/company-subuser',
         ],
       },
-      {
-        id: 'object',
-        label: 'Object',
-        icon: Car,
-        children: [
-          { id: 'vehicle', label: 'Vehicle', path: '/settings/vehicle' },
-        ],
-      },
+      // One row as well (client, 2026-11-02): Object has a single page, Vehicle.
+      // The id stays 'vehicle' so role and permission checks still find it.
+      { id: 'vehicle', label: 'Object', icon: Car, path: '/settings/vehicle' },
       { id: 'alerts', label: 'Alerts', icon: Bell,   path: '/settings/alerts' },
       { id: 'driver', label: 'Driver', icon: IdCard, path: '/settings/driver' },
     ],

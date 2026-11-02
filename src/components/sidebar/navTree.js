@@ -41,7 +41,7 @@ export function filterMenu(nodes, canSee) {
 export function ancestorIdsIn(nodes, rootId, pathname) {
   const walk = (list, trail) => {
     for (const node of list) {
-      if (node.path === pathname) return trail
+      if (node.path === pathname || node.matchPaths?.includes(pathname)) return trail
       if (node.children) {
         const hit = walk(node.children, [...trail, node.id])
         if (hit) return hit

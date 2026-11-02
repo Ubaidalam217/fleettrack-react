@@ -88,7 +88,7 @@ function MenuNode({ node, expanded, onToggle, pathname, trail }) {
   const Icon      = node.icon
   const isBranch  = Array.isArray(node.children) && node.children.length > 0
   const isOpen    = expanded.has(node.id)
-  const isActive  = node.path === pathname
+  const isActive  = node.path === pathname || (node.matchPaths?.includes(pathname) ?? false)
   const onTrail   = isBranch && trail.includes(node.id)
 
   const glyph = Icon
