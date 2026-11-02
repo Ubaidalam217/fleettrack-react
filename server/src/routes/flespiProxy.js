@@ -24,6 +24,7 @@ import { Router } from 'express'
 import { asyncHandler, HttpError, notFound } from '../lib/http.js'
 import { buildAcl } from '../lib/flespiGrant.js'
 import * as flespi from '../lib/flespi.js'
+import { messagesResponse, telemetryResponse } from '../lib/telemetry.js'
 
 const router = Router()
 
@@ -78,6 +79,22 @@ router.use(
         effective = deviceIds.join(',')
       } else if (!requested.every(id => deviceIds.includes(id))) {
         throw notFound('Vehicle')
+      }
+    }
+
+    // Reads answered from our own copy when the Flespi webhook is delivering
+    // (lib/telemetry.js): the live map's telemetry and the reports' messages.
+    // Anything else, or our copy not covering it, still goes to Flespi.
+    if (method === 'GET') {
+      const ids = effective === 'all' ? null : effective.split(',').map(Number)
+      let local = null
+      if (/^\/telemetry(\/|$)/.test(rest)) local = telemetryResponse(ids)
+      else if (rest === '/messages') local = await messagesResponse(ids, req.query.data)
+      if (local) {
+        res.set('Cache-Control', 'no-store')
+        res.set('X-FleetmaxX-Source', 'local')
+        res.json(local)
+        return
       }
     }
 

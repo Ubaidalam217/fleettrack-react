@@ -7,6 +7,7 @@ import prisma from './prisma.js'
 import { createApp } from './app.js'
 import { startDailyUsageJob } from './lib/dailyUsage.js'
 import { startAlertEngine } from './lib/alertEngine.js'
+import { startTelemetry } from './lib/telemetry.js'
 
 const app = createApp()
 
@@ -23,6 +24,8 @@ const server = app.listen(env.PORT, () => {
 const stopDailyUsage = startDailyUsageJob()
 // Evaluates every active alert rule every ~30 s (lib/alertEngine.js).
 const stopAlertEngine = startAlertEngine()
+// Batches the Flespi webhook's messages into Postgres; keeps daily partitions.
+const stopTelemetry = startTelemetry()
 
 /**
  * Graceful shutdown.
@@ -40,6 +43,7 @@ async function shutdown(signal) {
   console.log(`[fleetmax] ${signal} received, shutting down`)
   stopDailyUsage()
   stopAlertEngine()
+  await stopTelemetry()
 
   const forceExit = setTimeout(() => {
     console.error('[fleetmax] shutdown timed out, exiting')

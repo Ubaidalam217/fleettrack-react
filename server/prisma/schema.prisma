@@ -634,3 +634,55 @@ model UserAvatar {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// ── Telemetry kept by FleetmaxX (2026-11-02) ────────────────────────────────
+// Flespi pushes every message to POST /api/ingest/flespi (an HTTP Stream);
+// lib/telemetry.js keeps the latest state per device and 90 days of history,
+// so the website, the app, the alert engine and the reports read our database
+// instead of calling Flespi again and again (built to carry 5,000+ vehicles).
+
+/// The latest message of each Flespi device — what the live map shows.
+model DeviceState {
+  deviceId    Int      @id
+  ident       String?
+  /// Unix seconds of the message these values came from.
+  ts          Int
+  lat         Float?
+  lng         Float?
+  speed       Float?
+  heading     Float?
+  ignition    Boolean?
+  /// vehicle.mileage, km.
+  odometerKm  Float?
+  satellites  Int?
+  valid       Boolean?
+  fuel        Float?
+  temperature Float?
+  /// Less common fields the code reads, only when the device sends them.
+  extra       Json?
+  updatedAt   DateTime @updatedAt
+
+  @@index([ts])
+}
+
+/// Every message, kept TELEMETRY_RETENTION_DAYS. The table is PARTITIONED BY
+/// RANGE (ts), one partition per UTC day, created ahead and dropped behind by
+/// lib/telemetry.js — so expiring a day is a DROP, not a slow DELETE. Written
+/// with raw SQL in batches; read by deviceId and time range.
+model TelemetryMessage {
+  deviceId    Int
+  ts          Int
+  lat         Float?
+  lng         Float?
+  speed       Float?
+  heading     Float?
+  ignition    Boolean?
+  odometerKm  Float?
+  satellites  Int?
+  valid       Boolean?
+  fuel        Float?
+  temperature Float?
+  extra       Json?
+
+  @@id([deviceId, ts])
+}

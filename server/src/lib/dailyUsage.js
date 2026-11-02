@@ -47,6 +47,7 @@ import env from '../env.js'
 import prisma from '../prisma.js'
 import * as flespi from './flespi.js'
 import { geocodeKey, reverseGeocodePoints } from './geocoder.js'
+import { messagesResponse } from './telemetry.js'
 import {
   DAYWISE_FIELDS, MAX_MESSAGES, UAE_OFFSET_SEC,
   daysInMonth, deriveDeviceMonth, lastElapsedDay,
@@ -96,6 +97,10 @@ async function fetchMessages(selection, spacingMs) {
   const data = JSON.stringify({ ...selection, fields: DAYWISE_FIELDS })
   const path = `/gw/devices/all/messages?data=${encodeURIComponent(data)}`
 
+  // Our own history first (lib/telemetry.js); Flespi when it does not cover this.
+  const local = await messagesResponse(null, data)
+  if (local) return groupByDevice(local.result)
+
   for (let attempt = 0; ; attempt++) {
     const wait = nextFetchAt - Date.now()
     if (wait > 0) await sleep(wait)
@@ -110,15 +115,19 @@ async function fetchMessages(selection, spacingMs) {
       throw new Error(`Flespi answered ${res.status} for ${data}`)
     }
 
-    const byDevice = new Map()
-    for (const m of JSON.parse(res.text).result ?? []) {
-      const id = m['device.id']
-      if (id == null) continue
-      if (!byDevice.has(id)) byDevice.set(id, [])
-      byDevice.get(id).push(m)
-    }
-    return byDevice
+    return groupByDevice(JSON.parse(res.text).result ?? [])
   }
+}
+
+function groupByDevice(messages) {
+  const byDevice = new Map()
+  for (const m of messages) {
+    const id = m['device.id']
+    if (id == null) continue
+    if (!byDevice.has(id)) byDevice.set(id, [])
+    byDevice.get(id).push(m)
+  }
+  return byDevice
 }
 
 /** Every device's messages for one UAE day. */

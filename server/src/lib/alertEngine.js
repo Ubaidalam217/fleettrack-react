@@ -31,6 +31,7 @@ import prisma from '../prisma.js'
 import * as flespi from './flespi.js'
 import { sendAlertEmail } from './mailer.js'
 import { haversineMeters } from '../../../src/utils/distance.js'
+import { telemetryResponse } from './telemetry.js'
 
 const UAE_OFFSET_SEC = 4 * 3600
 /** Telemetry older than this is not evaluated for speed / ignition / position rules. */
@@ -271,10 +272,15 @@ export function evaluateLicence(alert, driver, state, now) {
 const digits = v => String(v ?? '').replace(/\D/g, '')
 
 async function fetchTelemetry() {
-  const res = await flespi.forward(`/gw/devices/all/telemetry/${TELEMETRY_FIELDS}`, { timeoutMs: 20_000 })
-  if (res.status !== 200) throw new Error(`Flespi telemetry answered ${res.status}`)
+  // Our own copy first (lib/telemetry.js) — no Flespi call while the webhook delivers.
+  let payload = telemetryResponse(null)
+  if (!payload) {
+    const res = await flespi.forward(`/gw/devices/all/telemetry/${TELEMETRY_FIELDS}`, { timeoutMs: 20_000 })
+    if (res.status !== 200) throw new Error(`Flespi telemetry answered ${res.status}`)
+    payload = JSON.parse(res.text)
+  }
   const byDevice = new Map()
-  for (const item of JSON.parse(res.text).result ?? []) {
+  for (const item of payload.result ?? []) {
     const t = item.telemetry ?? {}
     const stamps = Object.values(t).map(v => v?.ts).filter(Boolean)
     byDevice.set(item.id, {

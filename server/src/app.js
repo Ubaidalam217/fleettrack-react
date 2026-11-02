@@ -38,6 +38,7 @@ import { requireScreen, WRITE_SCREENS } from './lib/permissions.js'
 import alertEventRoutes from './routes/alertEvents.js'
 import assistantRoutes from './routes/assistant.js'
 import avatarRoutes from './routes/avatars.js'
+import ingestRoutes from './routes/ingest.js'
 
 /**
  * CORS, from FRONTEND_ORIGINS.
@@ -77,6 +78,9 @@ export function createApp() {
   // 512 KB of image in routes/me.js). Parsed first, so the 100kb parser below
   // sees an already-read body and leaves it alone.
   app.use('/api/me/avatar', express.json({ limit: '800kb' }))
+  // The Flespi webhook: batches of device messages, so its own larger limit.
+  // Mounted before the request log and before auth — it has its own token.
+  app.use('/api/ingest', express.json({ limit: '20mb' }), ingestRoutes)
   app.use(express.json({ limit: '100kb' }))
 
   if (!env.isTest) app.use(morgan(env.isProduction ? 'combined' : 'dev'))

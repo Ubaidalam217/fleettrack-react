@@ -156,6 +156,15 @@ const schema = z.object({
   ALERT_ENGINE_INTERVAL_MS: z.coerce.number().int().min(10_000).default(30_000),
 
   /**
+   * Our own telemetry (lib/telemetry.js). INGEST_TOKEN switches the Flespi
+   * webhook on (POST /api/ingest/flespi) — a long random secret the HTTP Stream
+   * sends. History is kept TELEMETRY_RETENTION_DAYS (daily partitions).
+   */
+  INGEST_TOKEN: z.string().min(24, 'INGEST_TOKEN must be at least 24 characters').optional(),
+  TELEMETRY_RETENTION_DAYS: z.coerce.number().int().min(1).max(730).default(90),
+  TELEMETRY_FLUSH_MS: z.coerce.number().int().min(200).max(60_000).default(1000),
+
+  /**
    * Alert emails (lib/mailer.js). Off until SMTP_HOST and MAIL_FROM are set;
    * any SMTP provider works (Brevo's free tier sends 300 a day).
    */
