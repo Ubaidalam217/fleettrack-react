@@ -137,6 +137,24 @@ describe('Flespi proxy answers from our copy', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  it('answers "all devices" only once the fleet is seeded, parked ones included', async () => {
+    await post([msg({ 'device.id': 101, timestamp: NOW - 30 })])
+    await T.flush()
+    // Only one tracker has sent since the start: "all" must not be answered from that alone.
+    expect(T.telemetryResponse(null)).toBeNull()
+
+    // The seed: one Flespi read that also knows the parked device 202.
+    const telemetry = { result: [
+      { id: 101, telemetry: { timestamp: { value: NOW - 500, ts: NOW - 500 }, 'position.speed': { value: 1, ts: NOW - 500 } } },
+      { id: 202, telemetry: { timestamp: { value: NOW - 7200, ts: NOW - 7200 }, 'position.latitude': { value: 25.1, ts: NOW - 7200 } } },
+    ] }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(telemetry), { status: 200, headers: { 'content-type': 'application/json' } })))
+    expect(await T.seedFromFlespi()).toBe(1) // 202 added; 101 already newer here
+    const all = T.telemetryResponse(null)
+    expect(all.result.map(r => r.id).sort()).toEqual([101, 202])
+    expect(all.result.find(r => r.id === 101).telemetry.timestamp.value).toBe(NOW - 30) // the webhook's newer one kept
+  })
+
   it('still asks Flespi for a range older than the history we hold', async () => {
     const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ result: [] }), { status: 200, headers: { 'content-type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchSpy)

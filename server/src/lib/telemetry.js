@@ -27,6 +27,7 @@
 import prisma from '../prisma.js'
 import env from '../env.js'
 import { Prisma } from '@prisma/client'
+import * as flespi from './flespi.js'
 
 /** Flespi field → our column. */
 export const FIELD_MAP = Object.freeze({
@@ -300,12 +301,57 @@ export async function coverageStart() {
   return r?.ts ?? null
 }
 
+// ── fleet seed ───────────────────────────────────────────────────────────────
+
+/**
+ * A parked or silent tracker may not send anything for hours, so the webhook
+ * alone never tells us it exists. While the webhook is on, one Flespi
+ * telemetry read every SEED_EVERY_MS fills in the last state of every device
+ * we have nothing newer for. Until the first seed succeeds, "all devices"
+ * reads are not answered locally (they would miss those devices).
+ */
+const SEED_EVERY_MS = 10 * 60 * 1000
+let seededAt = 0
+let seedTimer = null
+
+export async function seedFromFlespi() {
+  if (!env.INGEST_TOKEN || !flespi.isConfigured()) return 0
+  const fields = ['timestamp', 'ident', ...Object.keys(FIELD_MAP), ...EXTRA_FIELDS].join(',')
+  const res = await flespi.forward(`/gw/devices/all/telemetry/${fields}`, { timeoutMs: 20_000 })
+  if (res.status !== 200) throw new Error(`Flespi telemetry answered ${res.status}`)
+  let added = 0
+  for (const item of JSON.parse(res.text).result ?? []) {
+    const t = item.telemetry ?? {}
+    const msg = { 'device.id': item.id }
+    for (const [k, v] of Object.entries(t)) msg[k] = v?.value
+    if (msg.timestamp == null) {
+      const stamps = Object.values(t).map(v => v?.ts).filter(Boolean)
+      if (stamps.length) msg.timestamp = Math.max(...stamps)
+    }
+    const row = normalize(msg)
+    if (!row) continue
+    const prev = latest.get(row.deviceId)
+    if (prev && prev.ts >= row.ts) continue
+    latest.set(row.deviceId, prev ? { ...prev, ...Object.fromEntries(Object.entries(row).filter(([, v]) => v !== null)) } : row)
+    dirty.add(row.deviceId)
+    added++
+  }
+  seededAt = Date.now()
+  return added
+}
+
+const seedQuietly = () => seedFromFlespi().catch(err => console.error('[telemetry] seed:', err?.message))
+
 // ── lifecycle ────────────────────────────────────────────────────────────────
 
 /** Start the flush loop and the daily partition upkeep. Returns a stop function. */
 export function startTelemetry() {
   if (env.isTest) return () => {}
-  loadStates().catch(err => console.error('[telemetry] could not load states:', err?.message))
+  loadStates()
+    .catch(err => console.error('[telemetry] could not load states:', err?.message))
+    .then(() => { if (env.INGEST_TOKEN) seedQuietly() })
+  if (env.INGEST_TOKEN) seedTimer = setInterval(seedQuietly, SEED_EVERY_MS)
+  seedTimer?.unref?.()
   maintainPartitions().catch(err => console.error('[telemetry] partitions:', err?.message))
   flushTimer = setInterval(() => { flush().catch(() => {}) }, env.TELEMETRY_FLUSH_MS)
   partitionTimer = setInterval(() => {
@@ -316,6 +362,7 @@ export function startTelemetry() {
   return async () => {
     clearInterval(flushTimer)
     clearInterval(partitionTimer)
+    clearInterval(seedTimer)
     await flush().catch(() => {})
   }
 }
@@ -327,6 +374,7 @@ export function __resetTelemetry() {
   dirty.clear()
   stats = { received: 0, stored: 0, lastIngestAt: null, lastError: null }
   coverage = { at: 0, ts: null }
+  seededAt = 0
   loaded = false
 }
 
@@ -364,6 +412,7 @@ async function coverageCached() {
  */
 export function telemetryResponse(ids) {
   if (!isServing()) return null
+  if (!ids && !seededAt) return null // the whole fleet is not known yet
   const list = ids ?? [...latest.keys()]
   const result = []
   for (const id of list) {
