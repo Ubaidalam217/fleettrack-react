@@ -410,14 +410,13 @@ async function coverageCached() {
  * { result: [{ id, telemetry: { field: { value, ts } } }] }. `ids` null = every
  * device we know. Null when a requested device has no state yet.
  */
-export function telemetryResponse(ids) {
-  if (!isServing()) return null
-  if (!ids && !seededAt) return null // the whole fleet is not known yet
+/** Flespi-shaped telemetry items for the devices we hold a state for. */
+export function telemetryItems(ids) {
   const list = ids ?? [...latest.keys()]
   const result = []
   for (const id of list) {
     const row = latest.get(id)
-    if (!row) return null
+    if (!row) continue
     const telemetry = { timestamp: { value: row.ts, ts: row.ts } }
     for (const [k, v] of Object.entries(toFlespiMessage(row))) {
       if (k !== 'device.id' && k !== 'timestamp') telemetry[k] = { value: v, ts: row.ts }
@@ -425,7 +424,19 @@ export function telemetryResponse(ids) {
     if (row.ident) telemetry.ident = { value: row.ident, ts: row.ts }
     result.push({ id, telemetry })
   }
-  return { result }
+  return result
+}
+
+/**
+ * `/gw/devices/<ids>/telemetry/<fields>` from memory, in Flespi's shape:
+ * { result: [{ id, telemetry: { field: { value, ts } } }] }. `ids` null = every
+ * device we know. Null when a requested device has no state yet.
+ */
+export function telemetryResponse(ids) {
+  if (!isServing()) return null
+  if (!ids && !seededAt) return null // the whole fleet is not known yet
+  if (ids && ids.some(id => !latest.has(id))) return null
+  return { result: telemetryItems(ids) }
 }
 
 /**

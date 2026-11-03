@@ -155,6 +155,38 @@ describe('Flespi proxy answers from our copy', () => {
     expect(all.result.find(r => r.id === 101).telemetry.timestamp.value).toBe(NOW - 30) // the webhook's newer one kept
   })
 
+  it('live stream: 204 while the webhook is quiet, then a snapshot and pushed updates', async () => {
+    const server = app.listen(0)
+    const base = `http://127.0.0.1:${server.address().port}`
+    try {
+      const quiet = await fetch(`${base}/api/live/stream`, { headers: auth(fx.tokens.superAdmin) })
+      expect(quiet.status).toBe(204)
+
+      await post([msg({ timestamp: NOW - 30, 'position.speed': 10 })])
+      const ctrl = new AbortController()
+      const res = await fetch(`${base}/api/live/stream`, { headers: auth(fx.tokens.superAdmin), signal: ctrl.signal })
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toMatch(/text\/event-stream/)
+      const reader = res.body.getReader()
+      const dec = new TextDecoder()
+      let text = ''
+      const readUntil = async needle => {
+        while (!text.includes(needle)) text += dec.decode((await reader.read()).value, { stream: true })
+      }
+      await readUntil('event: snapshot')
+      await readUntil('\n\n')
+      expect(text).toContain('"id":101')
+
+      // A new message is pushed within a second.
+      await post([msg({ timestamp: NOW - 5, 'position.speed': 77 })])
+      await readUntil('event: update')
+      await readUntil('"value":77')
+      ctrl.abort()
+    } finally {
+      server.close()
+    }
+  })
+
   it('still asks Flespi for a range older than the history we hold', async () => {
     const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ result: [] }), { status: 200, headers: { 'content-type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchSpy)

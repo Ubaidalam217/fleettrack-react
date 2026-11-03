@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { BASE_URL, HEADERS, hasFlespiToken } from './flespiConfig'
+import { IS_REAL, API_URL } from '../data/mode'
 import { normalizeMaster, cacheRawMetadata } from '../services/vehicleMaster'
 import { useScopedSnapshot } from '../data/fleetScope'
 
@@ -76,9 +77,13 @@ async function fetchTelemetrySnapshot() {
     err.status = res.status
     throw err
   }
-  const json = await res.json()
+  return parseTelemetry((await res.json()).result)
+}
+
+/** Flespi-shaped telemetry items → id → our reading. Polling and the live stream both feed this. */
+function parseTelemetry(items) {
   const snap = new Map()
-  ;(json.result || []).forEach(item => {
+  ;(items || []).forEach(item => {
     const t = item.telemetry || {}
     const tsCandidates = Object.values(t).map(v => v?.ts).filter(Boolean)
     snap.set(item.id, {
@@ -221,7 +226,7 @@ async function pollOnce() {
       isConnected: true, lastUpdated: new Date(),
       error: null, mqttFatalError: null, mqttRetryNotice: null,
     })
-    schedule(POLL_MS)
+    schedule(streamLive ? STREAM_POLL_MS : POLL_MS)
   } catch (e) {
     if (e.status === 429) {
       warn('rate limited — slowing down')
@@ -235,6 +240,79 @@ async function pollOnce() {
   }
 }
 
+// ── Live push ───────────────────────────────────────────────────────────────
+// GET /api/live/stream pushes each vehicle's update as the Flespi webhook
+// delivers it (server routes/live.js), so the map moves within a second or two
+// instead of on the next 10-second poll. Read with fetch rather than
+// EventSource so the login token rides in the Authorization header. While it
+// is live, polling drops to once a minute (device names, and a safety net);
+// when it ends or fails — webhook off (204), network, server restart — polling
+// goes straight back to every 10 s and the stream is retried a little later.
+
+const STREAM_POLL_MS = 60_000
+const STREAM_RETRY_MS = 30_000
+let streamLive = false
+let streamAbort = null
+let streamRetry = null
+
+function handleStreamEvent(event, data) {
+  if (event === 'snapshot' || event === 'update') {
+    applyTelemetrySnapshot(parseTelemetry(JSON.parse(data).result))
+    publish({ isConnected: true, lastUpdated: new Date(), error: null, mqttFatalError: null, mqttRetryNotice: null })
+  }
+}
+
+async function runStream() {
+  streamRetry = null
+  if (!running || !IS_REAL || !hasFlespiToken() || streamAbort) return
+  const ctrl = new AbortController()
+  streamAbort = ctrl
+  try {
+    const res = await fetch(`${API_URL}/api/live/stream`, { headers: { Authorization: HEADERS.Authorization }, signal: ctrl.signal })
+    if (res.status !== 200 || !res.body) throw new Error(`live stream ${res.status}`)
+    streamLive = true
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let cut
+      while ((cut = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, cut)
+        buffer = buffer.slice(cut + 2)
+        let event = 'message'
+        const data = []
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          else if (line.startsWith('data:')) data.push(line.slice(5).trim())
+        }
+        if (data.length) {
+          try { handleStreamEvent(event, data.join('\n')) } catch (e) { warn('bad live event —', e.message) }
+        }
+      }
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') warn('live stream unavailable —', e.message)
+  } finally {
+    const wasLive = streamLive
+    streamLive = false
+    if (streamAbort === ctrl) streamAbort = null
+    if (running) {
+      if (wasLive) schedule(0) // back to 10-second polling at once
+      streamRetry = setTimeout(runStream, STREAM_RETRY_MS)
+    }
+  }
+}
+
+function stopStream() {
+  if (streamRetry) { clearTimeout(streamRetry); streamRetry = null }
+  streamAbort?.abort()
+  streamAbort = null
+  streamLive = false
+}
+
 function onVisible() {
   if (running && !document.hidden) schedule(0)
 }
@@ -245,10 +323,12 @@ function start() {
   lastMetaAt = 0
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible)
   schedule(0)
+  if (IS_REAL) streamRetry = setTimeout(runStream, 1500) // after the first poll has the device list
 }
 
 function stop() {
   running = false
+  stopStream()
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null }
   if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible)
   publish({ isConnected: false })
