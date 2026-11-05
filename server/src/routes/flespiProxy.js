@@ -24,13 +24,26 @@ import { Router } from 'express'
 import { asyncHandler, HttpError, notFound } from '../lib/http.js'
 import { buildAcl } from '../lib/flespiGrant.js'
 import * as flespi from '../lib/flespi.js'
-import { messagesResponse, telemetryResponse } from '../lib/telemetry.js'
+import { EXTRA_FIELDS, FIELD_MAP, messagesResponse, telemetryResponse } from '../lib/telemetry.js'
 
 const router = Router()
 
 const DEVICE_PATH = /^\/gw\/devices\/([^/]+)(\/.*)?$/
 // PUT targets: the device object itself, or one named setting of it.
 const WRITABLE_REST = /^(?:|\/settings\/[A-Za-z0-9_.-]+)$/
+
+// The telemetry fields our copy holds. A request for any other field — or for
+// `all`, as the vehicle panel's Parameters tab asks — goes to Flespi, which keeps
+// every parameter the tracker sends.
+const STORED_TELEMETRY = new Set(['timestamp', 'ident', ...Object.keys(FIELD_MAP), ...EXTRA_FIELDS])
+
+function storedTelemetryOnly(rest) {
+  const m = /^\/telemetry\/([^/]+)$/.exec(rest)
+  if (!m) return false
+  let fields
+  try { fields = decodeURIComponent(m[1]).split(',') } catch { return false }
+  return fields.every(f => STORED_TELEMETRY.has(f))
+}
 
 /** "all" or a comma list of numeric ids → null (all) or number[]; undefined if malformed. */
 function parseSelector(selector) {
@@ -88,7 +101,7 @@ router.use(
     if (method === 'GET') {
       const ids = effective === 'all' ? null : effective.split(',').map(Number)
       let local = null
-      if (/^\/telemetry(\/|$)/.test(rest)) local = telemetryResponse(ids)
+      if (storedTelemetryOnly(rest)) local = telemetryResponse(ids)
       else if (rest === '/messages') local = await messagesResponse(ids, req.query.data)
       if (local) {
         res.set('Cache-Control', 'no-store')

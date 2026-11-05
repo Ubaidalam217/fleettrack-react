@@ -187,6 +187,19 @@ describe('Flespi proxy answers from our copy', () => {
     }
   })
 
+  it('asks Flespi for parameters our copy does not hold', async () => {
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ result: [{ id: 101, telemetry: {} }] }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchSpy)
+    await post([msg()])
+    await T.flush()
+    for (const fields of ['all', 'gsm.signal.level', 'position.speed,battery.voltage']) {
+      const res = await request(app).get(`/api/flespi/proxy/gw/devices/101/telemetry/${fields}`).set(auth(fx.tokens.superAdmin))
+      expect(res.status).toBe(200)
+      expect(res.headers['x-fleetmaxx-source']).toBeUndefined()
+    }
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+  })
+
   it('still asks Flespi for a range older than the history we hold', async () => {
     const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ result: [] }), { status: 200, headers: { 'content-type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchSpy)

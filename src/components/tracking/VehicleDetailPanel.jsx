@@ -13,6 +13,7 @@ import { useVisible } from '../../hooks/useVisible'
 import { shortenAddress } from '../../utils/geocode'
 import { useSettingsProfile, useDriverForImei } from '../../data/settings'
 import { licenceExpiryState, formatExpiryDate } from '../../utils/licenceExpiry'
+import { BASE_URL, HEADERS } from '../../hooks/flespiConfig'
 
 // Replay used to be a tab here. It now lives in its own dock over the map and
 // is started from the vehicle's card in the list or from its marker popup.
@@ -23,6 +24,7 @@ const DETAIL_TABS = [
   'Sensors',
   'Alerts',
   'Documents',
+  'Parameters',
 ]
 
 function fmtTs(ts) {
@@ -657,6 +659,139 @@ function Alerts({ v }) {
   )
 }
 
+// Every parameter the tracker last reported, straight from Flespi's telemetry
+// (the server proxy forwards `telemetry/all`; our own copy only keeps the few
+// fields the app reads). Housekeeping keys of Flespi's own are left out.
+const PARAM_REFRESH_MS = 15_000
+const HIDDEN_PARAMS = new Set([
+  'channel.id', 'codec.id', 'device.id', 'device.type.id', 'peer', 'protocol.id', 'server.timestamp',
+])
+
+function fmtParamValue(key, value) {
+  if (typeof value === 'boolean') return { text: value ? 'True' : 'False', color: value ? '#22c55e' : 'var(--c-text3)' }
+  if (typeof value === 'number') {
+    if (key === 'timestamp' || key.endsWith('.timestamp')) return { text: fmtTs(value) }
+    return { text: Number.isInteger(value) ? String(value) : String(+value.toFixed(4)) }
+  }
+  if (value === null || value === undefined) return { text: '—' }
+  if (typeof value === 'object') return { text: JSON.stringify(value) }
+  return { text: String(value) }
+}
+
+function fmtAge(ts, now) {
+  if (!ts) return ''
+  const s = Math.max(0, Math.round(now / 1000 - ts))
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+
+function Parameters({ v }) {
+  const [state, setState] = useState({ loading: true, error: null, params: null, at: null })
+  const [query, setQuery] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    let timer = null
+    const ctrl = new AbortController()
+    setState({ loading: true, error: null, params: null, at: null })
+
+    async function load() {
+      try {
+        const res = await fetch(`${BASE_URL}/gw/devices/${v.id}/telemetry/all`, { headers: HEADERS, signal: ctrl.signal })
+        if (!res.ok) throw new Error(res.status === 429 ? 'Rate limit — retrying shortly' : `HTTP ${res.status}`)
+        const telemetry = (await res.json()).result?.[0]?.telemetry ?? {}
+        const params = Object.entries(telemetry)
+          .filter(([k]) => !HIDDEN_PARAMS.has(k))
+          .map(([key, p]) => ({ key, value: p?.value, ts: p?.ts }))
+          .sort((a, b) => a.key.localeCompare(b.key))
+        if (alive) setState({ loading: false, error: null, params, at: Date.now() })
+      } catch (e) {
+        if (alive && e.name !== 'AbortError') setState(s => ({ ...s, loading: false, error: e.message }))
+      }
+      if (alive) timer = setTimeout(load, PARAM_REFRESH_MS)
+    }
+    load()
+    return () => { alive = false; ctrl.abort(); clearTimeout(timer) }
+  }, [v.id])
+
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const map = new Map()
+    for (const p of state.params ?? []) {
+      if (q && !p.key.toLowerCase().includes(q) && !String(p.value).toLowerCase().includes(q)) continue
+      const g = p.key.split('.')[0]
+      if (!map.has(g)) map.set(g, [])
+      map.get(g).push(p)
+    }
+    return [...map.entries()]
+  }, [state.params, query])
+
+  if (state.loading) {
+    return (
+      <div style={{ padding: '28px 4px', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: 'var(--c-text3)' }}>
+        Loading parameters…
+      </div>
+    )
+  }
+  if (!state.params) return <Pending note={`Could not load parameters: ${state.error}`} />
+
+  const shown = groups.reduce((n, [, list]) => n + list.length, 0)
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search parameters…"
+          style={{
+            flex: '1 1 200px', minWidth: 0, padding: '7px 10px', fontSize: 12.5, borderRadius: 8,
+            border: '1px solid var(--c-border2)', backgroundColor: 'var(--c-card)', color: 'var(--c-text1)', outline: 'none',
+          }}
+        />
+        <span style={{ fontSize: 11, color: state.error ? '#eab308' : 'var(--c-text3)' }}>
+          {query ? `${shown} of ${state.params.length}` : state.params.length} parameters
+          {' · '}{state.error || `updated ${new Date(state.at).toLocaleTimeString()}`}
+        </span>
+      </div>
+
+      {groups.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>
+          {state.params.length ? 'No parameter matches the search.' : 'This tracker has not reported any parameters yet.'}
+        </div>
+      )}
+
+      {groups.map(([group, list]) => (
+        <Section key={group} title={`${group.charAt(0).toUpperCase()}${group.slice(1)} (${list.length})`}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {list.map(p => {
+              const { text, color } = fmtParamValue(p.key, p.value)
+              return (
+                <div key={p.key} style={{
+                  display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr) auto',
+                  gap: 12, alignItems: 'baseline', padding: '6px 2px', borderBottom: '1px solid var(--c-border)',
+                }}>
+                  <span title={p.key} style={{ fontSize: 12, color: 'var(--c-text2)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.key}
+                  </span>
+                  <span title={text} style={{ fontSize: 12.5, fontWeight: 600, color: color || 'var(--c-text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {text}
+                  </span>
+                  <span style={{ fontSize: 10.5, color: 'var(--c-text3)', whiteSpace: 'nowrap' }} title={p.ts ? fmtTs(p.ts) : undefined}>
+                    {fmtAge(p.ts, state.at)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </Section>
+      ))}
+    </>
+  )
+}
+
 function Documents({ v }) {
   const docs = useMemo(() => listDocuments(v.id), [v.id])
 
@@ -887,6 +1022,7 @@ export default function VehicleDetailPanel({
         {tab === 'Sensors'      && <Sensors     v={vehicle} />}
         {tab === 'Alerts'       && <Alerts     v={vehicle} />}
         {tab === 'Documents'    && <Documents   v={vehicle} />}
+        {tab === 'Parameters'   && <Parameters  key={vehicle.id} v={vehicle} />}
       </div>
     </div>
   )
