@@ -171,7 +171,92 @@ function GeoZoneSettings({ settings, errors, onChange }) {
   )
 }
 
+// Parameters the fleet's trackers actually report (probed from Flespi), offered
+// as suggestions; any other name from the Parameters tab can be typed.
+const COMMON_PARAMETERS = [
+  ['external.powersource.voltage', 'Vehicle battery voltage (V)'],
+  ['external.powersource.status', 'Vehicle power connected (true/false)'],
+  ['battery.voltage', 'Tracker backup battery voltage (V)'],
+  ['battery.level', 'Tracker backup battery level (%)'],
+  ['gsm.signal.level', 'GSM signal (%)'],
+  ['position.satellites', 'GPS satellites in view'],
+  ['position.speed', 'Speed (km/h)'],
+  ['position.altitude', 'Altitude (m)'],
+  ['vehicle.mileage', 'Odometer (km)'],
+  ['engine.ignition.status', 'Ignition (true/false)'],
+  ['movement.status', 'Moving (true/false)'],
+  ['din.1', 'Digital input 1 (true/false)'],
+  ['din.2', 'Digital input 2 (true/false)'],
+  ['din.3', 'Digital input 3 (true/false)'],
+  ['dout.1', 'Digital output 1 (true/false)'],
+  ['towing.alarm.status', 'Towing alarm (true/false)'],
+  ['overspeeding.status', 'Tracker over-speed flag (true/false)'],
+  ['gnss.jamming.state', 'GPS jamming state'],
+  ['ibutton.code', 'iButton / driver tag code'],
+  ['ble.sensor.temperature.1', 'BLE temperature 1 (°C)'],
+  ['ble.sensor.humidity.1', 'BLE humidity 1 (%)'],
+  ['fuel.sensor.value', 'Fuel sensor'],
+  ['sleep.mode.enum', 'Sleep mode'],
+]
+
+const CUSTOM_OPERATOR_OPTIONS = [
+  { value: '>',     label: 'Greater than (>)' },
+  { value: '>=',    label: 'Greater or equal (≥)' },
+  { value: '<',     label: 'Less than (<)' },
+  { value: '<=',    label: 'Less or equal (≤)' },
+  { value: '=',     label: 'Equals (=)' },
+  { value: '!=',    label: 'Not equal (≠)' },
+  { value: 'true',  label: 'Is true' },
+  { value: 'false', label: 'Is false' },
+]
+
+function CustomSettings({ settings, errors, onChange }) {
+  const flag = settings.operator === 'true' || settings.operator === 'false'
+  return (
+    <>
+      <Field label="Parameter" required error={errors.parameter} hint="As shown on the Live Map panel's Parameters tab">
+        <input
+          name="parameter"
+          list="alert-common-parameters"
+          value={settings.parameter ?? ''}
+          onChange={e => onChange('parameter', e.target.value)}
+          aria-invalid={!!errors.parameter || undefined}
+          placeholder="external.powersource.voltage"
+          autoComplete="off"
+          style={inputStyle(!!errors.parameter)}
+        />
+        <datalist id="alert-common-parameters">
+          {COMMON_PARAMETERS.map(([name, label]) => <option key={name} value={name}>{label}</option>)}
+        </datalist>
+      </Field>
+      <Field label="Condition" required error={errors.operator}>
+        <select
+          name="operator"
+          value={settings.operator}
+          onChange={e => onChange('operator', e.target.value)}
+          style={inputStyle(!!errors.operator)}
+        >
+          {CUSTOM_OPERATOR_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </Field>
+      {!flag && (
+        <Field label="Value" required error={errors.value} hint={['=', '!='].includes(settings.operator) ? 'A number or text' : 'A number'}>
+          <input
+            name="value"
+            value={settings.value ?? ''}
+            onChange={e => onChange('value', e.target.value)}
+            aria-invalid={!!errors.value || undefined}
+            placeholder="11.5"
+            style={inputStyle(!!errors.value)}
+          />
+        </Field>
+      )}
+    </>
+  )
+}
+
 const SETTINGS_RENDERERS = {
+  custom:         CustomSettings,
   geofence:       GeoZoneSettings,
   overspeed:      OverspeedSettings,
   idle:           IdleSettings,

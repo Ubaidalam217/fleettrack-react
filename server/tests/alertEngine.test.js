@@ -23,7 +23,7 @@ vi.mock('../src/env.js', async importOriginal => {
 
 const { createApp } = await import('../src/app.js')
 const { default: prisma } = await import('../src/prisma.js')
-const { evaluate, evaluateLicence, nightWindow, runAlertPass } = await import('../src/lib/alertEngine.js')
+const { customMatches, evaluate, evaluateLicence, nightWindow, runAlertPass } = await import('../src/lib/alertEngine.js')
 import { auth, resetDb, seedFixture } from './factories.js'
 import { clearDeviceCache } from '../src/lib/flespi.js'
 
@@ -157,6 +157,34 @@ describe('evaluate', () => {
     expect(evaluate(a, tel({ temperature: 7.4 }), r.state, NOW).state.out).toBe(false)
   })
 
+  it('Other (custom parameter) fires when the condition becomes true, once, and re-arms when it stops', () => {
+    const a = { type: 'custom', params: { parameter: 'external.powersource.voltage', operator: '<', value: '11.5' } }
+    const reading = (value, ts = NOW - 30) => tel({ params: { 'external.powersource.voltage': { value, ts } } })
+    let r = evaluate(a, reading(12.4), {}, NOW)
+    expect(r.fire).toBeNull()
+    r = evaluate(a, reading(11.1), r.state, NOW)
+    expect(r.fire.message).toBe('external.powersource.voltage = 11.1 (rule: < 11.5)')
+    expect(evaluate(a, reading(10.9), r.state, NOW).fire).toBeNull() // still low: no repeat
+    r = evaluate(a, reading(12.0), r.state, NOW)
+    expect(r.state.met).toBe(false)
+    expect(evaluate(a, reading(11.0), r.state, NOW).fire).not.toBeNull()
+    // A value the tracker stopped reporting long ago is not evaluated.
+    expect(evaluate(a, reading(9, NOW - 3600), {}, NOW).fire).toBeNull()
+    expect(evaluate(a, tel(), {}, NOW).fire).toBeNull()
+  })
+
+  it('Other rules compare numbers, text and true / false', () => {
+    expect(customMatches(true, 'true')).toBe(true)
+    expect(customMatches(false, 'true')).toBe(false)
+    expect(customMatches(0, 'false')).toBe(true)
+    expect(customMatches(100, '>=', '100')).toBe(true)
+    expect(customMatches('94000001D9DF0801', '=', '94000001d9df0801')).toBe(true)
+    expect(customMatches('94000001D9DF0801', '!=', '94000001D9DF0801')).toBe(false)
+    expect(customMatches(true, '=', 'true')).toBe(true)
+    expect(customMatches('sensor not found', '>', '3')).toBe(false)
+    expect(customMatches(undefined, '>', '3')).toBe(false)
+  })
+
   it('Night Driving fires once per night, across midnight', () => {
     const a = { type: 'night_driving', params: { from: '23:00', to: '05:00', minSpeedKmh: 10 } }
     const at2330 = Math.floor(Date.UTC(2026, 9, 29, 19, 30) / 1000) // 23:30 UAE, 29 Oct
@@ -233,6 +261,19 @@ describe('runAlertPass + /api/alert-events', () => {
     expect((await get({ deviceIds: '1,x' })).status).toBe(400)
   })
 
+  it('runs an Other rule on the parameter it names', async () => {
+    await prisma.alert.create({
+      data: { name: 'Towing', type: 'custom', bgId: fx.bgA1a.id, severity: 'High', params: { parameter: 'towing.alarm.status', operator: 'true', value: '' }, allVehicles: true },
+    })
+    telemetry = { 101: { 'position.speed': 0, 'towing.alarm.status': false, timestamp: NOW - 20 } }
+    expect(await runAlertPass(NOW)).toHaveLength(0)
+    telemetry = { 101: { 'position.speed': 0, 'towing.alarm.status': true, timestamp: NOW - 10 } }
+    const fired = await runAlertPass(NOW + 30)
+    expect(fired).toHaveLength(1)
+    expect(fired[0]).toMatchObject({ type: 'custom', deviceId: 101 })
+    expect(fired[0].message).toMatch(/towing\.alarm\.status = true \(rule: is true\)/)
+  })
+
   it('does nothing for an inactive rule', async () => {
     await overspeedRule(fx.bgA1a.id, { status: 'Inactive' })
     telemetry = { 101: { 'position.speed': 150, timestamp: NOW - 20 } }
@@ -255,6 +296,17 @@ describe('POST /api/alerts — engine types', () => {
     expect((await post({ name: 'x', type: 'overspeed', params: { speedKmh: '' } })).status).toBe(400)
     expect((await post({ name: 'x', type: 'fuel_theft' })).status).toBe(400)
     expect((await post({ name: 'x', type: 'idle', notify: { email: true }, emails: [] })).status).toBe(400)
+  })
+
+  it('stores an Other rule and checks its parameter, condition and value', async () => {
+    const ok = await post({ name: 'Low battery', type: 'custom', params: { parameter: ' external.powersource.voltage ', operator: '<', value: '11.5' } })
+    expect(ok.status).toBe(201)
+    expect(ok.body.data.params).toEqual({ parameter: 'external.powersource.voltage', operator: '<', value: '11.5' })
+    const flag = await post({ name: 'Towing', type: 'custom', params: { parameter: 'towing.alarm.status', operator: 'true', value: 'ignored' } })
+    expect(flag.body.data.params.value).toBe('')
+    expect((await post({ name: 'x', type: 'custom', params: { parameter: 'bad name!', operator: '>', value: '1' } })).status).toBe(400)
+    expect((await post({ name: 'x', type: 'custom', params: { parameter: 'gsm.signal.level', operator: 'like', value: '1' } })).status).toBe(400)
+    expect((await post({ name: 'x', type: 'custom', params: { parameter: 'gsm.signal.level', operator: '>', value: 'high' } })).status).toBe(400)
   })
 })
 

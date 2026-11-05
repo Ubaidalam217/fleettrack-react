@@ -586,20 +586,22 @@ function Alerts({ v }) {
     <>
       {/* A rule for this vehicle only, made in Settings > Alerts with it ticked. */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-        <span style={{ fontSize: 11, color: 'var(--c-text3)' }}>
-          {profile.linked ? 'Get notified about this vehicle by email or in-app.' : 'Register this vehicle in Object to create alerts for it.'}
+        <span style={{ fontSize: 11, color: profile.linked ? 'var(--c-text3)' : '#d97706' }}>
+          {profile.linked
+            ? 'Get notified about this vehicle by email or in-app.'
+            : 'This tracker is not registered in Object yet, so it has no Business Group for an alert. Register it first.'}
         </span>
         <button
           type="button"
-          disabled={!profile.linked}
-          onClick={() => navigate(`/settings/alerts?imei=${encodeURIComponent(v.ident)}`)}
+          onClick={() => navigate(profile.linked ? `/settings/alerts?imei=${encodeURIComponent(v.ident)}` : '/settings/vehicle')}
           style={{
-            padding: '6px 12px', borderRadius: 8, border: 'none', fontSize: 11.5, fontWeight: 700,
-            background: 'var(--ft-accent)', color: '#fff',
-            cursor: profile.linked ? 'pointer' : 'not-allowed', opacity: profile.linked ? 1 : 0.5,
+            padding: '6px 12px', borderRadius: 8, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+            border: profile.linked ? 'none' : '1px solid var(--ft-accent)',
+            background: profile.linked ? 'var(--ft-accent)' : 'transparent',
+            color: profile.linked ? '#fff' : 'var(--ft-accent)',
           }}
         >
-          + Create alert for this vehicle
+          {profile.linked ? '+ Create alert for this vehicle' : 'Register in Object →'}
         </button>
       </div>
 

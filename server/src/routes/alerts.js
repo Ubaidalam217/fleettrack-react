@@ -21,7 +21,7 @@ import {
   statusField,
 } from '../lib/fields.js'
 import { publicAlert } from '../lib/serialize.js'
-import { SEVERITIES, TYPES } from '../lib/alertEngine.js'
+import { CUSTOM_OPERATORS, PARAMETER_NAME, SEVERITIES, TYPES } from '../lib/alertEngine.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 
@@ -105,6 +105,20 @@ function cleanParams(body) {
       }
       if (!positive(num('minSpeedKmh'), 1, 200)) throw badRequest('Set a minimum speed between 1 and 200 km/h', { minSpeedKmh: '1–200 km/h' })
       return { from: p.from, to: p.to, minSpeedKmh: num('minSpeedKmh') }
+    case 'custom': {
+      const parameter = String(p.parameter ?? '').trim()
+      if (!parameter || parameter.length > 80 || !PARAMETER_NAME.test(parameter)) {
+        throw badRequest('Enter the tracker parameter, such as external.powersource.voltage', { parameter: 'A parameter name' })
+      }
+      if (!CUSTOM_OPERATORS.includes(p.operator)) throw badRequest('Choose a condition', { operator: 'Choose a condition' })
+      if (p.operator === 'true' || p.operator === 'false') return { parameter, operator: p.operator, value: '' }
+      const value = String(p.value ?? '').trim()
+      if (!value || value.length > 80) throw badRequest('Enter the value to compare with', { value: 'Required' })
+      if (!['=', '!='].includes(p.operator) && !Number.isFinite(Number(value))) {
+        throw badRequest('This condition needs a number', { value: 'Must be a number' })
+      }
+      return { parameter, operator: p.operator, value }
+    }
     case 'license_expiry':
       if (!positive(num('days'), 1, 365)) throw badRequest('Warn between 1 and 365 days before expiry', { days: '1–365 days' })
       return { days: num('days') }

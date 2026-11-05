@@ -132,6 +132,14 @@ export const ALERT_TYPES = [
     defaults: () => ({ days: '30' }),
     vehicles: false,
   },
+  {
+    // Client, 2026-11-06: "Other" — any parameter the tracker reports (the Live
+    // Map panel's Parameters tab lists them), compared with a value.
+    value: 'custom',
+    label: 'Other (custom parameter)',
+    hint: 'Raised when a tracker parameter you choose meets the condition — for alerts the types above do not cover.',
+    defaults: () => ({ parameter: '', operator: '>', value: '' }),
+  },
 ]
 
 /**

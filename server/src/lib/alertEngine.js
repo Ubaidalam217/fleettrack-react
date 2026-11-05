@@ -64,7 +64,42 @@ export const TYPES = Object.freeze({
   temperature:    { label: 'Temperature High/Low',  defaults: {} },
   night_driving:  { label: 'Night Driving',         defaults: { from: '23:00', to: '05:00', minSpeedKmh: 10 } },
   license_expiry: { label: 'Driver Licence Expiry', defaults: { days: 30 } },
+  // Client, 2026-11-06: "Other" — any parameter the tracker reports, compared
+  // with a value, for alerts the fixed types above do not cover.
+  custom:         { label: 'Other (custom parameter)', defaults: { parameter: '', operator: '>', value: '' } },
 })
+
+/** Operators an "Other" rule may use. `true` / `false` take no value. */
+export const CUSTOM_OPERATORS = ['>', '>=', '<', '<=', '=', '!=', 'true', 'false']
+/** A Flespi parameter name: dotted lower-case words, digits and dashes. */
+export const PARAMETER_NAME = /^[a-z0-9_-]+(\.[a-z0-9_-]+)*$/i
+
+const truthy = v => v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true'
+const falsy = v => v === false || v === 0 || v === '0' || String(v).toLowerCase() === 'false'
+
+/** Whether a reported value meets an "Other" rule's condition. */
+export function customMatches(actual, operator, expected) {
+  if (actual === null || actual === undefined || typeof actual === 'object') return false
+  if (operator === 'true') return truthy(actual)
+  if (operator === 'false') return falsy(actual)
+  const a = Number(actual), e = Number(expected)
+  const numeric = typeof actual !== 'boolean' && String(actual).trim() !== '' && String(expected).trim() !== '' && Number.isFinite(a) && Number.isFinite(e)
+  if (operator === '=' || operator === '!=') {
+    const same = numeric ? a === e
+      : typeof actual === 'boolean' ? actual === truthy(expected)
+        : String(actual).trim().toLowerCase() === String(expected).trim().toLowerCase()
+    return operator === '=' ? same : !same
+  }
+  if (!numeric) return false
+  if (operator === '>') return a > e
+  if (operator === '>=') return a >= e
+  if (operator === '<') return a < e
+  if (operator === '<=') return a <= e
+  return false
+}
+
+const OPERATOR_TEXT = { '>': '>', '>=': '≥', '<': '<', '<=': '≤', '=': '=', '!=': '≠' }
+const shownValue = v => (typeof v === 'number' ? String(+v.toFixed(3)) : String(v))
 
 export const SEVERITIES = ['Low', 'Medium', 'High', 'Critical']
 
@@ -241,6 +276,26 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
       return { state: s, fire: { message: `Driving at night (${p.from}–${p.to}) at ${Math.round(speed)} km/h`, value: speed } }
     }
 
+    case 'custom': {
+      // The parameter's own timestamp: a value the tracker stopped reporting an
+      // hour ago is not evaluated as if it were current.
+      const reading = tel?.params?.[p.parameter]
+      const pts = num(reading?.ts)
+      if (!reading || pts === null || now - pts > FRESH_SEC) return none
+      const met = customMatches(reading.value, p.operator, p.value)
+      if (!met) {
+        if (s.met) s.met = false
+        return { state: s, fire: null }
+      }
+      if (s.met) return none
+      s.met = true
+      const rule = p.operator === 'true' || p.operator === 'false'
+        ? `is ${p.operator}`
+        : `${OPERATOR_TEXT[p.operator] ?? p.operator} ${p.value}`
+      const value = typeof reading.value === 'number' ? reading.value : null
+      return { state: s, fire: { message: `${p.parameter} = ${shownValue(reading.value)} (rule: ${rule})`, value } }
+    }
+
     default:
       return none
   }
@@ -270,6 +325,22 @@ export function evaluateLicence(alert, driver, state, now) {
 // ── the pass ────────────────────────────────────────────────────────────────
 
 const digits = v => String(v ?? '').replace(/\D/g, '')
+
+/**
+ * The parameters "Other" rules watch, for the whole fleet in one Flespi read:
+ * deviceId → { parameter: { value, ts } }. Our own telemetry copy keeps only the
+ * fields the app reads, so these always come from Flespi — one request a pass,
+ * naming only the parameters some rule uses.
+ */
+async function fetchCustomParams(names) {
+  const fields = [...new Set(names)].filter(n => PARAMETER_NAME.test(n))
+  if (!fields.length) return new Map()
+  const res = await flespi.forward(`/gw/devices/all/telemetry/${fields.join(',')}`, { timeoutMs: 20_000 })
+  if (res.status !== 200) throw new Error(`Flespi telemetry answered ${res.status}`)
+  const out = new Map()
+  for (const item of JSON.parse(res.text).result ?? []) out.set(item.id, item.telemetry ?? {})
+  return out
+}
 
 async function fetchTelemetry() {
   // Our own copy first (lib/telemetry.js) — no Flespi call while the webhook delivers.
@@ -308,8 +379,9 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
   const bgIds = [...new Set(alerts.map(a => a.bgId))]
   const needsTelemetry = alerts.some(a => a.type !== 'license_expiry')
   const needsFences = alerts.some(a => a.type.startsWith('geofence'))
+  const customNames = alerts.filter(a => a.type === 'custom').map(a => paramsOf(a).parameter)
 
-  const [vehicles, drivers, geofences, states, telemetry, deviceByImei] = await Promise.all([
+  const [vehicles, drivers, geofences, states, telemetry, deviceByImei, customParams] = await Promise.all([
     prisma.vehicle.findMany({
       where: { bgId: { in: bgIds } },
       select: { id: true, bgId: true, imei: true, plateNo: true, fleetNo: true, driver: { select: { id: true, name: true } } },
@@ -324,6 +396,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
     prisma.alertState.findMany({ where: { alertId: { in: alerts.map(a => a.id) } } }),
     needsTelemetry ? fetchTelemetry() : new Map(),
     needsTelemetry ? flespi.deviceMap() : new Map(),
+    customNames.length ? fetchCustomParams(customNames) : new Map(),
   ])
 
   const stateOf = new Map(states.map(r => [`${r.alertId}|${r.subject}`, r.state]))
@@ -358,8 +431,9 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
     const fences = geofences.filter(g => g.bgId === alert.bgId)
     for (const v of targets) {
       const deviceId = deviceByImei.get(digits(v.imei))
-      const tel = deviceId !== undefined ? telemetry.get(deviceId) : undefined
-      if (!tel) continue
+      const base = deviceId !== undefined ? telemetry.get(deviceId) : undefined
+      if (!base) continue
+      const tel = alert.type === 'custom' ? { ...base, params: customParams.get(deviceId) ?? {} } : base
       const subject = `d:${deviceId}`
       const prev = stateOf.get(`${alert.id}|${subject}`)
       const result = evaluate(alert, tel, prev, now, { geofences: fences })

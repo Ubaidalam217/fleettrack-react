@@ -5,12 +5,22 @@ import { ALERT_TYPES, normalizeAlert, emptyAlert } from './mockData'
 import { eventDetail, mapsLink, relativeTime } from '../../components/alerts/alertFormat'
 
 describe('validateAlertSettings — mirrors the server', () => {
-  it('accepts every type at its defaults (except temperature, which needs a bound)', () => {
+  it('accepts every type at its defaults (except temperature and Other, which need input)', () => {
     for (const t of ALERT_TYPES) {
       const errs = validateAlertSettings(t.value, t.defaults())
       if (t.value === 'temperature') expect(errs).toHaveProperty('minTemp')
+      else if (t.value === 'custom') expect(errs).toHaveProperty('parameter')
       else expect(errs).toEqual({})
     }
+  })
+
+  it('checks an Other rule the way the server does', () => {
+    const ok = { parameter: 'gsm.signal.level', operator: '<', value: '20' }
+    expect(validateAlertSettings('custom', ok)).toEqual({})
+    expect(validateAlertSettings('custom', { ...ok, operator: 'true', value: '' })).toEqual({})
+    expect(validateAlertSettings('custom', { ...ok, parameter: 'bad name!' })).toHaveProperty('parameter')
+    expect(validateAlertSettings('custom', { ...ok, value: 'high' })).toHaveProperty('value')
+    expect(validateAlertSettings('custom', { ...ok, operator: '=', value: 'high' })).toEqual({})
   })
 
   it('checks the over-speed limit range', () => {

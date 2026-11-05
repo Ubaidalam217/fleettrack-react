@@ -66,6 +66,23 @@ function validateNight(s) {
   return { ...out, ...only('minSpeedKmh', rangeError(s.minSpeedKmh, 1, 200, 'km/h')) }
 }
 
+const PARAMETER_NAME = /^[a-z0-9_-]+(\.[a-z0-9_-]+)*$/i
+const CUSTOM_OPERATORS = ['>', '>=', '<', '<=', '=', '!=', 'true', 'false']
+
+function validateCustom(s) {
+  const out = {}
+  const name = String(s.parameter ?? '').trim()
+  if (!name) out.parameter = 'Required'
+  else if (!PARAMETER_NAME.test(name)) out.parameter = 'Use the name exactly as the Parameters tab shows it'
+  if (!CUSTOM_OPERATORS.includes(s.operator)) out.operator = 'Choose a condition'
+  else if (s.operator !== 'true' && s.operator !== 'false') {
+    const v = String(s.value ?? '').trim()
+    if (!v) out.value = 'Required'
+    else if (!['=', '!='].includes(s.operator) && !Number.isFinite(Number(v))) out.value = 'Must be a number'
+  }
+  return out
+}
+
 const VALIDATORS = {
   overspeed:      s => only('speedKmh', rangeError(s.speedKmh, 10, 300, 'km/h')),
   idle:           s => only('minutes', rangeError(s.minutes, 1, 1440, 'minutes')),
@@ -77,6 +94,7 @@ const VALIDATORS = {
   temperature:    validateTemperature,
   night_driving:  validateNight,
   license_expiry: s => only('days', rangeError(s.days, 1, 365, 'days')),
+  custom:         validateCustom,
 }
 
 /** { field: message } for the type's own settings; {} when they are fine. */

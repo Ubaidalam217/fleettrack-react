@@ -478,6 +478,8 @@ function alertParams(type, s) {
       return { from: s.from, to: s.to, minSpeedKmh: numOrNull(s.minSpeedKmh) }
     case 'license_expiry':
       return { days: numOrNull(s.days) }
+    case 'custom':
+      return { parameter: String(s.parameter ?? '').trim(), operator: s.operator, value: String(s.value ?? '').trim() }
     default:
       return {}
   }
