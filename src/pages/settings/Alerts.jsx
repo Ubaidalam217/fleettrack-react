@@ -11,7 +11,7 @@ import { useToasts } from '../../hooks/useToasts'
 import {
   useAlerts, useCompanies, useVehicles, useGeofences,
   addAlert, updateAlert, removeAlert,
-  companyNameFor, vehiclesForCompany, emptyAlert, normalizeAlert,
+  companyNameFor, vehiclesForCompany, emptyAlert, normalizeAlert, vehicleByImei,
   vehicleLabel, vehicleSubLabel,
   ALERT_TYPES, ALERT_SEVERITIES, GEO_DIRECTIONS, alertTypeLabel, alertTypeOf,
 } from '../../data/settings'
@@ -19,6 +19,7 @@ import { validateAlertSettings, parseEmails, MAX_RECIPIENTS } from './alertRules
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import { IS_REAL } from '../../data/mode'
+import { useSearchParams } from 'react-router-dom'
 
 // Alert rules. Controls are hand-built from FormKit's Field plus formStyles'
 // inputStyle — the primitives FormFields composes internally, so they render
@@ -508,7 +509,8 @@ export default function Alerts(props) {
   const geofences = useGeofences()
   // Subscribed so the scope picker reacts to fleet changes made on the Vehicle
   // page; the per-company slice itself comes from vehiclesForCompany.
-  useVehicles()
+  const fleet = useVehicles()
+  const [params, setParams] = useSearchParams()
 
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('alerts')
@@ -556,6 +558,24 @@ export default function Alerts(props) {
   const openAdd   = ()  => open(emptyAlert())
   const openEdit  = row => open(toDraft(row))
   const closeForm = ()  => { setErrors({}); setEmailText(''); setDraft(null) }
+
+  // "Create alert" from a vehicle (Object page row, Live Map panel) lands here as
+  // ?imei=…: the Add form opens under that vehicle's BG with only it ticked.
+  const forImei = params.get('imei')
+  useEffect(() => {
+    if (!forImei || access.loading) return
+    const v = vehicleByImei(forImei)
+    if (!v && !fleet.length) return // the fleet has not loaded yet
+    setParams(p => { p.delete('imei'); return p }, { replace: true })
+    if (!access.canAdd) return
+    if (!v) {
+      push('This vehicle is not registered under a Business Group yet — add it in Object first.', { tone: 'error' })
+      return
+    }
+    open({ ...emptyAlert(), companyId: v.companyId, allVehicles: false, vehicleIds: [v.id] })
+    push(`New alert for ${v.vehicleNumber || v.imei}`, { tone: 'info' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forImei, access.loading, access.canAdd, fleet])
 
   const clearError = key => setErrors(e => (e[key] ? { ...e, [key]: null } : e))
 

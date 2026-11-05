@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, FileBadge } from 'lucide-react'
+import { Plus, FileBadge, BellPlus } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
 import { Field, FormActions, FormCard } from './FormKit'
@@ -145,6 +146,7 @@ export default function Vehicle(props) {
 
   const editing = draft !== null
   const deviceTypes = useDeviceTypes(editing)
+  const navigate = useNavigate()
   const unregistered = useUnregistered(!editing && !access.loading && access.canAdd, vehicles.length)
   const openAddTracker = r => {
     setErrors({})
@@ -525,6 +527,11 @@ export default function Vehicle(props) {
                 rows={vehicles}
                 // Rows are identified by their Vehicle Number, not a `name` field.
                 labelKey="vehicleNumber"
+                extraActions={row => [{
+                  label: `Create alert for ${row.vehicleNumber || row.imei}`,
+                  icon: <BellPlus size={13} />,
+                  onClick: () => navigate(`/settings/alerts?imei=${encodeURIComponent(row.imei)}`),
+                }]}
                 onEdit={openEdit}
                 onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}

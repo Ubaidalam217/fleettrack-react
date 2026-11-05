@@ -26,9 +26,9 @@ import { IS_REAL } from '../../data/mode'
 // would light up nothing in the sidebar; the page swaps its own body instead.
 
 const COLUMNS = [
-  { key: 'name',     label: 'BG Name', bold: true },
+  { key: 'name',     label: 'Business Group Name', bold: true },
   { key: 'email',    label: 'Email' },
-  { key: 'reseller', label: 'GGB', render: row => resellerNameFor(row.resellerId) },
+  { key: 'reseller', label: 'Group Global Admin', render: row => resellerNameFor(row.resellerId) },
   // A BG with no group is its own group — a real state, not missing data.
   { key: 'group',    label: 'Group', render: row => groupLabelForCompany(row) },
 ]
@@ -53,11 +53,11 @@ function fieldsFor(resellers, { editing, derivedParent }) {
   const lockGgb = IS_REAL && (editing || derivedParent)
   return [
     {
-      name: 'resellerId', label: 'GGB', type: 'select',
+      name: 'resellerId', label: 'Group Global Admin (GGB)', type: 'select',
       options: resellers.map(r => ({ value: r.id, label: r.name })),
       disabled: lockGgb,
       hint: !IS_REAL ? undefined
-        : editing ? 'A BG cannot be moved to another GGB.'
+        : editing ? 'A Business Group cannot be moved to another Group Global Admin.'
         : derivedParent ? 'Set automatically from your own scope.'
         : undefined,
     },
@@ -67,7 +67,7 @@ function fieldsFor(resellers, { editing, derivedParent }) {
       disabled: IS_REAL && derivedParent,
       hint: IS_REAL && derivedParent ? 'Set automatically from your own group.' : undefined,
     },
-    { name: 'name',  label: 'BG Name', required: true, placeholder: 'Al Habtoor Logistics' },
+    { name: 'name',  label: 'Business Group Name', required: true, placeholder: 'Al Habtoor Logistics' },
     { name: 'email', label: 'Email',        required: true, type: 'email', placeholder: 'name@company.ae' },
   ]
 }
@@ -126,7 +126,7 @@ export default function Company(props) {
     if (saving) return
 
     const next = {}
-    if (!draft.name.trim())  next.name  = 'BG Name is required'
+    if (!draft.name.trim())  next.name  = 'Business Group Name is required'
     if (!draft.email.trim()) next.email = 'Email is required'
     // The BG email is its login username, so it has to be unique. This local check
     // only sees the BGs in scope — the server's unique index is what catches a
@@ -171,7 +171,7 @@ export default function Company(props) {
   // fieldsFor(). Only meaningful in real mode; mock mode always has the seeds.
   const derivedParent = IS_REAL && resellers.length === 0
 
-  const title = !editing ? 'BG (Business Group)' : draft.id ? 'Edit BG' : 'Add BG'
+  const title = !editing ? 'Business Group (BG)' : draft.id ? 'Edit Business Group' : 'Add Business Group'
 
   return (
     <SettingsLayout title={title} {...props}>
@@ -179,7 +179,7 @@ export default function Company(props) {
         <form ref={formRef} onSubmit={submit} noValidate>
           <FormCard
             title={draft.id ? 'Business Group details' : 'New Business Group'}
-            subtitle="Fields marked with * are required. Leave Group blank if the BG is its own group."
+            subtitle="Fields marked with * are required. Leave Group blank if the Business Group is its own group."
           >
             <FormFields
               fields={fieldsFor(resellers, { editing: !!draft.id, derivedParent })}
@@ -211,7 +211,7 @@ export default function Company(props) {
 
           {!access.loading && (
             <>
-              <TableToolbar count={companies.length} noun="BG" plural="BGs">
+              <TableToolbar count={companies.length} noun="Business Group" plural="Business Groups">
                 {access.canAdd && (
                   <>
                     <button
@@ -224,7 +224,7 @@ export default function Company(props) {
                     </button>
                     <button type="button" style={PRIMARY_BTN} onClick={openAdd}>
                       <Plus size={14} strokeWidth={2.6} />
-                      Add BG
+                      Add Business Group
                     </button>
                   </>
                 )}
@@ -247,7 +247,7 @@ export default function Company(props) {
                 canWrite={access.canWrite}
                 emptyLabel={
                   access.canWrite
-                    ? 'No Business Groups yet — use Add BG to create one.'
+                    ? 'No Business Groups yet — use Add Business Group to create one.'
                     : 'No Business Groups to show.'
                 }
               />
@@ -261,7 +261,7 @@ export default function Company(props) {
           title="Delete Business Group?"
           body={`${pending.name} will be removed from the list.`}
           note={modeNote(
-            'Every branch, vehicle, account and alert in this BG is deleted with it. This cannot be undone.',
+            'Every branch, vehicle, account and alert in this Business Group is deleted with it. This cannot be undone.',
             'This is mock data — nothing is sent to a server.'
           )}
           confirmLabel="Delete"

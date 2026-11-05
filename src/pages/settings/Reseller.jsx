@@ -21,12 +21,12 @@ import { sessionLevel as usersLevel } from '../../data/screens'
 // BGs. Stored as `reseller` rows — see the vocabulary note in mockData.js.
 
 const COLUMNS = [
-  { key: 'name',  label: 'GGB Name', bold: true },
+  { key: 'name',  label: 'Group Global Admin Name', bold: true },
   { key: 'email', label: 'Email' },
 ]
 
 const FIELDS = [
-  { name: 'name',  label: 'GGB Name', required: true, placeholder: 'FleetmaX Solutions' },
+  { name: 'name',  label: 'Group Global Admin Name', required: true, placeholder: 'FleetmaX Solutions' },
   { name: 'email', label: 'Email',         type: 'email',  placeholder: 'partners@fleetmax.ae' },
 ]
 
@@ -71,7 +71,7 @@ export default function Reseller(props) {
     if (saving) return
 
     const next = {}
-    if (!draft.name.trim()) next.name = 'GGB Name is required'
+    if (!draft.name.trim()) next.name = 'Group Global Admin Name is required'
     if (Object.keys(next).length) {
       setErrors(next)
       formRef.current?.querySelector(`[name="${Object.keys(next)[0]}"]`)?.focus()
@@ -109,14 +109,14 @@ export default function Reseller(props) {
     }
   }
 
-  const title = !editing ? 'GGB (Group Global Admin)' : draft.id ? 'Edit GGB' : 'Add GGB'
+  const title = !editing ? 'Group Global Admin (GGB)' : draft.id ? 'Edit Group Global Admin' : 'Add Group Global Admin'
 
   return (
     <SettingsLayout title={title} {...props}>
       {editing ? (
         <form ref={formRef} onSubmit={submit} noValidate>
           <FormCard
-            title={draft.id ? 'GGB details' : 'New GGB'}
+            title={draft.id ? 'Group Global Admin details' : 'New Group Global Admin'}
             subtitle="Fields marked with * are required."
           >
             <FormFields
@@ -145,11 +145,11 @@ export default function Reseller(props) {
 
           {!access.loading && (
             <>
-              <TableToolbar count={resellers.length} noun="GGB" plural="GGBs">
+              <TableToolbar count={resellers.length} noun="Group Global Admin" plural="Group Global Admins">
                 {access.canAdd && (
                   <button type="button" style={PRIMARY_BTN} onClick={openAdd}>
                     <Plus size={14} strokeWidth={2.6} />
-                    Add GGB
+                    Add Group Global Admin
                   </button>
                 )}
               </TableToolbar>
@@ -170,8 +170,8 @@ export default function Reseller(props) {
                 canWrite={access.canWrite}
                 emptyLabel={
                   access.canWrite
-                    ? 'No GGBs yet — use Add GGB to create one.'
-                    : 'No GGBs to show.'
+                    ? 'No Group Global Admins yet — use Add Group Global Admin to create one.'
+                    : 'No Group Global Admins to show.'
                 }
               />
             </>
@@ -181,11 +181,11 @@ export default function Reseller(props) {
 
       {pending && (
         <ConfirmDialog
-          title="Delete GGB?"
+          title="Delete Group Global Admin?"
           body={`${pending.name} will be removed from the list.`}
           note={modeNote(
-            'Every group, BG, branch, vehicle, account and alert under this GGB is deleted with it. This cannot be undone.',
-            'Groups and BGs under this GGB are left in place. This is mock data — nothing is sent to a server.'
+            'Every group, Business Group, branch, vehicle, account and alert under this Group Global Admin is deleted with it. This cannot be undone.',
+            'Groups and Business Groups under this Group Global Admin are left in place. This is mock data — nothing is sent to a server.'
           )}
           confirmLabel="Delete"
           onConfirm={confirmDelete}

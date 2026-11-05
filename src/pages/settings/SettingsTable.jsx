@@ -23,7 +23,7 @@ import { CARD_SURFACE } from './formStyles'
  * leave an empty header and a ragged right edge on every row; the server rejects
  * the calls regardless, so the column has nothing to offer.
  */
-export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLabel, labelKey = 'name', canWrite = true }) {
+export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLabel, labelKey = 'name', canWrite = true, extraActions }) {
   const [hovered, setHovered] = useState(null)
 
   return (
@@ -89,6 +89,12 @@ export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLa
                 {canWrite && (
                   <td className="px-3 py-2.5" style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                     <div style={{ display: 'inline-flex', gap: 6 }}>
+                      {/* Row shortcuts a page adds, e.g. the Vehicle page's "create alert". */}
+                      {extraActions?.(row).map(a => (
+                        <IconButton key={a.label} label={a.label} tone={a.tone ?? 'var(--ft-accent)'} onClick={a.onClick}>
+                          {a.icon}
+                        </IconButton>
+                      ))}
                       <IconButton
                         label={`Edit ${row[labelKey]}`}
                         tone="var(--ft-accent)"

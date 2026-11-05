@@ -54,7 +54,7 @@ const COLUMNS = [
       </span>
     ),
   },
-  { key: 'company', label: 'BG', render: row => companyNameFor(row.companyId) },
+  { key: 'company', label: 'Business Group', render: row => companyNameFor(row.companyId) },
   {
     key: 'parent',
     label: 'Parent Branch',
@@ -154,7 +154,7 @@ export default function Branch(props) {
     if (saving) return
 
     const next = {}
-    if (!draft.companyId)   next.companyId = 'BG is required'
+    if (!draft.companyId)   next.companyId = 'Business Group is required'
     if (!draft.name.trim()) next.name      = 'Branch Name is required'
     // Defensive: the dropdown already filters these out, but a stale draft can
     // outlive the parent it points at — the BG can be switched, or the parent
@@ -233,10 +233,10 @@ export default function Branch(props) {
                   branch's BG only at creation time, because moving it would carry
                   its vehicles and its sub-user assignments into another tenant. */}
               <Field
-                label="BG (Business Group)"
+                label="Business Group (BG)"
                 required
                 error={errors.companyId}
-                hint={IS_REAL && draft.id ? 'A branch cannot be moved to another BG.' : undefined}
+                hint={IS_REAL && draft.id ? 'A branch cannot be moved to another Business Group.' : undefined}
               >
                 <select
                   ref={firstRef}
@@ -283,9 +283,9 @@ export default function Branch(props) {
                 >
                   <option value="">
                     {!draft.companyId
-                      ? '— Select a BG first —'
+                      ? '— Select a Business Group first —'
                       : parentOptions.length === 0
-                        ? '— No other branches in this BG —'
+                        ? '— No other branches in this Business Group —'
                         : '— None (top-level branch) —'}
                   </option>
                   {parentOptions.map(b => (
@@ -331,7 +331,7 @@ export default function Branch(props) {
                     disabled={noCompanies}
                     // A branch needs a BG, so with none on file the form would open
                     // with an unsatisfiable required dropdown.
-                    title={noCompanies ? 'Add a BG first' : undefined}
+                    title={noCompanies ? 'Add a Business Group first' : undefined}
                     onClick={openAdd}
                   >
                     <Plus size={14} strokeWidth={2.6} />
@@ -358,7 +358,7 @@ export default function Branch(props) {
                   !access.canWrite
                     ? 'No branches to show.'
                     : noCompanies
-                      ? 'No Business Groups on file — add a BG before creating branches.'
+                      ? 'No Business Groups on file — add a Business Group before creating branches.'
                       : 'No branches yet — use Add Branch to create one.'
                 }
               />
@@ -377,7 +377,7 @@ export default function Branch(props) {
           }
           note={[
             doomedVehicles
-              ? `${doomedVehicles} vehicle${doomedVehicles === 1 ? '' : 's'} filed under ${doomedVehicles === 1 ? 'it' : 'them'} will keep their BG but lose their branch.`
+              ? `${doomedVehicles} vehicle${doomedVehicles === 1 ? '' : 's'} filed under ${doomedVehicles === 1 ? 'it' : 'them'} will keep their Business Group but lose their branch.`
               : null,
             'Any sub-user scoped to a deleted branch is unassigned from it.',
             modeNote(null, 'This is mock data — nothing is sent to a server.'),

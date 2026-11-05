@@ -15,9 +15,9 @@ import { screenForPath, sessionLevel } from '../../data/screens'
  */
 
 export const ORG_PAGES = [
-  { id: 'reseller', label: 'GGB',    path: '/settings/reseller' },
+  { id: 'reseller', label: 'Group Global Admin (GGB)', path: '/settings/reseller' },
   { id: 'group',    label: 'Group',  path: '/settings/group' },
-  { id: 'company',  label: 'BG',     path: '/settings/company' },
+  { id: 'company',  label: 'Business Group (BG)', path: '/settings/company' },
   { id: 'branch',   label: 'Branch', path: '/settings/branch' },
 ]
 

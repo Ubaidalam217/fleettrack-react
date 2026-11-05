@@ -25,7 +25,7 @@ import { IS_REAL } from '../../data/mode'
 
 const COLUMNS = [
   { key: 'name',     label: 'Group Name', bold: true },
-  { key: 'reseller', label: 'GGB', render: row => resellerNameFor(row.resellerId) },
+  { key: 'reseller', label: 'Group Global Admin', render: row => resellerNameFor(row.resellerId) },
 ]
 
 // GGB options come from the live store, so a GGB added next door is selectable
@@ -38,10 +38,10 @@ function fieldsFor(resellers, editing) {
   const lockParent = IS_REAL && editing
   return [
     {
-      name: 'resellerId', label: 'GGB', required: true, type: 'select',
+      name: 'resellerId', label: 'Group Global Admin (GGB)', required: true, type: 'select',
       options: resellers.map(r => ({ value: r.id, label: r.name })),
       disabled: lockParent,
-      hint: lockParent ? 'A group cannot be moved to another GGB.' : undefined,
+      hint: lockParent ? 'A group cannot be moved to another Group Global Admin.' : undefined,
     },
     { name: 'name', label: 'Group Name', required: true, placeholder: 'Abu Dhabi Operations' },
   ]
@@ -90,7 +90,7 @@ export default function Group(props) {
     if (saving) return
 
     const next = {}
-    if (!draft.resellerId)  next.resellerId = 'GGB is required'
+    if (!draft.resellerId)  next.resellerId = 'Group Global Admin is required'
     if (!draft.name.trim()) next.name       = 'Group Name is required'
     if (Object.keys(next).length) {
       setErrors(next)
@@ -172,7 +172,7 @@ export default function Group(props) {
                     disabled={noResellers}
                     // A group belongs to a GGB, so with none on file the form would
                     // open with an unsatisfiable required dropdown.
-                    title={noResellers ? 'Add a GGB first' : undefined}
+                    title={noResellers ? 'Add a Group Global Admin first' : undefined}
                     onClick={openAdd}
                   >
                     <Plus size={14} strokeWidth={2.6} />
@@ -200,7 +200,7 @@ export default function Group(props) {
                   !access.canWrite
                     ? 'No groups to show.'
                     : noResellers
-                      ? 'No GGBs on file — add a GGB before creating groups.'
+                      ? 'No Group Global Admins on file — add a Group Global Admin before creating groups.'
                       : 'No groups yet — use Add Group to create one.'
                 }
               />

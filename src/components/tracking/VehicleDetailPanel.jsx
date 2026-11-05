@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { hasDriver } from '../../services/vehicleMaster'
 import { listDocuments, expiryState, daysUntilExpiry, isReadOnly } from '../../services/documentStore'
@@ -560,6 +561,8 @@ function Alerts({ v }) {
   useEffect(() => { setThresholds(getThresholds(v.id)) }, [v.id])
 
   const alerts = useMemo(() => computeAlerts(messages, v, thresholds), [messages, v, thresholds])
+  const navigate = useNavigate()
+  const profile = useSettingsProfile(v.ident)
   const filtered = alerts.filter(a =>
     (severityFilter === 'All' || a.severity === severityFilter) &&
     (typeFilter === 'all' || a.type === typeFilter)
@@ -581,6 +584,25 @@ function Alerts({ v }) {
 
   return (
     <>
+      {/* A rule for this vehicle only, made in Settings > Alerts with it ticked. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <span style={{ fontSize: 11, color: 'var(--c-text3)' }}>
+          {profile.linked ? 'Get notified about this vehicle by email or in-app.' : 'Register this vehicle in Object to create alerts for it.'}
+        </span>
+        <button
+          type="button"
+          disabled={!profile.linked}
+          onClick={() => navigate(`/settings/alerts?imei=${encodeURIComponent(v.ident)}`)}
+          style={{
+            padding: '6px 12px', borderRadius: 8, border: 'none', fontSize: 11.5, fontWeight: 700,
+            background: 'var(--ft-accent)', color: '#fff',
+            cursor: profile.linked ? 'pointer' : 'not-allowed', opacity: profile.linked ? 1 : 0.5,
+          }}
+        >
+          + Create alert for this vehicle
+        </button>
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {SEVERITY_FILTERS.map(s => {
