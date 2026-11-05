@@ -90,6 +90,17 @@ describe('vehicles ↔ Flespi devices', () => {
     expect(res.body.data.addresses).toEqual({ 14: 'ch1.flespi.gw:31122' })
   })
 
+  it('lists Flespi devices no vehicle points at, to the Super Admin only', async () => {
+    fl.devices.push(
+      { id: 801, name: 'Test Bench', device_type_id: 579, configuration: { ident: '863940059213374' } },
+      { id: 802, name: 'registered', device_type_id: 102, configuration: { ident: fx.vehicles.v1.imei } },
+    )
+    const res = await request(app).get('/api/vehicles/unregistered').set(auth(fx.tokens.superAdmin))
+    expect(res.body.data).toEqual([{ deviceId: 801, name: 'Test Bench', imei: '863940059213374', deviceType: 'Teltonika FMC130' }])
+    const narrow = await request(app).get('/api/vehicles/unregistered').set(auth(fx.tokens.bgUserA1a))
+    expect(narrow.body.data).toEqual([])
+  })
+
   it('adding a vehicle creates its Flespi device and subscribes it to the webhook', async () => {
     const res = await add({ imei: '861234567890123', plateNo: 'AD 55555', deviceType: 'Teltonika FMC130' })
     expect(res.status).toBe(201)

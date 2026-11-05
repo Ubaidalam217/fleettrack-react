@@ -14,11 +14,11 @@ import { z } from 'zod'
 import prisma from '../prisma.js'
 import { asyncHandler, badRequest, conflict } from '../lib/http.js'
 import { imeiField, optionalId, optionalText, requiredId } from '../lib/fields.js'
-import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
+import { assertCanWrite, assertWritableParent, findScopedOrThrow, isSuperAdmin, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { revokeGrantsForBg } from '../lib/flespiGrant.js'
 import * as flespi from '../lib/flespi.js'
-import { channelAddresses, deviceName, deviceTypes, syncVehicleDevice } from '../lib/flespiDevices.js'
+import { channelAddresses, deviceName, deviceTypes, syncVehicleDevice, unregisteredDevices } from '../lib/flespiDevices.js'
 
 const router = Router()
 
@@ -156,6 +156,24 @@ router.get(
     }
     const [types, addresses] = await Promise.all([deviceTypes(), channelAddresses()])
     res.json({ data: { types, addresses } })
+  })
+)
+
+/**
+ * Flespi devices no vehicle in the register points at. Super Admin only: the
+ * Flespi account spans every tenant, so anyone narrower would see trackers that
+ * belong to someone else. Checked against every vehicle, not the caller's scope,
+ * for the same reason — registered elsewhere is still registered.
+ */
+router.get(
+  '/unregistered',
+  asyncHandler(async (req, res) => {
+    if (!isSuperAdmin(req.scope) || !flespi.isConfigured()) {
+      res.json({ data: [] })
+      return
+    }
+    const vehicles = await prisma.vehicle.findMany({ select: { imei: true } })
+    res.json({ data: await unregisteredDevices(vehicles.map(v => v.imei)) })
   })
 )
 

@@ -66,6 +66,52 @@ function useDeviceTypes(active) {
   return data ?? { types: [], addresses: {} }
 }
 
+// Trackers in Flespi that no vehicle here points at — added in the Flespi panel
+// before FleetmaxX managed devices. The server answers only a Super Admin.
+function useUnregistered(active, vehicleCount) {
+  const [rows, setRows] = useState([])
+  useEffect(() => {
+    if (!IS_REAL || !active) return
+    let alive = true
+    get('/api/vehicles/unregistered').then(d => { if (alive) setRows(Array.isArray(d) ? d : []) }).catch(() => {})
+    return () => { alive = false }
+  }, [active, vehicleCount])
+  return rows
+}
+
+function UnregisteredTrackers({ rows, onAdd }) {
+  if (!rows.length) return null
+  return (
+    <div style={{
+      marginBottom: 14, padding: '12px 14px', borderRadius: 10,
+      border: '1px solid color-mix(in srgb, #d97706 45%, transparent)',
+      backgroundColor: 'color-mix(in srgb, #d97706 8%, transparent)',
+    }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c-text1)' }}>
+        {rows.length} tracker{rows.length === 1 ? '' : 's'} in Flespi not registered here
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--c-text3)', margin: '2px 0 10px' }}>
+        They show on the Live Map but have no company, branch or reports. Add each one to put it under a BG.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {rows.map(r => (
+          <div key={r.deviceId} style={{
+            display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto',
+            gap: 12, alignItems: 'center', fontSize: 12,
+          }}>
+            <span style={{ fontWeight: 600, color: 'var(--c-text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name || '—'}</span>
+            <span style={{ color: 'var(--c-text2)' }}>{r.imei}</span>
+            <span style={{ color: 'var(--c-text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.deviceType || '—'}</span>
+            <button type="button" className="ft-btn" onClick={() => onAdd(r)} style={{ ...PRIMARY_BTN, padding: '5px 12px', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Plus size={13} /> Add
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // GSM device identifiers are 15 digits. Anything else is allowed through —
 // test units and some trackers report 16 or 17 — but it is worth saying out
 // loud, because a mistyped IMEI is a vehicle that silently never reports.
@@ -99,6 +145,11 @@ export default function Vehicle(props) {
 
   const editing = draft !== null
   const deviceTypes = useDeviceTypes(editing)
+  const unregistered = useUnregistered(!editing && !access.loading && access.canAdd, vehicles.length)
+  const openAddTracker = r => {
+    setErrors({})
+    setDraft({ ...emptyVehicle(), vehicleNumber: r.name, imei: r.imei, deviceType: r.deviceType })
+  }
 
   useEffect(() => {
     if (editing) firstRef.current?.focus()
@@ -466,6 +517,8 @@ export default function Vehicle(props) {
                   </>
                 )}
               </TableToolbar>
+
+              <UnregisteredTrackers rows={unregistered} onAdd={openAddTracker} />
 
               <SettingsTable
                 columns={COLUMNS}

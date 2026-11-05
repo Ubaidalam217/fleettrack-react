@@ -132,6 +132,30 @@ export async function syncVehicleDevice({ imei, oldImei = null, name, deviceType
   }
 }
 
+/**
+ * Flespi devices with no vehicle in the register — trackers added in the Flespi
+ * panel before FleetmaxX managed them. The Object page offers each for a
+ * one-click Add with its IMEI, name and type filled in.
+ */
+export async function unregisteredDevices(registeredImeis) {
+  const known = new Set(registeredImeis.map(i => String(i ?? '').replace(/\D/g, '')))
+  const [payload, types] = await Promise.all([
+    flespi.request('/gw/devices/all?fields=id,name,device_type_id,configuration'),
+    deviceTypes(),
+  ])
+  const titleOf = new Map(types.map(t => [t.id, t]))
+  return (payload?.result ?? [])
+    .map(d => ({ d, imei: String(d.configuration?.ident ?? '').replace(/\D/g, '') }))
+    .filter(({ imei }) => imei && !known.has(imei))
+    .map(({ d, imei }) => ({
+      deviceId: d.id,
+      name: d.name ?? '',
+      imei,
+      deviceType: titleOf.get(d.device_type_id)?.title ?? '',
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 /** The Flespi name for a vehicle: what the live map shows when nothing else is set. */
 export const deviceName = v => (v.plateNo || v.fleetNo || v.imei || '').trim()
 
