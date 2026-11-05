@@ -52,7 +52,7 @@ function fakeFlespi() {
       return json({ result: s.subs.has(id) ? [{ stream_id: 77, device_id: id }] : [] })
     }
     if (method === 'POST' && path === '/gw/devices') {
-      if (s.limitReached) return json({ errors: [{ reason: 'devices limit reached' }] }, 400)
+      if (s.limitReached) return json({ errors: [{ reason: "you reached the limit on maximum quantity of '/gw/devices'" }] }, 400)
       const made = body.map(d => ({ id: s.nextId++, ...d }))
       s.devices.push(...made)
       return json({ result: made.map(d => ({ id: d.id })) })
@@ -121,7 +121,7 @@ describe('vehicles ↔ Flespi devices', () => {
     fl.limitReached = true
     const res = await add({ imei: '861234567890123', plateNo: 'AD 55555', deviceType: 'Teltonika FMC130' })
     expect(res.status).toBe(400)
-    expect(res.body.error.message).toMatch(/devices limit reached/)
+    expect(res.body.error.message).toMatch(/device limit reached — upgrade the Flespi plan/)
     expect(await prisma.vehicle.count({ where: { imei: '861234567890123' } })).toBe(0)
   })
 

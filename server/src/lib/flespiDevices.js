@@ -77,6 +77,9 @@ async function subscribe(deviceId) {
 function friendly(err, what) {
   if (err instanceof flespi.FlespiError && err.upstreamStatus >= 400 && err.upstreamStatus < 500 && err.upstreamStatus !== 429) {
     const reason = String(err.message).replace(/^Flespi \S+ \S+ failed: /, '')
+    if (/limit on maximum quantity/i.test(reason)) {
+      return new HttpError(400, 'Flespi device limit reached — upgrade the Flespi plan to add more vehicles. Nothing was saved.')
+    }
     return new HttpError(400, `Flespi did not ${what}: ${reason}`)
   }
   return err
