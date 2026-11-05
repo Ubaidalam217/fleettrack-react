@@ -1,6 +1,6 @@
 import {
   Route, Car, FileBarChart, FileText, Navigation, AlertTriangle,
-  Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge,
+  Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma,
 } from 'lucide-react'
 import { labelForPathIn } from './navTree'
 
@@ -48,15 +48,19 @@ export const REPORT_CATEGORIES = [
     reports: [
       { id: 'movement',         label: 'Movement Report',         icon: Route,        path: '/reports/movement',         ready: true,
         desc: 'Every start-up, drive, idle and ignition-off with time, speed, odometer and location.' },
-      { id: 'trip',             label: 'Trip Report',             icon: Navigation,   path: '/reports/trip',
+      { id: 'trip',             label: 'Trip Report',             icon: Navigation,   path: '/reports/trip',             ready: true,
         desc: 'Each trip from ignition on to off: start, end, distance and duration.' },
       { id: 'geo-zone',         label: 'Geo Zone Visit Report',   icon: MapPinned,    path: '/reports/geo-zone',         ready: true,
         desc: 'Visits to your geofences and addresses, with time inside and trips between zones.' },
       { id: 'daywise-distance', label: 'Daywise Distance Report', icon: FileText,     path: '/reports/daywise-distance', ready: true,
         desc: 'Distance driven per vehicle, day by day, with totals.' },
-      { id: 'usage-full',       label: 'Full Usage Report',       icon: FileBarChart, path: '/reports/usage-full',
-        desc: 'Driving, idling and stopped time per vehicle per day.' },
-      { id: 'private-usage',    label: 'Private Usage Report',    icon: UserRound,    path: '/reports/private-usage',
+      { id: 'usage-full',       label: 'Full Usage Report',       icon: FileBarChart, path: '/reports/usage-full',       ready: true,
+        desc: 'Every trip with drive, idle and stop time, distance and exceptions; 0 km trips can be skipped.' },
+      // Client, 2026-11-06: the whole period summed up per vehicle. Daywise
+      // Distance (the old "Summary Usage" path) stays the day-by-day report.
+      { id: 'summary-usage',    label: 'Summary Usage Report',    icon: Sigma,        path: '/reports/summary-usage',    ready: true,
+        desc: 'One line per vehicle summing the whole period: first start, last stop, time, distance and exceptions.' },
+      { id: 'private-usage',    label: 'Private Usage Report',    icon: UserRound,    path: '/reports/private-usage',    ready: true,
         desc: 'Business and private use split by the hours you set.' },
     ],
   },
@@ -69,7 +73,7 @@ export const REPORT_CATEGORIES = [
       // each alert with the vehicle's tracking at that moment attached.
       { id: 'event',            label: 'Event Occurrence Report', icon: AlertTriangle, path: '/reports/event',        ready: true,
         desc: 'Every alert raised, in the Movement Report layout, with speed, status and location at that moment.' },
-      { id: 'gyr',              label: 'GYR Report',              icon: Gauge,         path: '/reports/gyr',
+      { id: 'gyr',              label: 'GYR Report',              icon: Gauge,         path: '/reports/gyr',             ready: true,
         desc: 'Green / Yellow / Red rating of each vehicle or driver from its exceptions.' },
     ],
   },
@@ -80,7 +84,7 @@ export const REPORT_CATEGORIES = [
     reports: [
       { id: 'working-hour',     label: 'Working Hour Report',     icon: Clock,         path: '/reports/working-hour',    ready: true,
         desc: 'Usage inside and outside the working hours you define.' },
-      { id: 'time-sheet',       label: 'Time Sheet Report',       icon: CalendarClock, path: '/reports/time-sheet',
+      { id: 'time-sheet',       label: 'Time Sheet Report',       icon: CalendarClock, path: '/reports/time-sheet',      ready: true,
         desc: 'First start and last stop of each day, per vehicle.' },
     ],
   },

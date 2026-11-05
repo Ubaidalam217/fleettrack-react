@@ -21,7 +21,6 @@ import SettingsGeofence       from './pages/settings/Geofence'
 import SettingsDriver         from './pages/settings/Driver'
 import SettingsComingSoon     from './pages/settings/ComingSoon'
 // Reports module — Movement Report, plus the two Daywise sheets (step 2)
-import ReportPlaceholder       from './pages/reports/ReportPlaceholder'
 import WorkingHourReport       from './pages/reports/WorkingHourReport'
 import SummaryUsageReport      from './pages/reports/SummaryUsageReport'
 import GeoZoneReport           from './pages/reports/GeoZoneReport'
@@ -30,6 +29,7 @@ import LocationPage            from './pages/LocationPage'
 import VehicleListReport       from './pages/reports/VehicleListReport'
 import DriverListReport        from './pages/reports/DriverListReport'
 import EventOccurrenceReport   from './pages/reports/EventOccurrenceReport'
+import UsageReportPage         from './pages/reports/UsageReportPage'
 import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
 import AuthGate            from './components/AuthGate'
@@ -184,18 +184,19 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
             can highlight exactly the row that was clicked. Order matches
             components/sidebar/reportsNav.js, which is the client's order. */}
         <Route path="/reports/vehicles"      element={guard(<VehicleListReport  {...themeProps} />)} />
-        <Route path="/reports/usage-full"    element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/usage-full"    element={guard(<UsageReportPage variant="fullUsage" {...themeProps} />)} />
         <Route path="/reports/daywise-distance" element={guard(<SummaryUsageReport {...themeProps} />)} />
         {/* The client renamed "Summary Usage Report" to "Daywise Distance Report"; old links still land. */}
         <Route path="/reports/usage-summary" element={<Navigate to="/reports/daywise-distance" replace />} />
-        <Route path="/reports/trip"          element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/summary-usage" element={guard(<UsageReportPage variant="summary" {...themeProps} />)} />
+        <Route path="/reports/trip"          element={guard(<UsageReportPage variant="trip" {...themeProps} />)} />
         <Route path="/reports/event"         element={guard(<EventOccurrenceReport {...themeProps} />)} />
         <Route path="/reports/working-hour"  element={guard(<WorkingHourReport  {...themeProps} />)} />
-        <Route path="/reports/private-usage" element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/private-usage" element={guard(<UsageReportPage variant="privateUsage" {...themeProps} />)} />
         <Route path="/reports/geo-zone"      element={guard(<GeoZoneReport      {...themeProps} />)} />
-        <Route path="/reports/time-sheet"    element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/time-sheet"    element={guard(<UsageReportPage variant="timeSheet" {...themeProps} />)} />
         <Route path="/reports/drivers"       element={guard(<DriverListReport   {...themeProps} />)} />
-        <Route path="/reports/gyr"           element={guard(<ReportPlaceholder  {...themeProps} />)} />
+        <Route path="/reports/gyr"           element={guard(<UsageReportPage variant="gyr" {...themeProps} />)} />
 
         <Route path="*"               element={<Navigate to="/login" replace />} />
       </Routes>
