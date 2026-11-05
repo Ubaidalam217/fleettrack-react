@@ -204,6 +204,10 @@ export const env = Object.freeze({
   /** The URL any Prisma client in this process should actually connect to. */
   databaseUrl: isTest ? raw.TEST_DATABASE_URL : raw.DATABASE_URL,
   bcryptRounds: isTest ? 4 : raw.BCRYPT_ROUNDS,
+  // The suite never talks to the real Flespi account, even with a token in .env:
+  // a vehicle test would otherwise create, rename or re-ident live devices.
+  // Tests that need Flespi mock env with a fake token and stub fetch.
+  FLESPI_TOKEN: isTest ? undefined : raw.FLESPI_TOKEN,
 })
 
 export default env

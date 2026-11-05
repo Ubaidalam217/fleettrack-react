@@ -17,6 +17,8 @@ import { imeiField, optionalId, optionalText, requiredId } from '../lib/fields.j
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { revokeGrantsForBg } from '../lib/flespiGrant.js'
+import * as flespi from '../lib/flespi.js'
+import { channelAddresses, deviceName, deviceTypes, syncVehicleDevice } from '../lib/flespiDevices.js'
 
 const router = Router()
 
@@ -141,6 +143,22 @@ router.get(
   })
 )
 
+/**
+ * The Flespi device types the Add Vehicle form offers, and the address each
+ * protocol's trackers must be set to send to. Empty when Flespi is not set up.
+ */
+router.get(
+  '/device-types',
+  asyncHandler(async (_req, res) => {
+    if (!flespi.isConfigured()) {
+      res.json({ data: { types: [], addresses: {} } })
+      return
+    }
+    const [types, addresses] = await Promise.all([deviceTypes(), channelAddresses()])
+    res.json({ data: { types, addresses } })
+  })
+)
+
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
@@ -158,6 +176,10 @@ router.post(
     assertCanWrite(req.scope, 'vehicle')
     const bg = await assertWritableParent(req.scope, 'bg', req.body.bgId)
     await assertImeiFree(req.body.imei)
+    // Flespi first, so a refused tracker (device limit, bad IMEI) saves nothing.
+    const flespiDevice = await syncVehicleDevice({
+      imei: req.body.imei, name: deviceName(req.body), deviceType: req.body.deviceType, requireType: true,
+    })
 
     const { bgId: _bgId, branchId, groupId, ...rest } = req.body
     const row = await prisma.vehicle.create({
@@ -173,7 +195,7 @@ router.post(
     // Dropping the grants makes the next refresh mint one that includes this
     // vehicle; leaving them would hide a brand-new vehicle until the token expired.
     await revokeGrantsForBg(bg.id)
-    res.status(201).json({ data: row })
+    res.status(201).json({ data: row, flespi: flespiDevice })
   })
 )
 
@@ -184,6 +206,12 @@ router.put(
     assertCanWrite(req.scope, 'vehicle')
     const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
     await assertImeiFree(req.body.imei, existing.id)
+    const flespiDevice = await syncVehicleDevice({
+      imei: req.body.imei ?? existing.imei,
+      oldImei: existing.imei,
+      name: deviceName({ ...existing, ...req.body }),
+      deviceType: req.body.deviceType ?? existing.deviceType,
+    })
 
     // bgId is not editable here. Moving a vehicle between BGs would have to also
     // strip its sub-user assignments and its alert memberships in the old BG, and
@@ -202,7 +230,7 @@ router.put(
     // An edit can change the IMEI, which is the Flespi join key, so the ACL's
     // device ids may no longer match.
     await revokeGrantsForBg(existing.bgId)
-    res.json({ data: row })
+    res.json({ data: row, flespi: flespiDevice })
   })
 )
 

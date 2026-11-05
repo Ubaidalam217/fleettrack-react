@@ -139,6 +139,9 @@ async function call(path, { method = 'GET', body, timeoutMs = env.FLESPI_TIMEOUT
   return payload
 }
 
+/** call() for other modules: throws FlespiError on a non-2xx answer. */
+export const request = call
+
 /**
  * Pass one request through to Flespi with the Master token, returning Flespi's
  * own status and body untouched. Used by the /api/flespi/proxy route, whose job is

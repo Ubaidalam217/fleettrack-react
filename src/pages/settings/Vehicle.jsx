@@ -18,6 +18,7 @@ import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import { ObjectTabs } from './OrgTabs'
 import { IS_REAL } from '../../data/mode'
+import { get } from '../../data/http'
 
 // The fleet register. Writes to the same vehicle store the sub-user assignment
 // panel and the alert scope picker read, so a vehicle added here is immediately
@@ -43,6 +44,26 @@ const GRID = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
   gap: '14px 16px',
+}
+
+// Device Type is a Flespi device type's title. On save the server creates the
+// tracker's Flespi device from it (or links the one already there by IMEI), so
+// nobody has to open the Flespi panel. Mock mode has no Flespi: a short list.
+const MOCK_DEVICE_TYPES = {
+  types: ['Jimi IoT (Concox)', 'Teltonika FMB120', 'Teltonika FMB920', 'Teltonika FMC130', 'Teltonika FMC150', 'Teltonika FMC230']
+    .map((title, i) => ({ id: i + 1, title, protocolId: title.startsWith('Teltonika') ? 14 : 13 })),
+  addresses: {},
+}
+
+function useDeviceTypes(active) {
+  const [data, setData] = useState(IS_REAL ? null : MOCK_DEVICE_TYPES)
+  useEffect(() => {
+    if (!IS_REAL || !active || data) return
+    let alive = true
+    get('/api/vehicles/device-types').then(d => { if (alive) setData(d) }).catch(() => {})
+    return () => { alive = false }
+  }, [active, data])
+  return data ?? { types: [], addresses: {} }
 }
 
 // GSM device identifiers are 15 digits. Anything else is allowed through —
@@ -77,6 +98,7 @@ export default function Vehicle(props) {
   const formRef  = useRef(null)
 
   const editing = draft !== null
+  const deviceTypes = useDeviceTypes(editing)
 
   useEffect(() => {
     if (editing) firstRef.current?.focus()
@@ -142,6 +164,7 @@ export default function Vehicle(props) {
       odometer:      String(draft.odometer).trim(),
       make:          draft.make.trim(),
       model:         draft.model.trim(),
+      deviceType:    String(draft.deviceType ?? '').trim(),
     }
     setSaving(true)
     try {
@@ -183,7 +206,7 @@ export default function Vehicle(props) {
         <form ref={formRef} onSubmit={submit} noValidate>
           <FormCard
             title={draft.id ? 'Vehicle details' : 'New vehicle'}
-            subtitle="Fields marked with * are required. The IMEI is what matches this vehicle to its tracking device."
+            subtitle="Fields marked with * are required. The IMEI and Device Type add the tracker to live tracking on save — no Flespi panel needed."
           >
             <div style={GRID}>
               {/* Locked on an existing vehicle in real mode: the API accepts a
@@ -337,6 +360,30 @@ export default function Vehicle(props) {
                     {notice.text}
                   </span>
                 )}
+              </Field>
+
+              <Field label="Device Type" error={errors.deviceType}>
+                <input
+                  name="deviceType"
+                  list="flespi-device-types"
+                  value={draft.deviceType ?? ''}
+                  onChange={e => set('deviceType', e.target.value)}
+                  aria-invalid={!!errors.deviceType || undefined}
+                  placeholder="Teltonika FMC130"
+                  style={inputStyle(!!errors.deviceType)}
+                />
+                <datalist id="flespi-device-types">
+                  {deviceTypes.types.map(t => <option key={t.id} value={t.title} />)}
+                </datalist>
+                {(() => {
+                  const t = deviceTypes.types.find(x => x.title.toLowerCase() === String(draft.deviceType ?? '').trim().toLowerCase())
+                  const address = t && deviceTypes.addresses[t.protocolId]
+                  return address ? (
+                    <span style={{ display: 'block', marginTop: 3, fontSize: 10.5, color: 'var(--c-text3)' }}>
+                      Set the tracker to send to <b style={{ userSelect: 'all' }}>{address}</b>
+                    </span>
+                  ) : null
+                })()}
               </Field>
 
               <Field label="Odometer Reading">
