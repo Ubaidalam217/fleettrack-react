@@ -391,6 +391,122 @@ function PickList({
   )
 }
 
+// ── Vehicle panel ──────────────────────────────────────────────────────────
+/**
+ * The form's right-hand column: every vehicle of the BG in one tall list with
+ * a search box, so a fleet of hundreds is picked by typing a plate rather than
+ * scrolling a grid. "All vehicles" is the same stored mode as PickList's header
+ * box (it also covers vehicles added later); "Select shown" ticks what the
+ * search matches, on top of what is already ticked.
+ */
+function VehiclePanel({ items, all, selected, onToggleAll, onToggle, onSetSelected, emptyNote, error }) {
+  const [q, setQ] = useState('')
+  const shown = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    if (!t) return items
+    return items.filter(v => `${vehicleLabel(v)} ${vehicleSubLabel(v)}`.toLowerCase().includes(t))
+  }, [items, q])
+  const picked = new Set(selected)
+
+  return (
+    <div data-field="scope" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+        <span className="ft-label">Vehicles<span style={{ color: '#ef4444', marginLeft: 3 }}>*</span></span>
+        {items.length > 0 && (
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ft-accent)' }}>
+            {all ? `All ${items.length}` : `${selected.length} of ${items.length}`} selected
+          </span>
+        )}
+      </div>
+
+      <div style={{
+        border: `1px solid ${error ? '#ef4444' : 'var(--c-border)'}`, borderRadius: 10,
+        background: 'var(--c-input)', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+      }}>
+        {emptyNote ? (
+          <p style={{ ...NOTE, padding: '40px 16px' }}>{emptyNote}</p>
+        ) : (
+          <>
+            <div style={{
+              padding: 10, borderBottom: '1px solid var(--c-border2)', background: 'var(--c-thead)',
+              display: 'flex', flexDirection: 'column', gap: 9,
+            }}>
+              <input
+                type="search"
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                placeholder="Search plate, fleet no, IMEI…"
+                style={{ ...inputStyle(false), background: 'var(--c-card)' }}
+              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: 'var(--c-text1)' }}>
+                <input type="checkbox" name="scope" checked={all} onChange={e => onToggleAll(e.target.checked)} style={CHECK} />
+                All vehicles
+                <span style={{ fontWeight: 500, fontSize: 11, color: 'var(--c-text3)' }}>including any added later</span>
+              </label>
+              {!all && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    type="button"
+                    className="ft-btn"
+                    disabled={!shown.length}
+                    onClick={() => onSetSelected([...new Set([...selected, ...shown.map(v => v.id)])])}
+                    style={{ padding: '5px 10px', fontSize: 11.5 }}
+                  >
+                    {q ? `Select ${shown.length} shown` : 'Select all'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ft-btn"
+                    disabled={!selected.length}
+                    onClick={() => onSetSelected(q ? selected.filter(id => !shown.some(v => v.id === id)) : [])}
+                    style={{ padding: '5px 10px', fontSize: 11.5 }}
+                  >
+                    {q ? 'Clear shown' : 'Clear'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div style={{ maxHeight: 460, minHeight: 220, overflowY: 'auto', opacity: all ? 0.55 : 1 }}>
+              {shown.length === 0 && <p style={NOTE}>No vehicle matches the search.</p>}
+              {shown.map(v => {
+                const on = all || picked.has(v.id)
+                return (
+                  <label
+                    key={v.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                      borderBottom: '1px solid var(--c-border2)', cursor: all ? 'default' : 'pointer',
+                      background: on && !all ? 'color-mix(in srgb, var(--ft-accent) 9%, transparent)' : 'transparent',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={all}
+                      onChange={() => onToggle(v.id)}
+                      style={{ ...CHECK, cursor: all ? 'default' : 'pointer' }}
+                    />
+                    <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: 12.5, fontWeight: on ? 650 : 550, color: on ? 'var(--c-text1)' : 'var(--c-text2)' }}>
+                        {vehicleLabel(v)}
+                      </span>
+                      <span style={{ fontSize: 10.5, color: 'var(--c-text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {vehicleSubLabel(v)}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+      {error && <span style={ERROR_TEXT}>{error}</span>}
+    </div>
+  )
+}
+
 const KIND_LABEL = { GEOFENCE: 'Geofence', ADDRESS: 'Address' }
 
 function geofenceSub(g) {
@@ -635,6 +751,11 @@ export default function Alerts(props) {
     clearError('scope')
   }
 
+  const setVehicleIds = ids => {
+    setDraft(d => ({ ...d, allVehicles: false, vehicleIds: ids }))
+    clearError('scope')
+  }
+
   const toggleGeofence = id => {
     setDraft(d => {
       const ids = d.settings.geofenceIds ?? []
@@ -784,224 +905,228 @@ export default function Alerts(props) {
             title={draft.id ? 'Alert details' : 'New alert'}
             subtitle="Fields marked with * are required."
           >
-            <div style={GRID}>
-              <Field label="Alert Name" required error={errors.name}>
-                <input
-                  ref={firstRef}
-                  name="name"
-                  value={draft.name}
-                  onChange={e => set('name', e.target.value)}
-                  aria-invalid={!!errors.name || undefined}
-                  placeholder="Highway over speed"
-                  style={inputStyle(!!errors.name)}
-                />
-              </Field>
-
-              <Field label="Alert Type" required error={errors.type} hint={typeMeta?.hint}>
-                <select
-                  name="type"
-                  value={draft.type}
-                  onChange={e => set('type', e.target.value)}
-                  aria-invalid={!!errors.type || undefined}
-                  style={inputStyle(!!errors.type)}
-                >
-                  <option value="">— Select —</option>
-                  {ALERT_TYPES.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </Field>
-
-              {/* Locked on an existing alert in real mode: the API takes an alert's
-                  BG only at creation time, since its explicit vehicle list is
-                  validated against that BG and re-pointing it would leave the rule
-                  watching vehicles from a tenant it no longer belongs to. */}
-              <Field
-                label="Apply To — BG"
-                required
-                error={errors.companyId}
-                hint={IS_REAL && draft.id ? 'An alert cannot be moved to another BG.' : undefined}
-              >
-                <select
-                  name="companyId"
-                  value={draft.companyId}
-                  onChange={e => set('companyId', e.target.value)}
-                  disabled={IS_REAL && !!draft.id}
-                  aria-invalid={!!errors.companyId || undefined}
-                  style={
-                    IS_REAL && draft.id
-                      ? { ...inputStyle(!!errors.companyId), opacity: 0.6, cursor: 'not-allowed' }
-                      : inputStyle(!!errors.companyId)
-                  }
-                >
-                  <option value="">— Select —</option>
-                  {companies.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Severity" required error={errors.severity}>
-                <select
-                  name="severity"
-                  value={draft.severity}
-                  onChange={e => set('severity', e.target.value)}
-                  aria-invalid={!!errors.severity || undefined}
-                  style={inputStyle(!!errors.severity)}
-                >
-                  {ALERT_SEVERITIES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </Field>
-
-              <Field label="Status">
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {['Active', 'Inactive'].map(s => (
-                    <button
-                      key={s}
-                      type="button"
-                      className={`ft-btn${draft.status === s ? ' ft-btn--active' : ''}`}
-                      aria-pressed={draft.status === s}
-                      onClick={() => set('status', s)}
-                      style={{ flex: 1, justifyContent: 'center', padding: '8px 10px' }}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            </div>
-
-            {SettingsFields && (
-              <div style={{ marginTop: 18 }}>
-                <span className="ft-label" style={SECTION_LABEL}>
-                  {alertTypeLabel(draft.type)} settings
-                </span>
-                <div style={SETTINGS_GRID}>
-                  <SettingsFields settings={draft.settings} errors={errors} onChange={setSetting} />
-                </div>
-              </div>
-            )}
-
-            {GEOFENCE_TYPES.has(draft.type) && (
-              <PickList
-                label="Geofences"
-                field="geofenceIds"
-                items={bgGeofences}
-                all={!!draft.settings.allGeofences}
-                selected={draft.settings.geofenceIds ?? []}
-                onToggleAll={toggleAllGeofences}
-                onToggle={toggleGeofence}
-                allLabel="All geofences"
-                allNote="including any added later"
-                emptyNote={
-                  !draft.companyId
-                    ? 'Select a Business Group to choose which geofences this alert watches.'
-                    : bgGeofences.length === 0
-                      ? 'No geofences for this BG yet. The alert will watch any you add under Settings > Geofence.'
-                      : null
-                }
-                error={errors.geofenceIds}
-                itemLabel={g => g.name}
-                itemSub={geofenceSub}
-              />
-            )}
-
-            {overlaps.length > 0 && (
-              <div role="note" style={{
-                marginTop: 12, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5,
-                background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: 'var(--c-text1)',
-              }}>
-                <strong style={{ color: '#d97706' }}>Alerts will arrive twice.</strong>{' '}
-                {overlaps.map((o, i) => (
-                  <span key={o.rule.id}>
-                    {i > 0 && '; '}
-                    “{o.rule.name}” already alerts on {o.dirs.map(d => (d === 'enter' ? 'entering' : 'leaving')).join(' and ')}{' '}
-                    {o.fences.map(id => bgGeofences.find(g => g.id === id)?.name).filter(Boolean).join(', ')}
-                  </span>
-                ))}
-                {' '}for the same vehicles. Pick different geofences here, or change that rule.
-              </div>
-            )}
-
-            {byVehicle ? (
-              <PickList
-                label="Vehicles"
-                field="scope"
-                items={vehicles}
-                all={draft.allVehicles}
-                selected={draft.vehicleIds}
-                onToggleAll={toggleAll}
-                onToggle={toggleVehicle}
-                allLabel="All Vehicles"
-                allNote="including any added later"
-                emptyNote={
-                  !draft.companyId
-                    ? 'Select a Business Group to choose which vehicles this alert watches.'
-                    : vehicles.length === 0
-                      ? 'No vehicles registered for this BG.'
-                      : null
-                }
-                error={errors.scope}
-                // Via the shared helpers, not hardcoded field names: the vehicle
-                // shape changed once already and a literal v.name here is how
-                // every row silently goes blank.
-                itemLabel={vehicleLabel}
-                itemSub={vehicleSubLabel}
-              />
-            ) : (
-              <p style={{ fontSize: 12, color: 'var(--c-text3)', margin: '18px 0 0' }}>
-                Applies to every driver in this BG who has a licence expiry date on file.
-              </p>
-            )}
-
-            <div style={{ marginTop: 18 }}>
-              <span className="ft-label" style={SECTION_LABEL}>Notify Via</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 20px' }}>
-                {[
-                  { key: 'inApp', label: 'In-App' },
-                  { key: 'email', label: 'Email' },
-                ].map(c => (
-                  <label
-                    key={c.key}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 9,
-                      cursor: 'pointer', fontSize: 12.5, color: 'var(--c-text2)',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      name={`notify-${c.key}`}
-                      checked={!!draft.notify[c.key]}
-                      onChange={e => setNotify(c.key, e.target.checked)}
-                      style={CHECK}
-                    />
-                    {c.label}
-                  </label>
-                ))}
-                <label
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 9,
-                    fontSize: 12.5, color: 'var(--c-text3)', cursor: 'not-allowed',
-                  }}
-                >
-                  <input type="checkbox" checked={false} disabled readOnly style={{ ...CHECK, cursor: 'not-allowed' }} />
-                  SMS
-                  <span style={{ fontSize: 11 }}>· SMS not enabled</span>
-                </label>
-              </div>
-
-              {draft.notify.email && (
-                <div style={{ marginTop: 14, maxWidth: 640 }}>
-                  <EmailRecipients
-                    emails={draft.emails}
-                    text={emailText}
-                    onText={v => { setEmailText(v); clearError('emails') }}
-                    onCommit={commitEmails}
-                    onRemove={removeEmail}
-                    error={errors.emails}
+            {/* Settings on the left; the vehicle list gets its own tall column on
+                the right so a large fleet is easy to search and pick from. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
+            <div style={{ flex: '1.4 1 460px', minWidth: 0 }}>
+              <div style={GRID}>
+                <Field label="Alert Name" required error={errors.name}>
+                  <input
+                    ref={firstRef}
+                    name="name"
+                    value={draft.name}
+                    onChange={e => set('name', e.target.value)}
+                    aria-invalid={!!errors.name || undefined}
+                    placeholder="Highway over speed"
+                    style={inputStyle(!!errors.name)}
                   />
+                </Field>
+
+                <Field label="Alert Type" required error={errors.type} hint={typeMeta?.hint}>
+                  <select
+                    name="type"
+                    value={draft.type}
+                    onChange={e => set('type', e.target.value)}
+                    aria-invalid={!!errors.type || undefined}
+                    style={inputStyle(!!errors.type)}
+                  >
+                    <option value="">— Select —</option>
+                    {ALERT_TYPES.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </Field>
+
+                {/* Locked on an existing alert in real mode: the API takes an alert's
+                    BG only at creation time, since its explicit vehicle list is
+                    validated against that BG and re-pointing it would leave the rule
+                    watching vehicles from a tenant it no longer belongs to. */}
+                <Field
+                  label="Apply To — BG"
+                  required
+                  error={errors.companyId}
+                  hint={IS_REAL && draft.id ? 'An alert cannot be moved to another BG.' : undefined}
+                >
+                  <select
+                    name="companyId"
+                    value={draft.companyId}
+                    onChange={e => set('companyId', e.target.value)}
+                    disabled={IS_REAL && !!draft.id}
+                    aria-invalid={!!errors.companyId || undefined}
+                    style={
+                      IS_REAL && draft.id
+                        ? { ...inputStyle(!!errors.companyId), opacity: 0.6, cursor: 'not-allowed' }
+                        : inputStyle(!!errors.companyId)
+                    }
+                  >
+                    <option value="">— Select —</option>
+                    {companies.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="Severity" required error={errors.severity}>
+                  <select
+                    name="severity"
+                    value={draft.severity}
+                    onChange={e => set('severity', e.target.value)}
+                    aria-invalid={!!errors.severity || undefined}
+                    style={inputStyle(!!errors.severity)}
+                  >
+                    {ALERT_SEVERITIES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </Field>
+
+                <Field label="Status">
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {['Active', 'Inactive'].map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`ft-btn${draft.status === s ? ' ft-btn--active' : ''}`}
+                        aria-pressed={draft.status === s}
+                        onClick={() => set('status', s)}
+                        style={{ flex: 1, justifyContent: 'center', padding: '8px 10px' }}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              </div>
+
+              {SettingsFields && (
+                <div style={{ marginTop: 18 }}>
+                  <span className="ft-label" style={SECTION_LABEL}>
+                    {alertTypeLabel(draft.type)} settings
+                  </span>
+                  <div style={SETTINGS_GRID}>
+                    <SettingsFields settings={draft.settings} errors={errors} onChange={setSetting} />
+                  </div>
                 </div>
               )}
+
+              {GEOFENCE_TYPES.has(draft.type) && (
+                <PickList
+                  label="Geofences"
+                  field="geofenceIds"
+                  items={bgGeofences}
+                  all={!!draft.settings.allGeofences}
+                  selected={draft.settings.geofenceIds ?? []}
+                  onToggleAll={toggleAllGeofences}
+                  onToggle={toggleGeofence}
+                  allLabel="All geofences"
+                  allNote="including any added later"
+                  emptyNote={
+                    !draft.companyId
+                      ? 'Select a Business Group to choose which geofences this alert watches.'
+                      : bgGeofences.length === 0
+                        ? 'No geofences for this BG yet. The alert will watch any you add under Settings > Geofence.'
+                        : null
+                  }
+                  error={errors.geofenceIds}
+                  itemLabel={g => g.name}
+                  itemSub={geofenceSub}
+                />
+              )}
+
+              {overlaps.length > 0 && (
+                <div role="note" style={{
+                  marginTop: 12, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5,
+                  background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: 'var(--c-text1)',
+                }}>
+                  <strong style={{ color: '#d97706' }}>Alerts will arrive twice.</strong>{' '}
+                  {overlaps.map((o, i) => (
+                    <span key={o.rule.id}>
+                      {i > 0 && '; '}
+                      “{o.rule.name}” already alerts on {o.dirs.map(d => (d === 'enter' ? 'entering' : 'leaving')).join(' and ')}{' '}
+                      {o.fences.map(id => bgGeofences.find(g => g.id === id)?.name).filter(Boolean).join(', ')}
+                    </span>
+                  ))}
+                  {' '}for the same vehicles. Pick different geofences here, or change that rule.
+                </div>
+              )}
+
+
+              <div style={{ marginTop: 18 }}>
+                <span className="ft-label" style={SECTION_LABEL}>Notify Via</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 20px' }}>
+                  {[
+                    { key: 'inApp', label: 'In-App' },
+                    { key: 'email', label: 'Email' },
+                  ].map(c => (
+                    <label
+                      key={c.key}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 9,
+                        cursor: 'pointer', fontSize: 12.5, color: 'var(--c-text2)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        name={`notify-${c.key}`}
+                        checked={!!draft.notify[c.key]}
+                        onChange={e => setNotify(c.key, e.target.checked)}
+                        style={CHECK}
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                  <label
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 9,
+                      fontSize: 12.5, color: 'var(--c-text3)', cursor: 'not-allowed',
+                    }}
+                  >
+                    <input type="checkbox" checked={false} disabled readOnly style={{ ...CHECK, cursor: 'not-allowed' }} />
+                    SMS
+                    <span style={{ fontSize: 11 }}>· SMS not enabled</span>
+                  </label>
+                </div>
+
+                {draft.notify.email && (
+                  <div style={{ marginTop: 14, maxWidth: 640 }}>
+                    <EmailRecipients
+                      emails={draft.emails}
+                      text={emailText}
+                      onText={v => { setEmailText(v); clearError('emails') }}
+                      onCommit={commitEmails}
+                      onRemove={removeEmail}
+                      error={errors.emails}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ flex: '1 1 340px', minWidth: 0, maxWidth: 520 }}>
+              {byVehicle ? (
+                <VehiclePanel
+                  items={vehicles}
+                  all={draft.allVehicles}
+                  selected={draft.vehicleIds}
+                  onToggleAll={toggleAll}
+                  onToggle={toggleVehicle}
+                  onSetSelected={setVehicleIds}
+                  emptyNote={
+                    !draft.companyId
+                      ? 'Select a Business Group on the left to choose which vehicles this alert watches.'
+                      : vehicles.length === 0
+                        ? 'No vehicles registered for this Business Group.'
+                        : null
+                  }
+                  error={errors.scope}
+                />
+              ) : (
+                <div style={{
+                  border: '1px dashed var(--c-border2)', borderRadius: 10, padding: '40px 16px',
+                  textAlign: 'center', fontSize: 12, color: 'var(--c-text3)',
+                }}>
+                  Applies to every driver in this Business Group who has a licence expiry date on file.
+                </div>
+              )}
+            </div>
             </div>
 
             <FormActions
