@@ -156,18 +156,18 @@ export default function Login() {
             </div>
             {/* Client, 2026-11-06: show at a glance that this is a UAE service.
                 Transparent; the dark-theme copy has its lettering in white, the
-                flag stays in its own colours in both. Its top lines up with the
-                logo and its bottom with the baseline of "Fleet Management System"
-                (64 px: 44 logo + 8 gap + the caption's first line to its baseline). */}
+                flag stays in its own colours in both. Its bottom lines up with the
+                baseline of "Fleet Management System" (64 px below the logo top);
+                it is 12 px taller than that block and rises above it. */}
             <img
               className="ft-logo-light" src={proudOfUae} alt="Proud of UAE" title="Proud of UAE"
-              width={60} height={64}
-              style={{ flexShrink: 0, height: 64, width: 'auto', display: 'block' }}
+              width={72} height={76}
+              style={{ flexShrink: 0, height: 76, width: 'auto', display: 'block', marginTop: -12 }}
             />
             <img
               className="ft-logo-dark" src={proudOfUaeDark} alt="Proud of UAE" title="Proud of UAE"
-              width={60} height={64}
-              style={{ flexShrink: 0, height: 64, width: 'auto', display: 'block' }}
+              width={72} height={76}
+              style={{ flexShrink: 0, height: 76, width: 'auto', display: 'block', marginTop: -12 }}
             />
           </div>
 
