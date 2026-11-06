@@ -138,7 +138,7 @@ export default function Login() {
 
           {/* Logo — the real wordmark replaces the old icon-tile + text lockup,
               so the name is never set in a font that is not the brand's. */}
-          <div style={{ marginBottom: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ marginBottom: 32, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
             <div>
               <img
                 className="ft-logo-light" src="/logo/fleetmax-logo-sea.png"
@@ -156,17 +156,18 @@ export default function Login() {
             </div>
             {/* Client, 2026-11-06: show at a glance that this is a UAE service.
                 Transparent; the dark-theme copy has its lettering in white, the
-                flag stays in its own colours in both. As tall as the logo block
-                beside it (logo + caption), centred with it. */}
+                flag stays in its own colours in both. Its top lines up with the
+                logo and its bottom with the baseline of "Fleet Management System"
+                (64 px: 44 logo + 8 gap + the caption's first line to its baseline). */}
             <img
               className="ft-logo-light" src={proudOfUae} alt="Proud of UAE" title="Proud of UAE"
-              width={64} height={68}
-              style={{ flexShrink: 0, height: 68, width: 'auto', display: 'block' }}
+              width={60} height={64}
+              style={{ flexShrink: 0, height: 64, width: 'auto', display: 'block' }}
             />
             <img
               className="ft-logo-dark" src={proudOfUaeDark} alt="Proud of UAE" title="Proud of UAE"
-              width={64} height={68}
-              style={{ flexShrink: 0, height: 68, width: 'auto', display: 'block' }}
+              width={60} height={64}
+              style={{ flexShrink: 0, height: 64, width: 'auto', display: 'block' }}
             />
           </div>
 
