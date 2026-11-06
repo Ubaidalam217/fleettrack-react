@@ -74,6 +74,8 @@ export const TYPES = Object.freeze({
   // Client, 2026-11-06: "Other" — any parameter the tracker reports, compared
   // with a value, for alerts the fixed types above do not cover.
   custom:         { label: 'Other (custom parameter)', defaults: { parameter: '', operator: '>', value: '' } },
+  // Client, 2026-11-06: a suspended driver must not drive — raised when one's iButton is read.
+  suspended_driver: { label: 'Suspended Driver Driving', defaults: {} },
 })
 
 /** Operators an "Other" rule may use. `true` / `false` take no value. */
@@ -283,6 +285,20 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
       return { state: s, fire: { message: `Driving at night (${p.from}–${p.to}) at ${Math.round(speed)} km/h`, value: speed } }
     }
 
+    case 'suspended_driver': {
+      // ctx.suspendedByTag: this BG's suspended drivers by iButton code.
+      const tag = tel?.ibutton || ''
+      const driver = tag ? ctx.suspendedByTag?.get(tag) : null
+      const active = fresh && !!driver && (tel.ignition === true || (speed ?? 0) > 0)
+      if (!active) {
+        if (s.tag) s.tag = null
+        return { state: s, fire: null }
+      }
+      if (s.tag === tag) return none
+      s.tag = tag
+      return { state: s, fire: { message: `Suspended driver ${driver.name} is driving (iButton ${tag})`, value: null } }
+    }
+
     case 'custom': {
       // The parameter's own timestamp: a value the tracker stopped reporting an
       // hour ago is not evaluated as if it were current.
@@ -414,7 +430,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
     needsTelemetry ? flespi.deviceMap() : new Map(),
     customNames.length ? fetchCustomParams(customNames) : new Map(),
     // Drivers with an iButton tag: the one whose tag is in the reader is the one driving.
-    prisma.driver.findMany({ where: { bgId: { in: bgIds }, ibuttonCode: { not: null } }, select: { id: true, name: true, bgId: true, ibuttonCode: true } }),
+    prisma.driver.findMany({ where: { bgId: { in: bgIds }, ibuttonCode: { not: null } }, select: { id: true, name: true, bgId: true, ibuttonCode: true, status: true } }),
   ])
   const byTag = new Map(tagged.map(d => [d.ibuttonCode, d]))
 
@@ -451,6 +467,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
     const listed = new Set(alert.vehicles.map(v => v.vehicleId))
     const targets = vehicles.filter(v => v.bgId === alert.bgId && (alert.allVehicles || listed.has(v.id)))
     const fences = geofences.filter(g => g.bgId === alert.bgId)
+    const suspendedByTag = new Map(tagged.filter(d => d.bgId === alert.bgId && d.status === 'Suspended').map(d => [d.ibuttonCode, d]))
     for (const v of targets) {
       const deviceId = deviceByImei.get(digits(v.imei))
       const base = deviceId !== undefined ? telemetry.get(deviceId) : undefined
@@ -458,7 +475,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
       const tel = alert.type === 'custom' ? { ...base, params: customParams.get(deviceId) ?? {} } : base
       const subject = `d:${deviceId}`
       const prev = stateOf.get(`${alert.id}|${subject}`)
-      const result = evaluate(alert, tel, prev, now, { geofences: fences })
+      const result = evaluate(alert, tel, prev, now, { geofences: fences, suspendedByTag })
       // The tag in the reader names the driver; the vehicle's assigned driver otherwise.
       const tagDriver = tel.ibutton ? byTag.get(tel.ibutton) : undefined
       const who = tagDriver && tagDriver.bgId === v.bgId ? tagDriver : v.driver

@@ -547,6 +547,9 @@ export const addDriverIncident = (id, body) => post(`/api/drivers/${id}/incident
 export const deleteDriverIncident = (id, iid) => del(`/api/drivers/${id}/incidents/${iid}`)
 export const getDriverPerformance = (from, to) => get('/api/driver-performance', { from, to })
 export const getFatigueRule = () => get('/api/driver-performance/fatigue-rule')
+export const getDeviceSettings = deviceId => get(`/api/device-settings/${deviceId}`)
+export const setDeviceSetting = (deviceId, key, values, confirmPlatform) => put(`/api/device-settings/${deviceId}/${key}`, { values, confirmPlatform })
+export const resetDevice = (deviceId, confirmPlatform) => post(`/api/device-settings/${deviceId}/reset`, { confirmPlatform })
 export const setFatigueRule = rule => put('/api/driver-performance/fatigue-rule', rule)
 
 /** Open a document in a new tab: fetched with the login token, shown from a blob. */

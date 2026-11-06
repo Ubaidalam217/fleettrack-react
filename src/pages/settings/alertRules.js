@@ -73,7 +73,7 @@ function validateCustom(s) {
   const out = {}
   const name = String(s.parameter ?? '').trim()
   if (!name) out.parameter = 'Required'
-  else if (!PARAMETER_NAME.test(name)) out.parameter = 'Use the name exactly as the Parameters tab shows it'
+  else if (!PARAMETER_NAME.test(name)) out.parameter = 'Use the name exactly as the Live Data tab shows it'
   if (!CUSTOM_OPERATORS.includes(s.operator)) out.operator = 'Choose a condition'
   else if (s.operator !== 'true' && s.operator !== 'false') {
     const v = String(s.value ?? '').trim()

@@ -134,11 +134,18 @@ export const ALERT_TYPES = [
   },
   {
     // Client, 2026-11-06: "Other" — any parameter the tracker reports (the Live
-    // Map panel's Parameters tab lists them), compared with a value.
+    // Map panel's Live Data tab lists them), compared with a value.
     value: 'custom',
     label: 'Other (custom parameter)',
     hint: 'Raised when a tracker parameter you choose meets the condition — for alerts the types above do not cover.',
     defaults: () => ({ parameter: '', operator: '>', value: '' }),
+  },
+  {
+    // Client, 2026-11-06: a suspended driver must not drive.
+    value: 'suspended_driver',
+    label: 'Suspended Driver Driving',
+    hint: 'Raised when the iButton of a driver marked Suspended is read with the engine on.',
+    defaults: () => ({}),
   },
 ]
 

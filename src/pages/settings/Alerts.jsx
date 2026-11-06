@@ -172,7 +172,7 @@ function GeoZoneSettings({ settings, errors, onChange }) {
 }
 
 // Parameters the fleet's trackers actually report (probed from Flespi), offered
-// as suggestions; any other name from the Parameters tab can be typed.
+// as suggestions; any other name from the Live Data tab can be typed.
 const COMMON_PARAMETERS = [
   ['external.powersource.voltage', 'Vehicle battery voltage (V)'],
   ['external.powersource.status', 'Vehicle power connected (true/false)'],
@@ -214,7 +214,7 @@ function CustomSettings({ settings, errors, onChange }) {
   const flag = settings.operator === 'true' || settings.operator === 'false'
   return (
     <>
-      <Field label="Parameter" required error={errors.parameter} hint="As shown on the Live Map panel's Parameters tab">
+      <Field label="Parameter" required error={errors.parameter} hint="As shown on the Live Map panel's Live Data tab">
         <input
           name="parameter"
           list="alert-common-parameters"

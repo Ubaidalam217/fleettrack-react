@@ -780,7 +780,7 @@ export default function Driver(props) {
               <Field
                 label="iButton / Driver ID"
                 error={errors.ibuttonCode}
-                hint="The tag code the tracker reports (Live Map › Parameters › ibutton.code)"
+                hint="The tag code the tracker reports (Live Map › Live Data › ibutton.code)"
               >
                 <input
                   name="ibuttonCode"

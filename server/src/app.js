@@ -40,6 +40,7 @@ import assistantRoutes from './routes/assistant.js'
 import avatarRoutes from './routes/avatars.js'
 import driverPhotoRoutes from './routes/driverPhotos.js'
 import driverPerformanceRoutes from './routes/driverPerformance.js'
+import deviceSettingsRoutes from './routes/deviceSettings.js'
 import ingestRoutes from './routes/ingest.js'
 import liveRoutes from './routes/live.js'
 
@@ -153,6 +154,7 @@ export function createApp() {
   app.use('/api/reports', reportRoutes)
   app.use('/api/drivers', requireScreen(WRITE_SCREENS['/api/drivers']), driverRoutes)
   app.use('/api/driver-performance', driverPerformanceRoutes)
+  app.use('/api/device-settings', deviceSettingsRoutes)
   app.use('/api/alert-events', alertEventRoutes)
   // Live push of vehicle updates from the Flespi webhook (routes/live.js).
   app.use('/api/live', liveRoutes)

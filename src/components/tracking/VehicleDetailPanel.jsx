@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import DeviceSettingsTab from './DeviceSettingsTab'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { hasDriver } from '../../services/vehicleMaster'
 import { listDocuments, expiryState, daysUntilExpiry, isReadOnly } from '../../services/documentStore'
@@ -25,6 +26,8 @@ const DETAIL_TABS = [
   'Sensors',
   'Alerts',
   'Documents',
+  // Client, 2026-11-06: what the tracker reports is "data"; its settings are the parameters.
+  'Live Data',
   'Parameters',
 ]
 
@@ -713,7 +716,7 @@ function fmtAge(ts, now) {
 }
 
 /**
- * The iButton row of the Parameters tab: the driver the tag belongs to, or a
+ * The iButton row of the Live Data tab: the driver the tag belongs to, or a
  * picker that gives the tag to one of the drivers on file (Settings > Driver
  * stores it; from then on the Live Map and reports show that name).
  */
@@ -1120,7 +1123,8 @@ export default function VehicleDetailPanel({
         {tab === 'Sensors'      && <Sensors     v={vehicle} />}
         {tab === 'Alerts'       && <Alerts     v={vehicle} />}
         {tab === 'Documents'    && <Documents   v={vehicle} />}
-        {tab === 'Parameters'   && <Parameters  key={vehicle.id} v={vehicle} />}
+        {tab === 'Live Data'    && <Parameters  key={vehicle.id} v={vehicle} />}
+        {tab === 'Parameters'   && <DeviceSettingsTab key={vehicle.id} v={vehicle} />}
       </div>
     </div>
   )
