@@ -200,6 +200,28 @@ describe('Flespi proxy answers from our copy', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(3)
   })
 
+  it('applies count per device on a multi-device query, as Flespi does', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    const batch = []
+    for (let i = 0; i < 5; i++) batch.push(msg({ 'device.id': 101, timestamp: NOW - 300 + i * 10 }), msg({ 'device.id': 202, timestamp: NOW - 295 + i * 10 }))
+    await post(batch)
+    await T.flush()
+    const data = JSON.stringify({ from: NOW - 300, to: NOW, count: 3 })
+    const res = await request(app).get(`/api/flespi/proxy/gw/devices/101,202/messages?data=${encodeURIComponent(data)}`).set(auth(fx.tokens.superAdmin))
+    expect(res.headers['x-fleetmaxx-source']).toBe('local')
+    const by = id => res.body.result.filter(m => m['device.id'] === id)
+    expect(by(101)).toHaveLength(3)
+    expect(by(202)).toHaveLength(3)
+    // Oldest first within each device, and the whole answer in time order.
+    expect(by(101).map(m => m.timestamp)).toEqual([NOW - 300, NOW - 290, NOW - 280])
+    const ts = res.body.result.map(m => m.timestamp)
+    expect([...ts].sort((a, b) => a - b)).toEqual(ts)
+
+    const rev = JSON.stringify({ from: NOW - 300, to: NOW, count: 1, reverse: true })
+    const last = await request(app).get(`/api/flespi/proxy/gw/devices/101,202/messages?data=${encodeURIComponent(rev)}`).set(auth(fx.tokens.superAdmin))
+    expect(last.body.result.map(m => [m['device.id'], m.timestamp]).sort()).toEqual([[101, NOW - 260], [202, NOW - 255]])
+  })
+
   it('still asks Flespi for a range older than the history we hold', async () => {
     const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ result: [] }), { status: 200, headers: { 'content-type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchSpy)

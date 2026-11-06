@@ -394,6 +394,8 @@ export const isLoaded = () => loaded
 /** No webhook batch for this long → our data is not trusted to be live. */
 const LIVE_FRESH_MS = 5 * 60 * 1000
 const MESSAGE_KEYS = new Set(['from', 'to', 'count', 'fields', 'reverse'])
+/** Safety cap on one local answer, whatever the per-device count times the fleet. */
+const MESSAGES_TOTAL_CAP = 1_000_000
 
 /** Is the webhook delivering, so our copy is current? */
 export function isServing() {
@@ -459,12 +461,24 @@ export async function messagesResponse(ids, dataParam) {
   const start = await coverageCached()
   if (start === null || from < start) return null
 
-  const limit = Math.min(num(q.count) ?? 100_000, 100_000)
-  const rows = await prisma.telemetryMessage.findMany({
-    where: { ...(ids ? { deviceId: { in: ids } } : {}), ts: { gte: Math.floor(from), lte: Math.ceil(to) } },
-    orderBy: q.reverse ? [{ ts: 'desc' }] : [{ ts: 'asc' }],
-    take: limit,
-  })
+  // `count` is PER DEVICE, as Flespi applies it on a multi-device selector: a
+  // day of the whole fleet with count 3000 is up to 3000 messages of EACH
+  // vehicle. Applying it to the whole answer (as this did until 2026-11-06)
+  // cut a fleet day off after its first 3000 messages, so every report that
+  // asks for several vehicles at once lost the rest of the day.
+  const perDevice = Math.min(num(q.count) ?? 100_000, 100_000)
+  const order = Prisma.raw(q.reverse ? 'DESC' : 'ASC')
+  const idFilter = ids ? Prisma.sql`AND "deviceId" IN (${Prisma.join(ids)})` : Prisma.empty
+  const rows = await prisma.$queryRaw`
+    SELECT "deviceId", "ts", "lat", "lng", "speed", "heading", "ignition", "odometerKm", "satellites", "valid", "fuel", "temperature", "extra"
+    FROM (
+      SELECT *, row_number() OVER (PARTITION BY "deviceId" ORDER BY "ts" ${order}) AS rn
+      FROM "TelemetryMessage"
+      WHERE "ts" >= ${Math.floor(from)} AND "ts" <= ${Math.ceil(to)} ${idFilter}
+    ) t
+    WHERE rn <= ${perDevice}
+    ORDER BY "ts" ${order}, "deviceId"
+    LIMIT ${MESSAGES_TOTAL_CAP}`
   const want = typeof q.fields === 'string' && q.fields ? new Set(q.fields.split(',')) : null
   return {
     result: rows.map(r => {
