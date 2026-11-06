@@ -160,7 +160,7 @@ function OrgSection({ v, odoKm, odoLoading }) {
         {linked
           ? ' Everything else here comes from the Settings vehicle record.'
           : ' The rest has no source yet — this device’s IMEI is not registered under' +
-            ' Settings > Object > Vehicle. Use the Console, top right, to assign it.'}
+            ' Settings > Object > Vehicle. Use Parameters, top right, to assign it.'}
       </div>
     </Section>
   )
@@ -979,8 +979,8 @@ function ConsoleButton({ onClick }) {
   return (
     <button
       onClick={onClick}
-      title="Open the vehicle Console to edit or assign this asset"
-      aria-label="Open vehicle Console"
+      title="Open the vehicle Parameters to edit or assign this asset"
+      aria-label="Open vehicle Parameters"
       style={{
         display: 'flex', alignItems: 'center', gap: 5,
         height: 26, padding: '0 9px', borderRadius: 7,
@@ -1001,7 +1001,8 @@ function ConsoleButton({ onClick }) {
       }}
     >
       <PencilIcon />
-      Console
+      {/* Client 2026-11-06: "Console" is called Parameters. */}
+      Parameters
     </button>
   )
 }

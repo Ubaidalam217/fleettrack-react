@@ -283,7 +283,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
       // row that owns this IMEI. Catches the record being registered in another
       // tab while this dialog sat open.
       if (!profile.linked && vehicleByImei(vehicle.ident)) {
-        next.s_companyId = 'This IMEI was registered in Settings a moment ago — close and reopen the Console.'
+        next.s_companyId = 'This IMEI was registered in Settings a moment ago — close and reopen Parameters.'
       }
     }
 
@@ -404,7 +404,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
             <h2 id="ft-console-title" style={{
               fontSize: 15, fontWeight: 800, color: 'var(--c-text1)', margin: 0,
             }}>
-              Console
+              Parameters
             </h2>
             <span style={{ fontSize: 11, color: 'var(--c-text3)' }}>
               {vehicle.name || vehicle.ident || `Device ${vehicle.id}`}
