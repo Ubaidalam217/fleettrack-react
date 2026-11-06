@@ -88,7 +88,7 @@ export default function VehicleListCard({ v, open, onCenter }) {
             <Cell label="Status"  value={statusLabel(v.status)} color={statusColor(v.status)} />
             <Cell label="Speed"   value={v.speed != null ? `${v.speed} km/h` : null} />
             <Cell label="Fleet No" value={v.master?.fleetNo || null} />
-            <Cell label="Driver"  value={driverName || 'Unassigned'} />
+            {driverName && <Cell label="Driver" value={driverName} />}
             <Cell label="Heading" value={headingLabel(v.heading)} />
             <Cell label="Last Update" value={fmt(v.lastTs)} />
           </div>

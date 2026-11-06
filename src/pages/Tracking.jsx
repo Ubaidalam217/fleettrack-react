@@ -1438,7 +1438,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                             )}
                             <div style={{ fontSize: 11, color: 'var(--c-text2)', paddingLeft: 17, display: 'flex', flexDirection: 'column', gap: 2 }}>
                               {v.master?.fleetNo && <span>Fleet: {v.master.fleetNo}</span>}
-                              <span>Driver: {driverNameForDevice(v) || 'Unassigned'}</span>
+                              {/* Client: no driver assigned → no Driver line at all. */}
+                              {driverNameForDevice(v) && <span>Driver: {driverNameForDevice(v)}</span>}
                               <span>Speed: {v.speed != null ? `${v.speed} km/h` : 'N/A'}</span>
                               <span>Last update: {fmt(v.lastTs)}</span>
                             </div>
