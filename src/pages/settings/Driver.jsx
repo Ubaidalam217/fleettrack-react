@@ -11,7 +11,7 @@ import {
   useDrivers, useVehicles, useCompanies,
   addDriver, updateDriver, removeDriver,
   companyNameFor, vehiclesForCompany, vehicleLabel,
-  driverForVehicleId, emptyDriver,
+  driverForVehicleId, emptyDriver, isIbuttonTaken,
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
@@ -67,6 +67,7 @@ const columnsFor = vehicleById => [
   { key: 'company',   label: 'BG', render: row => companyNameFor(row.companyId) },
   { key: 'mobile',    label: 'Mobile' },
   { key: 'licenseNo', label: 'Licence No' },
+  { key: 'ibuttonCode', label: 'iButton / Driver ID', render: row => row.ibuttonCode || '—' },
   {
     key: 'licenseExpiry',
     label: 'Licence Expiry',
@@ -129,7 +130,7 @@ export default function Driver(props) {
       if (bgFilter && d.companyId !== bgFilter) return false
       if (!q) return true
       const vehicle = d.vehicleId ? vehicleById.get(d.vehicleId) : null
-      return [d.name, d.mobile, d.licenseNo, companyNameFor(d.companyId), vehicle && vehicleLabel(vehicle)]
+      return [d.name, d.mobile, d.licenseNo, d.ibuttonCode, companyNameFor(d.companyId), vehicle && vehicleLabel(vehicle)]
         .some(s => String(s ?? '').toLowerCase().includes(q))
     })
     return list.sort((a, b) => a.name.localeCompare(b.name))
@@ -171,6 +172,10 @@ export default function Driver(props) {
     const next = {}
     if (!draft.companyId)   next.companyId = 'BG is required'
     if (!draft.name.trim()) next.name      = 'Name is required'
+    const tag = String(draft.ibuttonCode ?? '').replace(/[\s:-]/g, '').toUpperCase()
+    if (tag && !/^[0-9A-F]{4,32}$/.test(tag)) next.ibuttonCode = 'Use the code as the tracker shows it, e.g. 94000001D9DF0801'
+    else if (tag && /^0+$/.test(tag)) next.ibuttonCode = 'An all-zero code means no tag is inserted'
+    else if (tag && isIbuttonTaken(tag, draft.id)) next.ibuttonCode = 'This iButton is already assigned to another driver.'
 
     if (Object.keys(next).length) {
       setErrors(next)
@@ -183,6 +188,7 @@ export default function Driver(props) {
       name:      draft.name.trim(),
       mobile:    draft.mobile.trim(),
       licenseNo: draft.licenseNo.trim(),
+      ibuttonCode: String(draft.ibuttonCode ?? '').replace(/[\s:-]/g, '').toUpperCase(),
       notes:     draft.notes.trim(),
     }
     const vehicle = clean.vehicleId ? vehicleById.get(clean.vehicleId) : null
@@ -291,6 +297,23 @@ export default function Driver(props) {
                   placeholder="AD-4471920"
                   maxLength={60}
                   style={inputStyle(!!errors.licenseNo)}
+                />
+              </Field>
+
+              <Field
+                label="iButton / Driver ID"
+                error={errors.ibuttonCode}
+                hint="The tag code the tracker reports (Live Map › Parameters › ibutton.code)"
+              >
+                <input
+                  name="ibuttonCode"
+                  value={draft.ibuttonCode ?? ''}
+                  onChange={e => set('ibuttonCode', e.target.value)}
+                  aria-invalid={!!errors.ibuttonCode || undefined}
+                  placeholder="94000001D9DF0801"
+                  maxLength={48}
+                  autoComplete="off"
+                  style={{ ...inputStyle(!!errors.ibuttonCode), fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
                 />
               </Field>
 

@@ -274,6 +274,16 @@ describe('runAlertPass + /api/alert-events', () => {
     expect(fired[0].message).toMatch(/towing\.alarm\.status = true \(rule: is true\)/)
   })
 
+  it('names the driver whose iButton is in the reader, not the assigned one', async () => {
+    await overspeedRule(fx.bgA1a.id)
+    await prisma.driver.create({ data: { bgId: fx.bgA1a.id, name: 'Assigned Ali', vehicleId: fx.vehicles.v1.id } })
+    const tagged = await prisma.driver.create({ data: { bgId: fx.bgA1a.id, name: 'Tagged Tariq', ibuttonCode: '94000001D9DF0801' } })
+    telemetry = { 101: { 'position.speed': 142, 'ibutton.code': '94000001d9df0801', timestamp: NOW - 20 } }
+    const [e] = await runAlertPass(NOW)
+    expect(e.message).toMatch(/Driver: Tagged Tariq/)
+    expect(e.driverId).toBe(tagged.id)
+  })
+
   it('does nothing for an inactive rule', async () => {
     await overspeedRule(fx.bgA1a.id, { status: 'Inactive' })
     telemetry = { 101: { 'position.speed': 150, timestamp: NOW - 20 } }
@@ -330,6 +340,19 @@ describe('/api/drivers', () => {
   it('refuses a vehicle of another BG and a bad date', async () => {
     expect((await create(fx.tokens.bgUserA1a, { bgId: fx.bgA1a.id, name: 'X', vehicleId: fx.vehicles.v8.id })).status).toBe(400)
     expect((await create(fx.tokens.bgUserA1a, { bgId: fx.bgA1a.id, name: 'X', licenseExpiry: '31/03/2027' })).status).toBe(400)
+  })
+
+  it('stores an iButton code in the form the tracker reports and keeps it to one driver', async () => {
+    const a = await create(fx.tokens.bgUserA1a, { bgId: fx.bgA1a.id, name: 'Tagged', ibuttonCode: '94 00 00 01 d9 df 08 01' })
+    expect(a.status).toBe(201)
+    expect(a.body.data.ibuttonCode).toBe('94000001D9DF0801')
+    const clash = await create(fx.tokens.bgUserA1a, { bgId: fx.bgA1a.id, name: 'Other', ibuttonCode: '94000001D9DF0801' })
+    expect(clash.status).toBe(409)
+    expect(clash.body.error.details).toEqual({ ibuttonCode: 'Already in use' })
+    expect((await create(fx.tokens.bgUserA1a, { bgId: fx.bgA1a.id, name: 'X', ibuttonCode: 'not-hex!' })).status).toBe(400)
+    expect((await create(fx.tokens.bgUserA1a, { bgId: fx.bgA1a.id, name: 'X', ibuttonCode: '0000000000000000' })).status).toBe(400)
+    const cleared = await request(app).put(`/api/drivers/${a.body.data.id}`).set(auth(fx.tokens.bgUserA1a)).send({ name: 'Tagged', ibuttonCode: '' })
+    expect(cleared.body.data.ibuttonCode).toBeNull()
   })
 
   it('shows a sub-user only the drivers of its own vehicles, read-only', async () => {

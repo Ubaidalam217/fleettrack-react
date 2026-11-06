@@ -45,6 +45,14 @@ export const ZERO_KM = 0.05
 const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const speedOf = m => num(m['position.speed']) ?? 0
 
+/** The iButton tag in a message, upper-case; null for none or the all-zero "no tag" code. */
+function tagOf(m) {
+  const v = m['ibutton.code']
+  if (typeof v !== 'string') return null
+  const s = v.replace(/[\s:-]/g, '').toUpperCase()
+  return s && !/^0+$/.test(s) ? s : null
+}
+
 function posOf(m) {
   const lat = num(m['position.latitude'])
   const lng = num(m['position.longitude'])
@@ -85,6 +93,7 @@ export function deriveTrips(messages, opts = {}) {
       driveSec: 0, idleSec: 0, distanceKm: 0, maxSpeed: speedOf(m),
       overSpeedCount: 0, overSpeedSec: 0, xiCount: 0, xiSec: 0, hbCount: 0, haCount: 0,
       over: speedOf(m) > o.overSpeedKmh, idleStart: speedOf(m) > 0 ? null : m.timestamp, open: false,
+      ibutton: tagOf(m),
     }
   }
   const close = (t, m, { open: stillOpen = false } = {}) => {
@@ -143,6 +152,9 @@ export function deriveTrips(messages, opts = {}) {
         trip = null
       }
     }
+
+    // The first tag read during a trip is its driver.
+    if (trip && !trip.ibutton) trip.ibutton = tagOf(m)
 
     const p = posOf(m)
     if (p) {

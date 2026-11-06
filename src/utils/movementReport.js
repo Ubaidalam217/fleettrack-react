@@ -42,6 +42,7 @@ export const MOVEMENT_FIELDS = [
   'position.satellites',
   'engine.ignition.status',
   'vehicle.mileage',
+  'ibutton.code',
 ].join(',')
 
 // Status values, in the order the filter list shows them. `unavailable` marks

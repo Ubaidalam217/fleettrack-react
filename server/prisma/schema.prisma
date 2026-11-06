@@ -609,6 +609,10 @@ model Driver {
   licenseNo     String?
   /// Date only (stored at UTC midnight); drives the Driver Licence Expiry alert.
   licenseExpiry DateTime?
+  /// The driver's iButton / driver-ID tag as the tracker reports it in
+  /// `ibutton.code` (upper-case hex). Unique: one physical tag, one driver. A
+  /// trip driven with this tag shows this driver, whichever vehicle it was.
+  ibuttonCode   String?   @unique
   vehicleId     String?   @unique
   notes         String?
   status        Status    @default(Active)

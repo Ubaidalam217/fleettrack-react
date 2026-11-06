@@ -10,7 +10,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import prisma from '../prisma.js'
-import { asyncHandler, badRequest } from '../lib/http.js'
+import { asyncHandler, badRequest, conflict } from '../lib/http.js'
 import { optionalId, optionalText, requiredId, requiredText, statusField } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
@@ -26,8 +26,25 @@ const optionalDate = () =>
     .refine(v => v === '' || (/^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`))), 'Use a date like 2027-03-31')
     .transform(v => (v === '' ? null : new Date(`${v}T00:00:00Z`)))
 
+/**
+ * An iButton code as typed or copied: spaces, colons and dashes dropped,
+ * upper-cased — the form the tracker reports in `ibutton.code`. An all-zero
+ * code is what a reader sends with no tag in it, so it cannot belong to anyone.
+ */
+const ibuttonField = () =>
+  z
+    .union([z.string(), z.null()])
+    .default(null)
+    .transform(v => {
+      const s = String(v ?? '').replace(/[\s:-]/g, '').toUpperCase()
+      return s === '' ? null : s
+    })
+    .refine(v => v === null || /^[0-9A-F]{4,32}$/.test(v), 'Use the code as the tracker shows it, e.g. 94000001D9DF0801')
+    .refine(v => v === null || !/^0+$/.test(v), 'An all-zero code means no tag is inserted')
+
 const driverFields = {
   name: requiredText('Name', 120),
+  ibuttonCode: ibuttonField(),
   mobile: optionalText(30),
   licenseNo: optionalText(60),
   licenseExpiry: optionalDate(),
@@ -47,6 +64,13 @@ const INCLUDE = {
 
 /** The API's date form: "YYYY-MM-DD", the same thing the form sends. */
 const publicDriver = d => (d ? { ...d, licenseExpiry: d.licenseExpiry ? d.licenseExpiry.toISOString().slice(0, 10) : null } : null)
+
+/** 409 when another driver already holds this tag (the unique index is the backstop). */
+async function assertIbuttonFree(code, exceptId = null) {
+  if (!code) return
+  const clash = await prisma.driver.findFirst({ where: { ibuttonCode: code, ...(exceptId ? { NOT: { id: exceptId } } : {}) }, select: { id: true } })
+  if (clash) throw conflict('That iButton code is already assigned to another driver', { ibuttonCode: 'Already in use' })
+}
 
 /** The vehicle, confirmed to be in the driver's own BG; returns who drove it before. */
 async function resolveVehicle(bgId, vehicleId, driverId) {
@@ -90,6 +114,7 @@ router.post(
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
     const bg = await assertWritableParent(req.scope, 'bg', req.body.bgId)
+    await assertIbuttonFree(req.body.ibuttonCode)
     const { previous } = await resolveVehicle(bg.id, req.body.vehicleId, null)
     const { bgId: _ignored, ...fields } = req.body
     const row = await prisma.$transaction(async tx => {
@@ -106,6 +131,7 @@ router.put(
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
     const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
+    await assertIbuttonFree(req.body.ibuttonCode, existing.id)
     const { previous } = await resolveVehicle(existing.bgId, req.body.vehicleId, existing.id)
     const row = await prisma.$transaction(async tx => {
       if (previous) await tx.driver.update({ where: { id: previous.id }, data: { vehicleId: null } })

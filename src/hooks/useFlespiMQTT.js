@@ -69,7 +69,7 @@ async function fetchDeviceMeta() {
 // Latest telemetry for every device in one request — what each poll fetches.
 async function fetchTelemetrySnapshot() {
   const res = await fetch(
-    `${BASE_URL}/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,engine.ignition.status,timestamp,fuel.sensor.value,ble.sensor.temperature.1`,
+    `${BASE_URL}/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,engine.ignition.status,timestamp,fuel.sensor.value,ble.sensor.temperature.1,ibutton.code`,
     { headers: HEADERS }
   )
   if (!res.ok) {
@@ -97,6 +97,9 @@ function parseTelemetry(items) {
       // Sensors tab (Phase 3) — current fuel level / BLE probe temperature.
       fuelLevel:    t['fuel.sensor.value']?.value        ?? null,
       temperature:  t['ble.sensor.temperature.1']?.value ?? null,
+      // Driver-ID tag (iButton) and when it was last read; Settings > Driver maps it to a name.
+      ibutton:      typeof t['ibutton.code']?.value === 'string' ? t['ibutton.code'].value : null,
+      ibuttonTs:    t['ibutton.code']?.ts ?? null,
     })
   })
   return snap
@@ -188,6 +191,8 @@ function applyTelemetrySnapshot(telemetry) {
       lastTs:   tel.lastTs   ?? prev.lastTs   ?? null,
       fuelLevel:   tel.fuelLevel   ?? prev.fuelLevel   ?? null,
       temperature: tel.temperature ?? prev.temperature ?? null,
+      ibutton:     tel.ibutton     ?? prev.ibutton     ?? null,
+      ibuttonTs:   tel.ibuttonTs   ?? prev.ibuttonTs   ?? null,
     }
     next.status = vehicleStatus(next)
     vehiclesById.set(id, next)

@@ -45,8 +45,14 @@ const STILL_KMH = 3
 
 const TELEMETRY_FIELDS = [
   'position.latitude', 'position.longitude', 'position.speed',
-  'engine.ignition.status', 'ble.sensor.temperature.1', 'timestamp',
+  'engine.ignition.status', 'ble.sensor.temperature.1', 'timestamp', 'ibutton.code',
 ].join(',')
+
+/** An iButton code as stored on a driver: upper-case hex, '' when no tag is in. */
+export const ibuttonKey = v => {
+  const s = String(v ?? '').replace(/[\s:-]/g, '').toUpperCase()
+  return /^0*$/.test(s) ? '' : s
+}
 
 /** Every alert type the engine knows, with its default parameters. */
 export const TYPES = Object.freeze({
@@ -360,6 +366,7 @@ async function fetchTelemetry() {
       lng: t['position.longitude']?.value ?? null,
       ignition: t['engine.ignition.status']?.value ?? null,
       temperature: t['ble.sensor.temperature.1']?.value ?? null,
+      ibutton: ibuttonKey(t['ibutton.code']?.value),
       ts: t.timestamp?.value ?? (stamps.length ? Math.max(...stamps) : null),
     })
   }
@@ -381,7 +388,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
   const needsFences = alerts.some(a => a.type.startsWith('geofence'))
   const customNames = alerts.filter(a => a.type === 'custom').map(a => paramsOf(a).parameter)
 
-  const [vehicles, drivers, geofences, states, telemetry, deviceByImei, customParams] = await Promise.all([
+  const [vehicles, drivers, geofences, states, telemetry, deviceByImei, customParams, tagged] = await Promise.all([
     prisma.vehicle.findMany({
       where: { bgId: { in: bgIds } },
       select: { id: true, bgId: true, imei: true, plateNo: true, fleetNo: true, driver: { select: { id: true, name: true } } },
@@ -397,7 +404,10 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
     needsTelemetry ? fetchTelemetry() : new Map(),
     needsTelemetry ? flespi.deviceMap() : new Map(),
     customNames.length ? fetchCustomParams(customNames) : new Map(),
+    // Drivers with an iButton tag: the one whose tag is in the reader is the one driving.
+    prisma.driver.findMany({ where: { bgId: { in: bgIds }, ibuttonCode: { not: null } }, select: { id: true, name: true, bgId: true, ibuttonCode: true } }),
   ])
+  const byTag = new Map(tagged.map(d => [d.ibuttonCode, d]))
 
   const stateOf = new Map(states.map(r => [`${r.alertId}|${r.subject}`, r.state]))
   const changed = []
@@ -437,12 +447,15 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
       const subject = `d:${deviceId}`
       const prev = stateOf.get(`${alert.id}|${subject}`)
       const result = evaluate(alert, tel, prev, now, { geofences: fences })
+      // The tag in the reader names the driver; the vehicle's assigned driver otherwise.
+      const tagDriver = tel.ibutton ? byTag.get(tel.ibutton) : undefined
+      const who = tagDriver && tagDriver.bgId === v.bgId ? tagDriver : v.driver
       if (result.fire) {
-        const driver = v.driver ? ` · Driver: ${v.driver.name}` : ''
+        const driver = who ? ` · Driver: ${who.name}` : ''
         result.fire.message = `${vehicleName(v)}: ${result.fire.message}${driver}`
       }
       record(alert, subject, prev, result, {
-        vehicleId: v.id, deviceId, driverId: v.driver?.id ?? null,
+        vehicleId: v.id, deviceId, driverId: who?.id ?? null,
         lat: num(tel.lat), lng: num(tel.lng),
       })
     }

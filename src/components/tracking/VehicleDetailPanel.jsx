@@ -12,7 +12,7 @@ import {
 import { useAddress } from '../../hooks/useAddress'
 import { useVisible } from '../../hooks/useVisible'
 import { shortenAddress } from '../../utils/geocode'
-import { useSettingsProfile, useDriverForImei } from '../../data/settings'
+import { useSettingsProfile, useDriverForDevice, useDrivers, driverForIbutton, ibuttonKey, updateDriver } from '../../data/settings'
 import { licenceExpiryState, formatExpiryDate } from '../../utils/licenceExpiry'
 import { BASE_URL, HEADERS } from '../../hooks/flespiConfig'
 
@@ -260,7 +260,8 @@ function telLink(mobile) {
  * still has one there should not go blank. The caption says which is shown.
  */
 function DriverInfo({ v }) {
-  const driver = useDriverForImei(v.ident)
+  const found = useDriverForDevice(v)
+  const driver = found?.driver ?? null
   const d = v.master.driver
 
   if (!driver && !hasDriver(v.master)) {
@@ -281,7 +282,7 @@ function DriverInfo({ v }) {
   return (
     <>
       {driver ? (
-        <Section title="Driver" caption="from Settings > Driver">
+        <Section title="Driver" caption={found.viaTag ? `identified by iButton ${v.ibutton}` : 'from Settings > Driver'}>
           <Grid>
             <Field label="Name"       value={driver.name} />
             <Field label="Mobile"     value={telLink(driver.mobile)} />
@@ -711,6 +712,77 @@ function fmtAge(ts, now) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+/**
+ * The iButton row of the Parameters tab: the driver the tag belongs to, or a
+ * picker that gives the tag to one of the drivers on file (Settings > Driver
+ * stores it; from then on the Live Map and reports show that name).
+ */
+function IbuttonCell({ code, text }) {
+  const drivers = useDrivers()
+  const [picking, setPicking] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const key = ibuttonKey(code)
+  const owner = key ? driverForIbutton(key) : null
+  // `drivers` keeps owner fresh after an assignment.
+  void drivers
+
+  if (!key) return <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text3)' }}>{text} (no tag)</span>
+  if (owner && !picking) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c-text1)' }}>{owner.name}</span>
+        <span style={{ fontSize: 10.5, color: 'var(--c-text3)', fontFamily: 'ui-monospace, monospace' }}>{key}</span>
+      </span>
+    )
+  }
+  if (!picking) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text1)', fontFamily: 'ui-monospace, monospace' }}>{text}</span>
+        <button
+          type="button"
+          onClick={() => { setErr(null); setPicking(true) }}
+          style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid var(--ft-accent)', background: 'transparent', color: 'var(--ft-accent)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+        >
+          Assign to driver
+        </button>
+      </span>
+    )
+  }
+  const choices = drivers.filter(d => !ibuttonKey(d.ibuttonCode) || ibuttonKey(d.ibuttonCode) === key)
+  const assign = async id => {
+    if (!id) return
+    const d = drivers.find(x => x.id === id)
+    setBusy(true)
+    setErr(null)
+    try {
+      await updateDriver(id, { ...d, ibuttonCode: key })
+      setPicking(false)
+    } catch (e) {
+      setErr(e?.message || 'Could not assign the tag')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' }}>
+      <select
+        autoFocus
+        disabled={busy}
+        defaultValue=""
+        onChange={e => assign(e.target.value)}
+        style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid var(--c-border2)', background: 'var(--c-card)', color: 'var(--c-text1)', maxWidth: 200 }}
+      >
+        <option value="">{choices.length ? 'Choose the driver…' : 'No drivers without a tag'}</option>
+        {choices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+      </select>
+      <button type="button" onClick={() => setPicking(false)} style={{ border: 'none', background: 'none', color: 'var(--c-text3)', fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+      {err && <span style={{ fontSize: 10.5, color: '#ef4444' }}>{err}</span>}
+    </span>
+  )
+}
+
 function Parameters({ v }) {
   const [state, setState] = useState({ loading: true, error: null, params: null, at: null })
   const [query, setQuery] = useState('')
@@ -800,9 +872,11 @@ function Parameters({ v }) {
                   <span title={p.key} style={{ fontSize: 12, color: 'var(--c-text2)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.key}
                   </span>
-                  <span title={text} style={{ fontSize: 12.5, fontWeight: 600, color: color || 'var(--c-text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {text}
-                  </span>
+                  {p.key === 'ibutton.code' ? <IbuttonCell code={p.value} text={text} /> : (
+                    <span title={text} style={{ fontSize: 12.5, fontWeight: 600, color: color || 'var(--c-text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {text}
+                    </span>
+                  )}
                   <span style={{ fontSize: 10.5, color: 'var(--c-text3)', whiteSpace: 'nowrap' }} title={p.ts ? fmtTs(p.ts) : undefined}>
                     {fmtAge(p.ts, state.at)}
                   </span>

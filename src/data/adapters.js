@@ -415,6 +415,7 @@ export const driver = {
     name: r.name ?? '',
     mobile: orBlank(r.mobile),
     licenseNo: orBlank(r.licenseNo),
+    ibuttonCode: orBlank(r.ibuttonCode),
     // Already "YYYY-MM-DD" from the API, which is what <input type="date"> binds.
     licenseExpiry: orBlank(r.licenseExpiry),
     vehicleId: orBlank(r.vehicleId),
@@ -432,6 +433,7 @@ export const driver = {
     name: r.name,
     mobile: orNull(r.mobile),
     licenseNo: orNull(r.licenseNo),
+    ibuttonCode: orNull(r.ibuttonCode),
     licenseExpiry: orNull(r.licenseExpiry),
     vehicleId: orNull(r.vehicleId),
     notes: orNull(r.notes),

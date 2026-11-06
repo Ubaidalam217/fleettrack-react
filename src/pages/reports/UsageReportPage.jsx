@@ -5,7 +5,7 @@ import PaperTable from '../../components/reports/PaperTable'
 import LocationMapModal from '../../components/reports/LocationMapModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
-import { driverNameForDevice } from '../../data/settings'
+import { driverNameForDevice, driverForIbutton } from '../../data/settings'
 import { fetchMovementMessages, formatDateTime, formatDateLabel, formatTime, formatPrintDate, isAbortError } from '../../utils/movementReport'
 import { reverseGeocodeMany, geocodeKey, shortenAddress } from '../../utils/geocode'
 import { locationUrl } from '../../utils/mapLink'
@@ -127,7 +127,7 @@ const VARIANTS = {
             start: formatTime(t.startTs), stop: t.open ? `${formatTime(t.endTs)} (on)` : formatTime(t.endTs),
             drive: hms(t.driveSec), idle: hms(t.idleSec), stopTime: hms(t.stopSec), distance: km(t.distanceKm),
             max: round(t.maxSpeed), os: t.overSpeedCount, osDur: hms(t.overSpeedSec), hb: t.hbCount, ha: t.haCount,
-            xi: t.xiCount, xiDur: hms(t.xiSec), driver: v.driver, locKey: 'location',
+            xi: t.xiCount, xiDur: hms(t.xiSec), driver: t.driver,
           })),
           band(`t-${d.key}`, `Daily Total   ·   ${totalsText(sumTrips(d.trips))}`),
         ])
@@ -164,7 +164,7 @@ const VARIANTS = {
             key: t.startTs, ...endPoint(t), startLat: t.startLat, startLng: t.startLng,
             start: formatTime(t.startTs), stop: t.open ? `${formatTime(t.endTs)} (on)` : formatTime(t.endTs),
             duration: hms(t.durationSec), distance: km(t.distanceKm), max: round(t.maxSpeed),
-            avg: t.driveSec > 0 ? round((t.distanceKm / t.driveSec) * 3600) : '—', driver: v.driver,
+            avg: t.driveSec > 0 ? round((t.distanceKm / t.driveSec) * 3600) : '—', driver: t.driver,
           })),
           band(`t-${d.key}`, `Daily Total   ·   ${totalsText(sumTrips(d.trips), { idle: false, exceptions: false })}`),
         ])
@@ -284,7 +284,7 @@ const VARIANTS = {
             return {
               key: t.startTs, ...endPoint(t), startLat: t.startLat, startLng: t.startLng,
               start: formatTime(t.startTs), stop: t.open ? `${formatTime(t.endTs)} (on)` : formatTime(t.endTs),
-              drive: hms(t.driveSec), distance: km(t.distanceKm), usage, driver: v.driver,
+              drive: hms(t.driveSec), distance: km(t.distanceKm), usage, driver: t.driver,
               cellStyle: { usage: USAGE_STYLE[usage] },
             }
           }),
@@ -489,7 +489,13 @@ export default function UsageReportPage({ variant, ...props }) {
   const vehicleTrips = useMemo(() => {
     if (!raw) return null
     return tripsByVehicle(raw.byDevice, vehicles, { overSpeedKmh: speedNum, xiMinutes: idleNum })
-      .map(v => ({ ...v, driver: driverNameForDevice(v.vehicle) || '—' }))
+      .map(v => {
+        const assigned = driverNameForDevice({ ...v.vehicle, ibutton: null }) || '—'
+        // Each trip's driver is the iButton tag read during it; the assigned driver otherwise.
+        const trips = v.trips.map(t => ({ ...t, driver: (t.ibutton && (driverForIbutton(t.ibutton)?.name || `Tag ${t.ibutton}`)) || assigned }))
+        const names = [...new Set(trips.map(t => t.driver))]
+        return { ...v, trips, driver: names.length === 1 ? names[0] : names.length ? names.join(', ') : assigned }
+      })
   }, [raw, vehicles, speedNum, idleNum])
 
   const built = useMemo(() => {

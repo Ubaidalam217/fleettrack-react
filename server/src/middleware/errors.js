@@ -23,7 +23,7 @@ function translatePrisma(err) {
   if (err?.code === 'P2002') {
     const target = Array.isArray(err.meta?.target) ? err.meta.target : []
     const field = target.find(t => t !== 'id') ?? target[0]
-    const labels = { email: 'email address', imei: 'IMEI' }
+    const labels = { email: 'email address', imei: 'IMEI', ibuttonCode: 'iButton code' }
     const label = labels[field] ?? field ?? 'value'
     return new HttpError(409, `That ${label} is already in use`, field ? { [field]: 'Already in use' } : undefined)
   }

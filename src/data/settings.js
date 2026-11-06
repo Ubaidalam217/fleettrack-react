@@ -61,6 +61,7 @@ export {
   // Drivers: the store, and who drives which vehicle.
   emptyDriver, useDrivers, driversForCompany,
   driverForVehicleId, driverForVehicleImei, driverNameForDevice, useDriverForImei,
+  ibuttonKey, driverForIbutton, isIbuttonTaken, driverForDevice, useDriverForDevice,
 
   // Constants and registries.
   DEFAULT_PASSWORD, ALERT_TYPES, alertTypeLabel, GEOFENCE_CATEGORIES,

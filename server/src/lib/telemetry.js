@@ -52,7 +52,11 @@ export const EXTRA_FIELDS = Object.freeze([
   'can.fuel.consumed',
   'can.fuel.consumed.high.resolution',
   'position.altitude',
+  'ibutton.code',
 ])
+
+/** EXTRA_FIELDS kept as text (the rest are numbers or booleans). */
+const TEXT_EXTRA = new Set(['ibutton.code'])
 
 const COLUMNS = ['deviceId', 'ts', ...new Set(Object.values(FIELD_MAP)), 'extra']
 const MAX_QUEUE = 200_000
@@ -80,6 +84,7 @@ export function normalize(msg) {
   for (const f of EXTRA_FIELDS) {
     const v = msg[f]
     if (typeof v === 'number' || typeof v === 'boolean') (extra ??= {})[f] = v
+    else if (TEXT_EXTRA.has(f) && typeof v === 'string' && v.length <= 64) (extra ??= {})[f] = v
   }
   row.extra = extra
   return row

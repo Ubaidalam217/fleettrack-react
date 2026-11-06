@@ -415,6 +415,8 @@ export function emptyDriver() {
     name:          '',
     mobile:        '',
     licenseNo:     '',
+    // The iButton / driver-ID tag as the tracker reports it (ibutton.code).
+    ibuttonCode:   '',
     licenseExpiry: '',
     vehicleId:     '',
     notes:         '',
@@ -1282,7 +1284,44 @@ export function driverForVehicleImei(imei) {
  * had a name typed into it before the Driver page existed does not go blank.
  */
 export function driverNameForDevice(device) {
-  return driverForVehicleImei(device?.ident)?.name || device?.master?.driver?.name || ''
+  return driverForDevice(device)?.name || device?.master?.driver?.name || ''
+}
+
+/**
+ * An iButton code in the form drivers store it: separators dropped,
+ * upper-case. '' for no code, and for the all-zero code a reader sends with no
+ * tag inserted. Same rule as the server (routes/drivers.js, alertEngine.js).
+ */
+export function ibuttonKey(code) {
+  const s = String(code ?? '').replace(/[\s:-]/g, '').toUpperCase()
+  return /^0*$/.test(s) ? '' : s
+}
+
+/** The driver whose iButton tag this is, or null. */
+export function driverForIbutton(code) {
+  const key = ibuttonKey(code)
+  if (!key) return null
+  return driverStore.get().find(d => ibuttonKey(d.ibuttonCode) === key) ?? null
+}
+
+/** Another driver already holding this tag (the server says 409 too). */
+export function isIbuttonTaken(code, exceptId = null) {
+  const d = driverForIbutton(code)
+  return !!d && d.id !== exceptId
+}
+
+/** A tag counts as in the reader when it was reported within this long of the device's last message. */
+export const IBUTTON_FRESH_SEC = 60 * 60
+
+/**
+ * Who is driving a Live Map device: the driver whose iButton tag the tracker
+ * reported last (when that is recent), else the vehicle's assigned driver.
+ */
+export function driverForDevice(device) {
+  const tagged = device?.ibutton && (device.lastTs == null || device.ibuttonTs == null || device.lastTs - device.ibuttonTs <= IBUTTON_FRESH_SEC)
+    ? driverForIbutton(device.ibutton)
+    : null
+  return tagged || driverForVehicleImei(device?.ident)
 }
 
 /**
@@ -1298,6 +1337,23 @@ export function useDriverForImei(imei) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [imei, drivers, vehicles]
   )
+}
+
+/**
+ * Live driver lookup for a Live Map device: the iButton tag in the reader
+ * first, the vehicle's assigned driver otherwise. `viaTag` says which.
+ */
+export function useDriverForDevice(device) {
+  const drivers  = useDrivers()
+  const vehicles = useVehicles()
+  return useMemo(() => {
+    const driver = driverForDevice(device)
+    const viaTag = !!driver && !!device?.ibutton && ibuttonKey(driver.ibuttonCode) === ibuttonKey(device.ibutton)
+    return driver ? { driver, viaTag } : null
+  },
+  // Not read directly — they are the stores driverForDevice reads.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [device?.ident, device?.ibutton, device?.ibuttonTs, device?.lastTs, drivers, vehicles])
 }
 
 /**

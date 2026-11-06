@@ -80,6 +80,16 @@ describe('deriveTrips', () => {
     expect(trips[0].startLat).toBeCloseTo(25.2 + 60 * 0.00008, 6)
   })
 
+  it('names the trip by the first iButton tag read during it, ignoring the all-zero code', () => {
+    const trips = deriveTrips([
+      msg(0, { 'ibutton.code': '0000000000000000' }),
+      msg(60, { 'position.speed': 20, 'ibutton.code': '94000001d9df0801' }),
+      msg(120, { 'position.speed': 20, 'ibutton.code': 'AAAA' }),
+      msg(180, { 'engine.ignition.status': false }),
+    ])
+    expect(trips[0].ibutton).toBe('94000001D9DF0801')
+  })
+
   it('falls back to movement when a tracker never reports ignition', () => {
     const noIgn = o => { const m = msg(o.dt, o); delete m['engine.ignition.status']; return m }
     const trips = deriveTrips([noIgn({ dt: 0 }), noIgn({ dt: 60, 'position.speed': 30 }), noIgn({ dt: 120, 'position.speed': 30 }), noIgn({ dt: 180 })])

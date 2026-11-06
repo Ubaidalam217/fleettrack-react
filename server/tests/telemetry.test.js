@@ -43,9 +43,9 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('normalize', () => {
   it('maps the fields the app reads, and keeps rarer ones in extra', () => {
-    const row = T.normalize(msg({ 'ble.sensor.temperature.2': -4, 'external.powersource.status': true, junk: 'x' }))
+    const row = T.normalize(msg({ 'ble.sensor.temperature.2': -4, 'external.powersource.status': true, 'ibutton.code': '94000001D9DF0801', junk: 'x' }))
     expect(row).toMatchObject({ deviceId: 101, ts: NOW - 60, lat: 24.4, speed: 42, ignition: true, odometerKm: 1234.5, satellites: 12, valid: true })
-    expect(row.extra).toEqual({ 'ble.sensor.temperature.2': -4, 'external.powersource.status': true })
+    expect(row.extra).toEqual({ 'ble.sensor.temperature.2': -4, 'external.powersource.status': true, 'ibutton.code': '94000001D9DF0801' })
   })
 
   it('skips a message with no device or time', () => {

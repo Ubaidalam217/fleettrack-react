@@ -1,6 +1,6 @@
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { useAddress } from '../../hooks/useAddress'
-import { useDriverForImei } from '../../data/settings'
+import { useDriverForDevice } from '../../data/settings'
 
 // The open/close animation uses grid-template-rows 0fr -> 1fr, which is the one
 // way to transition to a content-determined height without measuring it or
@@ -62,7 +62,7 @@ export default function VehicleListCard({ v, open, onCenter }) {
   const address = useAddress(v.lat, v.lng, open)
   const hasCoords = v.lat != null && v.lng != null
   // Settings > Driver first, the device's own metadata as the fallback.
-  const driverName = useDriverForImei(v.ident)?.name || v.master?.driver?.name || ''
+  const driverName = useDriverForDevice(v)?.driver.name || v.master?.driver?.name || ''
 
   return (
     <div className="vl-card" data-open={open ? 'true' : 'false'}>
