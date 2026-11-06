@@ -10,8 +10,10 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import prisma from '../prisma.js'
-import { asyncHandler, badRequest, conflict } from '../lib/http.js'
-import { optionalId, optionalText, requiredId, requiredText, statusField } from '../lib/fields.js'
+import { randomBytes } from 'node:crypto'
+import { asyncHandler, badRequest, conflict, HttpError, notFound } from '../lib/http.js'
+import { fromBase64, sniffDocument, sniffImage } from '../lib/files.js'
+import { optionalEmail, optionalId, optionalText, requiredId, requiredText } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 
@@ -42,16 +44,38 @@ const ibuttonField = () =>
     .refine(v => v === null || /^[0-9A-F]{4,32}$/.test(v), 'Use the code as the tracker shows it, e.g. 94000001D9DF0801')
     .refine(v => v === null || !/^0+$/.test(v), 'An all-zero code means no tag is inserted')
 
+/**
+ * Departments are a fixed list (client, 2026-11-06), the same one the Driver
+ * form offers (src/pages/settings/mockData.js DRIVER_DEPARTMENTS).
+ */
+export const DEPARTMENTS = ['Operations', 'Logistics', 'Delivery', 'Transport', 'Sales', 'Maintenance', 'Administration', 'Security', 'Other']
+
 const driverFields = {
   name: requiredText('Name', 120),
   ibuttonCode: ibuttonField(),
   mobile: optionalText(30),
+  email: optionalEmail(),
+  nationality: optionalText(60),
+  dateOfBirth: optionalDate(),
+  employeeId: optionalText(60),
+  department: z.union([z.enum(DEPARTMENTS), z.literal(''), z.null()]).default(null).transform(v => v || null),
+  joiningDate: optionalDate(),
   licenseNo: optionalText(60),
+  licenseCategory: optionalText(60),
+  licenseIssueDate: optionalDate(),
   licenseExpiry: optionalDate(),
+  licenseCountry: optionalText(60),
+  visaExpiry: optionalDate(),
+  emiratesId: optionalText(30),
+  emiratesIdExpiry: optionalDate(),
+  medicalExpiry: optionalDate(),
   vehicleId: optionalId(),
   notes: optionalText(1000),
-  status: statusField(),
+  // Drivers alone may be Suspended (kept on file, off duty).
+  status: z.enum(['Active', 'Inactive', 'Suspended']).default('Active'),
 }
+
+const DATE_FIELDS = ['dateOfBirth', 'joiningDate', 'licenseIssueDate', 'licenseExpiry', 'visaExpiry', 'emiratesIdExpiry', 'medicalExpiry']
 
 const createSchema = z.object({ bgId: requiredId('Business group'), ...driverFields })
 const updateSchema = z.object(driverFields)
@@ -63,7 +87,23 @@ const INCLUDE = {
 }
 
 /** The API's date form: "YYYY-MM-DD", the same thing the form sends. */
-const publicDriver = d => (d ? { ...d, licenseExpiry: d.licenseExpiry ? d.licenseExpiry.toISOString().slice(0, 10) : null } : null)
+function publicDriver(d) {
+  if (!d) return null
+  const out = { ...d }
+  for (const k of DATE_FIELDS) out[k] = d[k] ? d[k].toISOString().slice(0, 10) : null
+  return out
+}
+
+/**
+ * A Suspended driver is off duty (client, 2026-11-06): no vehicle may be
+ * assigned to them. Blocking their iButton on the tracker itself comes with
+ * the device-settings editor.
+ */
+function assertAssignable(body) {
+  if (body.status === 'Suspended' && body.vehicleId) {
+    throw badRequest('A suspended driver cannot be assigned a vehicle', { vehicleId: 'Not for a suspended driver' })
+  }
+}
 
 /** 409 when another driver already holds this tag (the unique index is the backstop). */
 async function assertIbuttonFree(code, exceptId = null) {
@@ -115,6 +155,7 @@ router.post(
     assertCanWrite(req.scope, 'driver')
     const bg = await assertWritableParent(req.scope, 'bg', req.body.bgId)
     await assertIbuttonFree(req.body.ibuttonCode)
+    assertAssignable(req.body)
     const { previous } = await resolveVehicle(bg.id, req.body.vehicleId, null)
     const { bgId: _ignored, ...fields } = req.body
     const row = await prisma.$transaction(async tx => {
@@ -132,6 +173,7 @@ router.put(
     assertCanWrite(req.scope, 'driver')
     const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
     await assertIbuttonFree(req.body.ibuttonCode, existing.id)
+    assertAssignable(req.body)
     const { previous } = await resolveVehicle(existing.bgId, req.body.vehicleId, existing.id)
     const row = await prisma.$transaction(async tx => {
       if (previous) await tx.driver.update({ where: { id: previous.id }, data: { vehicleId: null } })
@@ -148,6 +190,115 @@ router.delete(
     const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
     await prisma.driver.delete({ where: { id: existing.id } })
     res.json({ data: { id: existing.id } })
+  })
+)
+
+// ── Photo ───────────────────────────────────────────────────────────────────
+// PUT { image: base64 } / DELETE. Shown through GET /api/driver-photos/:key
+// (routes/driverPhotos.js), public like the profile photo: the key is 128
+// random bits, new on every upload.
+
+const MAX_PHOTO_BYTES = 512 * 1024
+const photoSchema = z.object({ image: z.string().min(16).max(Math.ceil((MAX_PHOTO_BYTES * 4) / 3) + 64) })
+
+router.put(
+  '/:id/photo',
+  validate(photoSchema),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const data = fromBase64(req.body.image)
+    const mimeType = sniffImage(data)
+    if (!mimeType) throw badRequest('The photo must be a JPEG, PNG or WebP image')
+    if (data.length > MAX_PHOTO_BYTES) throw new HttpError(413, 'The photo is too large (max 512 KB)')
+    const key = randomBytes(16).toString('hex')
+    const [, row] = await prisma.$transaction([
+      prisma.driverPhoto.upsert({ where: { driverId: existing.id }, create: { driverId: existing.id, key, mimeType, data }, update: { key, mimeType, data } }),
+      prisma.driver.update({ where: { id: existing.id }, data: { photoKey: key }, include: INCLUDE }),
+    ])
+    res.json({ data: publicDriver(row) })
+  })
+)
+
+router.delete(
+  '/:id/photo',
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const [, row] = await prisma.$transaction([
+      prisma.driverPhoto.deleteMany({ where: { driverId: existing.id } }),
+      prisma.driver.update({ where: { id: existing.id }, data: { photoKey: null }, include: INCLUDE }),
+    ])
+    res.json({ data: publicDriver(row) })
+  })
+)
+
+// ── Documents ───────────────────────────────────────────────────────────────
+// Scanned copies (PDF or image, 5 MB each). Listing returns details only; the
+// file itself comes from /file, behind the same login and scope as the driver.
+
+const MAX_DOC_BYTES = 5 * 1024 * 1024
+export const DOC_TYPES = ['Driving Licence', 'Visa', 'Emirates ID', 'Passport', 'Medical Fitness', 'Other']
+const DOC_SELECT = { id: true, title: true, docType: true, expiryDate: true, fileName: true, mimeType: true, size: true, createdAt: true }
+const publicDoc = d => ({ ...d, expiryDate: d.expiryDate ? d.expiryDate.toISOString().slice(0, 10) : null })
+
+const documentSchema = z.object({
+  title: requiredText('Title', 120),
+  docType: z.enum(DOC_TYPES).default('Other'),
+  expiryDate: optionalDate(),
+  fileName: requiredText('File name', 200),
+  data: z.string().min(16).max(Math.ceil((MAX_DOC_BYTES * 4) / 3) + 64),
+})
+
+router.get(
+  '/:id/documents',
+  asyncHandler(async (req, res) => {
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const rows = await prisma.driverDocument.findMany({ where: { driverId: driver.id }, select: DOC_SELECT, orderBy: { createdAt: 'desc' } })
+    res.json({ data: rows.map(publicDoc) })
+  })
+)
+
+router.post(
+  '/:id/documents',
+  validate(documentSchema),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const data = fromBase64(req.body.data)
+    const mimeType = sniffDocument(data)
+    if (!mimeType) throw badRequest('Upload a PDF, JPEG, PNG or WebP file', { data: 'Unsupported file type' })
+    if (data.length > MAX_DOC_BYTES) throw new HttpError(413, 'The file is too large (max 5 MB)')
+    const { title, docType, expiryDate, fileName } = req.body
+    const row = await prisma.driverDocument.create({
+      data: { driverId: driver.id, title, docType, expiryDate, fileName, mimeType, size: data.length, data },
+      select: DOC_SELECT,
+    })
+    res.status(201).json({ data: publicDoc(row) })
+  })
+)
+
+router.get(
+  '/:id/documents/:docId/file',
+  asyncHandler(async (req, res) => {
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const doc = await prisma.driverDocument.findFirst({ where: { id: req.params.docId, driverId: driver.id } })
+    if (!doc) throw notFound('Document')
+    res.set('Content-Type', doc.mimeType)
+    res.set('Content-Disposition', `inline; filename="${doc.fileName.replace(/["\\\r\n]/g, '_')}"`)
+    res.set('Cache-Control', 'private, no-store')
+    res.send(Buffer.from(doc.data))
+  })
+)
+
+router.delete(
+  '/:id/documents/:docId',
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const { count } = await prisma.driverDocument.deleteMany({ where: { id: req.params.docId, driverId: driver.id } })
+    if (!count) throw notFound('Document')
+    res.json({ data: { id: req.params.docId } })
   })
 )
 

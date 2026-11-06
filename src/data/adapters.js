@@ -45,6 +45,7 @@
  */
 
 import { DEFAULT_PASSWORD, alertTypeOf, upgradeAlertType } from '../pages/settings/mockData'
+import { API_URL } from './mode.js'
 
 /** '' / null / undefined → null, for a nullable foreign key or text column. */
 const orNull = v => {
@@ -411,10 +412,25 @@ const numOrNull = v => {
 export const driver = {
   toFe: r => ({
     id: r.id,
+    driverNo: r.driverNo ?? null,
     companyId: r.bgId ?? '',
     name: r.name ?? '',
+    photoUrl: r.photoKey ? `${API_URL}/api/driver-photos/${r.photoKey}` : '',
     mobile: orBlank(r.mobile),
+    email: orBlank(r.email),
+    nationality: orBlank(r.nationality),
+    dateOfBirth: orBlank(r.dateOfBirth),
+    employeeId: orBlank(r.employeeId),
+    department: orBlank(r.department),
+    joiningDate: orBlank(r.joiningDate),
     licenseNo: orBlank(r.licenseNo),
+    licenseCategory: orBlank(r.licenseCategory),
+    licenseIssueDate: orBlank(r.licenseIssueDate),
+    licenseCountry: orBlank(r.licenseCountry),
+    visaExpiry: orBlank(r.visaExpiry),
+    emiratesId: orBlank(r.emiratesId),
+    emiratesIdExpiry: orBlank(r.emiratesIdExpiry),
+    medicalExpiry: orBlank(r.medicalExpiry),
     ibuttonCode: orBlank(r.ibuttonCode),
     // Already "YYYY-MM-DD" from the API, which is what <input type="date"> binds.
     licenseExpiry: orBlank(r.licenseExpiry),
@@ -432,7 +448,20 @@ export const driver = {
   fields: r => ({
     name: r.name,
     mobile: orNull(r.mobile),
+    email: orNull(r.email),
+    nationality: orNull(r.nationality),
+    dateOfBirth: orNull(r.dateOfBirth),
+    employeeId: orNull(r.employeeId),
+    department: orNull(r.department),
+    joiningDate: orNull(r.joiningDate),
     licenseNo: orNull(r.licenseNo),
+    licenseCategory: orNull(r.licenseCategory),
+    licenseIssueDate: orNull(r.licenseIssueDate),
+    licenseCountry: orNull(r.licenseCountry),
+    visaExpiry: orNull(r.visaExpiry),
+    emiratesId: orNull(r.emiratesId),
+    emiratesIdExpiry: orNull(r.emiratesIdExpiry),
+    medicalExpiry: orNull(r.medicalExpiry),
     ibuttonCode: orNull(r.ibuttonCode),
     licenseExpiry: orNull(r.licenseExpiry),
     vehicleId: orNull(r.vehicleId),

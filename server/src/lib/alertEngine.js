@@ -69,7 +69,8 @@ export const TYPES = Object.freeze({
   offline:        { label: 'Offline',               defaults: { minutes: 60 } },
   temperature:    { label: 'Temperature High/Low',  defaults: {} },
   night_driving:  { label: 'Night Driving',         defaults: { from: '23:00', to: '05:00', minSpeedKmh: 10 } },
-  license_expiry: { label: 'Driver Licence Expiry', defaults: { days: 30 } },
+  // Client, 2026-11-06: the licence plus the visa, Emirates ID and medical fitness.
+  license_expiry: { label: 'Driver Licence & Document Expiry', defaults: { days: 30 } },
   // Client, 2026-11-06: "Other" — any parameter the tracker reports, compared
   // with a value, for alerts the fixed types above do not cover.
   custom:         { label: 'Other (custom parameter)', defaults: { parameter: '', operator: '>', value: '' } },
@@ -311,20 +312,28 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
  * Driver licence expiry, per driver: fires when the licence enters the warning
  * window and again when it expires — two events in its whole life, not daily.
  */
-export function evaluateLicence(alert, driver, state, now) {
+/** The driver dates the expiry alert watches: field, what to call it, and the state subject suffix. */
+export const DRIVER_EXPIRIES = [
+  ['licenseExpiry', 'Driving licence', ''],
+  ['visaExpiry', 'Visa', ':visa'],
+  ['emiratesIdExpiry', 'Emirates ID', ':eid'],
+  ['medicalExpiry', 'Medical fitness', ':medical'],
+]
+
+export function evaluateLicence(alert, driver, state, now, field = 'licenseExpiry', label = 'Driving licence') {
   const days = num(Number(paramsOf(alert).days)) ?? 30
   const s = { ...(state ?? {}) }
-  if (!driver.licenseExpiry) return { state: s, fire: null }
+  if (!driver[field]) return { state: s, fire: null }
   const today = Date.parse(`${uaeDate(now)}T00:00:00Z`)
-  const expiry = Date.parse(new Date(driver.licenseExpiry).toISOString().slice(0, 10) + 'T00:00:00Z')
+  const expiry = Date.parse(new Date(driver[field]).toISOString().slice(0, 10) + 'T00:00:00Z')
   const daysLeft = Math.round((expiry - today) / 86400000)
   const stage = daysLeft < 0 ? 'expired' : daysLeft <= days ? 'due' : 'ok'
   const prev = s.stage
   s.stage = stage
   if (stage === prev || stage === 'ok') return { state: s, fire: null }
   const message = stage === 'expired'
-    ? `Driving licence expired ${-daysLeft} day${daysLeft === -1 ? '' : 's'} ago`
-    : `Driving licence expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
+    ? `${label} expired ${-daysLeft} day${daysLeft === -1 ? '' : 's'} ago`
+    : `${label} expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
   return { state: s, fire: { message, value: daysLeft } }
 }
 
@@ -395,7 +404,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
     }),
     alerts.some(a => a.type === 'license_expiry')
       ? prisma.driver.findMany({
-        where: { bgId: { in: bgIds }, status: 'Active', licenseExpiry: { not: null } },
+        where: { bgId: { in: bgIds }, status: 'Active', OR: DRIVER_EXPIRIES.map(([f]) => ({ [f]: { not: null } })) },
         include: { vehicle: { select: { id: true, plateNo: true, fleetNo: true, imei: true } } },
       })
       : [],
@@ -426,12 +435,15 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
   for (const alert of alerts) {
     if (alert.type === 'license_expiry') {
       for (const d of drivers.filter(x => x.bgId === alert.bgId)) {
-        const subject = `drv:${d.id}`
-        const prev = stateOf.get(`${alert.id}|${subject}`)
-        const result = evaluateLicence(alert, d, prev, now)
-        const who = d.vehicle ? `${d.name} (${vehicleName(d.vehicle)})` : d.name
-        if (result.fire) result.fire.message = `${who}: ${result.fire.message}`
-        record(alert, subject, prev, result, { driverId: d.id, vehicleId: d.vehicle?.id ?? null })
+        for (const [field, label, suffix] of DRIVER_EXPIRIES) {
+          if (!d[field]) continue
+          const subject = `drv:${d.id}${suffix}`
+          const prev = stateOf.get(`${alert.id}|${subject}`)
+          const result = evaluateLicence(alert, d, prev, now, field, label)
+          const who = d.vehicle ? `${d.name} (${vehicleName(d.vehicle)})` : d.name
+          if (result.fire) result.fire.message = `${who}: ${result.fire.message}`
+          record(alert, subject, prev, result, { driverId: d.id, vehicleId: d.vehicle?.id ?? null })
+        }
       }
       continue
     }

@@ -38,6 +38,7 @@ import { requireScreen, WRITE_SCREENS } from './lib/permissions.js'
 import alertEventRoutes from './routes/alertEvents.js'
 import assistantRoutes from './routes/assistant.js'
 import avatarRoutes from './routes/avatars.js'
+import driverPhotoRoutes from './routes/driverPhotos.js'
 import ingestRoutes from './routes/ingest.js'
 import liveRoutes from './routes/live.js'
 
@@ -79,6 +80,8 @@ export function createApp() {
   // 512 KB of image in routes/me.js). Parsed first, so the 100kb parser below
   // sees an already-read body and leaves it alone.
   app.use('/api/me/avatar', express.json({ limit: '800kb' }))
+  // Driver photos and scanned documents (5 MB each, base64).
+  app.use('/api/drivers', express.json({ limit: '8mb' }))
   // The Flespi webhook: batches of device messages, so its own larger limit.
   // Mounted before the request log and before auth — it has its own token.
   app.use('/api/ingest', express.json({ limit: '20mb' }), ingestRoutes)
@@ -89,6 +92,7 @@ export function createApp() {
   app.use('/api/health', healthRoutes)
   // Public: profile photos by unguessable key, so <img src> works without a token.
   app.use('/api/avatars', avatarRoutes)
+  app.use('/api/driver-photos', driverPhotoRoutes)
 
   /**
    * Rate limit on login only.

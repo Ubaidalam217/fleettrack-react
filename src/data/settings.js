@@ -26,11 +26,11 @@
  */
 
 import { useEffect, useSyncExternalStore } from 'react'
-import { IS_REAL } from './mode.js'
+import { IS_REAL, API_URL } from './mode.js'
 import { del, get, post, put, request } from './http.js'
 import * as A from './adapters.js'
 import * as mock from '../pages/settings/mockData'
-import { PHASE, useSession } from './session.js'
+import { PHASE, useSession, getToken as getSessionToken } from './session.js'
 
 // ── Pass-through: everything that is pure, or already mode-agnostic ─────────
 // Re-exported by name rather than with `export *` so this list is also the
@@ -62,6 +62,7 @@ export {
   emptyDriver, useDrivers, driversForCompany,
   driverForVehicleId, driverForVehicleImei, driverNameForDevice, useDriverForImei,
   ibuttonKey, driverForIbutton, isIbuttonTaken, driverForDevice, useDriverForDevice,
+  DRIVER_DEPARTMENTS, LICENCE_CATEGORIES, DRIVER_DOC_TYPES, driverCode,
 
   // Constants and registries.
   DEFAULT_PASSWORD, ALERT_TYPES, alertTypeLabel, GEOFENCE_CATEGORIES,
@@ -517,6 +518,34 @@ export function addDriver(row) {
 export function updateDriver(id, patch) {
   if (!IS_REAL) return done(mock.updateDriver(id, patch))
   return write(() => driverWrite('PUT', `/api/drivers/${id}`, A.driver.toApiUpdate(patch)))
+}
+
+// Photo and scanned documents (real mode; mock mode keeps the photo as a data URL
+// and has nowhere to put documents).
+
+export function setDriverPhoto(id, base64) {
+  if (!IS_REAL) return done(mock.updateDriver(id, { photoUrl: `data:image/jpeg;base64,${base64}` }))
+  return write(() => put(`/api/drivers/${id}/photo`, { image: base64 }))
+}
+
+export function removeDriverPhoto(id) {
+  if (!IS_REAL) return done(mock.updateDriver(id, { photoUrl: '' }))
+  return write(() => del(`/api/drivers/${id}/photo`))
+}
+
+export const listDriverDocuments = id => get(`/api/drivers/${id}/documents`)
+export const uploadDriverDocument = (id, body) => post(`/api/drivers/${id}/documents`, body)
+export const deleteDriverDocument = (id, docId) => del(`/api/drivers/${id}/documents/${docId}`)
+
+/** Open a document in a new tab: fetched with the login token, shown from a blob. */
+export async function openDriverDocument(id, docId) {
+  const res = await fetch(`${API_URL}/api/drivers/${id}/documents/${docId}/file`, {
+    headers: { Authorization: `Bearer ${getSessionToken()}` },
+  })
+  if (!res.ok) throw new Error(`Could not open the document (${res.status})`)
+  const url = URL.createObjectURL(await res.blob())
+  window.open(url, '_blank', 'noopener')
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 export function removeDriver(id) {

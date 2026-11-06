@@ -127,8 +127,8 @@ export const ALERT_TYPES = [
   },
   {
     value: 'license_expiry',
-    label: 'Driver Licence Expiry',
-    hint: 'Raised when a driver’s licence is about to expire, and again when it has expired.',
+    label: 'Driver Licence & Document Expiry',
+    hint: 'Raised when a driver’s licence, visa, Emirates ID or medical fitness is about to expire, and again when it has expired.',
     defaults: () => ({ days: '30' }),
     vehicles: false,
   },
@@ -408,16 +408,43 @@ export function normalizeAlert(row) {
  * it — see assignDriverVehicle() below, and the same rule on the server.
  * `licenseExpiry` is a calendar date, "YYYY-MM-DD", or ''.
  */
+/** Departments a driver can be in — a fixed list (client, 2026-11-06); the server checks the same one. */
+export const DRIVER_DEPARTMENTS = ['Operations', 'Logistics', 'Delivery', 'Transport', 'Sales', 'Maintenance', 'Administration', 'Security', 'Other']
+
+/** Suggestions for the licence category; any other text is accepted. */
+export const LICENCE_CATEGORIES = ['Light Vehicle', 'Heavy Vehicle', 'Light Bus', 'Heavy Bus', 'Motorcycle', 'Forklift', 'Shovel', 'Tractor']
+
+/** What an uploaded driver document is; the server checks the same list. */
+export const DRIVER_DOC_TYPES = ['Driving Licence', 'Visa', 'Emirates ID', 'Passport', 'Medical Fitness', 'Other']
+
+/** "DRV-0007" for the running driver number. */
+export const driverCode = d => (d?.driverNo ? `DRV-${String(d.driverNo).padStart(4, '0')}` : '—')
+
 export function emptyDriver() {
   return {
     id: null,
+    driverNo:      null,
     companyId:     '',
     name:          '',
+    photoUrl:      '',
     mobile:        '',
+    email:         '',
+    nationality:   '',
+    dateOfBirth:   '',
+    employeeId:    '',
+    department:    '',
+    joiningDate:   '',
     licenseNo:     '',
+    licenseCategory:  '',
+    licenseIssueDate: '',
+    licenseCountry:   '',
     // The iButton / driver-ID tag as the tracker reports it (ibutton.code).
     ibuttonCode:   '',
     licenseExpiry: '',
+    visaExpiry:       '',
+    emiratesId:       '',
+    emiratesIdExpiry: '',
+    medicalExpiry:    '',
     vehicleId:     '',
     notes:         '',
     status:        'Active',
@@ -1560,7 +1587,8 @@ function assignDriverVehicle(vehicleId, driverId) {
 
 /** @returns {{ row: object, movedFrom: {id, name} | null }} */
 export function addDriver(driver) {
-  const row = { ...driver, id: makeId('d') }
+  const nextNo = Math.max(0, ...driverStore.get().map(d => d.driverNo || 0)) + 1
+  const row = { ...driver, id: makeId('d'), driverNo: nextNo }
   const movedFrom = assignDriverVehicle(row.vehicleId, row.id)
   driverStore.set(list => [...list, row])
   return { row, movedFrom }

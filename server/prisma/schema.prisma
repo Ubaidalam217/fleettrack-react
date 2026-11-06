@@ -47,6 +47,9 @@ enum Role {
 enum Status {
   Active
   Inactive
+  /// Drivers only (2026-11-06): kept on file but taken off duty. The other
+  /// tables' validators accept Active / Inactive alone.
+  Suspended
 }
 
 /// Group Global Admin — the top of the tree below Super Admin. The mock calls
@@ -604,9 +607,27 @@ model Driver {
   id   String @id @default(cuid())
   bgId String
 
+  /// Shown as DRV-0001: a running number, never reused.
+  driverNo      Int       @unique @default(autoincrement())
   name          String
   mobile        String?
+  email         String?
+  nationality   String?
+  dateOfBirth   DateTime?
+  employeeId    String?
+  department    String?
+  joiningDate   DateTime?
+  /// Random key of the profile photo (GET /api/driver-photos/:key), replaced on every upload.
+  photoKey      String?   @unique
   licenseNo     String?
+  licenseCategory  String?
+  licenseIssueDate DateTime?
+  licenseCountry   String?
+  /// Further expiries the Driver Licence & Document Expiry alert watches.
+  visaExpiry       DateTime?
+  emiratesId       String?
+  emiratesIdExpiry DateTime?
+  medicalExpiry    DateTime?
   /// Date only (stored at UTC midnight); drives the Driver Licence Expiry alert.
   licenseExpiry DateTime?
   /// The driver's iButton / driver-ID tag as the tracker reports it in
@@ -620,11 +641,42 @@ model Driver {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bg      BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
-  vehicle Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  events  AlertEvent[]
+  bg        BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  events    AlertEvent[]
+  photo     DriverPhoto?
+  documents DriverDocument[]
 
   @@index([bgId])
+}
+
+/// A driver's profile photo bytes; one row per driver, replaced on upload.
+model DriverPhoto {
+  driverId  String   @id
+  key       String   @unique
+  mimeType  String
+  data      Bytes
+  updatedAt DateTime @updatedAt
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+}
+
+/// A scanned copy of a driver's licence, visa, Emirates ID, medical or other paper.
+model DriverDocument {
+  id         String    @id @default(cuid())
+  driverId   String
+  title      String
+  docType    String
+  expiryDate DateTime?
+  fileName   String
+  mimeType   String
+  size       Int
+  data       Bytes
+  createdAt  DateTime  @default(now())
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
 }
 
 /// The bytes of a user's profile photo (see User.avatarKey). One row per user,
