@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import PaperTable from '../../components/reports/PaperTable'
+import ColumnPicker from '../../components/reports/ColumnPicker'
+import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import LocationMapModal from '../../components/reports/LocationMapModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
@@ -387,6 +389,8 @@ const coords = (lat, lng) => (lat != null && lng != null ? `${lat.toFixed(5)}, $
 
 export default function UsageReportPage({ variant, ...props }) {
   const V = VARIANTS[variant]
+  const [hiddenCols, setHiddenCols] = useHiddenColumns(`usage-${variant}`)
+  const shownCols = useVisibleColumns(V.columns, hiddenCols)
   const { data } = useFlespiData()
   // The live feed hands over a new vehicle array on every poll. The report only
   // cares which vehicles there are and what they are called, so it keys on that:
@@ -562,9 +566,9 @@ export default function UsageReportPage({ variant, ...props }) {
     systemName: 'FleetmaxX',
     tables: groups.map(g => ({
       heading: `${g.label} — ${g.total}`,
-      columns: V.columns.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, hrefKey: c.locate ? 'mapUrl' : undefined })),
+      columns: shownCols.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, hrefKey: c.locate ? 'mapUrl' : undefined })),
       // Date and total bands become a row whose first cell carries the text.
-      rows: g.rows.map(r => (r.kind === 'band' ? { [V.columns[0].key]: r.label } : r)),
+      rows: g.rows.map(r => (r.kind === 'band' ? { [shownCols[0].key]: r.label } : r)),
     })),
   })
 
@@ -702,6 +706,7 @@ export default function UsageReportPage({ variant, ...props }) {
               {truncated && <span style={{ color: '#f97316' }}> · some days hit the message limit — narrow the range for full detail</span>}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <ColumnPicker columns={V.columns} hidden={hiddenCols} onChange={setHiddenCols} />
               <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), V.file)} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
               <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), V.file)} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!dataRows}>Print</ToolbarButton>
@@ -712,7 +717,7 @@ export default function UsageReportPage({ variant, ...props }) {
             title={V.title}
             company="FleetmaxX"
             filters={filters}
-            columns={V.columns}
+            columns={shownCols}
             groups={groups}
             printDate={applied.printDate}
             onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: V.title, location: r.location })}

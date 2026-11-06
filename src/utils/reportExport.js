@@ -23,7 +23,7 @@
 // and the repeated page chrome are less code drawn directly than they are as
 // autotable hook overrides, and this way the positions are exact.
 
-import { rowLocation, formatPrintDate, formatDateTime } from './movementReport'
+import { rowLocation, formatPrintDate, formatDateTime, MOVEMENT_COLUMNS } from './movementReport'
 import { locationUrl } from './mapLink'
 
 // ── geometry ──────────────────────────────────────────────────────────────
@@ -46,13 +46,56 @@ const COL = {
   location:   526.4,
 }
 
-const WIDTH = {
-  vehicle:  92,
-  time:     60,
-  driver:   101,
-  status:   126,
-  location: 292,
+// Each column's slot in the sample: where it starts, how much room it has up to
+// the next one, and for the numbers where their digits end.
+const SLOTS = [
+  { key: 'vehicle',  x: 23.1,  slot: 96.8,  w: 92 },
+  { key: 'time',     x: 119.9, slot: 63.7,  w: 60 },
+  { key: 'driver',   x: 183.6, slot: 105,   w: 101 },
+  { key: 'status',   x: 288.6, slot: 130.3, w: 126 },
+  { key: 'speed',    x: 418.9, slot: 45.9,  right: 437.5 },
+  { key: 'odo',      x: 464.8, slot: 61.6,  right: 505.5 },
+  { key: 'location', x: 526.4, slot: 296,   w: 292 },
+]
+const NUMERIC = new Set(['speed', 'odo'])
+
+/**
+ * Where each shown column goes. With every column shown this is the sample's
+ * geometry exactly; with some switched off, the rest keep their proportions
+ * and share the freed width.
+ *
+ * @returns {{ cols: object, full: boolean, labelX: number, labelW: number, dateX: number }}
+ */
+function movementLayout(hidden) {
+  const shown = SLOTS.filter(s => !hidden?.has(s.key))
+  const full = shown.length === SLOTS.length || shown.length === 0
+  let cols
+  if (full) {
+    cols = Object.fromEntries(SLOTS.map(s => [s.key, s]))
+  } else {
+    const k = SLOTS.reduce((a, s) => a + s.slot, 0) / shown.reduce((a, s) => a + s.slot, 0)
+    let x = SLOTS[0].x
+    cols = {}
+    for (const s of shown) {
+      const slot = s.slot * k
+      cols[s.key] = { key: s.key, x, slot, w: slot - 4, right: s.right != null ? x + (s.right - s.x) * k : undefined }
+      x += slot
+    }
+  }
+  // A band's text (vehicle, date) goes in the Vehicle / Time column, or the
+  // first text column left when that one is off.
+  const firstText = Object.values(cols).find(c => !NUMERIC.has(c.key)) ?? Object.values(cols)[0]
+  const labelCol = cols.vehicle ?? firstText
+  return {
+    cols,
+    full,
+    labelX: labelCol.x,
+    labelW: labelCol.w ?? labelCol.slot - 4,
+    // 93.6 in the sample: the date label starts left of the Time column.
+    dateX: full ? 93.6 : (cols.time ?? firstText).x,
+  }
 }
+
 
 const LINE_H      = 9.25
 const BODY_TOP    = 107.15
@@ -165,7 +208,7 @@ export function drawLogo(doc) {
   doc.text('FleetmaxX', 803, y + 12, { align: 'right' })
 }
 
-function drawChrome(doc, filters, meta) {
+function drawChrome(doc, filters, meta, L) {
   doc.setTextColor(0, 0, 0)
   doc.setDrawColor(0, 0, 0)
   doc.setLineWidth(1)
@@ -205,15 +248,23 @@ function drawChrome(doc, filters, meta) {
   doc.setFillColor(...BAND_BLUE)
   doc.rect(BAND.x, 87.45, BAND.w, 18.7, 'FD')
   doc.setFont('helvetica', 'bold')
-  doc.text('Vehicle ID',        COL.vehicle,  94.6)
-  doc.text('Time',              COL.time,     94.6)
-  doc.text('Driver ID',         COL.driver,   94.6)
-  doc.text('Status',            COL.status,   94.6)
-  doc.text('Speed (',           418.9,        94.6)
-  doc.text('km/h)',             422.3,        104.2)
-  doc.text('Cumulative Odo ',   464.8,        94.6)
-  doc.text('(km)',              484.2,        104.2)
-  doc.text('Location',          COL.location, 94.6)
+  if (L.full) {
+    doc.text('Vehicle ID',        COL.vehicle,  94.6)
+    doc.text('Time',              COL.time,     94.6)
+    doc.text('Driver ID',         COL.driver,   94.6)
+    doc.text('Status',            COL.status,   94.6)
+    doc.text('Speed (',           418.9,        94.6)
+    doc.text('km/h)',             422.3,        104.2)
+    doc.text('Cumulative Odo ',   464.8,        94.6)
+    doc.text('(km)',              484.2,        104.2)
+    doc.text('Location',          COL.location, 94.6)
+  } else {
+    for (const c of MOVEMENT_COLUMNS) {
+      const col = L.cols[c.key]
+      if (!col) continue
+      doc.splitTextToSize(c.label, col.slot - 4).slice(0, 2).forEach((line, i) => doc.text(line, col.x, 94.6 + i * 9.6))
+    }
+  }
 
   doc.setDrawColor(0, 0, 0)
   doc.setLineWidth(1)
@@ -241,6 +292,8 @@ function drawFooter(doc, pageNo, meta) {
  * @param {object} [meta]   { subtitle, systemName, printDate }
  */
 export async function buildMovementPdf(report, filters, meta = {}) {
+  const L = movementLayout(meta.hiddenColumns)
+  const C = L.cols
   // Both awaited up front: startPage() below is synchronous and every page
   // calls drawLogo(), so the artwork has to be resolved before the first one.
   const [{ jsPDF }] = await Promise.all([import('jspdf'), loadLogo()])
@@ -260,7 +313,7 @@ export async function buildMovementPdf(report, filters, meta = {}) {
   const startPage = () => {
     if (pageNo > 0) doc.addPage()
     pageNo += 1
-    drawChrome(doc, filters, resolved)
+    drawChrome(doc, filters, resolved, L)
     drawFooter(doc, pageNo, resolved)
     y = BODY_TOP
     zebra = false
@@ -277,9 +330,9 @@ export async function buildMovementPdf(report, filters, meta = {}) {
     doc.setFontSize(7)
     doc.setTextColor(0, 0, 0)
     const base = y + 6.85
-    doc.text(clip(doc, vehicle.vehicleId, WIDTH.vehicle), COL.vehicle, base)
-    doc.text(String(vehicle.maxSpeed), COL.speedRight, base, { align: 'right' })
-    doc.text(vehicle.totalDistanceKm.toFixed(3), COL.odoRight, base, { align: 'right' })
+    doc.text(clip(doc, vehicle.vehicleId, L.labelW), L.labelX, base)
+    if (C.speed) doc.text(String(vehicle.maxSpeed), C.speed.right, base, { align: 'right' })
+    if (C.odo) doc.text(vehicle.totalDistanceKm.toFixed(3), C.odo.right, base, { align: 'right' })
     // 1pt gap before the next band, as in the sample (116.45 -> 117.45).
     y += 10.3
   }
@@ -295,8 +348,8 @@ export async function buildMovementPdf(report, filters, meta = {}) {
     const base = y + 7.1
     // 93.6 in the sample: the label runs up to the Time column and the date
     // itself sits on it.
-    doc.text(date.label, 93.6, base)
-    doc.text(String(date.maxSpeed), COL.speedRight, base, { align: 'right' })
+    doc.text(date.label, L.dateX, base)
+    if (C.speed) doc.text(String(date.maxSpeed), C.speed.right, base, { align: 'right' })
     y += 9.25
   }
 
@@ -320,7 +373,7 @@ export async function buildMovementPdf(report, filters, meta = {}) {
       for (const row of date.rows) {
         doc.setFont('helvetica', 'normal')
         doc.setFontSize(7)
-        const lines = doc.splitTextToSize(rowLocation(row), WIDTH.location)
+        const lines = C.location ? doc.splitTextToSize(rowLocation(row), C.location.w) : ['']
         const h = LINE_H * Math.max(1, lines.length)
 
         if (y + h > BODY_BOTTOM) {
@@ -339,21 +392,19 @@ export async function buildMovementPdf(report, filters, meta = {}) {
         doc.setFontSize(7)
         doc.setTextColor(0, 0, 0)
         const base = y + 7.7
-        if (stampVehicleId) {
-          doc.text(clip(doc, vehicle.vehicleId, WIDTH.vehicle), COL.vehicle, base)
-          stampVehicleId = false
-        }
-        doc.text(row.time, COL.time, base)
-        doc.text(clip(doc, row.driverId, WIDTH.driver), COL.driver, base)
-        doc.text(clip(doc, row.status, WIDTH.status), COL.status, base)
-        doc.text(String(row.speed), COL.speedRight, base, { align: 'right' })
-        doc.text(row.odoKm.toFixed(3), COL.odoRight, base, { align: 'right' })
+        if (stampVehicleId && C.vehicle) doc.text(clip(doc, vehicle.vehicleId, C.vehicle.w), C.vehicle.x, base)
+        stampVehicleId = false
+        if (C.time) doc.text(row.time, C.time.x, base)
+        if (C.driver) doc.text(clip(doc, row.driverId, C.driver.w), C.driver.x, base)
+        if (C.status) doc.text(clip(doc, row.status, C.status.w), C.status.x, base)
+        if (C.speed) doc.text(String(row.speed), C.speed.right, base, { align: 'right' })
+        if (C.odo) doc.text(row.odoKm.toFixed(3), C.odo.right, base, { align: 'right' })
         // Client, 2026-11-02: a location in the PDF opens the point on our map.
-        const href = locationUrl({ lat: row.lat, lng: row.lng, vehicle: vehicle.vehicleId, time: formatDateTime(row.ts), address: rowLocation(row) })
+        const href = C.location && locationUrl({ lat: row.lat, lng: row.lng, vehicle: vehicle.vehicleId, time: formatDateTime(row.ts), address: rowLocation(row) })
         if (href) doc.setTextColor(...LINK_BLUE)
-        lines.forEach((line, i) => doc.text(line, COL.location, base + i * LINE_H))
+        if (C.location) lines.forEach((line, i) => doc.text(line, C.location.x, base + i * LINE_H))
         if (href) {
-          doc.link(COL.location, y, WIDTH.location, h, { url: href })
+          doc.link(C.location.x, y, C.location.w, h, { url: href })
           doc.setTextColor(0, 0, 0)
         }
 
@@ -390,15 +441,14 @@ export async function openMovementPdf(report, filters, meta) {
 
 // ── Excel ─────────────────────────────────────────────────────────────────
 
-const HEADERS = ['Vehicle ID', 'Time', 'Driver ID', 'Status', 'Speed (km/h)', 'Cumulative Odo (km)', 'Location']
-const COL_WIDTHS = [18, 13, 22, 28, 12, 20, 70]
+const COL_WIDTHS = { vehicle: 18, time: 13, driver: 22, status: 28, speed: 12, odo: 20, location: 70 }
 
 function fill(argb) {
   return { type: 'pattern', pattern: 'solid', fgColor: { argb } }
 }
 
-function paint(row, argb, bold) {
-  for (let c = 1; c <= HEADERS.length; c++) {
+function paint(row, argb, bold, n) {
+  for (let c = 1; c <= n; c++) {
     const cell = row.getCell(c)
     cell.fill = fill(argb)
     if (bold) cell.font = { bold: true, size: 9 }
@@ -424,10 +474,17 @@ export async function exportMovementExcel(report, filters, meta = {}) {
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
     views: [{ state: 'frozen', ySplit: 6 }],
   })
-  ws.columns = COL_WIDTHS.map(width => ({ width }))
+  const cols = MOVEMENT_COLUMNS.filter(c => !meta.hiddenColumns?.has(c.key))
+  const full = cols.length === MOVEMENT_COLUMNS.length
+  const n = cols.length
+  ws.columns = cols.map(c => ({ width: COL_WIDTHS[c.key] }))
 
-  const span = `A%r:${String.fromCharCode(64 + HEADERS.length)}%r`
-  const mergeRow = r => ws.mergeCells(span.replace(/%r/g, r))
+  const span = `A%r:${String.fromCharCode(64 + n)}%r`
+  const mergeRow = r => { if (n > 1) ws.mergeCells(span.replace(/%r/g, r)) }
+  // One cell per shown column, from values keyed by column.
+  const line = values => cols.map(c => values[c.key] ?? '')
+  // A band's text sits in the Vehicle / Time column, or the first text column left.
+  const textKey = preferred => (cols.some(c => c.key === preferred) ? preferred : (cols.find(c => c.key !== 'speed' && c.key !== 'odo') ?? cols[0]).key)
 
   const title = ws.addRow(['Movement Report'])
   title.getCell(1).font = { bold: true, size: 16 }
@@ -437,55 +494,64 @@ export async function exportMovementExcel(report, filters, meta = {}) {
   sub.getCell(1).font = { size: 9 }
   mergeRow(sub.number)
 
-  const f1 = ws.addRow([
-    `Selection :  ${filters.selection}`, '', '',
-    `Apply Tolerance :  ${filters.applyTolerance ? 'True' : 'False'}`, '',
-    `Tolerance (m) :  ${filters.toleranceMeters}${filters.intervalSec > 0 ? `    Interval :  ${filters.intervalLabel}` : ''}`, '',
-  ])
-  const f2 = ws.addRow([
-    `From Date :  ${filters.fromLabel}`, '', '',
-    `To Date :  ${filters.toLabel}`, '',
-    `Statuses :  ${filters.statusesLabel}`, '',
-  ])
-  for (const r of [f1, f2]) {
-    paint(r, 'FFB0C4DE', false)
-    ws.mergeCells(`A${r.number}:C${r.number}`)
-    ws.mergeCells(`D${r.number}:E${r.number}`)
-    ws.mergeCells(`F${r.number}:G${r.number}`)
+  const pairs = [
+    [`Selection :  ${filters.selection}`,
+      `Apply Tolerance :  ${filters.applyTolerance ? 'True' : 'False'}`,
+      `Tolerance (m) :  ${filters.toleranceMeters}${filters.intervalSec > 0 ? `    Interval :  ${filters.intervalLabel}` : ''}`],
+    [`From Date :  ${filters.fromLabel}`, `To Date :  ${filters.toLabel}`, `Statuses :  ${filters.statusesLabel}`],
+  ]
+  if (full) {
+    for (const [a, b, c] of pairs) {
+      const r = ws.addRow([a, '', '', b, '', c, ''])
+      paint(r, 'FFB0C4DE', false, n)
+      ws.mergeCells(`A${r.number}:C${r.number}`)
+      ws.mergeCells(`D${r.number}:E${r.number}`)
+      ws.mergeCells(`F${r.number}:G${r.number}`)
+    }
+  } else {
+    // Fewer columns than the band's three pairs need: one filter per row.
+    for (const text of pairs.flat()) {
+      const r = ws.addRow([text])
+      paint(r, 'FFB0C4DE', false, n)
+      mergeRow(r.number)
+    }
   }
 
   ws.addRow([])
 
-  const header = ws.addRow(HEADERS)
-  paint(header, 'FFB0C4DE', true)
+  const header = ws.addRow(cols.map(c => c.label))
+  paint(header, 'FFB0C4DE', true, n)
   header.alignment = { vertical: 'middle' }
 
   for (const vehicle of report.vehicles) {
-    const g = ws.addRow([vehicle.vehicleId, '', '', '', vehicle.maxSpeed, Number(vehicle.totalDistanceKm.toFixed(3)), ''])
-    paint(g, 'FFC0C0C0', true)
+    const g = ws.addRow(line({ [textKey('vehicle')]: vehicle.vehicleId, speed: vehicle.maxSpeed, odo: Number(vehicle.totalDistanceKm.toFixed(3)) }))
+    paint(g, 'FFC0C0C0', true, n)
 
     for (const date of vehicle.dates) {
-      const d = ws.addRow(['', date.label, '', '', date.maxSpeed, '', ''])
-      paint(d, 'FFFFFFC0', true)
+      const d = ws.addRow(line({ [textKey('time')]: date.label, speed: date.maxSpeed }))
+      paint(d, 'FFFFFFC0', true, n)
 
       let stamp = true
       for (const row of date.rows) {
-        const r = ws.addRow([
-          stamp ? vehicle.vehicleId : '',
-          row.time,
-          row.driverId,
-          row.status,
-          row.speed,
-          Number(row.odoKm.toFixed(3)),
-          rowLocation(row),
-        ])
+        const r = ws.addRow(line({
+          vehicle: stamp ? vehicle.vehicleId : '',
+          time: row.time,
+          driver: row.driverId,
+          status: row.status,
+          speed: row.speed,
+          odo: Number(row.odoKm.toFixed(3)),
+          location: rowLocation(row),
+        }))
         stamp = false
         r.font = { size: 9 }
-        r.getCell(7).alignment = { wrapText: true, vertical: 'top' }
-        const href = locationUrl({ lat: row.lat, lng: row.lng, vehicle: vehicle.vehicleId, time: formatDateTime(row.ts), address: rowLocation(row) })
-        if (href) {
-          r.getCell(7).value = { text: rowLocation(row), hyperlink: href, tooltip: 'Show on the FleetmaxX map' }
-          r.getCell(7).font = { size: 9, color: { argb: 'FF0A7E9C' }, underline: true }
+        const locAt = cols.findIndex(c => c.key === 'location') + 1
+        if (locAt > 0) {
+          r.getCell(locAt).alignment = { wrapText: true, vertical: 'top' }
+          const href = locationUrl({ lat: row.lat, lng: row.lng, vehicle: vehicle.vehicleId, time: formatDateTime(row.ts), address: rowLocation(row) })
+          if (href) {
+            r.getCell(locAt).value = { text: rowLocation(row), hyperlink: href, tooltip: 'Show on the FleetmaxX map' }
+            r.getCell(locAt).font = { size: 9, color: { argb: 'FF0A7E9C' }, underline: true }
+          }
         }
       }
     }

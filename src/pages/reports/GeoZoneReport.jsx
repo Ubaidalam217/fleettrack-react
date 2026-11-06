@@ -27,6 +27,8 @@ import {
 } from '../../utils/geoZoneExport'
 import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
 import ReportsBackLink from '../../components/reports/ReportsBackLink'
+import ColumnPicker from '../../components/reports/ColumnPicker'
+import { useHiddenColumns, columnChoices } from '../../utils/reportColumns'
 
 // Hard cap the user explicitly asked for: a long range across many vehicles
 // can hammer Flespi (each day of range is one request per vehicle), so the
@@ -87,7 +89,9 @@ function presetRange(key, now = new Date()) {
 
 // ── on-screen table ──────────────────────────────────────────────────────────
 
-function GeoZoneTable({ columns, rows, emptyText }) {
+function GeoZoneTable({ columns: all, hidden, rows, emptyText }) {
+  const columns = hidden?.size ? all.filter(c => !hidden.has(c.key)) : all
+  if (!columns.length) return null
   if (!rows || rows.length === 0) {
     return (
       <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12.5, color: 'var(--c-text3)' }}>
@@ -130,6 +134,16 @@ function GeoZoneTable({ columns, rows, emptyText }) {
   )
 }
 
+// Every column each sub-report can show, for its Columns picker. A key shared
+// by the overview and the detail table (Driver, say) switches off in both.
+const TAB_COLUMNS = {
+  trip:    columnChoices(TRIP_COLUMNS),
+  visited: columnChoices([{ key: 'vehicle', label: 'Vehicle' }], VISITED_OVERVIEW_COLUMNS, VISITED_DETAIL_COLUMNS),
+  address: columnChoices(ADDRESS_VISITS_COLUMNS),
+  history: columnChoices(HISTORY_SUMMARY_COLUMNS, HISTORY_DETAIL_COLUMNS),
+  g2g:     columnChoices(G2G_OVERVIEW_COLUMNS, G2G_DETAIL_COLUMNS),
+}
+
 // ── page ──────────────────────────────────────────────────────────────────
 
 export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme }) {
@@ -148,6 +162,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
   // ── filter form state ──
   const now = useRef(new Date()).current
   const [activeTab,        setActiveTab]        = useState('trip')
+  const [hiddenCols, setHiddenCols] = useHiddenColumns(`geozone-${activeTab}`)
   // null = all. Starts empty on every report: the client wants the vehicles
   // picked on purpose, not the whole fleet selected by default.
   const [selectedVehicleIds, setSelectedVehicleIds] = useState([])
@@ -299,7 +314,8 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
   const exportMeta = useMemo(() => ({
     subtitle: 'FleetmaxX', systemName: 'FleetmaxX',
     printDate: applied?.printDate ?? formatPrintDate(),
-  }), [applied])
+    hiddenColumns: hiddenCols,
+  }), [applied, hiddenCols])
 
   const exportFilters = useMemo(() => ({
     rangeLabel: applied
@@ -551,6 +567,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                     {pendingGeocodes > 0 && (
                       <ToolbarButton onClick={resolveMore} icon={MapPin} disabled={resolving}>Resolve addresses</ToolbarButton>
                     )}
+                    <ColumnPicker columns={TAB_COLUMNS[activeTab]} hidden={hiddenCols} onChange={setHiddenCols} />
                     <ToolbarButton onClick={handlePdf} icon={FileDown} primary>Download PDF</ToolbarButton>
                     <ToolbarButton onClick={handleExcel} icon={FileSpreadsheet}>Download Excel</ToolbarButton>
                     <ToolbarButton onClick={handlePrint} icon={Printer}>Print</ToolbarButton>
@@ -565,7 +582,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                         ['Idle', tripReport.summary.idleSec], ['Stop', tripReport.summary.stopSec],
                         ['Inactive', tripReport.summary.inactiveSec], ['Fuel Consumed', tripReport.summary.fuelConsumed],
                       ]} />
-                      <GeoZoneTable columns={TRIP_COLUMNS} rows={tripRows} />
+                      <GeoZoneTable hidden={hiddenCols} columns={TRIP_COLUMNS} rows={tripRows} />
                     </>
                   )}
                   {activeTab === 'visited' && (
@@ -575,21 +592,21 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                         ['Geofence Duration', visitedReport.summary.geofenceDuration],
                         ['Geofence Outside Duration', visitedReport.summary.geofenceOutsideDuration],
                       ]} />
-                      <GeoZoneTable columns={VISITED_OVERVIEW_COLUMNS} rows={visitedReport.vehicleRows} emptyText="No visited geofences for this selection." />
-                      <GeoZoneTable columns={[{ key: 'vehicle', label: 'Vehicle', width: 1 }, ...VISITED_DETAIL_COLUMNS]} rows={visitedDetailRows} />
+                      <GeoZoneTable hidden={hiddenCols} columns={VISITED_OVERVIEW_COLUMNS} rows={visitedReport.vehicleRows} emptyText="No visited geofences for this selection." />
+                      <GeoZoneTable hidden={hiddenCols} columns={[{ key: 'vehicle', label: 'Vehicle', width: 1 }, ...VISITED_DETAIL_COLUMNS]} rows={visitedDetailRows} />
                     </>
                   )}
                   {activeTab === 'address' && (
                     <>
                       <SummaryCards cards={[['Total Visits', addressReport.rows.length]]} />
-                      <GeoZoneTable columns={ADDRESS_VISITS_COLUMNS} rows={addressReport.rows} emptyText="No address visits for this selection." />
+                      <GeoZoneTable hidden={hiddenCols} columns={ADDRESS_VISITS_COLUMNS} rows={addressReport.rows} emptyText="No address visits for this selection." />
                     </>
                   )}
                   {activeTab === 'history' && (
                     <>
                       <SummaryCards cards={[['Geofence×Vehicle Pairs', historyReport.groups.length]]} />
-                      <GeoZoneTable columns={HISTORY_SUMMARY_COLUMNS} rows={historyReport.groups} emptyText="No geofence history for this selection." />
-                      <GeoZoneTable columns={HISTORY_DETAIL_COLUMNS} rows={historyDetailRows} />
+                      <GeoZoneTable hidden={hiddenCols} columns={HISTORY_SUMMARY_COLUMNS} rows={historyReport.groups} emptyText="No geofence history for this selection." />
+                      <GeoZoneTable hidden={hiddenCols} columns={HISTORY_DETAIL_COLUMNS} rows={historyDetailRows} />
                     </>
                   )}
                   {activeTab === 'g2g' && (
@@ -598,8 +615,8 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                         ['No of Trips', g2gReport.summary.noOfTrips], ['Distance (km)', g2gReport.summary.distanceKm],
                         ['Running', g2gReport.summary.running], ['Stop', g2gReport.summary.stop], ['Inactive', g2gReport.summary.inactive],
                       ]} />
-                      <GeoZoneTable columns={G2G_OVERVIEW_COLUMNS} rows={g2gReport.vehicleRows} emptyText="No geofence-to-geofence trips for this selection." />
-                      <GeoZoneTable columns={G2G_DETAIL_COLUMNS} rows={g2gReport.perVehiclePages.flatMap(p => p.rows)} />
+                      <GeoZoneTable hidden={hiddenCols} columns={G2G_OVERVIEW_COLUMNS} rows={g2gReport.vehicleRows} emptyText="No geofence-to-geofence trips for this selection." />
+                      <GeoZoneTable hidden={hiddenCols} columns={G2G_DETAIL_COLUMNS} rows={g2gReport.perVehiclePages.flatMap(p => p.rows)} />
                     </>
                   )}
                 </div>

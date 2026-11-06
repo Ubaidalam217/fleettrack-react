@@ -22,9 +22,12 @@ import {
   INTERVAL_OPTIONS,
   intervalLabel,
   isAbortError,
+  MOVEMENT_COLUMNS,
 } from '../utils/movementReport'
 import { exportMovementPdf, exportMovementExcel, printMovementReport } from '../utils/reportExport'
 import ReportsBackLink from '../components/reports/ReportsBackLink'
+import ColumnPicker from '../components/reports/ColumnPicker'
+import { useHiddenColumns } from '../utils/reportColumns'
 
 // How many rows the on-screen table renders before asking. Exports and Print
 // always emit everything; this only keeps the DOM from carrying five thousand
@@ -102,6 +105,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   )
+  const [hiddenCols, setHiddenCols] = useHiddenColumns('movement')
   const { data } = useFlespiData()
   const vehicles = useMemo(
     () => (data?.vehicles ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
@@ -325,7 +329,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
     company:         applied.company,
   }, [applied, applyTolerance, toleranceMeters, intervalSec, statusesLabel])
 
-  const exportMeta = { subtitle: applied?.company || 'FleetmaxX', systemName: 'FleetmaxX', printDate: applied?.printDate }
+  const exportMeta = { subtitle: applied?.company || 'FleetmaxX', systemName: 'FleetmaxX', printDate: applied?.printDate, hiddenColumns: hiddenCols }
 
   const showMore = useCallback(() => setVisible(v => v + PAGE_ROWS * 2), [])
 
@@ -603,6 +607,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                         Resolve addresses
                       </ToolbarButton>
                     )}
+                    <ColumnPicker columns={MOVEMENT_COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
                     <ToolbarButton onClick={handlePdf} icon={FileDown} disabled={fetching} primary>
                       Download PDF
                     </ToolbarButton>
@@ -622,6 +627,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                   tick={geoTick}
                   onShowMore={showMore}
                   onLocate={setLocated}
+                  hidden={hiddenCols}
                 />
                 <LocationMapModal point={located} onClose={closeLocated} />
               </>

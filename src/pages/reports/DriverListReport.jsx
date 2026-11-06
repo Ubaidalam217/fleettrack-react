@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { FileDown, FileSpreadsheet, Printer, Search } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import PaperTable from '../../components/reports/PaperTable'
+import ColumnPicker from '../../components/reports/ColumnPicker'
+import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import { LABEL, FIELD, Chip, ToolbarButton } from '../../components/reports/controls'
 import { useDrivers, useVehicles, useCompanies, companyNameFor, vehicleLabel } from '../../data/settings'
 import { licenceExpiryState, formatExpiryDate } from '../../utils/licenceExpiry'
@@ -35,6 +37,8 @@ const LICENCE_FILTERS = [
 ]
 
 export default function DriverListReport(props) {
+  const [hiddenCols, setHiddenCols] = useHiddenColumns('driver-list')
+  const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
   const drivers = useDrivers()
   const vehicles = useVehicles()
   const companies = useCompanies()
@@ -101,7 +105,7 @@ export default function DriverListReport(props) {
     systemName: 'FleetmaxX',
     tables: groups.map(g => ({
       heading: `${g.label} — ${g.total}`,
-      columns: COLUMNS.map(c => ({ key: c.key, label: c.label, width: c.pdf })),
+      columns: shownCols.map(c => ({ key: c.key, label: c.label, width: c.pdf })),
       rows: g.rows,
     })),
   })
@@ -149,6 +153,7 @@ export default function DriverListReport(props) {
       <div className="report-screen-only" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div style={{ fontSize: 12.5, color: 'var(--c-text2)' }}>{rows.length} driver{rows.length === 1 ? '' : 's'}</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <ColumnPicker columns={COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
           <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'List_of_Drivers')} icon={FileDown} primary disabled={!rows.length}>Download PDF</ToolbarButton>
           <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'List_of_Drivers')} icon={FileSpreadsheet} disabled={!rows.length}>Download Excel</ToolbarButton>
           <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!rows.length}>Print</ToolbarButton>
@@ -159,7 +164,7 @@ export default function DriverListReport(props) {
         title="List of Drivers"
         company={company}
         filters={filters}
-        columns={COLUMNS}
+        columns={shownCols}
         groups={groups}
         printDate={printDate}
         emptyText={drivers.length ? 'No driver matches this selection.' : 'No drivers yet. Add them under Settings > Driver.'}

@@ -4,7 +4,7 @@
 // rows. Rendered on a white "paper" surface in both themes — it is a preview of
 // a document, and it is also what the Print button sends to the printer.
 import { memo, useMemo } from 'react'
-import { rowLocation } from '../../utils/movementReport'
+import { rowLocation, MOVEMENT_COLUMNS } from '../../utils/movementReport'
 
 const BAND_BLUE   = '#b0c4de'
 const GROUP_GRAY  = '#c0c0c0'
@@ -15,17 +15,33 @@ const RULE        = '#9ca3af'
 
 // Proportional to the PDF's column stops (23.1 / 119.9 / 183.6 / 288.6 / 418.9
 // / 464.8 / 526.4 across an 816pt table).
-const COL_WIDTHS = ['12%', '8%', '13%', '16%', '6%', '8%', '37%']
+const COL_WIDTHS = { vehicle: 12, time: 8, driver: 13, status: 16, speed: 6, odo: 8, location: 37 }
+const NUMERIC = new Set(['speed', 'odo'])
 
-const HEADERS = [
-  { label: 'Vehicle ID',          align: 'left'  },
-  { label: 'Time',                align: 'left'  },
-  { label: 'Driver ID',           align: 'left'  },
-  { label: 'Status',              align: 'left'  },
-  { label: 'Speed (km/h)',        align: 'right' },
-  { label: 'Cumulative Odo (km)', align: 'right' },
-  { label: 'Location',            align: 'left'  },
-]
+/** The shown columns, their widths rescaled to fill the table. */
+function layoutColumns(hidden) {
+  const shown = MOVEMENT_COLUMNS.filter(c => !hidden?.has(c.key))
+  const cols = shown.length ? shown : MOVEMENT_COLUMNS
+  const sum = cols.reduce((a, c) => a + COL_WIDTHS[c.key], 0)
+  return cols.map(c => ({ ...c, width: `${(COL_WIDTHS[c.key] / sum) * 100}%`, align: NUMERIC.has(c.key) ? 'right' : 'left' }))
+}
+
+/**
+ * The cells of a vehicle or date band. Its text goes in `textKey`'s column (or
+ * the first text column shown) and runs on over the empty cells after it, the
+ * way the PDF's band label does; `values` fill the number columns.
+ */
+function bandCells(cols, textKey, text, values) {
+  const at = cols.some(c => c.key === textKey) ? textKey : (cols.find(c => !NUMERIC.has(c.key)) ?? cols[0]).key
+  const cells = []
+  for (const c of cols) {
+    const value = c.key === at ? text : values[c.key]
+    const last = cells[cells.length - 1]
+    if (value === undefined && last?.isText) { last.span += 1; continue }
+    cells.push({ key: c.key, value, span: 1, isText: c.key === at, align: c.align })
+  }
+  return cells
+}
 
 const cellBase = {
   padding: '3px 6px',
@@ -65,7 +81,8 @@ function toItems(report) {
 // every telemetry push. `tick` is the deliberate escape hatch — geocoding fills
 // the Location column by mutating rows in place, and bumping tick is what tells
 // this component those mutations happened.
-function MovementTable({ report, filters, limit, onShowMore, onLocate }) {
+function MovementTable({ report, filters, limit, onShowMore, onLocate, hidden }) {
+  const cols = useMemo(() => layoutColumns(hidden), [hidden])
   const items = useMemo(() => toItems(report), [report])
   const shown = limit >= items.length ? items : items.slice(0, limit)
 
@@ -110,13 +127,13 @@ function MovementTable({ report, filters, limit, onShowMore, onLocate }) {
       <div className="no-scrollbar" style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 900 }}>
           <colgroup>
-            {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
+            {cols.map(c => <col key={c.key} style={{ width: c.width }} />)}
           </colgroup>
           <thead>
             <tr style={{ background: BAND_BLUE }}>
-              {HEADERS.map(h => (
+              {cols.map(h => (
                 <th
-                  key={h.label}
+                  key={h.key}
                   style={{
                     ...cellBase,
                     fontWeight: 700,
@@ -138,26 +155,24 @@ function MovementTable({ report, filters, limit, onShowMore, onLocate }) {
             {shown.map(item => {
               if (item.kind === 'vehicle') {
                 zebra = false
+                const cells = bandCells(cols, 'vehicle', item.vehicle.vehicleId, { speed: item.vehicle.maxSpeed, odo: item.vehicle.totalDistanceKm.toFixed(3) })
                 return (
                   <tr key={item.key} style={{ background: GROUP_GRAY }}>
-                    <td style={{ ...cellBase, fontWeight: 700, borderTop: `1px solid ${RULE}` }}>{item.vehicle.vehicleId}</td>
-                    <td colSpan={3} style={{ ...cellBase, borderTop: `1px solid ${RULE}` }} />
-                    <td style={{ ...cellBase, fontWeight: 700, textAlign: 'right', borderTop: `1px solid ${RULE}` }}>{item.vehicle.maxSpeed}</td>
-                    <td style={{ ...cellBase, fontWeight: 700, textAlign: 'right', borderTop: `1px solid ${RULE}` }}>{item.vehicle.totalDistanceKm.toFixed(3)}</td>
-                    <td style={{ ...cellBase, borderTop: `1px solid ${RULE}` }} />
+                    {cells.map(c => (
+                      <td key={c.key} colSpan={c.span} style={{ ...cellBase, fontWeight: 700, textAlign: c.align, borderTop: `1px solid ${RULE}` }}>{c.value}</td>
+                    ))}
                   </tr>
                 )
               }
 
               if (item.kind === 'date') {
                 zebra = false
+                const cells = bandCells(cols, 'time', item.date.label, { speed: item.date.maxSpeed })
                 return (
                   <tr key={item.key} style={{ background: DATE_YELLOW }}>
-                    <td style={{ ...cellBase }} />
-                    <td colSpan={3} style={{ ...cellBase, fontWeight: 700 }}>{item.date.label}</td>
-                    <td style={{ ...cellBase, fontWeight: 700, textAlign: 'right' }}>{item.date.maxSpeed}</td>
-                    <td style={{ ...cellBase }} />
-                    <td style={{ ...cellBase }} />
+                    {cells.map(c => (
+                      <td key={c.key} colSpan={c.span} style={{ ...cellBase, fontWeight: 700, textAlign: c.align }}>{c.value}</td>
+                    ))}
                   </tr>
                 )
               }
@@ -167,12 +182,12 @@ function MovementTable({ report, filters, limit, onShowMore, onLocate }) {
               zebra = !zebra
               return (
                 <tr key={item.key} style={{ background: bg }}>
-                  <td style={cellBase}>{item.vehicleId}</td>
-                  <td style={cellBase}>{row.time}</td>
-                  <td style={cellBase}>{row.driverId}</td>
-                  <td style={cellBase}>{row.status}</td>
-                  <td style={{ ...cellBase, textAlign: 'right' }}>{row.speed}</td>
-                  <td style={{ ...cellBase, textAlign: 'right' }}>{row.odoKm.toFixed(3)}</td>
+                  {cols.map(c => c.key !== 'location' && (
+                    <td key={c.key} style={{ ...cellBase, textAlign: c.align }}>
+                      {{ vehicle: item.vehicleId, time: row.time, driver: row.driverId, status: row.status, speed: row.speed, odo: row.odoKm.toFixed(3) }[c.key]}
+                    </td>
+                  ))}
+                  {cols.some(c => c.key === 'location') && (
                   <td style={{ ...cellBase, wordBreak: 'break-word' }}>
                     {/* Client 2026-11-02: clicking a location shows it on our own map. */}
                     {onLocate && row.lat != null && row.lng != null ? (
@@ -186,6 +201,7 @@ function MovementTable({ report, filters, limit, onShowMore, onLocate }) {
                       </button>
                     ) : rowLocation(row)}
                   </td>
+                  )}
                 </tr>
               )
             })}

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import PaperTable from '../../components/reports/PaperTable'
+import ColumnPicker from '../../components/reports/ColumnPicker'
+import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import LocationMapModal from '../../components/reports/LocationMapModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
@@ -80,6 +82,8 @@ const COLUMNS = [
 ]
 
 export default function EventOccurrenceReport(props) {
+  const [hiddenCols, setHiddenCols] = useHiddenColumns('event-occurrence')
+  const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
   const { data } = useFlespiData()
   const vehicles = useMemo(
     () => (data?.vehicles ?? []).slice().sort((a, b) => (a.master?.plateNo || a.name).localeCompare(b.master?.plateNo || b.name)),
@@ -231,8 +235,9 @@ export default function EventOccurrenceReport(props) {
     tables: groups.map(g => ({
       heading: `${g.label} — ${g.total}`,
       columns: [
-        { key: 'dateTime', label: 'Date / Time', width: 8 },
-        ...COLUMNS.filter(c => c.key !== 'time').map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, hrefKey: c.locate ? 'mapUrl' : undefined })),
+        // The PDF and Excel carry the date with the time, one column.
+        ...(shownCols.some(c => c.key === 'time') ? [{ key: 'dateTime', label: 'Date / Time', width: 8 }] : []),
+        ...shownCols.filter(c => c.key !== 'time').map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, hrefKey: c.locate ? 'mapUrl' : undefined })),
       ],
       rows: g.rows.filter(r => r.kind !== 'band'),
     })),
@@ -350,6 +355,7 @@ export default function EventOccurrenceReport(props) {
               )}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <ColumnPicker columns={COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
               <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Event_Occurrence_Report')} icon={FileDown} primary disabled={!total}>Download PDF</ToolbarButton>
               <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Event_Occurrence_Report')} icon={FileSpreadsheet} disabled={!total}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!total}>Print</ToolbarButton>
@@ -360,7 +366,7 @@ export default function EventOccurrenceReport(props) {
             title="Event Occurrence Report"
             company="FleetmaxX"
             filters={filters}
-            columns={COLUMNS}
+            columns={shownCols}
             groups={groups}
             printDate={applied.printDate}
             onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.ts, vehicleId: r.vehicle, status: `${r.alert} · ${r.status}`, location: r.location })}

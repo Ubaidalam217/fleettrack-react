@@ -4,6 +4,8 @@
  * silver group bars, zebra rows, END OF REPORT) driven by a column config.
  *
  * columns: [{ key, label, width ('12%'), align?, locate? }]
+ *   Pass only the columns to show (utils/reportColumns.js); the percentages
+ *   are rescaled so the ones left still fill the page.
  *   `locate` makes the cell a button that calls onLocate(row) when the row has
  *   lat/lng — the same "show it on our map" as the Movement Report.
  * groups:  [{ key, label, rows, total? }]
@@ -20,7 +22,17 @@ const RULE       = '#9ca3af'
 
 const cell = { padding: '3px 6px', fontSize: 11, color: INK, verticalAlign: 'top', lineHeight: 1.35 }
 
-export default function PaperTable({ title, company, filters = [], columns, groups, printDate, onLocate, emptyText }) {
+/** Rescale percentage widths to add up to 100% once some columns are hidden. */
+function fillWidths(columns) {
+  const pct = columns.map(c => (typeof c.width === 'string' && c.width.endsWith('%') ? parseFloat(c.width) : NaN))
+  if (pct.some(n => !Number.isFinite(n))) return columns
+  const sum = pct.reduce((a, b) => a + b, 0)
+  if (!sum || Math.abs(sum - 100) < 0.5) return columns
+  return columns.map((c, i) => ({ ...c, width: `${((pct[i] / sum) * 100).toFixed(3)}%` }))
+}
+
+export default function PaperTable({ title, company, filters = [], columns: given, groups, printDate, onLocate, emptyText }) {
+  const columns = fillWidths(given)
   const total = groups.reduce((s, g) => s + g.rows.filter(r => r.kind !== 'band').length, 0)
   // Zebra restarts under every band, the way the Movement Report shades.
   const shaded = groups.map(g => {

@@ -69,6 +69,21 @@ export const INTERVAL_OPTIONS = [
   { sec: 1800, label: '30 min' },
 ]
 
+/**
+ * The Movement Report's seven columns, in the Ctrack order. The page's Columns
+ * picker switches them off by key; the table, PDF and Excel follow
+ * (client 2026-11-06: choose the columns of every report).
+ */
+export const MOVEMENT_COLUMNS = [
+  { key: 'vehicle',  label: 'Vehicle ID' },
+  { key: 'time',     label: 'Time' },
+  { key: 'driver',   label: 'Driver ID' },
+  { key: 'status',   label: 'Status' },
+  { key: 'speed',    label: 'Speed (km/h)' },
+  { key: 'odo',      label: 'Cumulative Odo (km)' },
+  { key: 'location', label: 'Location' },
+]
+
 export function intervalLabel(sec) {
   return INTERVAL_OPTIONS.find(o => o.sec === sec)?.label ?? `${Math.round(sec / 60)} min`
 }

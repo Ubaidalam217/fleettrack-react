@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FileDown, FileSpreadsheet, Printer, Search } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import PaperTable from '../../components/reports/PaperTable'
+import ColumnPicker from '../../components/reports/ColumnPicker'
+import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import LocationMapModal from '../../components/reports/LocationMapModal'
 import { LABEL, FIELD, Chip, ToolbarButton } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
@@ -41,6 +43,8 @@ const COLUMNS = [
 const NOT_REGISTERED = '__unregistered'
 
 export default function VehicleListReport(props) {
+  const [hiddenCols, setHiddenCols] = useHiddenColumns('vehicle-list')
+  const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
   const { data } = useFlespiData()
   const registered = useVehicles()
   const companies = useCompanies()
@@ -157,7 +161,7 @@ export default function VehicleListReport(props) {
     systemName: 'FleetmaxX',
     tables: groups.map(g => ({
       heading: `${g.label} — ${g.total}`,
-      columns: COLUMNS.map(c => ({ key: c.key, label: c.label, width: c.pdf, hrefKey: c.locate ? 'mapUrl' : undefined })),
+      columns: shownCols.map(c => ({ key: c.key, label: c.label, width: c.pdf, hrefKey: c.locate ? 'mapUrl' : undefined })),
       rows: g.rows,
     })),
   })
@@ -201,6 +205,7 @@ export default function VehicleListReport(props) {
       <div className="report-screen-only" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div style={{ fontSize: 12.5, color: 'var(--c-text2)' }}>{withLocation.length} vehicle{withLocation.length === 1 ? '' : 's'}</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <ColumnPicker columns={COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
           <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'List_of_Vehicles')} icon={FileDown} primary disabled={!withLocation.length}>Download PDF</ToolbarButton>
           <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'List_of_Vehicles')} icon={FileSpreadsheet} disabled={!withLocation.length}>Download Excel</ToolbarButton>
           <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!withLocation.length}>Print</ToolbarButton>
@@ -211,7 +216,7 @@ export default function VehicleListReport(props) {
         title="List of Vehicles"
         company={company}
         filters={filters}
-        columns={COLUMNS}
+        columns={shownCols}
         groups={groups}
         printDate={printDate}
         onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.lastTs, vehicleId: r.vehicleId, status: r.status, location: r.location })}

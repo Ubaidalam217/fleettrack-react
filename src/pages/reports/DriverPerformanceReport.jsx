@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FileDown, FileSpreadsheet, Printer, AlertTriangle, Save } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import PaperTable from '../../components/reports/PaperTable'
+import ColumnPicker from '../../components/reports/ColumnPicker'
+import { useHiddenColumns, columnChoices } from '../../utils/reportColumns'
 import { LABEL, FIELD, Chip, ToolbarButton } from '../../components/reports/controls'
 import { getDriverPerformance, getFatigueRule, setFatigueRule, driverCode } from '../../data/settings'
 import { useSession } from '../../data/session'
@@ -93,7 +95,12 @@ function expiryText(e) {
   return e.daysLeft < 0 ? `${e.label} expired ${-e.daysLeft}d ago` : `${e.label} in ${e.daysLeft}d (${e.date})`
 }
 
+const ALL_COLUMNS = columnChoices(PERF_COLUMNS, RISK_COLUMNS, NOID_COLUMNS)
+
 export default function DriverPerformanceReport(props) {
+  // One column choice across the three tables; a table with none left is not shown.
+  const [hiddenCols, setHiddenCols] = useHiddenColumns('driver-performance')
+  const shown = cols => cols.filter(c => !hiddenCols.has(c.key))
   const { user } = useSession()
   const canEditRule = ['SUPER_ADMIN', 'GGB_ADMIN'].includes(user?.role)
   const now = useMemo(() => new Date(), [])
@@ -211,9 +218,9 @@ export default function DriverPerformanceReport(props) {
     printDate: applied?.printDate,
     systemName: 'FleetmaxX',
     tables: [
-      { heading: `Performance — ${perfGroups[0].total}`, columns: PERF_COLUMNS.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align })), rows: perfGroups[0].rows },
-      { heading: `Safety score & risk — ${riskGroups[0].total}`, columns: RISK_COLUMNS.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align })), rows: riskGroups[0].rows },
-      { heading: `Driving without identification — ${noIdGroups[0].total}`, columns: NOID_COLUMNS.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align })), rows: noIdGroups[0].rows },
+      { heading: `Performance — ${perfGroups[0].total}`, columns: shown(PERF_COLUMNS).map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align })), rows: perfGroups[0].rows },
+      { heading: `Safety score & risk — ${riskGroups[0].total}`, columns: shown(RISK_COLUMNS).map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align })), rows: riskGroups[0].rows },
+      { heading: `Driving without identification — ${noIdGroups[0].total}`, columns: shown(NOID_COLUMNS).map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align })), rows: noIdGroups[0].rows },
     ],
   })
 
@@ -286,18 +293,25 @@ export default function DriverPerformanceReport(props) {
                   <strong style={{ color: 'var(--c-text1)' }}>{drivers.length}</strong> drivers · scores are rules on the period&apos;s numbers, not a trained model
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <ColumnPicker columns={ALL_COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
                   <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Driver_Performance_Report')} icon={FileDown} primary>Download PDF</ToolbarButton>
                   <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Driver_Performance_Report')} icon={FileSpreadsheet}>Download Excel</ToolbarButton>
                   <ToolbarButton onClick={() => window.print()} icon={Printer}>Print</ToolbarButton>
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                <PaperTable title="Driver Performance" company="FleetmaxX" filters={filters} columns={PERF_COLUMNS} groups={perfGroups}
-                  printDate={applied.printDate} emptyText="No drivers in your fleet yet — add them under Settings › Driver." />
-                <PaperTable title="Driver Safety Score & Risk" company="FleetmaxX" filters={filters} columns={RISK_COLUMNS} groups={riskGroups}
-                  printDate={applied.printDate} emptyText="No drivers in your fleet yet." />
-                <PaperTable title="Driving Without Identification" company="FleetmaxX" filters={filters} columns={NOID_COLUMNS} groups={noIdGroups}
-                  printDate={applied.printDate} emptyText="Every trip in the period was credited to a driver." />
+                {shown(PERF_COLUMNS).length > 0 && (
+                  <PaperTable title="Driver Performance" company="FleetmaxX" filters={filters} columns={shown(PERF_COLUMNS)} groups={perfGroups}
+                    printDate={applied.printDate} emptyText="No drivers in your fleet yet — add them under Settings › Driver." />
+                )}
+                {shown(RISK_COLUMNS).length > 0 && (
+                  <PaperTable title="Driver Safety Score & Risk" company="FleetmaxX" filters={filters} columns={shown(RISK_COLUMNS)} groups={riskGroups}
+                    printDate={applied.printDate} emptyText="No drivers in your fleet yet." />
+                )}
+                {shown(NOID_COLUMNS).length > 0 && (
+                  <PaperTable title="Driving Without Identification" company="FleetmaxX" filters={filters} columns={shown(NOID_COLUMNS)} groups={noIdGroups}
+                    printDate={applied.printDate} emptyText="Every trip in the period was credited to a driver." />
+                )}
               </div>
             </>
           )}

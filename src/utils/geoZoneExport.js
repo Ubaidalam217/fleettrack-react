@@ -125,14 +125,26 @@ function drawSummaryCards(doc, y, cards) {
 }
 
 /**
+ * The tables without the columns the user switched off (`opts.hiddenColumns`,
+ * a Set of keys — utils/reportColumns.js). A table left with no columns is
+ * dropped.
+ */
+function shownTables({ tables = [], hiddenColumns }) {
+  return tables
+    .map(t => (hiddenColumns?.size ? { ...t, columns: t.columns.filter(c => !hiddenColumns.has(c.key)) } : t))
+    .filter(t => t.columns.length)
+}
+
+/**
  * Render one or more {heading, columns, rows} tables in sequence, with
  * header-band re-stamping and page breaks shared across every sub-report.
  *
- * @param {object} opts  {title, subtitle, filtersText, printDate, systemName, summaryCards, tables}
+ * @param {object} opts  {title, subtitle, filtersText, printDate, systemName, summaryCards, tables, hiddenColumns?}
  */
 export async function buildGeoZonePdf(opts) {
   const [{ jsPDF }] = await Promise.all([import('jspdf'), loadLogo()])
-  const { title, subtitle = 'FleetmaxX', filtersText = '', printDate, systemName = 'FleetmaxX', summaryCards = [], tables = [] } = opts
+  const { title, subtitle = 'FleetmaxX', filtersText = '', printDate, systemName = 'FleetmaxX', summaryCards = [] } = opts
+  const tables = shownTables(opts)
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
   let pageNo = 0
@@ -241,7 +253,8 @@ function fill(argb) {
 
 export async function exportGeoZoneExcel(opts, filenameBase) {
   const ExcelJS = (await import('exceljs')).default
-  const { title, subtitle = 'FleetmaxX', filtersText = '', printDate, systemName = 'FleetmaxX', summaryCards = [], tables = [] } = opts
+  const { title, subtitle = 'FleetmaxX', filtersText = '', printDate, systemName = 'FleetmaxX', summaryCards = [] } = opts
+  const tables = shownTables(opts)
 
   const wb = new ExcelJS.Workbook()
   wb.creator = systemName
@@ -381,6 +394,7 @@ function tripReportExportOpts(report, filters, meta) {
   return {
     title: 'Geofence Trip Report',
     subtitle: meta.subtitle, filtersText: filters.rangeLabel, printDate: meta.printDate, systemName: meta.systemName,
+    hiddenColumns: meta.hiddenColumns,
     summaryCards: tripReportSummaryCards(report),
     tables: tripReportTables(report),
   }
@@ -435,6 +449,7 @@ function visitedSummaryExportOpts(report, filters, meta) {
   return {
     title: 'Geofence Visited Summary',
     subtitle: meta.subtitle, filtersText: filters.rangeLabel, printDate: meta.printDate, systemName: meta.systemName,
+    hiddenColumns: meta.hiddenColumns,
     summaryCards: [
       { label: 'No of Visits', value: report.summary.noOfVisits },
       { label: 'Geofence Duration', value: report.summary.geofenceDuration },
@@ -465,6 +480,7 @@ function addressVisitsExportOpts(report, filters, meta) {
   return {
     title: 'Address Visits',
     subtitle: meta.subtitle, filtersText: filters.rangeLabel, printDate: meta.printDate, systemName: meta.systemName,
+    hiddenColumns: meta.hiddenColumns,
     summaryCards: [{ label: 'Total Visits', value: report.rows.length }],
     tables: [{ heading: null, columns: ADDRESS_VISITS_COLUMNS, rows: report.rows }],
   }
@@ -524,6 +540,7 @@ function geofenceHistoryExportOpts(report, filters, meta) {
   return {
     title: 'Geofence History',
     subtitle: meta.subtitle, filtersText: filters.rangeLabel, printDate: meta.printDate, systemName: meta.systemName,
+    hiddenColumns: meta.hiddenColumns,
     summaryCards: [{ label: 'Geofence×Vehicle Pairs', value: report.groups.length }],
     tables: geofenceHistoryTables(report),
   }
@@ -585,6 +602,7 @@ function g2gTripSummaryExportOpts(report, filters, meta) {
   return {
     title: 'Geofence to Geofence Trip Summary',
     subtitle: meta.subtitle, filtersText: filters.rangeLabel, printDate: meta.printDate, systemName: meta.systemName,
+    hiddenColumns: meta.hiddenColumns,
     summaryCards: [
       { label: 'No of Trips', value: report.summary.noOfTrips },
       { label: 'Distance (km)', value: report.summary.distanceKm },

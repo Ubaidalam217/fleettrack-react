@@ -3,6 +3,8 @@ import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle, Search } from 'lu
 import Sidebar from '../../components/Sidebar'
 import Header from '../../components/Header'
 import DaywiseTable from '../../components/reports/DaywiseTable'
+import ColumnPicker from '../../components/reports/ColumnPicker'
+import { useHiddenColumns, visibleColumns } from '../../utils/reportColumns'
 import {
   LABEL, FIELD, MultiSelect, CheckRow, ToolbarButton, HelpTip,
 } from '../../components/reports/controls'
@@ -129,6 +131,8 @@ const NOT_ASSIGNED = 'Not assigned'
 
 export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, setTheme }) {
   const V = VARIANTS[variant]
+  // The day columns always stay; the picker covers the identity columns and Total.
+  const [hiddenCols, setHiddenCols] = useHiddenColumns(`daywise-${variant}`)
 
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
@@ -297,10 +301,11 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
       : { key, dir: key === 'total' ? 'desc' : 'asc' }))
   }
 
-  const columns = useMemo(() => [
+  const allColumns = useMemo(() => [
     ...V.identity,
     { key: 'total', label: V.totalLabel, width: 92, align: 'right', get: r => V.format(V.totalOf(r)) },
   ], [V])
+  const columns = useMemo(() => visibleColumns(allColumns, hiddenCols), [allColumns, hiddenCols])
 
   const title = `${V.title} — ${monthLabel(year, monthNo)}`
   const lastElapsed = lastElapsedDay(year, monthNo)
@@ -473,6 +478,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <ColumnPicker columns={allColumns} hidden={hiddenCols} onChange={setHiddenCols} />
                     <ToolbarButton onClick={() => exportDaywisePdf(exportModel, exportMeta)} icon={FileDown} primary>
                       Download PDF
                     </ToolbarButton>
