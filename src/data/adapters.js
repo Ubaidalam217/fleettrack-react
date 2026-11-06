@@ -167,6 +167,8 @@ export const vehicle = {
     // Collected by the Live Map's Console rather than the Settings form, so it
     // rides along untouched when a row is saved from Settings.
     vehicleType: orBlank(r.vehicleType),
+    // The API sends the date as an ISO timestamp; the form binds "YYYY-MM-DD".
+    validUntil: r.validUntil ? String(r.validUntil).slice(0, 10) : '',
   }),
   toApiCreate: r => ({
     bgId: r.companyId,
@@ -187,6 +189,7 @@ export const vehicle = {
     deviceType: orNull(r.deviceType),
     mobileNo: orNull(r.mobileNo),
     vehicleType: orNull(r.vehicleType),
+    validUntil: orNull(r.validUntil),
   }),
 }
 

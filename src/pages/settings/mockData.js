@@ -297,6 +297,9 @@ export function emptyVehicle() {
     // ride along untouched when a row is saved from Settings.
     mobileNo:      '',
     deviceType:    '',
+    // Validity: "YYYY-MM-DD", the day the vehicle's service is valid until
+    // (client 2026-11-06). Filterable on the Live Map.
+    validUntil:    '',
   }
 }
 
@@ -602,11 +605,11 @@ const SEED_USERS = [
 // them — they stay on the seeds as extra identifiers and are simply absent on
 // anything added since.
 const SEED_VEHICLES = [
-  { id: 'v1', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 12345-G1', vehicleId: 'FL-01', imei: '863071011234501', odometer: '184320', make: 'Volvo',      model: 'FH16',     deviceType: 'Teltonika FMB920', mobileNo: '+971 50 111 2201' },
-  { id: 'v2', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 55401-B2', vehicleId: 'FL-02', imei: '863071011234502', odometer: '96110',  make: 'Volvo',      model: 'FH16',     deviceType: 'Teltonika FMB920', mobileNo: '+971 50 111 2202' },
-  { id: 'v3', companyId: 'c1', branchId: 'b2', groupId: 'g1', subGroup: 'Light',  vehicleNumber: 'AD 77120-A4', vehicleId: 'FL-03', imei: '863071011234503', odometer: '52400',  make: 'Toyota',     model: 'HiAce',    deviceType: 'Teltonika FMB130', mobileNo: '+971 50 111 2203' },
+  { id: 'v1', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 12345-G1', vehicleId: 'FL-01', imei: '863071011234501', odometer: '184320', make: 'Volvo',      model: 'FH16',     deviceType: 'Teltonika FMB920', mobileNo: '+971 50 111 2201', validUntil: '2026-10-31' },
+  { id: 'v2', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 55401-B2', vehicleId: 'FL-02', imei: '863071011234502', odometer: '96110',  make: 'Volvo',      model: 'FH16',     deviceType: 'Teltonika FMB920', mobileNo: '+971 50 111 2202', validUntil: '2026-11-25' },
+  { id: 'v3', companyId: 'c1', branchId: 'b2', groupId: 'g1', subGroup: 'Light',  vehicleNumber: 'AD 77120-A4', vehicleId: 'FL-03', imei: '863071011234503', odometer: '52400',  make: 'Toyota',     model: 'HiAce',    deviceType: 'Teltonika FMB130', mobileNo: '+971 50 111 2203', validUntil: '2027-06-30' },
   { id: 'v4', companyId: 'c1', branchId: '',   groupId: 'g1', subGroup: '',       vehicleNumber: 'AD 30988-C1', vehicleId: 'FL-04', imei: '863071011234504', odometer: '31875',  make: 'Nissan',     model: 'Navara',   deviceType: 'Teltonika FMB130', mobileNo: '' },
-  { id: 'v5', companyId: 'c2', branchId: 'b3', groupId: 'g3', subGroup: 'Trunk',  vehicleNumber: 'DXB 44012-K', vehicleId: 'DR-01', imei: '863071011234505', odometer: '240900', make: 'Scania',     model: 'R450',     deviceType: 'Queclink GV300',   mobileNo: '+971 55 404 7701' },
+  { id: 'v5', companyId: 'c2', branchId: 'b3', groupId: 'g3', subGroup: 'Trunk',  vehicleNumber: 'DXB 44012-K', vehicleId: 'DR-01', imei: '863071011234505', odometer: '240900', make: 'Scania',     model: 'R450',     deviceType: 'Queclink GV300',   mobileNo: '+971 55 404 7701', validUntil: '2027-01-15' },
   { id: 'v6', companyId: 'c2', branchId: 'b3', groupId: 'g3', subGroup: 'City',   vehicleNumber: 'DXB 88231-M', vehicleId: 'DR-02', imei: '863071011234506', odometer: '68240',  make: 'Ford',       model: 'Transit',  deviceType: 'Queclink GV300',   mobileNo: '+971 55 404 7702' },
   { id: 'v7', companyId: 'c2', branchId: '',   groupId: 'g3', subGroup: '',       vehicleNumber: 'DXB 10577-P', vehicleId: 'DR-03', imei: '863071011234507', odometer: '155300', make: 'Mercedes',   model: 'Actros',   deviceType: '',                 mobileNo: '' },
   { id: 'v8', companyId: 'c3', branchId: 'b4', groupId: 'g4', subGroup: 'Reefer', vehicleNumber: 'SHJ 20114-T', vehicleId: 'EC-01', imei: '863071011234508', odometer: '78450',  make: 'Isuzu',      model: 'NQR',      deviceType: 'Teltonika FMC130', mobileNo: '+971 56 882 3310' },
@@ -1296,6 +1299,7 @@ export function settingsProfileForImei(imei) {
     makeModel:  [row.make, row.model].filter(Boolean).join(' '),
     deviceType: row.deviceType || '',
     mobileNo:   row.mobileNo   || '',
+    validUntil: row.validUntil || '',
     // No odometer here on purpose. The Settings record still carries one (the
     // Vehicle form collects it), but the Live Map's ODO Reading is the
     // tracker's own figure — one odometer, from the device that measures it.

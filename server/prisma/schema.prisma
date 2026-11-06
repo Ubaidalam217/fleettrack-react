@@ -197,6 +197,11 @@ model Vehicle {
   odometer String?
   groupId  String?
 
+  /// Validity — the date the vehicle's tracking service is valid until (client,
+  /// 2026-11-06: "Validity against vehicle", filterable on the Live Map).
+  /// Stored as UTC midnight of that day; the API speaks "YYYY-MM-DD".
+  validUntil DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

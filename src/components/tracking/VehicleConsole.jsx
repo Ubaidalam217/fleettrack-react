@@ -335,6 +335,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
         model:         String(sform.model ?? '').trim(),
         deviceType:    String(sform.deviceType ?? '').trim(),
         mobileNo:      String(sform.mobileNo ?? '').trim(),
+        validUntil:    sform.validUntil ?? '',
       }
       // Awaited: in real mode these are HTTP calls, and reporting "saved" before
       // the write landed would show a success toast for a request that then 409s on
@@ -627,6 +628,16 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
                       value={sform.mobileNo}
                       onChange={e => setS('mobileNo', e.target.value)}
                       placeholder="+971 50 000 0000"
+                      style={inputStyle(false)}
+                    />
+                  </Field>
+
+                  <Field label="Validity" hint="Service valid until">
+                    <input
+                      name="s-validUntil"
+                      type="date"
+                      value={sform.validUntil ?? ''}
+                      onChange={e => setS('validUntil', e.target.value)}
                       style={inputStyle(false)}
                     />
                   </Field>

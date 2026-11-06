@@ -13,20 +13,11 @@ import prisma from '../prisma.js'
 import { randomBytes } from 'node:crypto'
 import { asyncHandler, badRequest, conflict, HttpError, notFound } from '../lib/http.js'
 import { fromBase64, sniffDocument, sniffImage } from '../lib/files.js'
-import { optionalEmail, optionalId, optionalText, requiredId, requiredText } from '../lib/fields.js'
+import { optionalDate, optionalEmail, optionalId, optionalText, requiredId, requiredText } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 
 const router = Router()
-
-/** "YYYY-MM-DD" → UTC midnight, "" / null → null. */
-const optionalDate = () =>
-  z
-    .union([z.string(), z.null()])
-    .default(null)
-    .transform(v => (v ? String(v).trim() : ''))
-    .refine(v => v === '' || (/^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`))), 'Use a date like 2027-03-31')
-    .transform(v => (v === '' ? null : new Date(`${v}T00:00:00Z`)))
 
 /**
  * An iButton code as typed or copied: spaces, colons and dashes dropped,

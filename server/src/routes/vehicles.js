@@ -13,7 +13,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import prisma from '../prisma.js'
 import { asyncHandler, badRequest, conflict } from '../lib/http.js'
-import { imeiField, optionalId, optionalText, requiredId } from '../lib/fields.js'
+import { imeiField, optionalDate, optionalId, optionalText, requiredId } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, isSuperAdmin, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { revokeGrantsForBg } from '../lib/flespiGrant.js'
@@ -38,6 +38,8 @@ const vehicleFields = {
    * never stored here.
    */
   odometer: optionalText(40),
+  /** Validity: "YYYY-MM-DD", the day the vehicle's service is valid until. */
+  validUntil: optionalDate(),
   /**
    * Only meaningful when the vehicle's BG has no group of its own; otherwise the
    * frontend derives it from the BG. Validated against the BG's GGB below so a row

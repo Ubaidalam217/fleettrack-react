@@ -25,7 +25,9 @@ import {
 import { fetchDeviceTrack, buildSegments } from '../utils/replay'
 import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/traces'
 import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
-import { useGeofences, useDrivers, useVehicles, driverNameForDevice } from '../data/settings'
+import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, driverNameForDevice, settingsProfileForImei } from '../data/settings'
+import { FilterToggle, FilterPanel } from '../components/tracking/LiveMapFilters'
+import { EMPTY_FILTERS, vehicleAttributes, matchesAttributes, filterOptions } from '../utils/liveMapFilters'
 
 // Client, 2026-11-02: hide the details card that opens under a selected vehicle
 // in the list (Status, Speed, Fleet No, Driver, Heading, Last Update, Location,
@@ -380,7 +382,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // Subscribed so the list's Driver line and the driver search follow edits on
   // Settings > Driver; the names themselves come from driverNameForDevice.
   useDrivers()
-  useVehicles()
+  // Also what the attribute filters read (Company, Branch, Asset Group…).
+  const settingsVehicles = useVehicles()
+  const companies = useCompanies()
+  const branches = useBranches()
 
   // Live vehicle data, shared MQTT session, no REST polling. The map and shell
   // render immediately — nothing here gates the UI. Vehicles appear as MQTT
@@ -429,6 +434,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
 
   const [activeTab, setActiveTab]   = useState(ALL)
   const [search, setSearch]         = useState('')
+  const [attrFilters, setAttrFilters] = useState(EMPTY_FILTERS)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [focusId, setFocusId]       = useState(null)
   const [flyTarget, setFlyTarget]   = useState(null)
   const [openPopupId, setOpenPopupId] = useState(null)
@@ -735,9 +742,20 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     pushToast(settingsNote ? `Vehicle saved and ${settingsNote}` : 'Vehicle saved', { tone: 'success' })
   }, [pushToast])
 
-  const counts = countByFilter(vehicles)
+  // The attribute filters narrow everything below them — the status counts,
+  // the list and the map — the way choosing a company should.
+  const attrsById = useMemo(
+    () => new Map(vehicles.map(v => [v.id, vehicleAttributes(v, settingsProfileForImei(v.ident))])),
+    // The Settings stores are listed so an edit there re-reads the profiles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [vehicles, settingsVehicles, companies, branches]
+  )
+  const filterChoices = useMemo(() => filterOptions([...attrsById.values()], attrFilters), [attrsById, attrFilters])
+  const inFilters = vehicles.filter(v => matchesAttributes(attrsById.get(v.id), attrFilters))
 
-  const filtered = vehicles
+  const counts = countByFilter(inFilters)
+
+  const filtered = inFilters
     .filter(v => matchesFilter(v, activeTab))
     .filter(v => {
       const q = search.trim().toLowerCase()
@@ -797,7 +815,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // replay marker below so there's only ever one car for that vehicle.
   const replayActive  = replayVehicleId != null
   const replayShowing = replayActive && replayPoints.length > 0
-  const mapped = vehicles
+  const mapped = inFilters
     .filter(v => v.lat != null && v.lng != null)
     .filter(v => !(replayShowing && v.id === replayVehicleId))
 
@@ -1292,7 +1310,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
 
                 {/* Search bar */}
                 <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--c-border2)', flexShrink: 0 }}>
-                  <div style={{ position: 'relative' }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+                  <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
                     <svg
                       style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-text3)', pointerEvents: 'none' }}
                       width="13" height="13" viewBox="0 0 24 24" fill="none"
@@ -1318,6 +1337,17 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       }}
                     />
                   </div>
+                  <FilterToggle filters={attrFilters} open={filtersOpen} onClick={() => setFiltersOpen(o => !o)} />
+                  </div>
+                  {filtersOpen && (
+                    <FilterPanel
+                      filters={attrFilters}
+                      onChange={setAttrFilters}
+                      options={filterChoices}
+                      shown={inFilters.length}
+                      total={vehicles.length}
+                    />
+                  )}
                 </div>
 
                 {/* Vehicle list */}

@@ -70,6 +70,15 @@ export const optionalEmail = () =>
       'Must be a valid email address'
     )
 
+/** "YYYY-MM-DD" → UTC midnight; omitted, "" or null → null. */
+export const optionalDate = () =>
+  z
+    .union([z.string(), z.null()])
+    .default(null)
+    .transform(v => (v ? String(v).trim() : ''))
+    .refine(v => v === '' || (/^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`))), 'Use a date like 2027-03-31')
+    .transform(v => (v === '' ? null : new Date(`${v}T00:00:00Z`)))
+
 /** A nullable foreign key: omitted or "" → null. */
 export const optionalId = () =>
   z

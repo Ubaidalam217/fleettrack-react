@@ -218,6 +218,7 @@ export default function Vehicle(props) {
       make:          draft.make.trim(),
       model:         draft.model.trim(),
       deviceType:    String(draft.deviceType ?? '').trim(),
+      validUntil:    draft.validUntil ?? '',
     }
     setSaving(true)
     try {
@@ -469,6 +470,16 @@ export default function Vehicle(props) {
                   value={draft.model}
                   onChange={e => set('model', e.target.value)}
                   placeholder="FH16"
+                  style={inputStyle(false)}
+                />
+              </Field>
+
+              <Field label="Validity" hint="Service valid until">
+                <input
+                  name="validUntil"
+                  type="date"
+                  value={draft.validUntil ?? ''}
+                  onChange={e => set('validUntil', e.target.value)}
                   style={inputStyle(false)}
                 />
               </Field>

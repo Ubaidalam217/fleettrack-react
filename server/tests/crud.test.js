@@ -552,3 +552,19 @@ describe('reset-password', () => {
     expect(res.status).toBe(403)
   })
 })
+
+describe('vehicle Validity', () => {
+  it('stores the valid-until date, clears it, and rejects a malformed one', async () => {
+    const v = fx.vehicles.v1
+    const put = body => request(app).put(`/api/vehicles/${v.id}`).set(auth(fx.tokens.bgUserA1a)).send({ imei: v.imei, ...body })
+
+    const set = await put({ validUntil: '2027-03-31' })
+    expect(set.status).toBe(200)
+    expect(String(set.body.data.validUntil).slice(0, 10)).toBe('2027-03-31')
+
+    expect((await put({ validUntil: '31/03/2027' })).status).toBe(400)
+
+    const cleared = await put({ validUntil: '' })
+    expect(cleared.body.data.validUntil).toBeNull()
+  })
+})
