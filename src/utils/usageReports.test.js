@@ -54,6 +54,16 @@ describe('deriveTrips', () => {
     expect(t.haCount).toBe(0)
   })
 
+  it('counts a hard swerve as harsh cornering, not a normal junction turn', () => {
+    const turn = (dt, dir, speed) => msg(dt, { 'position.speed': speed, 'position.direction': dir })
+    // 90° over 8 s at 25 km/h: ~1.4 m/s², normal.
+    let t = deriveTrips([msg(0), turn(10, 0, 25), turn(18, 90, 25), msg(30, { 'engine.ignition.status': false })])[0]
+    expect(t.hcCount).toBe(0)
+    // 60° in 2 s at 60 km/h: ~8.7 m/s², harsh.
+    t = deriveTrips([msg(0), turn(10, 0, 60), turn(12, 60, 60), msg(30, { 'engine.ignition.status': false })])[0]
+    expect(t.hcCount).toBe(1)
+  })
+
   it('counts speed hovering at the limit as one over-speed episode', () => {
     const speeds = [85, 79, 83, 78, 84, 70, 90]
     const trips = deriveTrips([msg(0), ...speeds.map((v, i) => msg(60 * (i + 1), { 'position.speed': v })), msg(600, { 'engine.ignition.status': false })], { overSpeedKmh: 80 })

@@ -105,6 +105,27 @@ function assertAssignable(body) {
   }
 }
 
+/**
+ * Keep the Primary assignment history in step with Driver.vehicleId, inside
+ * the save's transaction: the driver's open Primary row closes when the
+ * vehicle changes, a new one opens for the new vehicle, and the driver the
+ * vehicle was taken from has theirs closed.
+ */
+async function syncPrimary(tx, driverId, vehicleId, previous) {
+  const now = new Date()
+  await tx.driverAssignment.updateMany({
+    where: { driverId, role: 'Primary', endDate: null, ...(vehicleId ? { NOT: { vehicleId } } : {}) },
+    data: { endDate: now },
+  })
+  if (previous && vehicleId) {
+    await tx.driverAssignment.updateMany({ where: { driverId: previous.id, vehicleId, role: 'Primary', endDate: null }, data: { endDate: now } })
+  }
+  if (vehicleId) {
+    const open = await tx.driverAssignment.findFirst({ where: { driverId, vehicleId, role: 'Primary', endDate: null }, select: { id: true } })
+    if (!open) await tx.driverAssignment.create({ data: { driverId, vehicleId, role: 'Primary', startDate: now } })
+  }
+}
+
 /** 409 when another driver already holds this tag (the unique index is the backstop). */
 async function assertIbuttonFree(code, exceptId = null) {
   if (!code) return
@@ -160,7 +181,9 @@ router.post(
     const { bgId: _ignored, ...fields } = req.body
     const row = await prisma.$transaction(async tx => {
       if (previous) await tx.driver.update({ where: { id: previous.id }, data: { vehicleId: null } })
-      return tx.driver.create({ data: { ...fields, bgId: bg.id }, include: INCLUDE })
+      const created = await tx.driver.create({ data: { ...fields, bgId: bg.id }, include: INCLUDE })
+      await syncPrimary(tx, created.id, created.vehicleId, previous)
+      return created
     })
     res.status(201).json({ data: publicDriver(row), movedFrom: previous })
   })
@@ -177,7 +200,9 @@ router.put(
     const { previous } = await resolveVehicle(existing.bgId, req.body.vehicleId, existing.id)
     const row = await prisma.$transaction(async tx => {
       if (previous) await tx.driver.update({ where: { id: previous.id }, data: { vehicleId: null } })
-      return tx.driver.update({ where: { id: existing.id }, data: req.body, include: INCLUDE })
+      const updated = await tx.driver.update({ where: { id: existing.id }, data: req.body, include: INCLUDE })
+      await syncPrimary(tx, existing.id, updated.vehicleId, previous)
+      return updated
     })
     res.json({ data: publicDriver(row), movedFrom: previous })
   })
@@ -190,6 +215,124 @@ router.delete(
     const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
     await prisma.driver.delete({ where: { id: existing.id } })
     res.json({ data: { id: existing.id } })
+  })
+)
+
+// ── Assignment history (phase 2) ────────────────────────────────────────────
+// GET the driver's rows; POST a dated Temporary assignment; PUT ends one;
+// DELETE removes a Temporary row. Primary rows follow the Vehicle field.
+
+const ROLES_ASSIGN = ['Primary', 'Temporary']
+const assignmentSchema = z.object({
+  vehicleId: requiredId('Vehicle'),
+  startDate: optionalDate().refine(v => v !== null, 'Start date is required'),
+  endDate: optionalDate(),
+  notes: optionalText(300),
+})
+const endSchema = z.object({ endDate: optionalDate().refine(v => v !== null, 'End date is required') })
+const ASSIGN_INCLUDE = { vehicle: { select: { id: true, plateNo: true, fleetNo: true, imei: true } } }
+const day = d => (d ? d.toISOString().slice(0, 10) : null)
+const publicAssignment = a => ({ ...a, startDate: day(a.startDate), endDate: day(a.endDate) })
+
+router.get(
+  '/:id/assignments',
+  asyncHandler(async (req, res) => {
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const rows = await prisma.driverAssignment.findMany({ where: { driverId: driver.id }, include: ASSIGN_INCLUDE, orderBy: { startDate: 'desc' } })
+    res.json({ data: rows.map(publicAssignment) })
+  })
+)
+
+router.post(
+  '/:id/assignments',
+  validate(assignmentSchema),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    if (driver.status === 'Suspended') throw badRequest('A suspended driver cannot be given a vehicle', { vehicleId: 'Not for a suspended driver' })
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.body.vehicleId, bgId: driver.bgId }, select: { id: true } })
+    if (!vehicle) throw badRequest('The vehicle must belong to the driver’s own business group', { vehicleId: 'Not in this business group' })
+    const { startDate, endDate, notes } = req.body
+    if (endDate && endDate < startDate) throw badRequest('The end date is before the start date', { endDate: 'Before the start' })
+    const row = await prisma.driverAssignment.create({
+      data: { driverId: driver.id, vehicleId: vehicle.id, role: 'Temporary', startDate, endDate, notes },
+      include: ASSIGN_INCLUDE,
+    })
+    res.status(201).json({ data: publicAssignment(row) })
+  })
+)
+
+router.put(
+  '/:id/assignments/:aid',
+  validate(endSchema),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const a = await prisma.driverAssignment.findFirst({ where: { id: req.params.aid, driverId: driver.id } })
+    if (!a) throw notFound('Assignment')
+    if (req.body.endDate < a.startDate) throw badRequest('The end date is before the start date', { endDate: 'Before the start' })
+    const row = await prisma.driverAssignment.update({ where: { id: a.id }, data: { endDate: req.body.endDate }, include: ASSIGN_INCLUDE })
+    res.json({ data: publicAssignment(row) })
+  })
+)
+
+router.delete(
+  '/:id/assignments/:aid',
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const { count } = await prisma.driverAssignment.deleteMany({ where: { id: req.params.aid, driverId: driver.id, role: 'Temporary' } })
+    if (!count) throw notFound('Temporary assignment')
+    res.json({ data: { id: req.params.aid } })
+  })
+)
+
+// ── Incidents (phase 3) ─────────────────────────────────────────────────────
+
+export const INCIDENT_TYPES = ['Accident', 'Incident', 'Traffic Fine', 'Complaint', 'Damage', 'Other']
+const incidentSchema = z.object({
+  date: optionalDate().refine(v => v !== null, 'Date is required'),
+  type: z.enum(INCIDENT_TYPES),
+  vehicleId: optionalId(),
+  description: optionalText(1000),
+  cost: z.union([z.number(), z.string(), z.null()]).default(null)
+    .transform(v => (v === null || v === '' ? null : Number(v)))
+    .refine(v => v === null || (Number.isFinite(v) && v >= 0), 'Must be a number'),
+})
+const publicIncident = i => ({ ...i, date: day(i.date) })
+
+router.get(
+  '/:id/incidents',
+  asyncHandler(async (req, res) => {
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const rows = await prisma.driverIncident.findMany({ where: { driverId: driver.id }, include: ASSIGN_INCLUDE, orderBy: { date: 'desc' } })
+    res.json({ data: rows.map(publicIncident) })
+  })
+)
+
+router.post(
+  '/:id/incidents',
+  validate(incidentSchema),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    if (req.body.vehicleId) {
+      const v = await prisma.vehicle.findFirst({ where: { id: req.body.vehicleId, bgId: driver.bgId }, select: { id: true } })
+      if (!v) throw badRequest('The vehicle must belong to the driver’s own business group', { vehicleId: 'Not in this business group' })
+    }
+    const row = await prisma.driverIncident.create({ data: { ...req.body, driverId: driver.id }, include: ASSIGN_INCLUDE })
+    res.status(201).json({ data: publicIncident(row) })
+  })
+)
+
+router.delete(
+  '/:id/incidents/:iid',
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const { count } = await prisma.driverIncident.deleteMany({ where: { id: req.params.iid, driverId: driver.id } })
+    if (!count) throw notFound('Incident')
+    res.json({ data: { id: req.params.iid } })
   })
 )
 

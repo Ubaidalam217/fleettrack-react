@@ -206,6 +206,8 @@ model Vehicle {
   alerts   AlertVehicle[]
   driver      Driver?
   alertEvents AlertEvent[]
+  driverAssignments DriverAssignment[]
+  driverIncidents   DriverIncident[]
 
   @@index([bgId])
   @@index([branchId])
@@ -644,10 +646,57 @@ model Driver {
   bg        BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
   vehicle   Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   events    AlertEvent[]
-  photo     DriverPhoto?
-  documents DriverDocument[]
+  photo       DriverPhoto?
+  documents   DriverDocument[]
+  assignments DriverAssignment[]
+  incidents   DriverIncident[]
 
   @@index([bgId])
+}
+
+/// Who drove which vehicle when (Driver Management phase 2). The Primary row
+/// mirrors Driver.vehicleId and is opened / closed when that changes;
+/// Temporary rows are dated cover. A trip with no iButton tag is credited to
+/// the Temporary row covering its start, else the Primary one.
+model DriverAssignment {
+  id        String    @id @default(cuid())
+  driverId  String
+  vehicleId String
+  role      String
+  startDate DateTime
+  endDate   DateTime?
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  driver  Driver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
+  @@index([vehicleId])
+}
+
+/// An accident or incident on a driver's record (entered by hand).
+model DriverIncident {
+  id          String   @id @default(cuid())
+  driverId    String
+  vehicleId   String?
+  date        DateTime
+  type        String
+  description String?
+  cost        Float?
+  createdAt   DateTime @default(now())
+
+  driver  Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([driverId])
+}
+
+/// Account-wide settings by key, e.g. "fatigue" (the driving-time rule).
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
 }
 
 /// A driver's profile photo bytes; one row per driver, replaced on upload.

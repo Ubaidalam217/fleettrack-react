@@ -27,14 +27,32 @@
  *     (the same guards as utils/alertsData.js).
  */
 
-import { createDistanceStepper } from './distance'
+import { createDistanceStepper } from './distance.js'
 
 export const DEFAULT_USAGE_OPTS = Object.freeze({
   maxGapSec: 30 * 60,
   overSpeedKmh: 80,
   xiMinutes: 10,
   harshMs2: 3.5,
+  // Harsh cornering: lateral acceleration (speed × turn rate) between samples
+  // 1-10 s apart, at or above the speed. A normal 90° junction turn at 25 km/h
+  // is about 1.4 m/s²; 3 m/s² is a hard swerve.
+  corneringMs2: 3,
+  corneringMinKmh: 20,
+  // Night driving window, local time, and the zone it is read in (seconds
+  // east of UTC). The server passes UAE (+4 h); the browser its own offset.
+  nightFrom: '22:00',
+  nightTo: '05:00',
+  tzOffsetSec: 4 * 3600,
 })
+
+const hhmmMin = v => { const [h, m] = String(v).split(':').map(Number); return h * 60 + m }
+/** Whether unix seconds fall inside a daily local window that may wrap midnight. */
+export function inWindow(ts, from, to, tzOffsetSec) {
+  const min = Math.floor((((ts + tzOffsetSec) % 86400) + 86400) % 86400 / 60)
+  const f = hhmmMin(from), t = hhmmMin(to)
+  return f <= t ? min >= f && min < t : min >= f || min < t
+}
 
 const NOISE_CEILING_MS2 = 10
 /** An over-speed episode ends only once the speed is this far under the limit (as the server's alert). */
@@ -91,7 +109,7 @@ export function deriveTrips(messages, opts = {}) {
       startLat: p?.lat ?? null, startLng: p?.lng ?? null, endLat: p?.lat ?? null, endLng: p?.lng ?? null,
       startOdo: num(m['vehicle.mileage']), endOdo: num(m['vehicle.mileage']),
       driveSec: 0, idleSec: 0, distanceKm: 0, maxSpeed: speedOf(m),
-      overSpeedCount: 0, overSpeedSec: 0, xiCount: 0, xiSec: 0, hbCount: 0, haCount: 0,
+      overSpeedCount: 0, overSpeedSec: 0, xiCount: 0, xiSec: 0, hbCount: 0, haCount: 0, hcCount: 0, nightSec: 0,
       over: speedOf(m) > o.overSpeedKmh, idleStart: speedOf(m) > 0 ? null : m.timestamp, open: false,
       ibutton: tagOf(m),
     }
@@ -122,8 +140,10 @@ export function deriveTrips(messages, opts = {}) {
       // The interval prev → m belongs to the trip; prev's state classifies it.
       const dt = gap
       const moving = speedOf(prev) > 0
-      if (moving) trip.driveSec += dt
-      else trip.idleSec += dt
+      if (moving) {
+        trip.driveSec += dt
+        if (inWindow(prev.timestamp, o.nightFrom, o.nightTo, o.tzOffsetSec)) trip.nightSec += dt
+      } else trip.idleSec += dt
       trip.distanceKm += km
       if (speedOf(prev) > o.overSpeedKmh) trip.overSpeedSec += dt
 
@@ -131,6 +151,12 @@ export function deriveTrips(messages, opts = {}) {
         const a = ((speedOf(m) - speedOf(prev)) / 3.6) / dt
         if (a <= -o.harshMs2 && -a <= NOISE_CEILING_MS2) trip.hbCount += 1
         else if (a >= o.harshMs2 && a <= NOISE_CEILING_MS2) trip.haCount += 1
+        const h0 = num(prev['position.direction']), h1 = num(m['position.direction'])
+        if (h0 !== null && h1 !== null && speedOf(m) >= o.corneringMinKmh && speedOf(prev) >= o.corneringMinKmh) {
+          const turnRad = (Math.abs(((h1 - h0 + 540) % 360) - 180) * Math.PI) / 180
+          const lateral = ((speedOf(prev) + speedOf(m)) / 2 / 3.6) * (turnRad / dt)
+          if (lateral >= o.corneringMs2 && lateral <= NOISE_CEILING_MS2) trip.hcCount += 1
+        }
       }
     }
 
@@ -185,7 +211,7 @@ export const dayKey = ts => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-const SUM_KEYS = ['driveSec', 'idleSec', 'distanceKm', 'overSpeedCount', 'overSpeedSec', 'xiCount', 'xiSec', 'hbCount', 'haCount']
+const SUM_KEYS = ['driveSec', 'idleSec', 'distanceKm', 'overSpeedCount', 'overSpeedSec', 'xiCount', 'xiSec', 'hbCount', 'haCount', 'hcCount', 'nightSec']
 
 /** Totals over a list of trips. */
 export function sumTrips(trips) {

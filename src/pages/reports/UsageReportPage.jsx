@@ -488,7 +488,7 @@ export default function UsageReportPage({ variant, ...props }) {
   // Trips depend on the speed limit and idle minutes; the grouping on the rest.
   const vehicleTrips = useMemo(() => {
     if (!raw) return null
-    return tripsByVehicle(raw.byDevice, vehicles, { overSpeedKmh: speedNum, xiMinutes: idleNum })
+    return tripsByVehicle(raw.byDevice, vehicles, { overSpeedKmh: speedNum, xiMinutes: idleNum, tzOffsetSec: -new Date().getTimezoneOffset() * 60 })
       .map(v => {
         const assigned = driverNameForDevice({ ...v.vehicle, ibutton: null }) || '—'
         // Each trip's driver is the iButton tag read during it; the assigned driver otherwise.

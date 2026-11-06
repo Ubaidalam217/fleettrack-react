@@ -15,6 +15,8 @@ import {
   DRIVER_DEPARTMENTS, LICENCE_CATEGORIES, DRIVER_DOC_TYPES, driverCode,
   setDriverPhoto, removeDriverPhoto,
   listDriverDocuments, uploadDriverDocument, deleteDriverDocument, openDriverDocument,
+  listDriverAssignments, addDriverAssignment, endDriverAssignment, deleteDriverAssignment,
+  listDriverIncidents, addDriverIncident, deleteDriverIncident, INCIDENT_TYPES,
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
@@ -263,6 +265,185 @@ function DriverDocuments({ driver, canWrite, push }) {
             <button type="button" onClick={upload} disabled={!file || busy}
               style={{ ...PRIMARY_BTN, padding: '9px 16px', opacity: !file || busy ? 0.55 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <Upload size={14} /> {busy ? 'Uploading…' : 'Upload'}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+const todayStr = () => new Date().toISOString().slice(0, 10)
+const ROW = { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--c-border)', borderRadius: 8 }
+const SMALL_BTN = { padding: '5px 9px', fontSize: 11.5 }
+
+/**
+ * Who drove which vehicle when. Primary rows follow the Vehicle field above;
+ * a Temporary row covers a vehicle for some dates (leave, a spare vehicle).
+ * Trips with no iButton tag are credited by these dates.
+ */
+function DriverAssignments({ driver, canWrite, push }) {
+  const [rows, setRows] = useState(null)
+  const [vehicleId, setVehicleId] = useState('')
+  const [from, setFrom] = useState(todayStr())
+  const [to, setTo] = useState('')
+  const [notes, setNotes] = useState('')
+  const [busy, setBusy] = useState(false)
+  const bgVehicles = [...vehiclesForCompany(driver.companyId)].sort((a, b) => vehicleLabel(a).localeCompare(vehicleLabel(b)))
+
+  const load = () => listDriverAssignments(driver.id).then(setRows).catch(err => { setRows([]); handleApiError(err, { push }) })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [driver.id])
+
+  const add = async () => {
+    setBusy(true)
+    try {
+      await addDriverAssignment(driver.id, { vehicleId, startDate: from, endDate: to || null, notes: notes.trim() || null })
+      push('Temporary assignment added', { tone: 'success' })
+      setVehicleId(''); setTo(''); setNotes('')
+      await load()
+    } catch (err) {
+      handleApiError(err, { push })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const end = async a => {
+    try { await endDriverAssignment(driver.id, a.id, todayStr()); await load() } catch (err) { handleApiError(err, { push }) }
+  }
+  const drop = async a => {
+    try { await deleteDriverAssignment(driver.id, a.id); await load() } catch (err) { handleApiError(err, { push }) }
+  }
+  const vName = v => (v ? (v.plateNo || v.fleetNo || v.imei) : '—')
+
+  return (
+    <>
+      {rows === null ? (
+        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Loading assignments…</div>
+      ) : rows.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>No assignments yet. Choosing a Vehicle above starts the Primary one.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {rows.map(a => (
+            <div key={a.id} style={ROW}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, flexShrink: 0,
+                color: a.role === 'Primary' ? 'var(--ft-accent)' : '#d97706',
+                background: a.role === 'Primary' ? 'color-mix(in srgb, var(--ft-accent) 12%, transparent)' : 'rgba(245,158,11,0.12)',
+              }}>{a.role}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text1)' }}>{vName(a.vehicle)}</div>
+                <div style={{ fontSize: 11, color: 'var(--c-text3)' }}>
+                  {formatExpiryDate(a.startDate)} → {a.endDate ? formatExpiryDate(a.endDate) : 'now'}{a.notes ? ` · ${a.notes}` : ''}
+                </div>
+              </div>
+              {canWrite && a.role === 'Temporary' && !a.endDate && (
+                <button type="button" className="ft-btn" onClick={() => end(a)} style={SMALL_BTN}>End today</button>
+              )}
+              {canWrite && a.role === 'Temporary' && (
+                <button type="button" className="ft-btn" onClick={() => drop(a)} style={SMALL_BTN} title="Delete"><Trash2 size={13} /></button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {canWrite && driver.status !== 'Suspended' && (
+        <div style={{ ...GRID, marginTop: 12, alignItems: 'end' }}>
+          <Field label="Temporary vehicle">
+            <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} style={inputStyle(false)}>
+              <option value="">— Choose —</option>
+              {bgVehicles.map(v => <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>)}
+            </select>
+          </Field>
+          <Field label="From"><input type="date" value={from} onChange={e => setFrom(e.target.value)} style={inputStyle(false)} /></Field>
+          <Field label="To (optional)"><input type="date" value={to} onChange={e => setTo(e.target.value)} style={inputStyle(false)} /></Field>
+          <Field label="Note"><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Leave cover" maxLength={300} style={inputStyle(false)} /></Field>
+          <div>
+            <button type="button" onClick={add} disabled={!vehicleId || !from || busy}
+              style={{ ...PRIMARY_BTN, padding: '9px 16px', opacity: !vehicleId || !from || busy ? 0.55 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Plus size={14} /> Add
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Accidents and incidents on the driver's record; they weigh on the safety score. */
+function DriverIncidents({ driver, canWrite, push }) {
+  const [rows, setRows] = useState(null)
+  const [date, setDate] = useState(todayStr())
+  const [type, setType] = useState(INCIDENT_TYPES[0])
+  const [vehicleId, setVehicleId] = useState('')
+  const [description, setDescription] = useState('')
+  const [cost, setCost] = useState('')
+  const [busy, setBusy] = useState(false)
+  const bgVehicles = [...vehiclesForCompany(driver.companyId)].sort((a, b) => vehicleLabel(a).localeCompare(vehicleLabel(b)))
+
+  const load = () => listDriverIncidents(driver.id).then(setRows).catch(err => { setRows([]); handleApiError(err, { push }) })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [driver.id])
+
+  const add = async () => {
+    setBusy(true)
+    try {
+      await addDriverIncident(driver.id, { date, type, vehicleId: vehicleId || null, description: description.trim() || null, cost: cost === '' ? null : cost })
+      push(`${type} recorded`, { tone: 'success' })
+      setDescription(''); setCost(''); setVehicleId('')
+      await load()
+    } catch (err) {
+      handleApiError(err, { push })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const drop = async i => {
+    try { await deleteDriverIncident(driver.id, i.id); await load() } catch (err) { handleApiError(err, { push }) }
+  }
+
+  return (
+    <>
+      {rows === null ? (
+        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Loading incidents…</div>
+      ) : rows.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>No incidents on record.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {rows.map(i => (
+            <div key={i.id} style={ROW}>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, color: '#ef4444', background: 'rgba(239,68,68,0.1)', flexShrink: 0 }}>{i.type}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text1)' }}>{i.description || i.type}</div>
+                <div style={{ fontSize: 11, color: 'var(--c-text3)' }}>
+                  {formatExpiryDate(i.date)}{i.vehicle ? ` · ${i.vehicle.plateNo || i.vehicle.fleetNo || i.vehicle.imei}` : ''}{i.cost != null ? ` · AED ${i.cost.toLocaleString()}` : ''}
+                </div>
+              </div>
+              {canWrite && <button type="button" className="ft-btn" onClick={() => drop(i)} style={SMALL_BTN} title="Delete"><Trash2 size={13} /></button>}
+            </div>
+          ))}
+        </div>
+      )}
+      {canWrite && (
+        <div style={{ ...GRID, marginTop: 12, alignItems: 'end' }}>
+          <Field label="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle(false)} /></Field>
+          <Field label="Type">
+            <select value={type} onChange={e => setType(e.target.value)} style={inputStyle(false)}>
+              {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </Field>
+          <Field label="Vehicle (optional)">
+            <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} style={inputStyle(false)}>
+              <option value="">— None —</option>
+              {bgVehicles.map(v => <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>)}
+            </select>
+          </Field>
+          <Field label="What happened"><input value={description} onChange={e => setDescription(e.target.value)} placeholder="Rear bumper, minor" maxLength={1000} style={inputStyle(false)} /></Field>
+          <Field label="Cost (AED, optional)"><input type="number" min="0" value={cost} onChange={e => setCost(e.target.value)} style={inputStyle(false)} /></Field>
+          <div>
+            <button type="button" onClick={add} disabled={!date || busy}
+              style={{ ...PRIMARY_BTN, padding: '9px 16px', opacity: !date || busy ? 0.55 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Plus size={14} /> Record
             </button>
           </div>
         </div>
@@ -627,6 +808,25 @@ export default function Driver(props) {
                 />
               </Field>
             </div>
+
+            {/* ── Assignment history and incidents (server only) ──────── */}
+            <SectionTitle note="Who drove which vehicle when — trips without an iButton tag are credited by these dates.">Assignment History</SectionTitle>
+            {!IS_REAL ? (
+              <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Assignment history is kept on the server, so it is not available in demo mode.</div>
+            ) : !draft.id ? (
+              <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Save the driver first; the Vehicle above then starts the Primary assignment.</div>
+            ) : (
+              <DriverAssignments driver={draft} canWrite={access.canWrite} push={push} />
+            )}
+
+            <SectionTitle note="Accidents and incidents count against the driver's safety score.">Accident &amp; Incident Records</SectionTitle>
+            {!IS_REAL ? (
+              <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Incident records are kept on the server, so they are not available in demo mode.</div>
+            ) : !draft.id ? (
+              <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Save the driver first, then open it again to record incidents.</div>
+            ) : (
+              <DriverIncidents driver={draft} canWrite={access.canWrite} push={push} />
+            )}
 
             {/* ── Documents ───────────────────────────────────────────── */}
             <SectionTitle note="Scanned copies: licence, visa, Emirates ID, passport, medical.">Documents</SectionTitle>

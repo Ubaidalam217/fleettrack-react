@@ -30,6 +30,7 @@ import VehicleListReport       from './pages/reports/VehicleListReport'
 import DriverListReport        from './pages/reports/DriverListReport'
 import EventOccurrenceReport   from './pages/reports/EventOccurrenceReport'
 import UsageReportPage         from './pages/reports/UsageReportPage'
+import DriverPerformanceReport from './pages/reports/DriverPerformanceReport'
 import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
 import AuthGate            from './components/AuthGate'
@@ -197,6 +198,7 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/reports/time-sheet"    element={guard(<UsageReportPage variant="timeSheet" {...themeProps} />)} />
         <Route path="/reports/drivers"       element={guard(<DriverListReport   {...themeProps} />)} />
         <Route path="/reports/gyr"           element={guard(<UsageReportPage variant="gyr" {...themeProps} />)} />
+        <Route path="/reports/driver-performance" element={guard(<DriverPerformanceReport {...themeProps} />)} />
 
         <Route path="*"               element={<Navigate to="/login" replace />} />
       </Routes>

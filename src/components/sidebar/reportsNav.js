@@ -1,6 +1,6 @@
 import {
   Route, Car, FileBarChart, FileText, Navigation, AlertTriangle,
-  Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma,
+  Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma, ShieldCheck,
 } from 'lucide-react'
 import { labelForPathIn } from './navTree'
 
@@ -73,6 +73,9 @@ export const REPORT_CATEGORIES = [
       // each alert with the vehicle's tracking at that moment attached.
       { id: 'event',            label: 'Event Occurrence Report', icon: AlertTriangle, path: '/reports/event',        ready: true,
         desc: 'Every alert raised, in the Movement Report layout, with speed, status and location at that moment.' },
+      // Client, 2026-11-06: Driver Management phases 3-4.
+      { id: 'driver-performance', label: 'Driver Performance & Risk', icon: ShieldCheck, path: '/reports/driver-performance', ready: true,
+        desc: 'Per driver: distance, hours, harsh driving, fatigue, incidents, safety score, trend and risk levels.' },
       { id: 'gyr',              label: 'GYR Report',              icon: Gauge,         path: '/reports/gyr',             ready: true,
         desc: 'Green / Yellow / Red rating of each vehicle or driver from its exceptions.' },
     ],

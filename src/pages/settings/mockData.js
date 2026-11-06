@@ -417,6 +417,9 @@ export const LICENCE_CATEGORIES = ['Light Vehicle', 'Heavy Vehicle', 'Light Bus'
 /** What an uploaded driver document is; the server checks the same list. */
 export const DRIVER_DOC_TYPES = ['Driving Licence', 'Visa', 'Emirates ID', 'Passport', 'Medical Fitness', 'Other']
 
+/** Kinds of incident on a driver's record; the server checks the same list. */
+export const INCIDENT_TYPES = ['Accident', 'Incident', 'Traffic Fine', 'Complaint', 'Damage', 'Other']
+
 /** "DRV-0007" for the running driver number. */
 export const driverCode = d => (d?.driverNo ? `DRV-${String(d.driverNo).padStart(4, '0')}` : '—')
 

@@ -62,7 +62,7 @@ export {
   emptyDriver, useDrivers, driversForCompany,
   driverForVehicleId, driverForVehicleImei, driverNameForDevice, useDriverForImei,
   ibuttonKey, driverForIbutton, isIbuttonTaken, driverForDevice, useDriverForDevice,
-  DRIVER_DEPARTMENTS, LICENCE_CATEGORIES, DRIVER_DOC_TYPES, driverCode,
+  DRIVER_DEPARTMENTS, LICENCE_CATEGORIES, DRIVER_DOC_TYPES, driverCode, INCIDENT_TYPES,
 
   // Constants and registries.
   DEFAULT_PASSWORD, ALERT_TYPES, alertTypeLabel, GEOFENCE_CATEGORIES,
@@ -536,6 +536,18 @@ export function removeDriverPhoto(id) {
 export const listDriverDocuments = id => get(`/api/drivers/${id}/documents`)
 export const uploadDriverDocument = (id, body) => post(`/api/drivers/${id}/documents`, body)
 export const deleteDriverDocument = (id, docId) => del(`/api/drivers/${id}/documents/${docId}`)
+
+// Assignment history, incidents and performance (server only).
+export const listDriverAssignments = id => get(`/api/drivers/${id}/assignments`)
+export const addDriverAssignment = (id, body) => post(`/api/drivers/${id}/assignments`, body)
+export const endDriverAssignment = (id, aid, endDate) => put(`/api/drivers/${id}/assignments/${aid}`, { endDate })
+export const deleteDriverAssignment = (id, aid) => del(`/api/drivers/${id}/assignments/${aid}`)
+export const listDriverIncidents = id => get(`/api/drivers/${id}/incidents`)
+export const addDriverIncident = (id, body) => post(`/api/drivers/${id}/incidents`, body)
+export const deleteDriverIncident = (id, iid) => del(`/api/drivers/${id}/incidents/${iid}`)
+export const getDriverPerformance = (from, to) => get('/api/driver-performance', { from, to })
+export const getFatigueRule = () => get('/api/driver-performance/fatigue-rule')
+export const setFatigueRule = rule => put('/api/driver-performance/fatigue-rule', rule)
 
 /** Open a document in a new tab: fetched with the login token, shown from a blob. */
 export async function openDriverDocument(id, docId) {
