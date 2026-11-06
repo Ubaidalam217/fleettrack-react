@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import proudOfUae from '../assets/proud-of-uae.webp'
+import proudOfUaeDark from '../assets/proud-of-uae-dark.webp'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { setCurrentUser } from '../services/authUser'
 import { IS_REAL } from '../data/mode'
@@ -137,7 +138,7 @@ export default function Login() {
 
           {/* Logo — the real wordmark replaces the old icon-tile + text lockup,
               so the name is never set in a font that is not the brand's. */}
-          <div style={{ marginBottom: 32, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ marginBottom: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
             <div>
               <img
                 className="ft-logo-light" src="/logo/fleetmax-logo-sea.png"
@@ -154,19 +155,18 @@ export default function Login() {
               </div>
             </div>
             {/* Client, 2026-11-06: show at a glance that this is a UAE service.
-                The badge is on white, so it sits in its own white frame and reads
-                the same on the light and the dark card. */}
+                Transparent; the dark-theme copy has its lettering in white, the
+                flag stays in its own colours in both. As tall as the logo block
+                beside it (logo + caption), centred with it. */}
             <img
-              src={proudOfUae}
-              alt="Proud of UAE"
-              title="Proud of UAE"
-              width={84}
-              height={81}
-              style={{
-                flexShrink: 0, width: 84, height: 'auto', marginTop: -6, display: 'block',
-                background: '#fff', borderRadius: 10, padding: 4,
-                border: '1px solid var(--c-border2)', boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-              }}
+              className="ft-logo-light" src={proudOfUae} alt="Proud of UAE" title="Proud of UAE"
+              width={64} height={68}
+              style={{ flexShrink: 0, height: 68, width: 'auto', display: 'block' }}
+            />
+            <img
+              className="ft-logo-dark" src={proudOfUaeDark} alt="Proud of UAE" title="Proud of UAE"
+              width={64} height={68}
+              style={{ flexShrink: 0, height: 68, width: 'auto', display: 'block' }}
             />
           </div>
 
