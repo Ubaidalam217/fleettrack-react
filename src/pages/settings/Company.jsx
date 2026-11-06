@@ -15,7 +15,7 @@ import {
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import OrgTabs from './OrgTabs'
-import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions } from './NodeUsersPanel'
+import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions, NewNodeUsers, emptyNewUser, validateNewUsers, createNodeUsers, useMayAddNodeUsers } from './NodeUsersPanel'
 import { useSession } from '../../data/session'
 import { sessionLevel as usersLevel } from '../../data/screens'
 import MoveDialog, { MoveButton, canMove } from './MoveDialog'
@@ -80,6 +80,7 @@ export default function Company(props) {
   useGroups()
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('company')
+  const mayAddUsers = useMayAddNodeUsers('bg', access.roleKey)
   // Client, 2026-11-02: each row manages its own login accounts.
   const session = useSession()
   const countUsers = useNodeUserCount('bg')
@@ -94,6 +95,8 @@ export default function Company(props) {
   // null = list view. Otherwise the record being edited, with id null for a new
   // one — which is also what tells Save whether to add or update.
   const [draft,   setDraft]   = useState(null)
+  // The logins created with a new BG (client: at least one main user).
+  const [newUsers, setNewUsers] = useState([emptyNewUser()])
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)   // row queued for deletion
   const [saving,  setSaving]  = useState(false)
@@ -106,7 +109,7 @@ export default function Company(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
-  const openAdd   = ()  => { setErrors({}); setDraft(emptyCompany()) }
+  const openAdd   = ()  => { setNewUsers([emptyNewUser()]); setErrors({}); setDraft(emptyCompany()) }
   const openEdit  = row => { setErrors({}); setDraft({ ...row }) }
   const closeForm = ()  => { setErrors({}); setDraft(null) }
 
@@ -132,6 +135,7 @@ export default function Company(props) {
     // only sees the BGs in scope — the server's unique index is what catches a
     // clash with another tenant's BG, and lands in the same place via handleApiError.
     else if (isCompanyEmailTaken(draft.email, draft.id)) next.email = 'A Business Group with this email already exists.'
+    if (!draft.id && mayAddUsers) Object.assign(next, validateNewUsers(newUsers))
     if (Object.keys(next).length) {
       setErrors(next)
       formRef.current?.querySelector(`[name="${Object.keys(next)[0]}"]`)?.focus()
@@ -145,8 +149,13 @@ export default function Company(props) {
         await updateCompany(draft.id, clean)
         push(`${clean.name} updated`, { tone: 'success' })
       } else {
-        await addCompany(clean)
-        push(`${clean.name} added`, { tone: 'success' })
+        const row = await addCompany(clean)
+        const { created, failed } = mayAddUsers ? await createNodeUsers('bg', row.id, newUsers) : { created: [], failed: [] }
+        if (failed.length) {
+          push(`${clean.name} added, but ${failed.map(x => x.email).join(', ')} could not be created (${failed[0].message}). Add it from Users.`, { tone: 'error' })
+        } else {
+          push(`${clean.name} added${created.length ? ` with ${created.length} user${created.length > 1 ? 's' : ''}` : ''}`, { tone: 'success' })
+        }
       }
       setDraft(null)
     } catch (err) {
@@ -188,6 +197,16 @@ export default function Company(props) {
               onChange={set}
               firstRef={firstRef}
             />
+            {!draft.id && (
+              <NewNodeUsers
+                kind="bg"
+                users={newUsers}
+                setUsers={setNewUsers}
+                errors={errors}
+                mayAdd={mayAddUsers}
+                onEdit={() => setErrors(e => Object.fromEntries(Object.entries(e).filter(([k]) => !k.startsWith('users.'))))}
+              />
+            )}
             <FormActions
               onBack={closeForm}
               onReset={() => {
@@ -196,6 +215,7 @@ export default function Company(props) {
                 // for an edit, a blank record for a new one. The fallback
                 // guards the row having vanished, which would otherwise spread
                 // undefined into a shapeless draft and throw on the next save.
+                if (!draft.id) setNewUsers([emptyNewUser()])
                 const saved = draft.id ? companies.find(c => c.id === draft.id) : null
                 setDraft(saved ? { ...saved } : emptyCompany())
               }}

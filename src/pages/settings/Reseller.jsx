@@ -13,7 +13,7 @@ import {
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import OrgTabs from './OrgTabs'
-import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions } from './NodeUsersPanel'
+import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions, NewNodeUsers, emptyNewUser, validateNewUsers, createNodeUsers, useMayAddNodeUsers } from './NodeUsersPanel'
 import { useSession } from '../../data/session'
 import { sessionLevel as usersLevel } from '../../data/screens'
 
@@ -34,6 +34,7 @@ export default function Reseller(props) {
   const resellers = useResellers()
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('reseller')
+  const mayAddUsers = useMayAddNodeUsers('ggb', access.roleKey)
   // Client, 2026-11-02: each row manages its own login accounts.
   const session = useSession()
   const countUsers = useNodeUserCount('ggb')
@@ -43,6 +44,10 @@ export default function Reseller(props) {
   const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
 
   const [draft,   setDraft]   = useState(null)
+
+  // The logins created with a new GGB (client: at least one main user).
+
+  const [newUsers, setNewUsers] = useState([emptyNewUser()])
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)
   // Guards against a double submit while the request is in flight — in real mode
@@ -57,7 +62,7 @@ export default function Reseller(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
-  const openAdd   = ()  => { setErrors({}); setDraft(emptyReseller()) }
+  const openAdd   = ()  => { setNewUsers([emptyNewUser()]); setErrors({}); setDraft(emptyReseller()) }
   const openEdit  = row => { setErrors({}); setDraft({ ...row }) }
   const closeForm = ()  => { setErrors({}); setDraft(null) }
 
@@ -72,6 +77,7 @@ export default function Reseller(props) {
 
     const next = {}
     if (!draft.name.trim()) next.name = 'Group Global Admin Name is required'
+    if (!draft.id && mayAddUsers) Object.assign(next, validateNewUsers(newUsers))
     if (Object.keys(next).length) {
       setErrors(next)
       formRef.current?.querySelector(`[name="${Object.keys(next)[0]}"]`)?.focus()
@@ -85,8 +91,13 @@ export default function Reseller(props) {
         await updateReseller(draft.id, clean)
         push(`${clean.name} updated`, { tone: 'success' })
       } else {
-        await addReseller(clean)
-        push(`${clean.name} added`, { tone: 'success' })
+        const row = await addReseller(clean)
+        const { created, failed } = mayAddUsers ? await createNodeUsers('ggb', row.id, newUsers) : { created: [], failed: [] }
+        if (failed.length) {
+          push(`${clean.name} added, but ${failed.map(x => x.email).join(', ')} could not be created (${failed[0].message}). Add it from Users.`, { tone: 'error' })
+        } else {
+          push(`${clean.name} added${created.length ? ` with ${created.length} user${created.length > 1 ? 's' : ''}` : ''}`, { tone: 'success' })
+        }
       }
       // Only on success. Closing the form first would throw away what the user
       // typed the moment the server rejected it.
@@ -126,10 +137,21 @@ export default function Reseller(props) {
               onChange={set}
               firstRef={firstRef}
             />
+            {!draft.id && (
+              <NewNodeUsers
+                kind="ggb"
+                users={newUsers}
+                setUsers={setNewUsers}
+                errors={errors}
+                mayAdd={mayAddUsers}
+                onEdit={() => setErrors(e => Object.fromEntries(Object.entries(e).filter(([k]) => !k.startsWith('users.'))))}
+              />
+            )}
             <FormActions
               onBack={closeForm}
               onReset={() => {
                 setErrors({})
+                if (!draft.id) setNewUsers([emptyNewUser()])
                 const saved = draft.id ? resellers.find(r => r.id === draft.id) : null
                 setDraft(saved ? { ...saved } : emptyReseller())
               }}

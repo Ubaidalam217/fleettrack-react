@@ -144,6 +144,118 @@ function Section({ title, count, action, children, empty }) {
   )
 }
 
+// ── Main users on create (client, 2026-11-06) ────────────────────────────────
+// "Create the main user for BG, Group, GGB while creating the account": the
+// Add GGB / Group / BG forms carry at least one login, created right after the
+// node, with "+ Add another user" for more.
+
+export const emptyNewUser = () => ({ shortName: '', email: '', mobile: '', password: DEFAULT_PASSWORD })
+
+/** Whether the signed-in user may add the node's own accounts (role below theirs, Full on User accounts). */
+export function useMayAddNodeUsers(kind, roleKey) {
+  const { user: me } = useSession()
+  const role = KIND[kind]?.role
+  return !!role && canCreate(roleKey, role) && atLeast(sessionLevel(me, 'users'), 'addDelete')
+}
+
+/** Field errors for the new users, keyed `users.<i>.<field>`; {} when they are fine. */
+export function validateNewUsers(users) {
+  const errors = {}
+  const seen = new Set()
+  users.forEach((u, i) => {
+    const email = String(u.email ?? '').trim().toLowerCase()
+    if (!email) errors[`users.${i}.email`] = 'Email is required'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors[`users.${i}.email`] = 'Enter a valid email'
+    else if (seen.has(email)) errors[`users.${i}.email`] = 'Listed twice'
+    else if (isLoginEmailTaken(email)) errors[`users.${i}.email`] = 'This email already has an account'
+    seen.add(email)
+    if (u.password && u.password.length < 8) errors[`users.${i}.password`] = 'At least 8 characters'
+  })
+  return errors
+}
+
+/**
+ * Create the node's accounts once the node exists. Each is created on its own;
+ * one that fails does not stop the rest, and the caller is told which.
+ * @returns {Promise<{ created: string[], failed: { email: string, message: string }[] }>}
+ */
+export async function createNodeUsers(kind, nodeId, users) {
+  const created = []
+  const failed = []
+  for (const u of users) {
+    const clean = { shortName: (u.shortName ?? '').trim(), email: u.email.trim(), mobile: (u.mobile ?? '').trim(), password: u.password || DEFAULT_PASSWORD }
+    try {
+      if (kind === 'ggb' || kind === 'group') await addAdmin({ ...emptyAdmin(KIND[kind].role, nodeId), ...clean })
+      else await addUser({ ...emptyUser(), companyId: nodeId, ...clean })
+      created.push(clean.email)
+    } catch (err) {
+      failed.push({ email: clean.email, message: err?.message || 'Could not be created' })
+    }
+  }
+  return { created, failed }
+}
+
+/** The "Main user" section of the Add GGB / Group / BG form. */
+export function NewNodeUsers({ kind, users, setUsers: setList, errors = {}, mayAdd, onEdit }) {
+  const noun = KIND[kind]?.noun ?? ''
+  const roleLabel = { ggb: 'GGB Admin', group: 'Group Admin', bg: 'BG User' }[kind]
+  const setUsers = fn => { setList(fn); onEdit?.() }
+  const setField = (i, k, v) => setUsers(list => list.map((u, j) => (j === i ? { ...u, [k]: v } : u)))
+  if (!mayAdd) {
+    return (
+      <div style={{ marginTop: 18, fontSize: 12, color: 'var(--c-text3)' }}>
+        Your account cannot add {roleLabel} logins; an administrator can add them afterwards from Users.
+      </div>
+    )
+  }
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', paddingBottom: 6, marginBottom: 12, borderBottom: '1px solid var(--c-border2)' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c-text1)' }}>Main user (login)<span style={{ color: '#ef4444', marginLeft: 3 }}>*</span></span>
+        <span style={{ fontSize: 11, color: 'var(--c-text3)' }}>
+          At least one {roleLabel} account is created with this {noun}. They must change the password at first sign-in.
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {users.map((u, i) => (
+          <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+            <div style={{ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px 12px', alignItems: 'start' }}>
+            <Field label="Name" error={errors[`users.${i}.shortName`]}>
+              <input value={u.shortName} onChange={e => setField(i, 'shortName', e.target.value)} placeholder="Full name" maxLength={120}
+                style={inputStyle(!!errors[`users.${i}.shortName`])} />
+            </Field>
+            <Field label="Email (sign-in)" required error={errors[`users.${i}.email`]}>
+              <input name={`users.${i}.email`} type="email" value={u.email} onChange={e => setField(i, 'email', e.target.value)}
+                placeholder="name@company.com" style={inputStyle(!!errors[`users.${i}.email`])} />
+            </Field>
+            <Field label="Mobile">
+              <input value={u.mobile} onChange={e => setField(i, 'mobile', e.target.value)} placeholder="+971 50 000 0000" maxLength={30} style={inputStyle(false)} />
+            </Field>
+            <Field label="Password" error={errors[`users.${i}.password`]}>
+              <input value={u.password} onChange={e => setField(i, 'password', e.target.value)} style={inputStyle(!!errors[`users.${i}.password`])} />
+            </Field>
+            </div>
+            <button
+              type="button"
+              aria-label="Remove this user"
+              title={users.length === 1 ? 'At least one user is required' : 'Remove this user'}
+              disabled={users.length === 1}
+              onClick={() => setUsers(list => list.filter((_, j) => j !== i))}
+              style={{ ...SECONDARY_BTN, padding: '9px 11px', marginBottom: 1, flexShrink: 0, opacity: users.length === 1 ? 0.4 : 1, cursor: users.length === 1 ? 'not-allowed' : 'pointer' }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button type="button" onClick={() => setUsers(list => [...list, emptyNewUser()])}
+        style={{ ...SECONDARY_BTN, marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <Plus size={14} /> Add another user
+      </button>
+    </div>
+  )
+}
+
 /** Add / edit one GGB Admin, Group Admin or BG User. */
 function AccountForm({ draft, setDraft, onCancel, onSave, saving, errors }) {
   const set = (k, v) => setDraft(d => ({ ...d, [k]: v }))

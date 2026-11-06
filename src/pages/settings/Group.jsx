@@ -14,7 +14,7 @@ import {
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import OrgTabs from './OrgTabs'
-import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions } from './NodeUsersPanel'
+import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions, NewNodeUsers, emptyNewUser, validateNewUsers, createNodeUsers, useMayAddNodeUsers } from './NodeUsersPanel'
 import { useSession } from '../../data/session'
 import { sessionLevel as usersLevel } from '../../data/screens'
 import MoveDialog, { MoveButton, canMove } from './MoveDialog'
@@ -52,6 +52,7 @@ export default function Group(props) {
   const resellers = useResellers()
   const { toasts, push, dismiss } = useToasts()
   const access = usePageAccess('group')
+  const mayAddUsers = useMayAddNodeUsers('group', access.roleKey)
   // Client, 2026-11-02: each row manages its own login accounts.
   const session = useSession()
   const countUsers = useNodeUserCount('group')
@@ -64,6 +65,10 @@ export default function Group(props) {
   const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
 
   const [draft,   setDraft]   = useState(null)
+
+  // The logins created with a new GROUP (client: at least one main user).
+
+  const [newUsers, setNewUsers] = useState([emptyNewUser()])
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)
   const [saving,  setSaving]  = useState(false)
@@ -76,7 +81,7 @@ export default function Group(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
-  const openAdd   = ()  => { setErrors({}); setDraft(emptyGroup()) }
+  const openAdd   = ()  => { setNewUsers([emptyNewUser()]); setErrors({}); setDraft(emptyGroup()) }
   const openEdit  = row => { setErrors({}); setDraft({ ...row }) }
   const closeForm = ()  => { setErrors({}); setDraft(null) }
 
@@ -92,6 +97,7 @@ export default function Group(props) {
     const next = {}
     if (!draft.resellerId)  next.resellerId = 'Group Global Admin is required'
     if (!draft.name.trim()) next.name       = 'Group Name is required'
+    if (!draft.id && mayAddUsers) Object.assign(next, validateNewUsers(newUsers))
     if (Object.keys(next).length) {
       setErrors(next)
       formRef.current?.querySelector(`[name="${Object.keys(next)[0]}"]`)?.focus()
@@ -105,8 +111,13 @@ export default function Group(props) {
         await updateGroup(draft.id, clean)
         push(`${clean.name} updated`, { tone: 'success' })
       } else {
-        await addGroup(clean)
-        push(`${clean.name} added`, { tone: 'success' })
+        const row = await addGroup(clean)
+        const { created, failed } = mayAddUsers ? await createNodeUsers('group', row.id, newUsers) : { created: [], failed: [] }
+        if (failed.length) {
+          push(`${clean.name} added, but ${failed.map(x => x.email).join(', ')} could not be created (${failed[0].message}). Add it from Users.`, { tone: 'error' })
+        } else {
+          push(`${clean.name} added${created.length ? ` with ${created.length} user${created.length > 1 ? 's' : ''}` : ''}`, { tone: 'success' })
+        }
       }
       setDraft(null)
     } catch (err) {
@@ -145,10 +156,21 @@ export default function Group(props) {
               onChange={set}
               firstRef={firstRef}
             />
+            {!draft.id && (
+              <NewNodeUsers
+                kind="group"
+                users={newUsers}
+                setUsers={setNewUsers}
+                errors={errors}
+                mayAdd={mayAddUsers}
+                onEdit={() => setErrors(e => Object.fromEntries(Object.entries(e).filter(([k]) => !k.startsWith('users.'))))}
+              />
+            )}
             <FormActions
               onBack={closeForm}
               onReset={() => {
                 setErrors({})
+                if (!draft.id) setNewUsers([emptyNewUser()])
                 const saved = draft.id ? groups.find(g => g.id === draft.id) : null
                 setDraft(saved ? { ...saved } : emptyGroup())
               }}
