@@ -22,8 +22,41 @@ export function MapCheck({ checked, indeterminate = false, onChange, label }) {
   )
 }
 
-/** One GGB / Group / BG row of the Live Map list tree. */
+/**
+ * The Live Map list's Groups button: on, the list is grouped by Group / BG /
+ * Branch; off, it is the plain list.
+ */
+export function GroupsToggle({ on, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      title={on ? 'Hide groups — show a plain list' : 'Show groups — Group, Business Group, Branch'}
+      style={{
+        flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '0 9px', borderRadius: 8,
+        border: `1px solid ${on ? 'var(--ft-accent)' : 'var(--c-border)'}`,
+        background: on ? 'color-mix(in srgb, var(--ft-accent) 10%, transparent)' : 'var(--c-input)',
+        color: on ? 'var(--ft-accent)' : 'var(--c-text2)',
+        fontSize: 12, fontWeight: 700, cursor: 'pointer',
+      }}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="7" height="5" rx="1" /><path d="M6.5 8v9a1 1 0 0 0 1 1H14" /><path d="M6.5 12.5H14" />
+        <rect x="14" y="10" width="7" height="5" rx="1" /><rect x="14" y="16" width="7" height="5" rx="1" />
+      </svg>
+      Groups
+    </button>
+  )
+}
+
+/**
+ * One Group / BG / Branch bar of the Live Map list tree. Only a top-level bar
+ * carries the map tick box (client's choice, option 3), so the list stays light.
+ */
 export default function FleetTreeHeader({ node, depth, collapsed, onToggle, checked, indeterminate, onCheck }) {
+  const top = depth === 0
   const tag = LEVEL_LABEL[node.level]
   return (
     <div
@@ -34,8 +67,8 @@ export default function FleetTreeHeader({ node, depth, collapsed, onToggle, chec
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle() } }}
       style={{
         display: 'flex', alignItems: 'center', gap: 7,
-        padding: `8px 12px 8px ${8 + depth * 14}px`,
-        background: depth === 0 ? 'var(--c-hover)' : 'color-mix(in srgb, var(--c-hover) 55%, transparent)',
+        padding: `${top ? 8 : 7}px 12px ${top ? 8 : 7}px ${8 + depth * 14}px`,
+        background: top ? 'var(--c-hover)' : 'color-mix(in srgb, var(--c-hover) 45%, transparent)',
         borderBottom: '1px solid var(--c-border)',
         cursor: 'pointer', userSelect: 'none',
       }}
@@ -46,10 +79,11 @@ export default function FleetTreeHeader({ node, depth, collapsed, onToggle, chec
       >
         <polyline points="6 9 12 15 18 9" />
       </svg>
-      <MapCheck checked={checked} indeterminate={indeterminate} onChange={onCheck} label={`Show ${node.label} on the map`} />
+      {top && <MapCheck checked={checked} indeterminate={indeterminate} onChange={onCheck} label={`Show ${node.label} on the map`} />}
       <span style={{
         flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        fontSize: depth === 0 ? 12.5 : 12, fontWeight: depth === 0 ? 800 : 700, color: 'var(--c-text1)',
+        fontSize: top ? 12.5 : 12, fontWeight: top ? 800 : node.level === 'branch' ? 600 : 700,
+        color: node.level === 'branch' ? 'var(--c-text2)' : 'var(--c-text1)',
       }} title={node.label}>
         {node.label}
       </span>

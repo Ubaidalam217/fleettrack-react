@@ -1,39 +1,40 @@
 /**
- * The Live Map list as a tree (client, 2026-11-09): GGB → Group → BG → vehicles,
- * so it is clear whose vehicle each one is — the way the client's reference
- * system groups its list.
+ * The Live Map list as a tree (client, 2026-11-09): Group → Business Group →
+ * Branch → vehicles, so it is clear whose vehicle each one is. The GGB is not
+ * shown ("woh tu Master k pass ho ga").
  *
- * Each signed-in role starts the tree at the first level below its own:
- *   Super Admin  GGB → Group → BG
- *   GGB Admin    Group → BG
- *   Group Admin  BG
- *   BG / Sub-user  a flat list
- * A BG that has no Group sits straight under its GGB. A tracker that is not
- * registered under Settings goes in a "Not registered in Settings" group last.
+ * A level that does not exist is skipped: a BG with no Group is a top-level
+ * entry of its own, and a vehicle with no Branch sits directly under its BG.
+ * Each role starts below itself:
+ *   Super Admin, GGB Admin  Group → BG → Branch
+ *   Group Admin             BG → Branch
+ *   BG user, Sub-user       Branch
+ * A tracker not registered under Settings goes in a "Not registered in
+ * Settings" group, last.
  */
 
-export const LEVEL_LABEL = { ggb: 'GGB', group: 'Group', bg: 'BG', none: '' }
+export const LEVEL_LABEL = { group: 'Group', bg: 'BG', branch: 'Branch', none: '' }
 
 const LEVELS_BY_ROLE = {
-  SUPER_ADMIN: ['ggb', 'group', 'bg'],
-  GGB_ADMIN: ['group', 'bg'],
-  GROUP_ADMIN: ['bg'],
-  BG_USER: [],
-  SUB_USER: [],
+  SUPER_ADMIN: ['group', 'bg', 'branch'],
+  GGB_ADMIN: ['group', 'bg', 'branch'],
+  GROUP_ADMIN: ['bg', 'branch'],
+  BG_USER: ['branch'],
+  SUB_USER: ['branch'],
 }
 
 /** The levels the tree shows for a role; demo mode (no role) shows all three. */
 export function levelsForRole(role) {
-  if (role == null) return ['ggb', 'group', 'bg']
+  if (role == null) return ['group', 'bg', 'branch']
   return LEVELS_BY_ROLE[role] ?? []
 }
 
 /**
- * Where a vehicle sits: { ggb, group, bg }, each { id, name } or null; null
+ * Where a vehicle sits: { group, bg, branch }, each { id, name } or null; null
  * for a tracker with no Settings registration.
  *
  * @param {object} v    Live Map vehicle (`v.ident` is the IMEI)
- * @param {object} ctx  { vehicleByImei(imei), companies, groups, resellers } — the last three Maps by id
+ * @param {object} ctx  { vehicleByImei(imei), companies, groups, branches } — the last three Maps by id
  */
 export function placeVehicle(v, ctx) {
   const row = ctx.vehicleByImei(v.ident)
@@ -41,12 +42,11 @@ export function placeVehicle(v, ctx) {
   const bg = ctx.companies.get(row.companyId) ?? null
   const groupId = row.groupId || bg?.groupId || ''
   const group = groupId ? ctx.groups.get(groupId) ?? null : null
-  const ggbId = bg?.resellerId || group?.resellerId || ''
-  const ggb = ggbId ? ctx.resellers.get(ggbId) ?? null : null
+  const branch = row.branchId ? ctx.branches.get(row.branchId) ?? null : null
   return {
-    ggb: ggbId ? { id: ggbId, name: ggb?.name || 'Group Global Admin' } : null,
     group: groupId ? { id: groupId, name: group?.name || 'Group' } : null,
     bg: { id: row.companyId, name: bg?.name || 'Business Group' },
+    branch: row.branchId ? { id: row.branchId, name: branch?.name || 'Branch' } : null,
   }
 }
 
@@ -76,7 +76,7 @@ export function buildFleetTree(vehicles, placeOf, levels) {
     let node = root
     for (const level of levels) {
       const part = place[level]
-      if (!part) continue // e.g. a BG with no Group: straight under its GGB
+      if (!part) continue // e.g. a BG with no Group, a vehicle with no Branch
       const key = `${node.key}/${level}:${part.id}`
       let child = node.children.find(c => c.key === key)
       if (!child) {

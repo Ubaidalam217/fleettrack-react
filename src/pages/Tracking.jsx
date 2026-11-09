@@ -25,10 +25,10 @@ import {
 import { fetchDeviceTrack, buildSegments } from '../utils/replay'
 import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/traces'
 import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
-import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, useGroups, useResellers, driverNameForDevice, settingsProfileForImei, vehicleByImei } from '../data/settings'
+import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, useGroups, driverNameForDevice, settingsProfileForImei, vehicleByImei } from '../data/settings'
 import { useSession } from '../data/session'
 import { IS_REAL } from '../data/mode'
-import FleetTreeHeader, { MapCheck } from '../components/tracking/FleetTreeHeader'
+import FleetTreeHeader, { GroupsToggle } from '../components/tracking/FleetTreeHeader'
 import { buildFleetTree, levelsForRole, placeVehicle, vehicleIdsOf } from '../utils/fleetTree'
 import { FilterToggle, FilterPanel } from '../components/tracking/LiveMapFilters'
 import { EMPTY_FILTERS, vehicleAttributes, matchesAttributes, filterOptions } from '../utils/liveMapFilters'
@@ -94,6 +94,14 @@ function loadFields() {
 function fmt(ts) {
   if (!ts) return 'N/A'
   return new Date(ts * 1000).toLocaleString()
+}
+
+// "09/11 18:49" — the list row's short last update; the full one is its tooltip.
+function fmtShort(ts) {
+  if (!ts) return 'N/A'
+  const d = new Date(ts * 1000)
+  const p = n => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 // Plate number is the spec's primary identifier; fall back to the Flespi
@@ -390,9 +398,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const settingsVehicles = useVehicles()
   const companies = useCompanies()
   const branches = useBranches()
-  // The list tree (GGB → Group → BG) reads these too.
+  // The list tree (Group → BG → Branch) reads these too.
   const groupsList = useGroups()
-  const resellers = useResellers()
   const { user: me } = useSession()
 
   // Live vehicle data, shared MQTT session, no REST polling. The map and shell
@@ -449,6 +456,14 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     try { return new Set(JSON.parse(localStorage.getItem('fm.liveTree.collapsed') || '[]')) } catch { return new Set() }
   })
   const [hiddenIds, setHiddenIds] = useState(() => new Set())
+  // The Groups button: the list grouped (default) or plain. Kept per browser.
+  const [groupsOn, setGroupsOn] = useState(() => {
+    try { return localStorage.getItem('fm.liveTree.on') !== '0' } catch { return true }
+  })
+  const toggleGroups = () => setGroupsOn(on => {
+    try { localStorage.setItem('fm.liveTree.on', on ? '0' : '1') } catch { /* private window */ }
+    return !on
+  })
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [focusId, setFocusId]       = useState(null)
   const [flyTarget, setFlyTarget]   = useState(null)
@@ -787,16 +802,17 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       )
     })
 
-  // The list as GGB → Group → BG → vehicles (utils/fleetTree.js).
-  const treeLevels = levelsForRole(IS_REAL ? me?.role ?? null : null)
+  // The list as Group → BG → Branch → vehicles (utils/fleetTree.js), or plain
+  // when the Groups button is off.
+  const treeLevels = groupsOn ? levelsForRole(IS_REAL ? me?.role ?? null : null) : []
   const placeCtx = useMemo(() => ({
     vehicleByImei,
     companies: new Map(companies.map(c => [c.id, c])),
     groups: new Map(groupsList.map(g => [g.id, g])),
-    resellers: new Map(resellers.map(r => [r.id, r])),
+    branches: new Map(branches.map(b => [b.id, b])),
   // settingsVehicles: vehicleByImei reads that store, so a registration edit re-places the vehicle.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [companies, groupsList, resellers, settingsVehicles])
+  }), [companies, groupsList, branches, settingsVehicles])
   const fleetTree = buildFleetTree(filtered, v => placeVehicle(v, placeCtx), treeLevels)
 
   const toggleCollapsed = key => setCollapsedKeys(prev => {
@@ -1040,7 +1056,6 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           style={{ padding: `11px 14px 11px ${14 + depth * 14}px`, cursor: 'pointer' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-            <MapCheck checked={!hiddenIds.has(v.id)} onChange={() => setOnMap([v.id], hiddenIds.has(v.id))} label={`Show ${vehicleName(v)} on the map`} />
             <div style={{
               width: 9, height: 9, borderRadius: '50%',
               backgroundColor: statusColor(v.status),
@@ -1110,12 +1125,18 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
               )}
             </div>
           )}
-          <div style={{ fontSize: 11, color: 'var(--c-text2)', paddingLeft: 17, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {v.master?.fleetNo && <span>Fleet: {v.master.fleetNo}</span>}
-            {/* Client: no driver assigned → no Driver line at all. */}
-            {driverNameForDevice(v) && <span>Driver: {driverNameForDevice(v)}</span>}
-            <span>Speed: {v.speed != null ? `${v.speed} km/h` : 'N/A'}</span>
-            <span>Last update: {fmt(v.lastTs)}</span>
+          {/* One line (client, option 3): speed · last update · fleet no · driver.
+              No driver assigned → no driver at all. */}
+          <div
+            title={`Last update: ${fmt(v.lastTs)}`}
+            style={{ fontSize: 11, color: 'var(--c-text2)', paddingLeft: 17, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {[
+              v.speed != null ? `${v.speed} km/h` : 'N/A',
+              fmtShort(v.lastTs),
+              v.master?.fleetNo,
+              driverNameForDevice(v),
+            ].filter(Boolean).join(' · ')}
           </div>
         </div>
 
@@ -1526,6 +1547,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     />
                   </div>
                   <FilterToggle filters={attrFilters} open={filtersOpen} onClick={() => setFiltersOpen(o => !o)} />
+                  <GroupsToggle on={groupsOn} onClick={toggleGroups} />
                   </div>
                   {filtersOpen && (
                     <FilterPanel
