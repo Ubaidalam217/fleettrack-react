@@ -25,7 +25,11 @@ import {
 import { fetchDeviceTrack, buildSegments } from '../utils/replay'
 import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/traces'
 import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
-import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, driverNameForDevice, settingsProfileForImei } from '../data/settings'
+import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, useGroups, useResellers, driverNameForDevice, settingsProfileForImei, vehicleByImei } from '../data/settings'
+import { useSession } from '../data/session'
+import { IS_REAL } from '../data/mode'
+import FleetTreeHeader, { MapCheck } from '../components/tracking/FleetTreeHeader'
+import { buildFleetTree, levelsForRole, placeVehicle, vehicleIdsOf } from '../utils/fleetTree'
 import { FilterToggle, FilterPanel } from '../components/tracking/LiveMapFilters'
 import { EMPTY_FILTERS, vehicleAttributes, matchesAttributes, filterOptions } from '../utils/liveMapFilters'
 
@@ -386,6 +390,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const settingsVehicles = useVehicles()
   const companies = useCompanies()
   const branches = useBranches()
+  // The list tree (GGB → Group → BG) reads these too.
+  const groupsList = useGroups()
+  const resellers = useResellers()
+  const { user: me } = useSession()
 
   // Live vehicle data, shared MQTT session, no REST polling. The map and shell
   // render immediately — nothing here gates the UI. Vehicles appear as MQTT
@@ -435,6 +443,12 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const [activeTab, setActiveTab]   = useState(ALL)
   const [search, setSearch]         = useState('')
   const [attrFilters, setAttrFilters] = useState(EMPTY_FILTERS)
+  // List tree: which groups are folded (kept per browser) and which vehicles
+  // the user has unticked off the map (this visit only).
+  const [collapsedKeys, setCollapsedKeys] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('fm.liveTree.collapsed') || '[]')) } catch { return new Set() }
+  })
+  const [hiddenIds, setHiddenIds] = useState(() => new Set())
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [focusId, setFocusId]       = useState(null)
   const [flyTarget, setFlyTarget]   = useState(null)
@@ -773,6 +787,34 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       )
     })
 
+  // The list as GGB → Group → BG → vehicles (utils/fleetTree.js).
+  const treeLevels = levelsForRole(IS_REAL ? me?.role ?? null : null)
+  const placeCtx = useMemo(() => ({
+    vehicleByImei,
+    companies: new Map(companies.map(c => [c.id, c])),
+    groups: new Map(groupsList.map(g => [g.id, g])),
+    resellers: new Map(resellers.map(r => [r.id, r])),
+  // settingsVehicles: vehicleByImei reads that store, so a registration edit re-places the vehicle.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [companies, groupsList, resellers, settingsVehicles])
+  const fleetTree = buildFleetTree(filtered, v => placeVehicle(v, placeCtx), treeLevels)
+
+  const toggleCollapsed = key => setCollapsedKeys(prev => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    try { localStorage.setItem('fm.liveTree.collapsed', JSON.stringify([...next])) } catch { /* private window */ }
+    return next
+  })
+  const setOnMap = (ids, show) => setHiddenIds(prev => {
+    const next = new Set(prev)
+    for (const id of ids) {
+      if (show) next.delete(id)
+      else next.add(id)
+    }
+    return next
+  })
+
   const selected = vehicles.find(v => v.id === focusId) ?? null
 
   // The sheet keeps rendering its vehicle for the length of the slide-down, so
@@ -820,6 +862,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const replayShowing = replayActive && replayPoints.length > 0
   const mapped = inFilters
     .filter(v => v.lat != null && v.lng != null)
+    .filter(v => !hiddenIds.has(v.id))
     .filter(v => !(replayShowing && v.id === replayVehicleId))
 
   // Keyed on the points array only. Rebuilding this inline meant every playback
@@ -973,6 +1016,146 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       : !isDesktop      ? SHEET_MOBILE_H
       : sheetMode === 'max' ? '100%'
       : `${sheetVh}vh`
+  // One vehicle row of the Live Map list; `depth` indents it under its group.
+  const renderVehicleRow = (v, idx, depth) => {
+    const sel = focusId === v.id
+
+    return (
+      <div
+        key={v.id}
+        ref={el => {
+          if (el) rowRefs.current.set(v.id, el)
+          else rowRefs.current.delete(v.id)
+        }}
+        style={{
+          borderBottom: '1px solid var(--c-border)',
+          backgroundColor: sel ? 'var(--c-hover)' : 'transparent',
+          transition: 'background 0.15s',
+          animation: 'fadeInUp 0.35s ease both',
+          animationDelay: `${Math.min(idx * 35, 400)}ms`,
+        }}
+      >
+        <div
+          onClick={() => handleRowClick(v)}
+          style={{ padding: `11px 14px 11px ${14 + depth * 14}px`, cursor: 'pointer' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+            <MapCheck checked={!hiddenIds.has(v.id)} onChange={() => setOnMap([v.id], hiddenIds.has(v.id))} label={`Show ${vehicleName(v)} on the map`} />
+            <div style={{
+              width: 9, height: 9, borderRadius: '50%',
+              backgroundColor: statusColor(v.status),
+              flexShrink: 0,
+              boxShadow: `0 0 0 2.5px ${statusColor(v.status)}30`,
+            }} />
+            <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {vehicleName(v)}
+            </span>
+            <span style={{ fontSize: 10, color: statusColor(v.status), fontWeight: 700, flexShrink: 0 }}>
+              {statusLabel(v.status)}
+            </span>
+            {/* The chevron opens the card below, so it hides with it. */}
+            {SHOW_VEHICLE_LIST_CARD && (
+              <svg
+                width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="var(--c-text3)" strokeWidth="2.6" strokeLinecap="round"
+                style={{
+                  flexShrink: 0,
+                  transform: sel ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.25s ease',
+                }}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            )}
+
+            <VehicleActionMenu
+              items={menuItemsFor(v)}
+              label={`Actions for ${vehicleName(v)}`}
+            />
+          </div>
+
+          {/* Active-mode badges. These are the card's
+              indicator that Follow/Trace are running, so they
+              sit in the always-visible row rather than inside
+              the collapsible card. */}
+          {(isFollowing(v.id) || isTracing(v.id)) && (
+            <div style={{ display: 'flex', gap: 5, paddingLeft: 17, marginBottom: 4 }}>
+              {isFollowing(v.id) && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3.5,
+                  fontSize: 9, fontWeight: 800, letterSpacing: '0.03em',
+                  padding: '2px 6px', borderRadius: 4,
+                  background: 'color-mix(in srgb, var(--ft-accent) 14%, transparent)', color: 'var(--ft-accent)',
+                }}>
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4" />
+                    <circle cx="12" cy="12" r="10" />
+                  </svg>
+                  FOLLOWING
+                </span>
+              )}
+              {isTracing(v.id) && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3.5,
+                  fontSize: 9, fontWeight: 800, letterSpacing: '0.03em',
+                  padding: '2px 6px', borderRadius: 4,
+                  background: `${traces[String(v.id)].color}22`,
+                  color: traces[String(v.id)].color,
+                }}>
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" aria-hidden="true">
+                    <path d="M3 18c4 0 3-9 7-9s3 6 7 6 4-4 4-4" />
+                  </svg>
+                  TRACING
+                </span>
+              )}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: 'var(--c-text2)', paddingLeft: 17, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {v.master?.fleetNo && <span>Fleet: {v.master.fleetNo}</span>}
+            {/* Client: no driver assigned → no Driver line at all. */}
+            {driverNameForDevice(v) && <span>Driver: {driverNameForDevice(v)}</span>}
+            <span>Speed: {v.speed != null ? `${v.speed} km/h` : 'N/A'}</span>
+            <span>Last update: {fmt(v.lastTs)}</span>
+          </div>
+        </div>
+
+        {SHOW_VEHICLE_LIST_CARD && (
+          <VehicleListCard
+            v={v}
+            open={sel}
+            onCenter={flyTo}
+          />
+        )}
+      </div>
+    )
+  }
+
+  // One GGB / Group / BG of the list tree with everything under it.
+  const renderTreeNode = (node, depth) => {
+    const collapsed = collapsedKeys.has(node.key)
+    const ids = vehicleIdsOf(node)
+    const hiddenCount = ids.filter(id => hiddenIds.has(id)).length
+    return (
+      <div key={node.key}>
+        <FleetTreeHeader
+          node={node}
+          depth={depth}
+          collapsed={collapsed}
+          onToggle={() => toggleCollapsed(node.key)}
+          checked={hiddenCount === 0}
+          indeterminate={hiddenCount > 0 && hiddenCount < ids.length}
+          onCheck={() => setOnMap(ids, hiddenCount > 0)}
+        />
+        {!collapsed && (
+          <>
+            {node.children.map(child => renderTreeNode(child, depth + 1))}
+            {node.vehicles.map((v, idx) => renderVehicleRow(v, idx, depth + 1))}
+          </>
+        )}
+      </div>
+    )
+  }
+
   // On mobile the list is a full-height overlay with its own close button, so
   // the floating toggle would just sit on top of it.
   const toggleHidden = !isDesktop && listOpen
@@ -1379,117 +1562,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                           : 'Waiting for live data…'}
                     </div>
                   ) : (
-                    filtered.map((v, idx) => {
-                      const sel = focusId === v.id
-
-                      return (
-                        <div
-                          key={v.id}
-                          ref={el => {
-                            if (el) rowRefs.current.set(v.id, el)
-                            else rowRefs.current.delete(v.id)
-                          }}
-                          style={{
-                            borderBottom: '1px solid var(--c-border)',
-                            backgroundColor: sel ? 'var(--c-hover)' : 'transparent',
-                            transition: 'background 0.15s',
-                            animation: 'fadeInUp 0.35s ease both',
-                            animationDelay: `${Math.min(idx * 35, 400)}ms`,
-                          }}
-                        >
-                          <div
-                            onClick={() => handleRowClick(v)}
-                            style={{ padding: '11px 14px', cursor: 'pointer' }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-                              <div style={{
-                                width: 9, height: 9, borderRadius: '50%',
-                                backgroundColor: statusColor(v.status),
-                                flexShrink: 0,
-                                boxShadow: `0 0 0 2.5px ${statusColor(v.status)}30`,
-                              }} />
-                              <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {vehicleName(v)}
-                              </span>
-                              <span style={{ fontSize: 10, color: statusColor(v.status), fontWeight: 700, flexShrink: 0 }}>
-                                {statusLabel(v.status)}
-                              </span>
-                              {/* The chevron opens the card below, so it hides with it. */}
-                              {SHOW_VEHICLE_LIST_CARD && (
-                                <svg
-                                  width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                  stroke="var(--c-text3)" strokeWidth="2.6" strokeLinecap="round"
-                                  style={{
-                                    flexShrink: 0,
-                                    transform: sel ? 'rotate(180deg)' : 'rotate(0deg)',
-                                    transition: 'transform 0.25s ease',
-                                  }}
-                                >
-                                  <polyline points="6 9 12 15 18 9" />
-                                </svg>
-                              )}
-
-                              <VehicleActionMenu
-                                items={menuItemsFor(v)}
-                                label={`Actions for ${vehicleName(v)}`}
-                              />
-                            </div>
-
-                            {/* Active-mode badges. These are the card's
-                                indicator that Follow/Trace are running, so they
-                                sit in the always-visible row rather than inside
-                                the collapsible card. */}
-                            {(isFollowing(v.id) || isTracing(v.id)) && (
-                              <div style={{ display: 'flex', gap: 5, paddingLeft: 17, marginBottom: 4 }}>
-                                {isFollowing(v.id) && (
-                                  <span style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 3.5,
-                                    fontSize: 9, fontWeight: 800, letterSpacing: '0.03em',
-                                    padding: '2px 6px', borderRadius: 4,
-                                    background: 'color-mix(in srgb, var(--ft-accent) 14%, transparent)', color: 'var(--ft-accent)',
-                                  }}>
-                                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
-                                      <circle cx="12" cy="12" r="4" />
-                                      <circle cx="12" cy="12" r="10" />
-                                    </svg>
-                                    FOLLOWING
-                                  </span>
-                                )}
-                                {isTracing(v.id) && (
-                                  <span style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 3.5,
-                                    fontSize: 9, fontWeight: 800, letterSpacing: '0.03em',
-                                    padding: '2px 6px', borderRadius: 4,
-                                    background: `${traces[String(v.id)].color}22`,
-                                    color: traces[String(v.id)].color,
-                                  }}>
-                                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" aria-hidden="true">
-                                      <path d="M3 18c4 0 3-9 7-9s3 6 7 6 4-4 4-4" />
-                                    </svg>
-                                    TRACING
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            <div style={{ fontSize: 11, color: 'var(--c-text2)', paddingLeft: 17, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              {v.master?.fleetNo && <span>Fleet: {v.master.fleetNo}</span>}
-                              {/* Client: no driver assigned → no Driver line at all. */}
-                              {driverNameForDevice(v) && <span>Driver: {driverNameForDevice(v)}</span>}
-                              <span>Speed: {v.speed != null ? `${v.speed} km/h` : 'N/A'}</span>
-                              <span>Last update: {fmt(v.lastTs)}</span>
-                            </div>
-                          </div>
-
-                          {SHOW_VEHICLE_LIST_CARD && (
-                            <VehicleListCard
-                              v={v}
-                              open={sel}
-                              onCenter={flyTo}
-                            />
-                          )}
-                        </div>
-                      )
-                    })
+                    <>
+                      {fleetTree.children.map(node => renderTreeNode(node, 0))}
+                      {fleetTree.vehicles.map((v, idx) => renderVehicleRow(v, idx, 0))}
+                    </>
                   )}
                 </div>
               </div>
