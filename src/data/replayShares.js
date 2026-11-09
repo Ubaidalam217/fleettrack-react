@@ -17,10 +17,6 @@ export const revokeReplayShare = id => del(`/api/replay-shares/${id}`)
 /** The link's public page, on whichever host serves the app. */
 export const replayShareUrl = token => `${window.location.origin}/share/replay/${token}`
 
-/** The <iframe> to paste into a website. */
-export const replayEmbedCode = token =>
-  `<iframe src="${replayShareUrl(token)}?embed=1" width="100%" height="520" style="border:0;border-radius:12px" loading="lazy" allowfullscreen></iframe>`
-
 /**
  * The shared replay, read without a sign-in. Throws an ApiError whose status is
  * 410 once the link has expired and 404 when it is unknown or switched off.

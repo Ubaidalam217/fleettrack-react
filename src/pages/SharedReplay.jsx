@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -11,8 +11,7 @@ import { statusColor, statusLabel } from '../utils/vehicleStatus'
 /**
  * Public page of a shared replay — /share/replay/:token (client, 2026-11-09).
  * No sign-in: the link's token is the key, and the server refuses it once it
- * has expired or been switched off. `?embed=1` is the compact version for an
- * <iframe> on a website.
+ * has expired or been switched off.
  */
 
 const SPEEDS = [1, 5, 10, 25, 50]
@@ -59,8 +58,6 @@ function Message({ title, text }) {
 
 export default function SharedReplay() {
   const { token } = useParams()
-  const [params] = useSearchParams()
-  const embed = params.get('embed') === '1'
 
   const [state, setState] = useState({ phase: 'loading' })
   const [index, setIndex] = useState(0)
@@ -110,11 +107,11 @@ export default function SharedReplay() {
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--c-page)' }}>
       <header style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: embed ? '7px 12px' : '10px 16px',
+        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
         background: 'var(--c-sb-bg)', color: '#fff', flexWrap: 'wrap',
       }}>
-        <img className="ft-logo-light" src="/logo/fleetmax-logo-sea-white.png" alt="FleetmaxX" style={{ height: embed ? 22 : 30, width: 'auto' }} />
-        <img className="ft-logo-dark" src="/logo/fleetmax-logo-aqua-white.png" alt="FleetmaxX" style={{ height: embed ? 22 : 30, width: 'auto' }} />
+        <img className="ft-logo-light" src="/logo/fleetmax-logo-sea-white.png" alt="FleetmaxX" style={{ height: 30, width: 'auto' }} />
+        <img className="ft-logo-dark" src="/logo/fleetmax-logo-aqua-white.png" alt="FleetmaxX" style={{ height: 30, width: 'auto' }} />
         {data && (
           <div style={{ flex: 1, minWidth: 180, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
             <Route size={17} style={{ flexShrink: 0, marginTop: 2, color: 'var(--c-sb-active-text)' }} />
@@ -122,7 +119,7 @@ export default function SharedReplay() {
               <div style={{ fontSize: 14, fontWeight: 700 }}>{data.vehicleName} <span style={{ fontWeight: 500, opacity: 0.75 }}>· Replay</span></div>
               <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 1 }}>
                 {fmt(data.fromTs)} – {fmt(data.toTs)}
-                {!embed && <> · link valid until {new Date(data.expiresAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</>}
+                {' · link valid until '}{new Date(data.expiresAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
               </div>
             </div>
           </div>

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Link2, Copy, Check, ExternalLink, Code2 } from 'lucide-react'
+import { X, Link2, Copy, Check, ExternalLink } from 'lucide-react'
 import { IS_REAL } from '../../data/mode'
-import { createReplayShare, replayShareUrl, replayEmbedCode } from '../../data/replayShares'
+import { createReplayShare, replayShareUrl } from '../../data/replayShares'
 
 /**
  * "Share replay" (client, 2026-11-09): make a link to the replay on screen that
  * anyone can open without signing in, and that stops working at the chosen time.
- * The link and an <iframe> for a website are shown to copy once it is made.
+ * The link is shown to copy once it is made.
  */
 
 const EXPIRY = [
@@ -22,7 +22,7 @@ const pad = n => String(n).padStart(2, '0')
 const toInput = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 const fmt = ts => new Date(ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
-function CopyRow({ label, value, multiline, icon: Icon }) {
+function CopyRow({ label, value, icon: Icon }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
     try {
@@ -35,7 +35,7 @@ function CopyRow({ label, value, multiline, icon: Icon }) {
   }
   const box = {
     flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 8, border: '1px solid var(--c-border2)',
-    background: 'var(--c-input)', color: 'var(--c-text1)', fontSize: 11.5, fontFamily: multiline ? 'ui-monospace, monospace' : 'inherit',
+    background: 'var(--c-input)', color: 'var(--c-text1)', fontSize: 11.5,
   }
   return (
     <div>
@@ -43,9 +43,7 @@ function CopyRow({ label, value, multiline, icon: Icon }) {
         <Icon size={12} /> {label}
       </div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
-        {multiline
-          ? <textarea readOnly value={value} rows={3} onFocus={e => e.target.select()} style={{ ...box, resize: 'none' }} />
-          : <input readOnly value={value} onFocus={e => e.target.select()} style={box} />}
+        <input readOnly value={value} onFocus={e => e.target.select()} style={box} />
         <button type="button" onClick={copy} title="Copy" style={{
           flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 11px', borderRadius: 8,
           border: '1px solid var(--c-border2)', background: copied ? 'var(--ft-accent)' : 'var(--c-card)',
@@ -166,7 +164,6 @@ export default function ShareReplayDialog({ vehicleId, vehicleName, fromTs, toTs
                 {share.truncated && ' This period had more points than one link holds, so the route is thinned.'}
               </div>
               <CopyRow label="Link" value={replayShareUrl(share.token)} icon={Link2} />
-              <CopyRow label="Website embed code" value={replayEmbedCode(share.token)} icon={Code2} multiline />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <a href={replayShareUrl(share.token)} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ft-accent)' }}>
                   <ExternalLink size={13} /> Open link
