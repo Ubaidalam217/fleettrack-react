@@ -1821,6 +1821,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       onToggleMax={isDesktop ? toggleSheetMax : undefined}
                       onRestore={restoreSheet}
                       onOpenConsole={sheetVehicle ? () => setConsoleVehicleId(sheetVehicle.id) : undefined}
+                      onOpenInfo={sheetVehicle ? () => setInfoVehicleId(sheetVehicle.id) : undefined}
                     />
                   </div>
                 </div>

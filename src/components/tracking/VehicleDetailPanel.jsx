@@ -1,9 +1,12 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { Truck, Cpu, Building2, MapPin, ListChecks, Pencil, Plus, Copy, Check } from 'lucide-react'
+import { validityState } from '../../utils/liveMapFilters'
+import { valueParts } from '../../utils/customFields'
 import { useNavigate } from 'react-router-dom'
 import DeviceSettingsTab from './DeviceSettingsTab'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { hasDriver } from '../../services/vehicleMaster'
-import { listDocuments, expiryState, daysUntilExpiry, isReadOnly } from '../../services/documentStore'
+import { listDocuments, isReadOnly } from '../../services/documentStore'
 import { useVehicleUsage, fmtOdometer } from '../../hooks/useVehicleUsage'
 import { computeSensors } from '../../utils/sensorsData'
 import {
@@ -109,136 +112,216 @@ function fmtDuration(sec) {
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-// Unset Settings fields on a *matched* vehicle are a blank in the record, not a
-// missing link — a plain dash, the same as everywhere else on this tab. On an
-// unmatched device every one of them is unanswerable, which is a different
-// thing and says so.
-const NOT_ASSIGNED = 'Not assigned'
+// ── Vehicle Info ───────────────────────────────────────────────────────────
+//
+// Client, 2026-11-09: one clean card per subject, every value once. Document
+// Expiry and Costs are gone from here — the Documents tab and the expense
+// pages own them. Plate and Fleet No used to appear twice (the device's own
+// metadata and the Settings record); the Settings value wins, the device's is
+// the fallback for a tracker not registered yet.
 
-/**
- * BG / Group / registration, read from the Settings vehicle store and joined to
- * this device by IMEI. None of it exists in Flespi.
- *
- * ODO Reading is the exception and is deliberately not part of that join: it is
- * the tracker's own odometer, passed in from the tab's usage fetch. There used
- * to be a second, separately-stored "registered" reading in the Settings record
- * as well, and two numbers both called the odometer is one number too many.
- */
-function OrgSection({ v, odoKm, odoLoading }) {
-  const profile = useSettingsProfile(v.ident)
-  const linked  = profile.linked
-  const blank   = linked ? null : NOT_ASSIGNED
+const VI_CSS = `
+.vinfo-wrap{container-type:inline-size}
+.vinfo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.vinfo-card{border:1px solid var(--c-border);border-radius:14px;padding:14px 16px 16px;min-width:0;
+  background:color-mix(in srgb,var(--c-input) 40%,var(--c-card))}
+.vinfo-card.wide{grid-column:1/-1}
+.vinfo-head{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.vinfo-ico{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  color:var(--ft-accent);background:color-mix(in srgb,var(--ft-accent) 13%,transparent)}
+.vinfo-title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:var(--c-text1);flex:1;min-width:0}
+.vinfo-count{font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:var(--c-hover);color:var(--c-text2)}
+.vinfo-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px}
+.vinfo-fields.four{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.vinfo-f{min-width:0}
+.vinfo-f.span{grid-column:1/-1}
+.vinfo-l{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--c-text3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vinfo-v{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:13px;font-weight:650;color:var(--c-text1);min-width:0;line-height:1.45}
+.vinfo-v > span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vinfo-v.wrap > span{white-space:normal;overflow:visible;word-break:break-word}
+.vinfo-v .muted{color:var(--c-text3);font-weight:500}
+.vinfo-v a{color:var(--ft-accent);text-decoration:none}
+.vinfo-v a:hover{text-decoration:underline}
+.vinfo-btn{height:30px;padding:0 11px;border-radius:9px;border:1px solid var(--c-border2);background:var(--c-card);color:var(--c-text1);
+  font-size:11.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0}
+.vinfo-btn:hover{background:var(--c-hover)}
+.vinfo-mini{width:22px;height:22px;border:0;border-radius:6px;background:transparent;color:var(--c-text3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.vinfo-mini:hover{background:var(--c-hover);color:var(--c-text1)}
+.vinfo-pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;flex-shrink:0}
+.vinfo-pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.vinfo-note,.vinfo-empty{font-size:12px;color:var(--c-text3);line-height:1.55}
+/* Sized by the panel, not the window: the sheet can be narrow on a wide screen. */
+@container (max-width:640px){.vinfo{grid-template-columns:minmax(0,1fr)}}
+@container (max-width:380px){.vinfo-fields{grid-template-columns:minmax(0,1fr)}}
+`
 
+const VALIDITY_TONE = { valid: ['#16a34a', 'valid'], expiring: ['#d97706', 'expires soon'], expired: ['#ef4444', 'expired'] }
+
+function InfoCard({ icon: Icon, title, aside, wide, children }) {
   return (
-    <Section
-      title="Organisation & Registration"
-      caption={linked
-        ? 'From the Settings vehicle record · matched by IMEI'
-        : 'No Settings vehicle for this IMEI'}
-    >
-      <Grid>
-        <Field label="Group Name"                value={linked ? profile.groupName  : blank} />
-        <Field label="BG (Business Group) Name"  value={linked ? profile.bgName     : blank} />
-        <Field label="Sub Group"                 value={linked ? profile.subGroup   : blank} />
-        <Field label="Make & Model"              value={linked ? profile.makeModel  : blank} />
-        <Field label="Device Type"               value={linked ? profile.deviceType : blank} />
-        <Field label="Mobile No"                 value={linked ? profile.mobileNo   : blank} />
-        <Field label="Plate No"                  value={linked ? profile.plateNo    : blank} />
-        <Field label="Fleet No"                  value={linked ? profile.fleetNo    : blank} />
-        {/* Device telemetry, so it has an answer whether or not the device is
-            linked — the only field here that does. */}
-        <Field label="ODO Reading" value={odoLoading ? '…' : fmtOdometer(odoKm)} />
-      </Grid>
-
-      {/* One plain line, and no button of its own. Assigning an unmatched
-          device used to have a call-to-action here, which duplicated the
-          Console button in the panel's own toolbar — the same callback, two
-          places to find it. The toolbar button is the single edit entry point
-          and handles the unmatched case itself. */}
-      <div style={{ fontSize: 10.5, color: 'var(--c-text3)', lineHeight: 1.6, marginTop: 10 }}>
-        ODO Reading is the device&rsquo;s live odometer from Flespi and is read-only.
-        {linked
-          ? ' Everything else here comes from the Settings vehicle record.'
-          : ' The rest has no source yet — this device’s IMEI is not registered under' +
-            ' Settings > Object > Vehicle. Use Parameters, top right, to assign it.'}
+    <section className={`vinfo-card${wide ? ' wide' : ''}`}>
+      <div className="vinfo-head">
+        <span className="vinfo-ico"><Icon size={15} /></span>
+        <span className="vinfo-title">{title}</span>
+        {aside}
       </div>
-    </Section>
+      {children}
+    </section>
   )
 }
 
-function VehicleInfo({ v }) {
-  const m = v.master
-  const docs = useMemo(() => listDocuments(v.id), [v.id])
-  const { loading: usageLoading, usage } = useVehicleUsage(v.id)
+function InfoField({ label, value, span, wrap, mono, after, color }) {
+  const empty = value === '' || value == null
+  return (
+    <div className={`vinfo-f${span ? ' span' : ''}`}>
+      <div className="vinfo-l" title={label}>{label}</div>
+      <div className={`vinfo-v${wrap ? ' wrap' : ''}`} style={color ? { color } : undefined}>
+        {empty
+          ? <span className="muted">—</span>
+          : <span style={mono ? { fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' } : undefined}>{value}</span>}
+        {!empty && after}
+      </div>
+    </div>
+  )
+}
 
+function CopyMini({ text, label }) {
+  const [done, setDone] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setDone(true)
+      setTimeout(() => setDone(false), 1400)
+    } catch { /* clipboard blocked: the value is still selectable */ }
+  }
+  return (
+    <button type="button" className="vinfo-mini" title={done ? 'Copied' : `Copy ${label}`} aria-label={`Copy ${label}`} onClick={copy}>
+      {done ? <Check size={12} /> : <Copy size={12} />}
+    </button>
+  )
+}
+
+const fmtDay = ymd => {
+  if (!ymd) return ''
+  const [y, mo, d] = ymd.split('-').map(Number)
+  return new Date(y, mo - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+const capitalise = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+
+function VehicleInfo({ v, onOpenInfo, onOpenConsole }) {
+  const m = v.master
+  const profile = useSettingsProfile(v.ident)
+  const row = profile.linked ? profile.vehicle : null
+  const { loading: usageLoading, usage } = useVehicleUsage(v.id)
   const address = useAddress(v.lat, v.lng)
+
+  const validity = row?.validUntil ? validityState(row.validUntil) : null
+  const [vColor, vNote] = VALIDITY_TONE[validity] ?? []
+  const groupName = profile.linked && profile.groupName !== 'BG is its own group' && profile.groupName !== '—' ? profile.groupName : ''
+  const branchName = profile.linked && profile.branchName !== '—' ? profile.branchName : ''
+  const fields = row?.customFields ?? []
+  const color = statusColor(v.status)
+  const position = address ?? (v.lat != null && v.lng != null ? `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}` : null)
 
   return (
     <>
-      <Section title="Identity" caption="From this device in Flespi">
-        <Grid>
-          <Field label="Plate No"     value={m.plateNo} />
-          <Field label="Fleet No"     value={m.fleetNo} />
-          <Field label="Vehicle Type" value={m.vehicleType} />
-          <Field label="Device Name"  value={v.name} />
-          <Field label="IMEI"         value={v.ident} />
-          <Field label="Status"       value={statusLabel(v.status)} color={statusColor(v.status)} />
-        </Grid>
-      </Section>
-
-      <OrgSection
-        v={v}
-        odoKm={usage?.odometerKm}
-        odoLoading={usageLoading}
-      />
-
-      <Section title="Position" caption="Live from the tracker · read-only">
-        <Grid>
-          <Field
-            label="Location"
-            value={address ?? (v.lat != null && v.lng != null ? `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}` : null)}
-          />
-          <Field label="Speed"       value={v.speed != null ? `${v.speed} km/h` : null} />
-          <Field label="Last Update" value={fmtTs(v.lastTs)} />
-          {/* The odometer is not repeated here — it is the ODO Reading field in
-              Organisation & Registration, from this same fetch. */}
-          <Field
-            label="Max Speed Today"
-            value={usageLoading ? '…' : usage ? `${usage.maxSpeed} km/h` : null}
-          />
-          <Field
-            label="Avg Speed Today"
-            value={usageLoading ? '…' : usage?.avgSpeed != null ? `${usage.avgSpeed.toFixed(0)} km/h` : null}
-          />
-        </Grid>
-      </Section>
-
-      <Section title="Document Expiry">
-        {docs.length === 0 ? (
-          <Pending note="No documents on file for this vehicle. Add them in the Documents tab." />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {docs.map(d => {
-              const state = expiryState(d)
-              const days  = daysUntilExpiry(d)
-              const color = state === 'expired' ? '#ef4444' : state === 'due' ? '#eab308' : 'var(--c-text2)'
-              return (
-                <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
-                  <span style={{ flex: 1, color: 'var(--c-text1)', fontWeight: 600 }}>{d.name}</span>
-                  <span style={{ color: 'var(--c-text3)' }}>{d.expiryDate ?? '—'}</span>
-                  <span style={{ color, fontWeight: 700, minWidth: 92, textAlign: 'right' }}>
-                    {days == null ? '—' : days < 0 ? `expired ${-days}d ago` : `${days}d left`}
-                  </span>
-                </div>
-              )
-            })}
+      <style>{VI_CSS}</style>
+      <div className="vinfo-wrap">
+      <div className="vinfo">
+        <InfoCard icon={Truck} title="Vehicle">
+          <div className="vinfo-fields">
+            <InfoField label="Plate No" value={profile.plateNo || m.plateNo} />
+            <InfoField label="Fleet No" value={profile.fleetNo || m.fleetNo} />
+            <InfoField label="Vehicle Type" value={capitalise(m.vehicleType || row?.vehicleType)} />
+            <InfoField label="Make & Model" value={profile.makeModel} />
+            <InfoField label="Asset Group" value={profile.subGroup} />
+            <InfoField label="Validity" value={row?.validUntil ? `${fmtDay(row.validUntil)} · ${vNote}` : ''} color={vColor} />
           </div>
-        )}
-      </Section>
+        </InfoCard>
 
-      <Section title="Costs">
-        <Pending note="Month Expenses has no source in Flespi — it requires the ERP backend." />
-      </Section>
+        <InfoCard icon={Cpu} title="Tracker">
+          <div className="vinfo-fields">
+            <InfoField label="Unique ID (IMEI)" value={v.ident} mono after={v.ident && <CopyMini text={v.ident} label="IMEI" />} />
+            <InfoField label="Device Type" value={profile.deviceType} />
+            <InfoField label="SIM / Mobile No" value={profile.mobileNo} />
+            <InfoField label="ODO Reading" value={usageLoading ? '…' : fmtOdometer(usage?.odometerKm)} />
+          </div>
+        </InfoCard>
+
+        <InfoCard
+          icon={Building2}
+          title="Organisation"
+          wide
+          aside={!profile.linked && onOpenConsole && (
+            <button type="button" className="vinfo-btn" onClick={onOpenConsole}><Pencil size={12} />Register</button>
+          )}
+        >
+          {profile.linked ? (
+            <div className="vinfo-fields four">
+              <InfoField label="Group" value={groupName} />
+              <InfoField label="Business Group" value={profile.bgName} />
+              <InfoField label="Branch" value={branchName} />
+            </div>
+          ) : (
+            <div className="vinfo-note">
+              This tracker is not registered under Settings › Object › Vehicle yet, so it has no Group, Business Group or Branch. Register it with Parameters.
+            </div>
+          )}
+        </InfoCard>
+
+        <InfoCard
+          icon={MapPin}
+          title="Live position"
+          wide
+          aside={(
+            <span className="vinfo-pill" style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }}>
+              <i />{statusLabel(v.status)}
+            </span>
+          )}
+        >
+          <div className="vinfo-fields four">
+            <InfoField label="Location" value={position} span wrap />
+            <InfoField label="Speed" value={v.speed != null ? `${v.speed} km/h` : null} />
+            <InfoField label="Last Update" value={fmtTs(v.lastTs)} />
+            <InfoField label="Max Speed Today" value={usageLoading ? '…' : usage ? `${usage.maxSpeed} km/h` : null} />
+            <InfoField label="Avg Speed Today" value={usageLoading ? '…' : usage?.avgSpeed != null ? `${usage.avgSpeed.toFixed(0)} km/h` : null} />
+          </div>
+        </InfoCard>
+
+        <InfoCard
+          icon={ListChecks}
+          title={<>Custom fields <span className="vinfo-count">{fields.length}</span></>}
+          wide
+          aside={row && onOpenInfo && (
+            <button type="button" className="vinfo-btn" onClick={onOpenInfo}>
+              {fields.length ? <><Pencil size={12} />Manage</> : <><Plus size={13} />Add</>}
+            </button>
+          )}
+        >
+          {fields.length ? (
+            <div className="vinfo-fields four">
+              {fields.map(f => (
+                <InfoField
+                  key={f.name}
+                  label={f.name}
+                  wrap
+                  value={valueParts(f.value, f.name).map((p, i) => (p.type === 'text'
+                    ? <span key={i}>{p.text}</span>
+                    : <a key={i} href={p.href} target={p.type === 'url' ? '_blank' : undefined} rel={p.type === 'url' ? 'noreferrer' : undefined}>{p.text}</a>))}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="vinfo-empty">
+              {row
+                ? 'No custom fields yet — keep contract numbers, dates, contacts or anything else for this vehicle.'
+                : 'Register the tracker first to keep custom fields for it.'}
+            </div>
+          )}
+        </InfoCard>
+      </div>
+      </div>
     </>
   )
 }
@@ -1044,7 +1127,7 @@ function SizeButton({ icon, label, onClick }) {
  *        Tracking, which holds the dialog.
  */
 export default function VehicleDetailPanel({
-  vehicle, mode = 'normal', onToggleMin, onToggleMax, onRestore, onOpenConsole,
+  vehicle, mode = 'normal', onToggleMin, onToggleMax, onRestore, onOpenConsole, onOpenInfo,
 }) {
   const [tab, setTab] = useState(DETAIL_TABS[0])
 
@@ -1118,7 +1201,7 @@ export default function VehicleDetailPanel({
           )}
         </div>
 
-        {tab === 'Vehicle Info' && <VehicleInfo v={vehicle} />}
+        {tab === 'Vehicle Info' && <VehicleInfo v={vehicle} onOpenInfo={onOpenInfo} onOpenConsole={onOpenConsole} />}
         {tab === 'Driver Info'  && <DriverInfo  v={vehicle} />}
         {tab === 'Usage'        && <Usage       v={vehicle} />}
         {tab === 'Sensors'      && <Sensors     v={vehicle} />}
