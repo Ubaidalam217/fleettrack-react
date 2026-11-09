@@ -66,7 +66,7 @@ function sleep(ms, signal) {
 // Mirrors useFlespiMQTT's vehicleStatus() classifier (Running/Idle/Stopped),
 // minus the "Inactive" branch — that's a live-staleness concept that doesn't
 // apply to a historic point that already has a timestamp in range.
-function pointStatus(ignition, speed) {
+export function pointStatus(ignition, speed) {
   if (ignition === true && (speed ?? 0) > 0) return 'Running'
   if (ignition === true && (speed ?? 0) === 0) return 'Idle'
   if (ignition === false) return 'Stopped'

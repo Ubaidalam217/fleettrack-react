@@ -450,6 +450,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const [replayLoading, setReplayLoading]     = useState(false)
   const [replayError, setReplayError]         = useState(null)
   const [replayTruncated, setReplayTruncated] = useState(false)
+  // The period now on screen, for the Share link.
+  const [replayRange, setReplayRange] = useState(null)
   const [replayStatus, setReplayStatus]       = useState(null)
   const [replaySpeed, setReplaySpeed]         = useState(1)
   const [replayFields, setReplayFields]       = useState(loadFields)
@@ -591,6 +593,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       setReplayIndex(0)
       setReplayPlaying(false)
       setReplayTruncated(truncated)
+      setReplayRange(points.length ? { fromTs, toTs } : null)
       if (points.length === 0) {
         setReplayError('No GPS points in this range.')
       } else {
@@ -935,6 +938,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     status:    replayStatus,
     speed:     replaySpeed,
     fields:    replayFields,
+    range:     replayRange,
+    vehicleId: replayVehicleId,
     onStop:    exitReplayToLive,
     onLoad:    handleReplayLoad,
     onPlayToggle:   () => setReplayPlaying(p => !p),

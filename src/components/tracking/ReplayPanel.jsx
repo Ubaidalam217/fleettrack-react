@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { REPLAY_FIELDS } from './replayFields'
+import ShareReplayDialog from './ShareReplayDialog'
 
 // Playback rates offered by the selector.
 const SPEEDS = [0.5, 1, 2, 5, 10]
@@ -169,7 +170,7 @@ function CustomizeMenu({ fields, onChange, onClose }) {
 export default function ReplayPanel({ replay, vehicleName }) {
   const {
     points, index, playing, loading, error, truncated, status,
-    speed, fields,
+    speed, fields, range, vehicleId,
     onStop, onLoad, onPlayToggle, onSeek, onSpeedChange, onFieldsChange,
   } = replay
 
@@ -182,6 +183,7 @@ export default function ReplayPanel({ replay, vehicleName }) {
   // slim while you are actually watching the playback.
   const [rangeOpen, setRangeOpen] = useState(true)
   const [gearOpen, setGearOpen]   = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const hasPoints = points.length > 0
   const current   = points[index] ?? null
@@ -260,6 +262,25 @@ export default function ReplayPanel({ replay, vehicleName }) {
             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9" />
             </svg>
+          </button>
+        )}
+
+        {hasPoints && range && (
+          <button
+            onClick={() => setShareOpen(true)}
+            title="Make a link to this replay that works without signing in"
+            style={{
+              flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5,
+              background: 'color-mix(in srgb, var(--ft-accent) 10%, transparent)', border: '1px solid var(--ft-accent)',
+              borderRadius: 7, padding: '4px 9px',
+              fontSize: 11, fontWeight: 700, color: 'var(--ft-accent)', cursor: 'pointer',
+            }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+              <line x1="8.6" y1="13.5" x2="15.4" y2="17.5" /><line x1="15.4" y1="6.5" x2="8.6" y2="10.5" />
+            </svg>
+            Share
           </button>
         )}
 
@@ -453,6 +474,16 @@ export default function ReplayPanel({ replay, vehicleName }) {
           <span>{current.speed ?? 0} km/h</span>
           <span>{fmtClock(current.ts)}</span>
         </div>
+      )}
+
+      {shareOpen && range && (
+        <ShareReplayDialog
+          vehicleId={vehicleId}
+          vehicleName={vehicleName}
+          fromTs={range.fromTs}
+          toTs={range.toTs}
+          onClose={() => setShareOpen(false)}
+        />
       )}
     </div>
   )

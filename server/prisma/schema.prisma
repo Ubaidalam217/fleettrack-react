@@ -796,3 +796,29 @@ model TelemetryMessage {
 
   @@id([deviceId, ts])
 }
+
+/// A public link to one vehicle's replay (client, 2026-11-09): anyone with the
+/// link sees where the vehicle went in [fromTs, toTs], without signing in, until
+/// expiresAt. The track is copied in when the link is made, so opening it costs
+/// no Flespi request and shows exactly what was shared.
+model ReplayShare {
+  id          String    @id @default(cuid())
+  /// The secret in the link: 32 random URL-safe characters.
+  token       String    @unique
+  deviceId    Int
+  vehicleName String
+  fromTs      Int
+  toTs        Int
+  expiresAt   DateTime
+  /// [[ts, lat, lng, speed, heading, ignition], …] in time order.
+  points      Json
+  pointCount  Int
+  truncated   Boolean   @default(false)
+  /// Who made it. A plain id: a link outlives nothing but its own expiry.
+  createdById String
+  createdAt   DateTime  @default(now())
+  /// Set when the link is switched off before it expires.
+  revokedAt   DateTime?
+
+  @@index([createdById])
+}

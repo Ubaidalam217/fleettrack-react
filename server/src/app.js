@@ -41,6 +41,7 @@ import avatarRoutes from './routes/avatars.js'
 import driverPhotoRoutes from './routes/driverPhotos.js'
 import driverPerformanceRoutes from './routes/driverPerformance.js'
 import deviceSettingsRoutes from './routes/deviceSettings.js'
+import { router as replayShareRoutes, publicRouter as publicReplayRoutes } from './routes/replayShares.js'
 import ingestRoutes from './routes/ingest.js'
 import liveRoutes from './routes/live.js'
 
@@ -95,6 +96,16 @@ export function createApp() {
   // Public: profile photos by unguessable key, so <img src> works without a token.
   app.use('/api/avatars', avatarRoutes)
   app.use('/api/driver-photos', driverPhotoRoutes)
+  // Public: a shared replay, opened without signing in (routes/replayShares.js).
+  // Its own limiter, since anyone on the internet can reach it.
+  app.use('/api/public/replay', rateLimit({
+    windowMs: 60_000,
+    max: 60,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    skip: () => env.isTest,
+    message: { error: { message: 'Too many requests. Try again in a minute.' } },
+  }), publicReplayRoutes)
 
   /**
    * Rate limit on login only.
@@ -155,6 +166,7 @@ export function createApp() {
   app.use('/api/drivers', requireScreen(WRITE_SCREENS['/api/drivers']), driverRoutes)
   app.use('/api/driver-performance', driverPerformanceRoutes)
   app.use('/api/device-settings', deviceSettingsRoutes)
+  app.use('/api/replay-shares', replayShareRoutes)
   app.use('/api/alert-events', alertEventRoutes)
   // Live push of vehicle updates from the Flespi webhook (routes/live.js).
   app.use('/api/live', liveRoutes)

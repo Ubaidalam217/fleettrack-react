@@ -26,6 +26,7 @@ import SummaryUsageReport      from './pages/reports/SummaryUsageReport'
 import GeoZoneReport           from './pages/reports/GeoZoneReport'
 import ReportsHub              from './pages/reports/ReportsHub'
 import LocationPage            from './pages/LocationPage'
+import SharedReplay            from './pages/SharedReplay'
 import VehicleListReport       from './pages/reports/VehicleListReport'
 import DriverListReport        from './pages/reports/DriverListReport'
 import EventOccurrenceReport   from './pages/reports/EventOccurrenceReport'
@@ -152,6 +153,8 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/login"          element={<Login />} />
         {/* Public: where a location link in an exported report opens (utils/mapLink.js). */}
         <Route path="/location"       element={<LocationPage />} />
+        {/* Public: a shared replay, no sign-in; refused by the server once expired. */}
+        <Route path="/share/replay/:token" element={<SharedReplay />} />
         <Route path="/dashboard"      element={guard(<Dashboard      {...themeProps} />)} />
         <Route path="/tracking"       element={guard(<Tracking       {...themeProps} />)} />
         <Route path="/charts"         element={guard(<Charts         {...themeProps} />)} />
