@@ -62,7 +62,7 @@ export {
   emptyDriver, useDrivers, driversForCompany,
   driverForVehicleId, driverForVehicleImei, driverNameForDevice, driverDisplayForDevice, useDriverForImei,
   ibuttonKey, driverForIbutton, isIbuttonTaken, driverForDevice, useDriverForDevice,
-  DRIVER_DEPARTMENTS, LICENCE_CATEGORIES, DRIVER_DOC_TYPES, driverCode, INCIDENT_TYPES,
+  DRIVER_DEPARTMENTS, LICENCE_CATEGORIES, DRIVER_DOC_TYPES, driverCode, INCIDENT_TYPES, TAG_TYPES, LEAVE_TYPES,
 
   // Constants and registries.
   DEFAULT_PASSWORD, ALERT_TYPES, alertTypeLabel, GEOFENCE_CATEGORIES,
@@ -570,6 +570,9 @@ export const deleteDriverAssignment = (id, aid) => del(`/api/drivers/${id}/assig
 export const listDriverIncidents = id => get(`/api/drivers/${id}/incidents`)
 export const addDriverIncident = (id, body) => post(`/api/drivers/${id}/incidents`, body)
 export const deleteDriverIncident = (id, iid) => del(`/api/drivers/${id}/incidents/${iid}`)
+export const listDriverLeaves = id => get(`/api/drivers/${id}/leaves`)
+export const addDriverLeave = (id, body) => post(`/api/drivers/${id}/leaves`, body)
+export const deleteDriverLeave = (id, lid) => del(`/api/drivers/${id}/leaves/${lid}`)
 export const getDriverPerformance = (from, to) => get('/api/driver-performance', { from, to })
 export const getFatigueRule = () => get('/api/driver-performance/fatigue-rule')
 export const getDeviceSettings = deviceId => get(`/api/device-settings/${deviceId}`)

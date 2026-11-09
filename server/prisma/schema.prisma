@@ -661,6 +661,26 @@ model Driver {
   notes         String?
   status        Status    @default(Active)
 
+  // The rest of the reference system's driver form (client, 2026-11-09).
+  contactNumber2 String?
+  country        String?
+  state          String?
+  city           String?
+  zipCode        String?
+  street1        String?
+  street2        String?
+  /// How the driver is identified on the tracker ("Tag Via"): iButton, RFID or Beacon.
+  tagType        String?
+  leavingDate    DateTime?
+  retirementDate DateTime?
+  /// Driving since: the form shows the years of experience from it.
+  drivingSince   DateTime?
+  licenseAvailable    Boolean   @default(true)
+  lifeInsuranceNo     String?
+  lifeInsuranceExpiry DateTime?
+  mediclaimNo         String?
+  mediclaimExpiry     DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -671,6 +691,7 @@ model Driver {
   documents   DriverDocument[]
   assignments DriverAssignment[]
   incidents   DriverIncident[]
+  leaves      DriverLeave[]
 
   @@index([bgId])
 }
@@ -697,6 +718,23 @@ model DriverAssignment {
 }
 
 /// An accident or incident on a driver's record (entered by hand).
+/// Leave on a driver's record (Settings › Driver › Leave).
+model DriverLeave {
+  id        String    @id @default(cuid())
+  driverId  String
+  leaveType String
+  /// Days of leave; the form fills it from the dates, but it may differ (working days).
+  days      Int?
+  validFrom DateTime
+  validTo   DateTime?
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
+}
+
 model DriverIncident {
   id          String   @id @default(cuid())
   driverId    String
@@ -737,6 +775,7 @@ model DriverDocument {
   driverId   String
   title      String
   docType    String
+  issueDate  DateTime?
   expiryDate DateTime?
   fileName   String
   mimeType   String

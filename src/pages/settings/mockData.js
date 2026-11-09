@@ -442,6 +442,12 @@ export const DRIVER_DOC_TYPES = ['Driving Licence', 'Visa', 'Emirates ID', 'Pass
 /** Kinds of incident on a driver's record; the server checks the same list. */
 export const INCIDENT_TYPES = ['Accident', 'Incident', 'Traffic Fine', 'Complaint', 'Damage', 'Other']
 
+/** "Tag Via": how the driver is identified on the tracker; the server checks the same list. */
+export const TAG_TYPES = ['iButton', 'RFID', 'Beacon']
+
+/** Kinds of leave on a driver's record; the server checks the same list. */
+export const LEAVE_TYPES = ['Annual', 'Sick', 'Emergency', 'Unpaid', 'Maternity / Paternity', 'Other']
+
 /** "DRV-0007" for the running driver number. */
 export const driverCode = d => (d?.driverNo ? `DRV-${String(d.driverNo).padStart(4, '0')}` : '—')
 
@@ -473,6 +479,23 @@ export function emptyDriver() {
     vehicleId:     '',
     notes:         '',
     status:        'Active',
+    // The rest of the reference system's form (client, 2026-11-09).
+    contactNumber2: '',
+    country:        'United Arab Emirates',
+    state:          '',
+    city:           '',
+    zipCode:        '',
+    street1:        '',
+    street2:        '',
+    tagType:        '',
+    leavingDate:    '',
+    retirementDate: '',
+    drivingSince:   '',
+    licenseAvailable:    true,
+    lifeInsuranceNo:     '',
+    lifeInsuranceExpiry: '',
+    mediclaimNo:         '',
+    mediclaimExpiry:     '',
   }
 }
 

@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Camera, Trash2, FileText, Upload, ExternalLink } from 'lucide-react'
+import {
+  Plus, Search, Camera, Trash2, FileText, Upload, ExternalLink,
+  UserRound, IdCard, ShieldCheck, Car, History, TriangleAlert, Paperclip,
+  ClipboardList, CalendarX, MapPin, Check, HeartPulse,
+} from 'lucide-react'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
-import { Field, FormActions, FormCard } from './FormKit'
-import { PRIMARY_BTN, inputStyle } from './formStyles'
+import { PRIMARY_BTN, SECONDARY_BTN, inputStyle } from './formStyles'
 import ConfirmDialog from '../../components/tracking/ConfirmDialog'
 import ToastStack from '../../components/tracking/Toasts'
 import { useToasts } from '../../hooks/useToasts'
@@ -18,6 +21,7 @@ import {
   listDriverDocuments, uploadDriverDocument, deleteDriverDocument, openDriverDocument,
   listDriverAssignments, addDriverAssignment, endDriverAssignment, deleteDriverAssignment,
   listDriverIncidents, addDriverIncident, deleteDriverIncident, INCIDENT_TYPES,
+  listDriverLeaves, addDriverLeave, deleteDriverLeave, LEAVE_TYPES, TAG_TYPES,
   listUnregisteredDriverIds,
 } from '../../data/settings'
 import UnregisteredDriverIds from './UnregisteredDriverIds'
@@ -58,6 +62,8 @@ const EXPIRIES = [
   ['visaExpiry',       'Visa'],
   ['emiratesIdExpiry', 'Emirates ID'],
   ['medicalExpiry',    'Medical'],
+  ['lifeInsuranceExpiry', 'Life insurance'],
+  ['mediclaimExpiry',     'Mediclaim'],
 ]
 
 function Pill({ tone, children }) {
@@ -143,33 +149,239 @@ const columnsFor = vehicleById => [
   },
 ]
 
-const GRID = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-  gap: '14px 16px',
-}
+/*
+ * The driver form (client, 2026-11-09: "a perfectly aligned form"). Every
+ * section is the same two columns, a title on the left and the fields on the
+ * right, and every field grid is the same 12 columns — so the fields of all
+ * sections fall on the same vertical lines, however many a section has. Each
+ * control is 40px high; an expiry chip sits on the label line, not under the
+ * input, so it never pushes a row out of line. Container queries, because the
+ * form's width depends on the sidebar, not on the window.
+ */
+const DFM_CSS = `
+.dfm{container-type:inline-size;margin-top:16px;background:var(--c-card);border:1px solid var(--c-border2);
+  border-radius:var(--ft-radius);box-shadow:var(--ft-shadow)}
+.dfm-hero{display:flex;align-items:center;gap:18px;padding:22px 24px}
+.dfm-hero-main{min-width:0;flex:1}
+.dfm-hero-name{font-size:18px;font-weight:800;line-height:1.25;color:var(--c-text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dfm-hero-name.empty{color:var(--c-text3)}
+.dfm-hero-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:6px;font-size:12px;color:var(--c-text3)}
+.dfm-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:700;color:var(--ft-accent);
+  background:color-mix(in srgb,var(--ft-accent) 10%,transparent);padding:2px 8px;border-radius:6px}
+.dfm-hero-act{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.dfm-sec{display:grid;grid-template-columns:232px minmax(0,1fr);gap:32px;padding:24px;border-top:1px solid var(--c-border)}
+.dfm-sec-head{display:flex;gap:12px;align-items:flex-start}
+.dfm-sec-ico{width:34px;height:34px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  color:var(--ft-accent);background:color-mix(in srgb,var(--ft-accent) 12%,transparent)}
+.dfm-sec-title{margin:0;font-size:13.5px;font-weight:750;line-height:1.3;color:var(--c-text1)}
+.dfm-sec-desc{font-size:11.5px;line-height:1.5;color:var(--c-text3);margin-top:3px}
+.dfm-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:18px;align-items:start}
+.dfm-grid + .dfm-grid,.dfm-list + .dfm-grid,.dfm-empty + .dfm-grid{margin-top:18px}
+.dfm-c3{grid-column:span 3}.dfm-c4{grid-column:span 4}.dfm-c6{grid-column:span 6}.dfm-c9{grid-column:span 9}.dfm-c12{grid-column:span 12}
+.dfm-lrow{display:flex;align-items:center;justify-content:space-between;gap:8px;height:18px;margin-bottom:6px}
+.dfm-label{font-size:11.5px;font-weight:650;color:var(--c-text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dfm-req{color:#ef4444;margin-left:3px}
+.dfm-hint,.dfm-err{display:block;margin-top:6px;font-size:11px;line-height:1.45}
+.dfm-hint{color:var(--c-text3)}
+.dfm-err{color:#ef4444;font-weight:600}
+.dfm input:focus-visible,.dfm select:focus-visible,.dfm textarea:focus-visible,.dfm button:focus-visible{
+  border-color:var(--ft-accent)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--ft-accent) 24%,transparent);outline:none}
+.dfm-seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;height:40px;padding:3px;box-sizing:border-box;
+  border-radius:10px;border:1px solid var(--c-border);background:var(--c-input)}
+.dfm-seg button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:0;border:0;border-radius:7px;
+  background:transparent;color:var(--c-text3);font-size:12.5px;font-weight:650;cursor:pointer}
+.dfm-seg button:hover{color:var(--c-text1)}
+.dfm-seg button[aria-checked="true"]{background:var(--c-card);color:var(--c-text1);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.dfm-seg i{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dfm-file{display:flex;align-items:center;gap:8px;width:100%;height:40px;padding:0 12px;box-sizing:border-box;border-radius:10px;
+  border:1px dashed var(--c-border2);background:var(--c-input);color:var(--c-text2);font-size:13px;cursor:pointer;text-align:left}
+.dfm-file:hover{border-color:var(--ft-accent)}
+.dfm-file span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dfm-list{display:flex;flex-direction:column;gap:8px}
+.dfm-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--c-border);border-radius:10px}
+.dfm-empty{padding:13px 16px;border:1px dashed var(--c-border2);border-radius:10px;font-size:12px;line-height:1.5;color:var(--c-text3)}
+.dfm-foot{position:sticky;bottom:0;z-index:3;display:flex;align-items:center;gap:10px;padding:14px 24px;background:var(--c-card);
+  border-top:1px solid var(--c-border2);border-radius:0 0 var(--ft-radius) var(--ft-radius)}
+.dfm-foot-note{margin-right:auto;font-size:11.5px;color:var(--c-text3)}
+.dfm-c8{grid-column:span 8}
+.dfm-tabs{display:flex;gap:2px;padding:0 16px;border-top:1px solid var(--c-border);overflow-x:auto;scrollbar-width:none}
+.dfm-tabs::-webkit-scrollbar{display:none}
+.dfm-tab{position:relative;display:inline-flex;align-items:center;gap:7px;height:48px;padding:0 14px;border:0;background:none;
+  color:var(--c-text3);font-size:13px;font-weight:650;cursor:pointer;white-space:nowrap;border-radius:8px 8px 0 0}
+.dfm-tab:hover{color:var(--c-text1)}
+.dfm-tab[aria-selected="true"]{color:var(--ft-accent)}
+.dfm-tab[aria-selected="true"]::after{content:'';position:absolute;left:12px;right:12px;bottom:0;height:2.5px;border-radius:2px;background:var(--ft-accent)}
+.dfm-tab-dot{width:7px;height:7px;border-radius:50%;background:#ef4444;flex-shrink:0}
+.dfm-chips{display:flex;flex-wrap:wrap;gap:8px}
+.dfm-chip{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--c-border2);
+  background:var(--c-input);color:var(--c-text2);font-size:12.5px;font-weight:600;cursor:pointer}
+.dfm-chip:hover{border-color:var(--ft-accent)}
+.dfm-chip[aria-checked="true"]{border-color:var(--ft-accent);background:color-mix(in srgb,var(--ft-accent) 12%,transparent);color:var(--ft-accent)}
+.dfm-chip:disabled{opacity:.5;cursor:not-allowed}
+.dfm-chip-add{height:34px;width:170px;padding:0 14px;box-sizing:border-box;border-radius:999px;border:1px dashed var(--c-border2);
+  background:transparent;color:var(--c-text1);font-size:12.5px;outline:none}
+.dfm-ro{display:flex;align-items:center;height:40px;padding:0 12px;box-sizing:border-box;border-radius:10px;border:1px dashed var(--c-border2);
+  font-size:13px;font-weight:650;color:var(--c-text1)}
+.dfm-ro.empty{color:var(--c-text3);font-weight:500}
+@container (max-width: 960px){.dfm-sec{grid-template-columns:minmax(0,1fr);gap:16px}}
+@container (max-width: 620px){
+  .dfm-c3,.dfm-c4{grid-column:span 6}.dfm-c8,.dfm-c9{grid-column:span 12}.dfm-tabs{padding:0 6px}
+  .dfm-hero{flex-wrap:wrap}.dfm-hero,.dfm-sec,.dfm-foot{padding-left:16px;padding-right:16px}}
+@container (max-width: 440px){.dfm-grid>*{grid-column:span 12}.dfm-foot-note{display:none}}
+`
 
-function SectionTitle({ children, note }) {
+/** Every control the same 40px high, so a row of mixed inputs lines up. */
+const ctl = (invalid, extra) => ({ ...inputStyle(invalid), height: 40, padding: '0 12px', fontSize: 13, borderRadius: 10, ...extra })
+
+/** One field: label line (with an optional chip on its right), control, then hint or error. */
+function DF({ id, label, required, error, hint, aside, span = 4, group = false, children }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '22px 0 12px', paddingBottom: 6, borderBottom: '1px solid var(--c-border2)' }}>
-      <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c-text1)' }}>{children}</span>
-      {note && <span style={{ fontSize: 11, color: 'var(--c-text3)' }}>{note}</span>}
+    <div className={`dfm-c${span}`} style={{ minWidth: 0 }}>
+      <div className="dfm-lrow">
+        {group ? (
+          <span id={`${id}-label`} className="dfm-label">{label}</span>
+        ) : (
+          <label htmlFor={id} className="dfm-label">
+            {label}{required && <span className="dfm-req" aria-hidden="true">*</span>}
+          </label>
+        )}
+        {aside}
+      </div>
+      {children}
+      {error ? <span className="dfm-err" role="alert">{error}</span> : hint ? <span className="dfm-hint">{hint}</span> : null}
     </div>
   )
 }
 
-/** A date input with the expiry chip under it (a valid save even when expired). */
-function ExpiryField({ label, name, value, error, onChange }) {
+/** A grid cell for a row's action button: an empty label line keeps it level with the inputs. */
+function DAction({ span = 3, children }) {
   return (
-    <Field label={label} error={error}>
-      <input name={name} type="date" value={value ?? ''} onChange={e => onChange(name, e.target.value)}
-        aria-invalid={!!error || undefined} style={inputStyle(!!error)} />
-      {!error && licenceExpiryState(value).state !== 'none' && (
-        <span style={{ display: 'block', marginTop: 5 }}><ExpiryChip expiry={value} /></span>
-      )}
-    </Field>
+    <div className={`dfm-c${span}`} style={{ minWidth: 0 }}>
+      <div className="dfm-lrow" aria-hidden="true" />
+      {children}
+    </div>
   )
 }
+
+const ACTION_BTN = { ...PRIMARY_BTN, width: '100%', height: 40, padding: '0 16px', justifyContent: 'center', borderRadius: 10 }
+
+function DSection({ icon: Icon, title, desc, children }) {
+  return (
+    <section className="dfm-sec" aria-label={title}>
+      <div className="dfm-sec-head">
+        <span className="dfm-sec-ico" aria-hidden="true"><Icon size={17} /></span>
+        <div style={{ minWidth: 0 }}>
+          <h3 className="dfm-sec-title">{title}</h3>
+          {desc && <div className="dfm-sec-desc">{desc}</div>}
+        </div>
+      </div>
+      <div style={{ minWidth: 0 }}>{children}</div>
+    </section>
+  )
+}
+
+/** A date with its expiry chip on the label line (a valid save even when expired). */
+function ExpiryField({ label, name, value, error, onChange, span = 6 }) {
+  const id = `drv-${name}`
+  return (
+    <DF id={id} label={label} error={error} span={span}
+      aside={!error && licenceExpiryState(value).state !== 'none' ? <ExpiryChip expiry={value} /> : null}>
+      <input id={id} name={name} type="date" value={value ?? ''} onChange={e => onChange(name, e.target.value)}
+        aria-invalid={!!error || undefined} style={ctl(!!error)} />
+    </DF>
+  )
+}
+
+/** Whole years from a "YYYY-MM-DD" date to today; null when unset or in the future. */
+function yearsSince(iso) {
+  if (!iso) return null
+  const d = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return null
+  const now = new Date()
+  let y = now.getFullYear() - d.getFullYear()
+  if (now.getMonth() < d.getMonth() || (now.getMonth() === d.getMonth() && now.getDate() < d.getDate())) y -= 1
+  return y >= 0 ? y : null
+}
+const yearsLabel = n => (n === null ? '—' : `${n} year${n === 1 ? '' : 's'}`)
+
+/** A read-only value laid out like a control, so it sits in the grid with the inputs. */
+function ReadOnly({ id, label, value, span = 4, hint }) {
+  return (
+    <DF id={id} label={label} span={span} hint={hint}>
+      <div id={id} className={`dfm-ro${value === '—' ? ' empty' : ''}`} aria-readonly="true">{value}</div>
+    </DF>
+  )
+}
+
+/** Yes / No as the same 40px segmented control the Status field uses. */
+function YesNo({ id, value, onChange, disabled }) {
+  return (
+    <div className="dfm-seg" role="radiogroup" aria-labelledby={`${id}-label`} style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+      {[[true, 'Yes'], [false, 'No']].map(([v, l]) => (
+        <button key={l} type="button" role="radio" aria-checked={value === v} disabled={disabled} onClick={() => onChange(v)}>{l}</button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Licence classes as toggle chips ("License to Drive" takes several in the
+ * reference). Stored comma separated in licenseCategory, so a single class
+ * saved before reads back as one chip; a class typed in "Other" becomes a chip.
+ */
+function LicenceClasses({ value, onChange, disabled }) {
+  const picked = String(value ?? '').split(',').map(x => x.trim()).filter(Boolean)
+  const all = [...LICENCE_CATEGORIES, ...picked.filter(x => !LICENCE_CATEGORIES.includes(x))]
+  const [other, setOther] = useState('')
+  const save = list => onChange(list.join(', '))
+  const toggle = c => save(picked.includes(c) ? picked.filter(x => x !== c) : [...picked, c])
+  const addOther = () => {
+    const c = other.trim()
+    if (c && !picked.some(x => x.toLowerCase() === c.toLowerCase())) save([...picked, c])
+    setOther('')
+  }
+  return (
+    <div className="dfm-chips" role="group" aria-labelledby="drv-licenseCategory-label">
+      {all.map(c => {
+        const on = picked.includes(c)
+        return (
+          <button key={c} type="button" className="dfm-chip" role="checkbox" aria-checked={on} disabled={disabled} onClick={() => toggle(c)}>
+            {on && <Check size={13} strokeWidth={3} aria-hidden="true" />}{c}
+          </button>
+        )
+      })}
+      <input
+        className="dfm-chip-add"
+        value={other}
+        onChange={e => setOther(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOther() } }}
+        onBlur={addOther}
+        placeholder="+ Other class"
+        aria-label="Add another licence class"
+        maxLength={40}
+        disabled={disabled}
+      />
+    </div>
+  )
+}
+
+const UAE_EMIRATES = ['Abu Dhabi', 'Dubai', 'Sharjah', 'Ajman', 'Umm Al Quwain', 'Ras Al Khaimah', 'Fujairah']
+const COUNTRIES = ['United Arab Emirates', 'Saudi Arabia', 'Oman', 'Qatar', 'Bahrain', 'Kuwait', 'Pakistan', 'India', 'Bangladesh', 'Sri Lanka', 'Nepal', 'Philippines', 'Egypt']
+
+/** Which tab holds each form field, so a failed save can open the right one. */
+const PROFILE_FIELDS = new Set([
+  'companyId', 'name', 'employeeId', 'department', 'status', 'nationality', 'mobile', 'contactNumber2', 'email',
+  'street1', 'street2', 'city', 'state', 'country', 'zipCode', 'vehicleId', 'tagType', 'ibuttonCode', 'notes',
+])
+const tabOfField = f => (PROFILE_FIELDS.has(f) ? 'profile' : 'additional')
+
+const FORM_TABS = [
+  { id: 'profile',    label: 'Profile',         icon: UserRound },
+  { id: 'additional', label: 'Additional Info', icon: ClipboardList },
+  { id: 'leave',      label: 'Leave',           icon: CalendarX },
+  { id: 'documents',  label: 'Documents',       icon: FileText },
+  { id: 'history',    label: 'History',         icon: History },
+]
 
 const fmtSize = n => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
 
@@ -178,6 +390,7 @@ function DriverDocuments({ driver, canWrite, push }) {
   const [docs, setDocs] = useState(null)
   const [title, setTitle] = useState('')
   const [docType, setDocType] = useState(DRIVER_DOC_TYPES[0])
+  const [issued, setIssued] = useState('')
   const [expiry, setExpiry] = useState('')
   const [file, setFile] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -193,10 +406,10 @@ function DriverDocuments({ driver, canWrite, push }) {
     setBusy(true)
     try {
       await uploadDriverDocument(driver.id, {
-        title: title.trim() || file.name, docType, expiryDate: expiry || null, fileName: file.name, data: await fileToBase64(file),
+        title: title.trim() || file.name, docType, issueDate: issued || null, expiryDate: expiry || null, fileName: file.name, data: await fileToBase64(file),
       })
       push(`${title.trim() || file.name} uploaded`, { tone: 'success' })
-      setTitle(''); setExpiry(''); setFile(null)
+      setTitle(''); setIssued(''); setExpiry(''); setFile(null)
       if (fileRef.current) fileRef.current.value = ''
       await load()
     } catch (err) {
@@ -219,27 +432,28 @@ function DriverDocuments({ driver, canWrite, push }) {
   return (
     <>
       {docs === null ? (
-        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Loading documents…</div>
+        <div className="dfm-empty">Loading documents…</div>
       ) : docs.length === 0 ? (
-        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>No documents uploaded yet.</div>
+        <div className="dfm-empty">No documents uploaded yet.</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="dfm-list">
           {docs.map(d => (
-            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--c-border)', borderRadius: 8 }}>
+            <div key={d.id} className="dfm-row">
               <FileText size={16} style={{ color: 'var(--ft-accent)', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text1)' }}>{d.title}</div>
                 <div style={{ fontSize: 11, color: 'var(--c-text3)' }}>
-                  {d.docType} · {d.fileName} · {fmtSize(d.size)}{d.expiryDate ? ` · expires ${formatExpiryDate(d.expiryDate)}` : ''}
+                  {d.docType} · {d.fileName} · {fmtSize(d.size)}
+                  {d.issueDate ? ` · issued ${formatExpiryDate(d.issueDate)}` : ''}{d.expiryDate ? ` · expires ${formatExpiryDate(d.expiryDate)}` : ''}
                 </div>
               </div>
               {d.expiryDate && <ExpiryChip expiry={d.expiryDate} />}
               <button type="button" className="ft-btn" onClick={() => openDriverDocument(driver.id, d.id).catch(err => push(err.message, { tone: 'error' }))}
-                style={{ padding: '5px 9px', fontSize: 11.5 }} title="Open">
+                style={SMALL_BTN} title="Open">
                 <ExternalLink size={13} /> Open
               </button>
               {canWrite && (
-                <button type="button" className="ft-btn" onClick={() => remove(d)} style={{ padding: '5px 9px', fontSize: 11.5 }} title="Delete">
+                <button type="button" className="ft-btn" onClick={() => remove(d)} style={SMALL_BTN} aria-label={`Delete ${d.title}`} title="Delete">
                   <Trash2 size={13} />
                 </button>
               )}
@@ -249,36 +463,45 @@ function DriverDocuments({ driver, canWrite, push }) {
       )}
 
       {canWrite && (
-        <div style={{ ...GRID, marginTop: 12, alignItems: 'end' }}>
-          <Field label="Document Type">
-            <select value={docType} onChange={e => setDocType(e.target.value)} style={inputStyle(false)}>
-              {DRIVER_DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </Field>
-          <Field label="Title">
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Licence (front)" maxLength={120} style={inputStyle(false)} />
-          </Field>
-          <Field label="Expiry (optional)">
-            <input type="date" value={expiry} onChange={e => setExpiry(e.target.value)} style={inputStyle(false)} />
-          </Field>
-          <Field label="File" hint="PDF, JPEG, PNG or WebP · max 5 MB">
-            <input ref={fileRef} type="file" accept="application/pdf,image/jpeg,image/png,image/webp"
-              onChange={e => setFile(e.target.files?.[0] ?? null)} style={{ ...inputStyle(false), padding: 6 }} />
-          </Field>
-          <div>
-            <button type="button" onClick={upload} disabled={!file || busy}
-              style={{ ...PRIMARY_BTN, padding: '9px 16px', opacity: !file || busy ? 0.55 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <Upload size={14} /> {busy ? 'Uploading…' : 'Upload'}
-            </button>
+        <>
+          <div className="dfm-grid">
+            <DF id="drv-doc-type" label="Document type" span={6}>
+              <select id="drv-doc-type" value={docType} onChange={e => setDocType(e.target.value)} style={ctl(false)}>
+                {DRIVER_DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </DF>
+            <DF id="drv-doc-title" label="Document name" span={6}>
+              <input id="drv-doc-title" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Licence (front)" maxLength={120} style={ctl(false)} />
+            </DF>
           </div>
-        </div>
+          <div className="dfm-grid">
+            <DF id="drv-doc-issued" label="Issue date" span={3}>
+              <input id="drv-doc-issued" type="date" value={issued} onChange={e => setIssued(e.target.value)} style={ctl(false)} />
+            </DF>
+            <DF id="drv-doc-expiry" label="Expiry date" span={3}>
+              <input id="drv-doc-expiry" type="date" value={expiry} onChange={e => setExpiry(e.target.value)} style={ctl(false)} />
+            </DF>
+            <DF id="drv-doc-file" label="File" span={3} hint="PDF, JPEG, PNG or WebP · max 5 MB">
+              <input ref={fileRef} type="file" hidden accept="application/pdf,image/jpeg,image/png,image/webp"
+                onChange={e => setFile(e.target.files?.[0] ?? null)} />
+              <button id="drv-doc-file" type="button" className="dfm-file" onClick={() => fileRef.current?.click()} title={file?.name}>
+                <Paperclip size={15} style={{ color: 'var(--ft-accent)', flexShrink: 0 }} />
+                <span>{file ? file.name : 'Choose a file…'}</span>
+              </button>
+            </DF>
+            <DAction>
+              <button type="button" onClick={upload} disabled={!file || busy} style={{ ...ACTION_BTN, opacity: !file || busy ? 0.55 : 1 }}>
+                <Upload size={14} /> {busy ? 'Uploading…' : 'Upload'}
+              </button>
+            </DAction>
+          </div>
+        </>
       )}
     </>
   )
 }
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
-const ROW = { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--c-border)', borderRadius: 8 }
 const SMALL_BTN = { padding: '5px 9px', fontSize: 11.5 }
 
 /**
@@ -323,13 +546,13 @@ function DriverAssignments({ driver, canWrite, push }) {
   return (
     <>
       {rows === null ? (
-        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Loading assignments…</div>
+        <div className="dfm-empty">Loading assignments…</div>
       ) : rows.length === 0 ? (
-        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>No assignments yet. Choosing a Vehicle above starts the Primary one.</div>
+        <div className="dfm-empty">No assignments yet. The Default vehicle on the Profile tab starts the Primary one.</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="dfm-list">
           {rows.map(a => (
-            <div key={a.id} style={ROW}>
+            <div key={a.id} className="dfm-row">
               <span style={{
                 fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, flexShrink: 0,
                 color: a.role === 'Primary' ? 'var(--ft-accent)' : '#d97706',
@@ -345,30 +568,149 @@ function DriverAssignments({ driver, canWrite, push }) {
                 <button type="button" className="ft-btn" onClick={() => end(a)} style={SMALL_BTN}>End today</button>
               )}
               {canWrite && a.role === 'Temporary' && (
-                <button type="button" className="ft-btn" onClick={() => drop(a)} style={SMALL_BTN} title="Delete"><Trash2 size={13} /></button>
+                <button type="button" className="ft-btn" onClick={() => drop(a)} style={SMALL_BTN} aria-label="Delete assignment" title="Delete"><Trash2 size={13} /></button>
               )}
             </div>
           ))}
         </div>
       )}
       {canWrite && driver.status !== 'Suspended' && (
-        <div style={{ ...GRID, marginTop: 12, alignItems: 'end' }}>
-          <Field label="Temporary vehicle">
-            <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} style={inputStyle(false)}>
-              <option value="">— Choose —</option>
-              {bgVehicles.map(v => <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>)}
-            </select>
-          </Field>
-          <Field label="From"><input type="date" value={from} onChange={e => setFrom(e.target.value)} style={inputStyle(false)} /></Field>
-          <Field label="To (optional)"><input type="date" value={to} onChange={e => setTo(e.target.value)} style={inputStyle(false)} /></Field>
-          <Field label="Note"><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Leave cover" maxLength={300} style={inputStyle(false)} /></Field>
-          <div>
-            <button type="button" onClick={add} disabled={!vehicleId || !from || busy}
-              style={{ ...PRIMARY_BTN, padding: '9px 16px', opacity: !vehicleId || !from || busy ? 0.55 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <Plus size={14} /> Add
-            </button>
+        <>
+          <div className="dfm-grid">
+            <DF id="drv-asg-vehicle" label="Temporary vehicle" span={6}>
+              <select id="drv-asg-vehicle" value={vehicleId} onChange={e => setVehicleId(e.target.value)} style={ctl(false)}>
+                <option value="">— Choose —</option>
+                {bgVehicles.map(v => <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>)}
+              </select>
+            </DF>
+            <DF id="drv-asg-from" label="From" span={3}>
+              <input id="drv-asg-from" type="date" value={from} onChange={e => setFrom(e.target.value)} style={ctl(false)} />
+            </DF>
+            <DF id="drv-asg-to" label="To (optional)" span={3}>
+              <input id="drv-asg-to" type="date" value={to} onChange={e => setTo(e.target.value)} style={ctl(false)} />
+            </DF>
           </div>
+          <div className="dfm-grid">
+            <DF id="drv-asg-note" label="Note" span={9}>
+              <input id="drv-asg-note" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Leave cover" maxLength={300} style={ctl(false)} />
+            </DF>
+            <DAction>
+              <button type="button" onClick={add} disabled={!vehicleId || !from || busy}
+                style={{ ...ACTION_BTN, opacity: !vehicleId || !from || busy ? 0.55 : 1 }}>
+                <Plus size={14} /> Add assignment
+              </button>
+            </DAction>
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
+/** Days from one "YYYY-MM-DD" to another, both counted; '' when either is missing. */
+const spanDays = (from, to) => {
+  if (!from || !to) return ''
+  const n = Math.round((new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 86_400_000) + 1
+  return n > 0 ? String(n) : ''
+}
+
+/** The driver's leave register ("Leave" tab in the reference). */
+function DriverLeaves({ driver, canWrite, push }) {
+  const [rows, setRows] = useState(null)
+  const [leaveType, setLeaveType] = useState(LEAVE_TYPES[0])
+  const [from, setFrom] = useState(todayStr())
+  const [to, setTo] = useState('')
+  const [days, setDays] = useState('')
+  const [daysTouched, setDaysTouched] = useState(false)
+  const [notes, setNotes] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = () => listDriverLeaves(driver.id).then(setRows).catch(err => { setRows([]); handleApiError(err, { push }) })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [driver.id])
+  // The number of days follows the dates until it is typed over (working days differ).
+  const shownDays = daysTouched ? days : spanDays(from, to)
+
+  const add = async () => {
+    setBusy(true)
+    try {
+      await addDriverLeave(driver.id, { leaveType, validFrom: from, validTo: to || null, days: shownDays === '' ? null : shownDays, notes: notes.trim() || null })
+      push(`${leaveType} leave added`, { tone: 'success' })
+      setTo(''); setDays(''); setDaysTouched(false); setNotes('')
+      await load()
+    } catch (err) {
+      handleApiError(err, { push })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const drop = async l => {
+    try { await deleteDriverLeave(driver.id, l.id); await load() } catch (err) { handleApiError(err, { push }) }
+  }
+  const today = todayStr()
+
+  return (
+    <>
+      {rows === null ? (
+        <div className="dfm-empty">Loading leave…</div>
+      ) : rows.length === 0 ? (
+        <div className="dfm-empty">No leave on record.</div>
+      ) : (
+        <div className="dfm-list">
+          {rows.map(l => {
+            const now = l.validFrom <= today && (!l.validTo || l.validTo >= today)
+            return (
+              <div key={l.id} className="dfm-row">
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, flexShrink: 0,
+                  color: 'var(--ft-accent)', background: 'color-mix(in srgb, var(--ft-accent) 12%, transparent)',
+                }}>{l.leaveType}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text1)' }}>
+                    {formatExpiryDate(l.validFrom)} → {l.validTo ? formatExpiryDate(l.validTo) : 'open'}
+                    {l.days != null ? ` · ${l.days} day${l.days === 1 ? '' : 's'}` : ''}
+                  </div>
+                  {l.notes && <div style={{ fontSize: 11, color: 'var(--c-text3)' }}>{l.notes}</div>}
+                </div>
+                {now && <Pill tone={EXPIRY_TONE.expiring}>On leave now</Pill>}
+                {canWrite && (
+                  <button type="button" className="ft-btn" onClick={() => drop(l)} style={SMALL_BTN} aria-label={`Delete ${l.leaveType} leave`} title="Delete"><Trash2 size={13} /></button>
+                )}
+              </div>
+            )
+          })}
         </div>
+      )}
+      {canWrite && (
+        <>
+          <div className="dfm-grid">
+            <DF id="drv-lv-type" label="Leave type" span={4}>
+              <select id="drv-lv-type" value={leaveType} onChange={e => setLeaveType(e.target.value)} style={ctl(false)}>
+                {LEAVE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </DF>
+            <DF id="drv-lv-from" label="Valid from" required span={4}>
+              <input id="drv-lv-from" type="date" value={from} onChange={e => setFrom(e.target.value)} style={ctl(false)} />
+            </DF>
+            <DF id="drv-lv-to" label="Valid to" span={4}>
+              <input id="drv-lv-to" type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} style={ctl(false)} />
+            </DF>
+          </div>
+          <div className="dfm-grid">
+            <DF id="drv-lv-days" label="No. of days" span={3}>
+              <input id="drv-lv-days" type="number" min="0" max="366" inputMode="numeric" value={shownDays}
+                onChange={e => { setDaysTouched(true); setDays(e.target.value) }} placeholder="Auto" style={ctl(false)} />
+            </DF>
+            <DF id="drv-lv-note" label="Note" span={6}>
+              <input id="drv-lv-note" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Travelling home" maxLength={300} style={ctl(false)} />
+            </DF>
+            <DAction>
+              <button type="button" onClick={add} disabled={!from || busy} style={{ ...ACTION_BTN, opacity: !from || busy ? 0.55 : 1 }}>
+                <Plus size={14} /> Add leave
+              </button>
+            </DAction>
+          </div>
+        </>
       )}
     </>
   )
@@ -409,13 +751,13 @@ function DriverIncidents({ driver, canWrite, push }) {
   return (
     <>
       {rows === null ? (
-        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Loading incidents…</div>
+        <div className="dfm-empty">Loading incidents…</div>
       ) : rows.length === 0 ? (
-        <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>No incidents on record.</div>
+        <div className="dfm-empty">No incidents on record.</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="dfm-list">
           {rows.map(i => (
-            <div key={i.id} style={ROW}>
+            <div key={i.id} className="dfm-row">
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, color: '#ef4444', background: 'rgba(239,68,68,0.1)', flexShrink: 0 }}>{i.type}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text1)' }}>{i.description || i.type}</div>
@@ -423,34 +765,43 @@ function DriverIncidents({ driver, canWrite, push }) {
                   {formatExpiryDate(i.date)}{i.vehicle ? ` · ${i.vehicle.plateNo || i.vehicle.fleetNo || i.vehicle.imei}` : ''}{i.cost != null ? ` · AED ${i.cost.toLocaleString()}` : ''}
                 </div>
               </div>
-              {canWrite && <button type="button" className="ft-btn" onClick={() => drop(i)} style={SMALL_BTN} title="Delete"><Trash2 size={13} /></button>}
+              {canWrite && <button type="button" className="ft-btn" onClick={() => drop(i)} style={SMALL_BTN} aria-label={`Delete ${i.type}`} title="Delete"><Trash2 size={13} /></button>}
             </div>
           ))}
         </div>
       )}
       {canWrite && (
-        <div style={{ ...GRID, marginTop: 12, alignItems: 'end' }}>
-          <Field label="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle(false)} /></Field>
-          <Field label="Type">
-            <select value={type} onChange={e => setType(e.target.value)} style={inputStyle(false)}>
-              {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </Field>
-          <Field label="Vehicle (optional)">
-            <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} style={inputStyle(false)}>
-              <option value="">— None —</option>
-              {bgVehicles.map(v => <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>)}
-            </select>
-          </Field>
-          <Field label="What happened"><input value={description} onChange={e => setDescription(e.target.value)} placeholder="Rear bumper, minor" maxLength={1000} style={inputStyle(false)} /></Field>
-          <Field label="Cost (AED, optional)"><input type="number" min="0" value={cost} onChange={e => setCost(e.target.value)} style={inputStyle(false)} /></Field>
-          <div>
-            <button type="button" onClick={add} disabled={!date || busy}
-              style={{ ...PRIMARY_BTN, padding: '9px 16px', opacity: !date || busy ? 0.55 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <Plus size={14} /> Record
-            </button>
+        <>
+          <div className="dfm-grid">
+            <DF id="drv-inc-date" label="Date" span={3}>
+              <input id="drv-inc-date" type="date" value={date} onChange={e => setDate(e.target.value)} style={ctl(false)} />
+            </DF>
+            <DF id="drv-inc-type" label="Type" span={3}>
+              <select id="drv-inc-type" value={type} onChange={e => setType(e.target.value)} style={ctl(false)}>
+                {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </DF>
+            <DF id="drv-inc-vehicle" label="Vehicle (optional)" span={6}>
+              <select id="drv-inc-vehicle" value={vehicleId} onChange={e => setVehicleId(e.target.value)} style={ctl(false)}>
+                <option value="">— None —</option>
+                {bgVehicles.map(v => <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>)}
+              </select>
+            </DF>
           </div>
-        </div>
+          <div className="dfm-grid">
+            <DF id="drv-inc-what" label="What happened" span={6}>
+              <input id="drv-inc-what" value={description} onChange={e => setDescription(e.target.value)} placeholder="Rear bumper, minor" maxLength={1000} style={ctl(false)} />
+            </DF>
+            <DF id="drv-inc-cost" label="Cost (AED, optional)" span={3}>
+              <input id="drv-inc-cost" type="number" min="0" inputMode="decimal" value={cost} onChange={e => setCost(e.target.value)} placeholder="0" style={ctl(false)} />
+            </DF>
+            <DAction>
+              <button type="button" onClick={add} disabled={!date || busy} style={{ ...ACTION_BTN, opacity: !date || busy ? 0.55 : 1 }}>
+                <Plus size={14} /> Record
+              </button>
+            </DAction>
+          </div>
+        </>
       )}
     </>
   )
@@ -480,10 +831,25 @@ export default function Driver(props) {
   const photoRef = useRef(null)
 
   const editing = draft !== null
+  const [tab, setTab] = useState('profile')
 
   useEffect(() => {
-    if (editing) firstRef.current?.focus()
+    if (editing) {
+      setTab('profile')
+      firstRef.current?.focus()
+    }
   }, [editing])
+
+  // A field error that appears on another tab (a server reply, say) opens that tab.
+  const errKeysRef = useRef([])
+  useEffect(() => {
+    const keys = Object.keys(errors).filter(k => errors[k])
+    const added = keys.filter(k => !errKeysRef.current.includes(k))
+    errKeysRef.current = keys
+    if (added.length && !keys.some(k => tabOfField(k) === tab)) setTab(tabOfField(added[0]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errors])
+  const invalidTabs = new Set(Object.keys(errors).filter(k => errors[k]).map(tabOfField))
 
   // Driver IDs the trackers read that no driver holds (client, 2026-11-09).
   // Fetched again whenever the drivers change, so a registered one drops off.
@@ -601,7 +967,9 @@ export default function Driver(props) {
 
     if (Object.keys(next).length) {
       setErrors(next)
-      formRef.current?.querySelector(`[name="${Object.keys(next)[0]}"]`)?.focus()
+      const first = Object.keys(next)[0]
+      setTab(tabOfField(first))
+      setTimeout(() => formRef.current?.querySelector(`[name="${first}"]`)?.focus(), 0)
       return
     }
 
@@ -611,6 +979,9 @@ export default function Driver(props) {
       name: trim('name'), mobile: trim('mobile'), email: trim('email'), nationality: trim('nationality'),
       employeeId: trim('employeeId'), licenseNo: trim('licenseNo'), licenseCategory: trim('licenseCategory'),
       licenseCountry: trim('licenseCountry'), emiratesId: trim('emiratesId'),
+      contactNumber2: trim('contactNumber2'), country: trim('country'), state: trim('state'), city: trim('city'),
+      zipCode: trim('zipCode'), street1: trim('street1'), street2: trim('street2'),
+      lifeInsuranceNo: trim('lifeInsuranceNo'), mediclaimNo: trim('mediclaimNo'),
       ibuttonCode: tag,
       notes: trim('notes'),
     }
@@ -653,235 +1024,368 @@ export default function Driver(props) {
   const title = !editing ? 'Driver' : draft.id ? 'Edit Driver' : 'Add Driver'
   const filtering = !!search.trim() || !!bgFilter
 
-  const text = (name, label, { placeholder, max = 120, type = 'text', required = false } = {}) => (
-    <Field label={label} required={required} error={errors[name]}>
+  const fid = name => `drv-${name}`
+  const text = (name, label, { placeholder, max = 120, type = 'text', required = false, span = 4, inputMode } = {}) => (
+    <DF id={fid(name)} label={label} required={required} error={errors[name]} span={span}>
       <input
+        id={fid(name)}
         name={name}
         type={type}
+        inputMode={inputMode}
         value={draft[name] ?? ''}
         onChange={e => set(name, e.target.value)}
         aria-invalid={!!errors[name] || undefined}
+        aria-required={required || undefined}
         placeholder={placeholder}
         maxLength={max}
-        style={inputStyle(!!errors[name])}
+        // The form is about someone else: the browser's own name and e-mail would be wrong.
+        autoComplete="off"
+        style={ctl(!!errors[name])}
       />
-    </Field>
+    </DF>
   )
-  const date = (name, label) => (
-    <Field label={label} error={errors[name]}>
-      <input name={name} type="date" value={draft[name] ?? ''} onChange={e => set(name, e.target.value)}
-        aria-invalid={!!errors[name] || undefined} style={inputStyle(!!errors[name])} />
-    </Field>
+  const date = (name, label, span = 4) => (
+    <DF id={fid(name)} label={label} error={errors[name]} span={span}>
+      <input id={fid(name)} name={name} type="date" value={draft[name] ?? ''} onChange={e => set(name, e.target.value)}
+        aria-invalid={!!errors[name] || undefined} style={ctl(!!errors[name])} />
+    </DF>
+  )
+  const resetForm = () => {
+    setErrors({})
+    setStagedPhoto(null)
+    const saved = draft.id ? drivers.find(d => d.id === draft.id) : null
+    setDraft(saved ? { ...emptyDriver(), ...saved } : emptyDriver())
+  }
+  const busyBtn = saving ? { opacity: 0.6, cursor: 'not-allowed' } : null
+  const serverOnly = (what, after) => (
+    <div className="dfm-empty">
+      {!IS_REAL ? `${what} kept on the server, so not available in demo mode.` : after}
+    </div>
   )
 
   return (
     <SettingsLayout title={title} {...props}>
       {editing ? (
-        <form ref={formRef} onSubmit={submit} noValidate>
-          <FormCard
-            title={draft.id ? `Driver details · ${driverCode(draft)}` : 'New driver'}
-            subtitle="Fields marked with * are required. A vehicle has one driver — choosing one that is already driven moves it to this driver."
-          >
-            {/* ── Profile ─────────────────────────────────────────────── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6 }}>
-              <Avatar driver={draft} size={64} />
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <input ref={photoRef} type="file" accept="image/*" hidden onChange={e => pickPhoto(e.target.files?.[0])} />
-                <button type="button" className="ft-btn" onClick={() => photoRef.current?.click()} style={{ padding: '7px 12px', fontSize: 12 }}>
-                  <Camera size={14} /> {draft.photoUrl ? 'Change photo' : 'Add photo'}
-                </button>
-                {draft.photoUrl && (
-                  <button type="button" className="ft-btn" onClick={dropPhoto} style={{ padding: '7px 12px', fontSize: 12 }}>
-                    <Trash2 size={14} /> Remove
-                  </button>
-                )}
+        <form ref={formRef} onSubmit={submit} noValidate className="dfm">
+          <style>{DFM_CSS}</style>
+
+          {/* ── Who ─────────────────────────────────────────────────── */}
+          <div className="dfm-hero">
+            <Avatar driver={draft} size={72} />
+            <div className="dfm-hero-main">
+              <div className={`dfm-hero-name${draft.name.trim() ? '' : ' empty'}`}>{draft.name.trim() || 'New driver'}</div>
+              <div className="dfm-hero-meta">
+                {draft.id && <span className="dfm-code">{driverCode(draft)}</span>}
+                {draft.companyId && <span>{companyNameFor(draft.companyId)}</span>}
+                <Pill tone={STATUS_TONE[draft.status] || STATUS_TONE.Inactive}>{draft.status}</Pill>
               </div>
             </div>
+            <div className="dfm-hero-act">
+              <input ref={photoRef} type="file" accept="image/*" hidden onChange={e => pickPhoto(e.target.files?.[0])} />
+              <button type="button" onClick={() => photoRef.current?.click()} style={{ ...SECONDARY_BTN, height: 38 }}>
+                <Camera size={14} /> {draft.photoUrl ? 'Change photo' : 'Add photo'}
+              </button>
+              {draft.photoUrl && (
+                <button type="button" onClick={dropPhoto} style={{ ...SECONDARY_BTN, height: 38 }}>
+                  <Trash2 size={14} /> Remove
+                </button>
+              )}
+            </div>
+          </div>
 
-            <SectionTitle>Profile</SectionTitle>
-            <div style={GRID}>
-              {/* Locked on an existing driver in real mode: the API takes a
-                  driver's BG only at creation, and checks its vehicle against it. */}
-              <Field
-                label="Business Group"
-                required
-                error={errors.companyId}
-                hint={bgLocked ? 'A driver cannot be moved to another Business Group.' : undefined}
-              >
-                <select
-                  ref={firstRef}
-                  name="companyId"
-                  value={draft.companyId}
-                  onChange={e => set('companyId', e.target.value)}
-                  disabled={bgLocked}
-                  aria-invalid={!!errors.companyId || undefined}
-                  style={bgLocked ? { ...inputStyle(!!errors.companyId), opacity: 0.6, cursor: 'not-allowed' } : inputStyle(!!errors.companyId)}
+          {/* ── Tabs, as in the reference: Profile / Additional Info / Leave / Document ── */}
+          <div className="dfm-tabs" role="tablist" aria-label="Driver form">
+            {FORM_TABS.map((t, i) => {
+              const Icon = t.icon
+              return (
+                <button
+                  key={t.id}
+                  id={`drv-tab-${t.id}`}
+                  type="button"
+                  role="tab"
+                  className="dfm-tab"
+                  aria-selected={tab === t.id}
+                  aria-controls={`drv-panel-${t.id}`}
+                  tabIndex={tab === t.id ? 0 : -1}
+                  onClick={() => setTab(t.id)}
+                  onKeyDown={e => {
+                    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+                    if (!step) return
+                    e.preventDefault()
+                    const next = FORM_TABS[(i + step + FORM_TABS.length) % FORM_TABS.length].id
+                    setTab(next)
+                    document.getElementById(`drv-tab-${next}`)?.focus()
+                  }}
                 >
-                  <option value="">— Select —</option>
-                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </Field>
-              {text('name', 'Full Name', { placeholder: 'Ahmed Khan', required: true })}
-              {text('employeeId', 'Employee ID', { placeholder: 'EMP-1042', max: 60 })}
-              <Field label="Department" error={errors.department}>
-                <select name="department" value={draft.department ?? ''} onChange={e => set('department', e.target.value)} style={inputStyle(!!errors.department)}>
-                  <option value="">— None —</option>
-                  {DRIVER_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </Field>
-              {text('mobile', 'Mobile', { placeholder: '+971 50 123 4567', max: 30, type: 'tel' })}
-              {text('email', 'Email', { placeholder: 'ahmed@company.ae', max: 200, type: 'email' })}
-              {text('nationality', 'Nationality', { placeholder: 'Pakistan', max: 60 })}
-              {date('dateOfBirth', 'Date of Birth')}
-              {date('joiningDate', 'Joining Date')}
-              <Field label="Status" hint={suspended ? 'Off duty: cannot be given a vehicle.' : undefined}>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {['Active', 'Inactive', 'Suspended'].map(s => (
-                    <button
-                      key={s}
-                      type="button"
-                      className={`ft-btn${draft.status === s ? ' ft-btn--active' : ''}`}
-                      aria-pressed={draft.status === s}
-                      onClick={() => set('status', s)}
-                      style={{ flex: 1, justifyContent: 'center', padding: '8px 6px', fontSize: 12 }}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            </div>
+                  <Icon size={15} aria-hidden="true" />
+                  {t.label}
+                  {invalidTabs.has(t.id) && <span className="dfm-tab-dot" aria-label="has errors" />}
+                </button>
+              )
+            })}
+          </div>
 
-            {/* ── Licence ─────────────────────────────────────────────── */}
-            <SectionTitle>Driving Licence</SectionTitle>
-            <div style={GRID}>
-              {text('licenseNo', 'Licence Number', { placeholder: 'AD-4471920', max: 60 })}
-              <Field label="Licence Category" error={errors.licenseCategory}>
-                <input name="licenseCategory" list="driver-licence-categories" value={draft.licenseCategory ?? ''}
-                  onChange={e => set('licenseCategory', e.target.value)} placeholder="Light Vehicle" maxLength={60} style={inputStyle(!!errors.licenseCategory)} />
-                <datalist id="driver-licence-categories">
-                  {LICENCE_CATEGORIES.map(c => <option key={c} value={c} />)}
-                </datalist>
-              </Field>
-              {date('licenseIssueDate', 'Issue Date')}
-              <ExpiryField label="Expiry Date" name="licenseExpiry" value={draft.licenseExpiry} error={errors.licenseExpiry} onChange={set} />
-              {text('licenseCountry', 'Issuing Country', { placeholder: 'United Arab Emirates', max: 60 })}
-            </div>
-
-            {/* ── IDs and other papers ───────────────────────────────── */}
-            <SectionTitle note="An expiry alert can warn before any of these runs out (Settings › Alerts › Driver Licence & Document Expiry).">
-              Visa, Emirates ID &amp; Medical
-            </SectionTitle>
-            <div style={GRID}>
-              <ExpiryField label="Visa Expiry" name="visaExpiry" value={draft.visaExpiry} error={errors.visaExpiry} onChange={set} />
-              {text('emiratesId', 'Emirates ID Number', { placeholder: '784-1990-1234567-1', max: 30 })}
-              <ExpiryField label="Emirates ID Expiry" name="emiratesIdExpiry" value={draft.emiratesIdExpiry} error={errors.emiratesIdExpiry} onChange={set} />
-              <ExpiryField label="Medical Fitness Expiry" name="medicalExpiry" value={draft.medicalExpiry} error={errors.medicalExpiry} onChange={set} />
-            </div>
-
-            {/* ── Assignment ──────────────────────────────────────────── */}
-            <SectionTitle>Vehicle &amp; Driver ID</SectionTitle>
-            <div style={GRID}>
-              <Field
-                label="Vehicle"
-                error={errors.vehicleId}
-                hint={suspended ? 'A suspended driver cannot be given a vehicle.' : takingFrom ? `Saving moves this vehicle from ${takingFrom.name}.` : undefined}
-              >
-                <select
-                  name="vehicleId"
-                  value={draft.vehicleId}
-                  onChange={e => set('vehicleId', e.target.value)}
-                  disabled={suspended || !draft.companyId || bgVehicles.length === 0}
-                  aria-invalid={!!errors.vehicleId || undefined}
-                  style={{ ...inputStyle(!!errors.vehicleId), opacity: suspended || !draft.companyId || bgVehicles.length === 0 ? 0.6 : 1 }}
+          {/* ── Profile ─────────────────────────────────────────────── */}
+          <div role="tabpanel" id="drv-panel-profile" aria-labelledby="drv-tab-profile" hidden={tab !== 'profile'}>
+            <DSection icon={UserRound} title="Personal details" desc="Who the driver is.">
+              <div className="dfm-grid">
+                {/* Locked on an existing driver in real mode: the API takes a
+                    driver's BG only at creation, and checks its vehicle against it. */}
+                <DF
+                  id={fid('companyId')}
+                  label="Business Group"
+                  required
+                  error={errors.companyId}
+                  span={6}
+                  hint={bgLocked ? 'A driver cannot be moved to another Business Group.' : undefined}
                 >
-                  <option value="">
-                    {!draft.companyId ? '— Select a Business Group first —' : bgVehicles.length === 0 ? '— No vehicles for this Business Group —' : '— None —'}
-                  </option>
-                  {bgVehicles.map(v => {
-                    const current = driverForVehicleId(v.id)
-                    const other = current && current.id !== draft.id ? current : null
-                    return (
-                      <option key={v.id} value={v.id}>
-                        {vehicleLabel(v)}{other ? ` — currently ${other.name}` : ''}
-                      </option>
-                    )
-                  })}
-                </select>
-              </Field>
-              <Field
-                label="Driver ID (iButton card)"
-                error={errors.ibuttonCode}
-                hint="The tag code the tracker reports (Live Map › Live Data › ibutton.code)"
-              >
-                <input
-                  name="ibuttonCode"
-                  value={draft.ibuttonCode ?? ''}
-                  onChange={e => set('ibuttonCode', e.target.value)}
-                  aria-invalid={!!errors.ibuttonCode || undefined}
-                  placeholder="94000001D9DF0801"
-                  maxLength={48}
-                  autoComplete="off"
-                  style={{ ...inputStyle(!!errors.ibuttonCode), fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
-                />
-              </Field>
-            </div>
+                  <select
+                    ref={firstRef}
+                    id={fid('companyId')}
+                    name="companyId"
+                    value={draft.companyId}
+                    onChange={e => set('companyId', e.target.value)}
+                    disabled={bgLocked}
+                    aria-invalid={!!errors.companyId || undefined}
+                    aria-required="true"
+                    style={ctl(!!errors.companyId, bgLocked ? { opacity: 0.6, cursor: 'not-allowed' } : null)}
+                  >
+                    <option value="">— Select —</option>
+                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </DF>
+                {text('name', 'Full name', { placeholder: 'Ahmed Khan', required: true, span: 6 })}
 
-            <div style={{ marginTop: 14 }}>
-              <Field label="Notes" error={errors.notes}>
-                <textarea
-                  name="notes"
-                  value={draft.notes}
-                  onChange={e => set('notes', e.target.value)}
-                  rows={3}
-                  maxLength={1000}
-                  placeholder="Shift, depot, anything the next operator should know"
-                  style={{ ...inputStyle(!!errors.notes), resize: 'vertical', fontFamily: 'inherit' }}
-                />
-              </Field>
-            </div>
+                {text('employeeId', 'Employee number', { placeholder: 'EMP-1042', max: 60 })}
+                <DF id={fid('department')} label="Department" error={errors.department}>
+                  <select id={fid('department')} name="department" value={draft.department ?? ''} onChange={e => set('department', e.target.value)} style={ctl(!!errors.department)}>
+                    <option value="">— None —</option>
+                    {DRIVER_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </DF>
+                <DF id={fid('status')} label="Status" group hint={suspended ? 'Off duty: cannot be given a vehicle.' : undefined}>
+                  <div className="dfm-seg" role="radiogroup" aria-labelledby={`${fid('status')}-label`}>
+                    {['Active', 'Inactive', 'Suspended'].map(s => (
+                      <button key={s} type="button" role="radio" aria-checked={draft.status === s} onClick={() => set('status', s)}>
+                        <i style={{ background: STATUS_TONE[s].color }} aria-hidden="true" />{s}
+                      </button>
+                    ))}
+                  </div>
+                </DF>
+                {text('nationality', 'Nationality', { placeholder: 'Pakistan', max: 60, span: 12 })}
+              </div>
+            </DSection>
 
-            {/* ── Assignment history and incidents (server only) ──────── */}
-            <SectionTitle note="Who drove which vehicle when — trips without an iButton tag are credited by these dates.">Assignment History</SectionTitle>
-            {!IS_REAL ? (
-              <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Assignment history is kept on the server, so it is not available in demo mode.</div>
-            ) : !draft.id ? (
-              <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Save the driver first; the Vehicle above then starts the Primary assignment.</div>
-            ) : (
-              <DriverAssignments driver={draft} canWrite={access.canWrite} push={push} />
-            )}
+            <DSection icon={MapPin} title="Contact & address" desc="How to reach the driver, and where they live.">
+              <div className="dfm-grid">
+                {text('mobile', 'Contact number 1', { placeholder: '+971 50 123 4567', max: 30, type: 'tel', inputMode: 'tel' })}
+                {text('contactNumber2', 'Contact number 2', { placeholder: '+971 4 555 1234', max: 30, type: 'tel', inputMode: 'tel' })}
+                {text('email', 'Email', { placeholder: 'ahmed@company.ae', max: 200, type: 'email' })}
 
-            <SectionTitle note="Accidents and incidents count against the driver's safety score.">Accident &amp; Incident Records</SectionTitle>
-            {!IS_REAL ? (
-              <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Incident records are kept on the server, so they are not available in demo mode.</div>
-            ) : !draft.id ? (
-              <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Save the driver first, then open it again to record incidents.</div>
-            ) : (
-              <DriverIncidents driver={draft} canWrite={access.canWrite} push={push} />
-            )}
+                {text('street1', 'Street 1', { placeholder: 'Building, street', max: 200, span: 6 })}
+                {text('street2', 'Street 2', { placeholder: 'Area, landmark', max: 200, span: 6 })}
 
-            {/* ── Documents ───────────────────────────────────────────── */}
-            <SectionTitle note="Scanned copies: licence, visa, Emirates ID, passport, medical.">Documents</SectionTitle>
-            {!IS_REAL ? (
-              <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Document uploads are kept on the server, so they are not available in demo mode.</div>
-            ) : !draft.id ? (
-              <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>Save the driver first, then open it again to upload documents.</div>
-            ) : (
-              <DriverDocuments driver={draft} canWrite={access.canWrite} push={push} />
-            )}
+                {text('city', 'City', { placeholder: 'Mussafah', max: 60, span: 3 })}
+                <DF id={fid('state')} label="State / Emirate" error={errors.state} span={3}>
+                  <input id={fid('state')} name="state" list={/emirates|uae/i.test(draft.country ?? '') ? 'drv-emirates' : undefined}
+                    value={draft.state ?? ''} onChange={e => set('state', e.target.value)} placeholder="Abu Dhabi" maxLength={60} autoComplete="off" style={ctl(!!errors.state)} />
+                  <datalist id="drv-emirates">{UAE_EMIRATES.map(c => <option key={c} value={c} />)}</datalist>
+                </DF>
+                <DF id={fid('country')} label="Country" error={errors.country} span={3}>
+                  <input id={fid('country')} name="country" list="drv-countries" value={draft.country ?? ''}
+                    onChange={e => set('country', e.target.value)} placeholder="United Arab Emirates" maxLength={60} autoComplete="off" style={ctl(!!errors.country)} />
+                  <datalist id="drv-countries">{COUNTRIES.map(c => <option key={c} value={c} />)}</datalist>
+                </DF>
+                {text('zipCode', 'Zip code', { placeholder: '00000', max: 20, span: 3 })}
+              </div>
+            </DSection>
 
-            <FormActions
-              onBack={closeForm}
-              onReset={() => {
-                setErrors({})
-                setStagedPhoto(null)
-                const saved = draft.id ? drivers.find(d => d.id === draft.id) : null
-                setDraft(saved ? { ...emptyDriver(), ...saved } : emptyDriver())
-              }}
-              saveLabel={draft.id ? 'Save Changes' : 'Save'}
-              saving={saving}
-            />
-          </FormCard>
+            <DSection
+              icon={Car}
+              title="Vehicle & Driver ID"
+              desc="A vehicle has one driver: choosing one that is already driven moves it to this driver on save."
+            >
+              <div className="dfm-grid">
+                <DF
+                  id={fid('vehicleId')}
+                  label="Default vehicle"
+                  error={errors.vehicleId}
+                  span={12}
+                  hint={suspended ? 'A suspended driver cannot be given a vehicle.' : takingFrom ? `Saving moves this vehicle from ${takingFrom.name}.` : undefined}
+                >
+                  <select
+                    id={fid('vehicleId')}
+                    name="vehicleId"
+                    value={draft.vehicleId}
+                    onChange={e => set('vehicleId', e.target.value)}
+                    disabled={suspended || !draft.companyId || bgVehicles.length === 0}
+                    aria-invalid={!!errors.vehicleId || undefined}
+                    style={ctl(!!errors.vehicleId, { opacity: suspended || !draft.companyId || bgVehicles.length === 0 ? 0.6 : 1 })}
+                  >
+                    <option value="">
+                      {!draft.companyId ? '— Select a Business Group first —' : bgVehicles.length === 0 ? '— No vehicles for this Business Group —' : '— None —'}
+                    </option>
+                    {bgVehicles.map(v => {
+                      const current = driverForVehicleId(v.id)
+                      const other = current && current.id !== draft.id ? current : null
+                      return (
+                        <option key={v.id} value={v.id}>
+                          {vehicleLabel(v)}{other ? ` — currently ${other.name}` : ''}
+                        </option>
+                      )
+                    })}
+                  </select>
+                </DF>
+
+                <DF id={fid('tagType')} label="Tag via" error={errors.tagType}>
+                  <select id={fid('tagType')} name="tagType" value={draft.tagType ?? ''} onChange={e => set('tagType', e.target.value)} style={ctl(!!errors.tagType)}>
+                    <option value="">— Select —</option>
+                    {TAG_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </DF>
+                <DF
+                  id={fid('ibuttonCode')}
+                  label="Driver ID (tag code)"
+                  error={errors.ibuttonCode}
+                  span={8}
+                  hint="The code the tracker reports (Live Map › Live Data › ibutton.code)"
+                >
+                  <input
+                    id={fid('ibuttonCode')}
+                    name="ibuttonCode"
+                    value={draft.ibuttonCode ?? ''}
+                    onChange={e => set('ibuttonCode', e.target.value)}
+                    aria-invalid={!!errors.ibuttonCode || undefined}
+                    placeholder="94000001D9DF0801"
+                    maxLength={48}
+                    autoComplete="off"
+                    spellCheck={false}
+                    style={ctl(!!errors.ibuttonCode, { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: '0.03em' })}
+                  />
+                </DF>
+
+                <DF id={fid('notes')} label="Notes" error={errors.notes} span={12}>
+                  <textarea
+                    id={fid('notes')}
+                    name="notes"
+                    value={draft.notes}
+                    onChange={e => set('notes', e.target.value)}
+                    rows={3}
+                    maxLength={1000}
+                    placeholder="Shift, depot, anything the next operator should know"
+                    style={{ ...inputStyle(!!errors.notes), padding: '10px 12px', fontSize: 13, borderRadius: 10, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
+                  />
+                </DF>
+              </div>
+            </DSection>
+          </div>
+
+          {/* ── Additional Info ─────────────────────────────────────── */}
+          <div role="tabpanel" id="drv-panel-additional" aria-labelledby="drv-tab-additional" hidden={tab !== 'additional'}>
+            <DSection icon={ClipboardList} title="Dates & experience" desc="Age and years of driving are worked out from the dates.">
+              <div className="dfm-grid">
+                {date('dateOfBirth', 'Date of birth')}
+                <ReadOnly id="drv-age" label="Age" value={yearsLabel(yearsSince(draft.dateOfBirth))} />
+                <DF id={fid('drivingSince')} label="Driving experience since" error={errors.drivingSince}
+                  aside={yearsSince(draft.drivingSince) !== null ? <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ft-accent)', whiteSpace: 'nowrap' }}>{yearsLabel(yearsSince(draft.drivingSince))}</span> : null}>
+                  <input id={fid('drivingSince')} name="drivingSince" type="date" value={draft.drivingSince ?? ''} onChange={e => set('drivingSince', e.target.value)}
+                    aria-invalid={!!errors.drivingSince || undefined} style={ctl(!!errors.drivingSince)} />
+                </DF>
+                {date('joiningDate', 'Date of joining')}
+                {date('leavingDate', 'Date of leaving')}
+                {date('retirementDate', 'Retirement date')}
+              </div>
+            </DSection>
+
+            <DSection icon={IdCard} title="Driving licence" desc="The licence the driver holds, the classes it covers and when it runs out.">
+              <div className="dfm-grid">
+                <DF id={fid('licenseAvailable')} label="Licence available" group>
+                  <YesNo id={fid('licenseAvailable')} value={draft.licenseAvailable !== false} onChange={v => set('licenseAvailable', v)} />
+                </DF>
+                <DF id={fid('licenseNo')} label="Licence number" error={errors.licenseNo}>
+                  <input id={fid('licenseNo')} name="licenseNo" value={draft.licenseNo ?? ''} onChange={e => set('licenseNo', e.target.value)}
+                    disabled={draft.licenseAvailable === false} placeholder="AD-4471920" maxLength={60} autoComplete="off"
+                    style={ctl(!!errors.licenseNo, draft.licenseAvailable === false ? { opacity: 0.5 } : null)} />
+                </DF>
+                <DF id={fid('licenseCountry')} label="Issuing country" error={errors.licenseCountry}>
+                  <input id={fid('licenseCountry')} name="licenseCountry" list="drv-countries" value={draft.licenseCountry ?? ''}
+                    onChange={e => set('licenseCountry', e.target.value)} disabled={draft.licenseAvailable === false}
+                    placeholder="United Arab Emirates" maxLength={60} autoComplete="off"
+                    style={ctl(!!errors.licenseCountry, draft.licenseAvailable === false ? { opacity: 0.5 } : null)} />
+                </DF>
+
+                <DF id={fid('licenseCategory')} label="Licence to drive (one or more)" group error={errors.licenseCategory} span={12}>
+                  <LicenceClasses value={draft.licenseCategory} onChange={v => set('licenseCategory', v)} disabled={draft.licenseAvailable === false} />
+                </DF>
+
+                {date('licenseIssueDate', 'Issue date', 6)}
+                <ExpiryField label="Expiry date" name="licenseExpiry" value={draft.licenseExpiry} error={errors.licenseExpiry} onChange={set} />
+              </div>
+            </DSection>
+
+            <DSection
+              icon={ShieldCheck}
+              title="Visa, Emirates ID & medical"
+              desc="An expiry alert can warn before any of these runs out (Settings › Alerts › Driver Licence & Document Expiry)."
+            >
+              <div className="dfm-grid">
+                {text('emiratesId', 'Emirates ID number', { placeholder: '784-1990-1234567-1', max: 30, span: 6 })}
+                <ExpiryField label="Emirates ID expiry" name="emiratesIdExpiry" value={draft.emiratesIdExpiry} error={errors.emiratesIdExpiry} onChange={set} />
+                <ExpiryField label="Visa expiry" name="visaExpiry" value={draft.visaExpiry} error={errors.visaExpiry} onChange={set} />
+                <ExpiryField label="Medical fitness expiry" name="medicalExpiry" value={draft.medicalExpiry} error={errors.medicalExpiry} onChange={set} />
+              </div>
+            </DSection>
+
+            <DSection icon={HeartPulse} title="Insurance & mediclaim" desc="The expiry alert watches these dates too.">
+              <div className="dfm-grid">
+                {text('lifeInsuranceNo', 'Life insurance number', { placeholder: 'LI-000123', max: 60, span: 6 })}
+                <ExpiryField label="Life insurance expiry" name="lifeInsuranceExpiry" value={draft.lifeInsuranceExpiry} error={errors.lifeInsuranceExpiry} onChange={set} />
+                {text('mediclaimNo', 'Mediclaim number', { placeholder: 'MC-000456', max: 60, span: 6 })}
+                <ExpiryField label="Mediclaim expiry" name="mediclaimExpiry" value={draft.mediclaimExpiry} error={errors.mediclaimExpiry} onChange={set} />
+              </div>
+            </DSection>
+          </div>
+
+          {/* ── Leave ───────────────────────────────────────────────── */}
+          <div role="tabpanel" id="drv-panel-leave" aria-labelledby="drv-tab-leave" hidden={tab !== 'leave'}>
+            <DSection icon={CalendarX} title="Leave" desc="Annual, sick and other leave. The days fill in from the dates, and can be typed over.">
+              {!IS_REAL || !draft.id
+                ? serverOnly('Leave is', 'Save the driver first, then open it again to record leave.')
+                : <DriverLeaves driver={draft} canWrite={access.canWrite} push={push} />}
+            </DSection>
+          </div>
+
+          {/* ── Documents ───────────────────────────────────────────── */}
+          <div role="tabpanel" id="drv-panel-documents" aria-labelledby="drv-tab-documents" hidden={tab !== 'documents'}>
+            <DSection icon={FileText} title="Documents" desc="Scanned copies: licence, visa, Emirates ID, passport, medical.">
+              {!IS_REAL || !draft.id
+                ? serverOnly('Document uploads are', 'Save the driver first, then open it again to upload documents.')
+                : <DriverDocuments driver={draft} canWrite={access.canWrite} push={push} />}
+            </DSection>
+          </div>
+
+          {/* ── History: assignments and incidents ───────────────────── */}
+          <div role="tabpanel" id="drv-panel-history" aria-labelledby="drv-tab-history" hidden={tab !== 'history'}>
+            <DSection icon={History} title="Assignment history" desc="Who drove which vehicle when. Trips without a tag are credited by these dates.">
+              {!IS_REAL || !draft.id
+                ? serverOnly('Assignment history is', 'Save the driver first; the Default vehicle then starts the Primary assignment.')
+                : <DriverAssignments driver={draft} canWrite={access.canWrite} push={push} />}
+            </DSection>
+            <DSection icon={TriangleAlert} title="Accidents & incidents" desc="These count against the driver's safety score.">
+              {!IS_REAL || !draft.id
+                ? serverOnly('Incident records are', 'Save the driver first, then open it again to record incidents.')
+                : <DriverIncidents driver={draft} canWrite={access.canWrite} push={push} />}
+            </DSection>
+          </div>
+
+          <div className="dfm-foot">
+            <span className="dfm-foot-note"><span className="dfm-req" aria-hidden="true">*</span> Required</span>
+            <button type="button" onClick={closeForm} style={{ ...SECONDARY_BTN, height: 40, ...busyBtn }} disabled={saving}>Back</button>
+            <button type="button" onClick={resetForm} style={{ ...SECONDARY_BTN, height: 40, ...busyBtn }} disabled={saving}>Reset</button>
+            <button type="submit" style={{ ...PRIMARY_BTN, height: 40, ...busyBtn }} disabled={saving}>
+              {saving ? 'Saving…' : draft.id ? 'Save Changes' : 'Save Driver'}
+            </button>
+          </div>
         </form>
       ) : (
         <>

@@ -382,6 +382,8 @@ export const DRIVER_EXPIRIES = [
   ['visaExpiry', 'Visa', ':visa'],
   ['emiratesIdExpiry', 'Emirates ID', ':eid'],
   ['medicalExpiry', 'Medical fitness', ':medical'],
+  ['lifeInsuranceExpiry', 'Life insurance', ':insurance'],
+  ['mediclaimExpiry', 'Mediclaim', ':mediclaim'],
 ]
 
 export function evaluateLicence(alert, driver, state, now, field = 'licenseExpiry', label = 'Driving licence') {

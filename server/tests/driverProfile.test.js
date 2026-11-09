@@ -95,6 +95,51 @@ describe('driver profile', () => {
     expect((await request(app).get(base).set(auth(fx.tokens.bgUserA1a))).body.data).toHaveLength(0)
   })
 
+  it('keeps the rest of the profile: address, second contact, Tag Via, dates, insurance and mediclaim', async () => {
+    const a = await create({
+      name: 'Full Profile', contactNumber2: '04 555 1234', country: 'United Arab Emirates', state: 'Abu Dhabi', city: 'Mussafah',
+      zipCode: '00000', street1: 'M-37', street2: 'Plot 12', tagType: 'RFID', leavingDate: '2030-01-31', retirementDate: '2045-04-12',
+      drivingSince: '2012-06-01', licenseAvailable: false, licenseCategory: 'Light Vehicle, Heavy Vehicle',
+      lifeInsuranceNo: 'LI-77', lifeInsuranceExpiry: '2027-05-01', mediclaimNo: 'MC-9', mediclaimExpiry: '2026-12-31',
+    })
+    expect(a.status).toBe(201)
+    expect(a.body.data).toMatchObject({
+      contactNumber2: '04 555 1234', city: 'Mussafah', street2: 'Plot 12', tagType: 'RFID', leavingDate: '2030-01-31',
+      retirementDate: '2045-04-12', drivingSince: '2012-06-01', licenseAvailable: false, licenseCategory: 'Light Vehicle, Heavy Vehicle',
+      lifeInsuranceExpiry: '2027-05-01', mediclaimNo: 'MC-9', mediclaimExpiry: '2026-12-31',
+    })
+    // Licence available is the default; Tag Via is a fixed list.
+    expect((await create({ name: 'Default' })).body.data.licenseAvailable).toBe(true)
+    expect((await create({ name: 'X', tagType: 'Barcode' })).status).toBe(400)
+  })
+
+  it('keeps a leave register per driver, in scope', async () => {
+    const d = (await create({ name: 'On Leave' })).body.data
+    const base = `/api/drivers/${d.id}/leaves`
+    const add = await request(app).post(base).set(auth(fx.tokens.bgUserA1a))
+      .send({ leaveType: 'Annual', days: '14', validFrom: '2026-12-01', validTo: '2026-12-14', notes: 'Home' })
+    expect(add.status).toBe(201)
+    expect(add.body.data).toMatchObject({ leaveType: 'Annual', days: 14, validFrom: '2026-12-01', validTo: '2026-12-14' })
+    const backwards = await request(app).post(base).set(auth(fx.tokens.bgUserA1a)).send({ leaveType: 'Sick', validFrom: '2026-12-10', validTo: '2026-12-01' })
+    expect(backwards.status).toBe(400)
+    expect(backwards.body.error.details).toEqual({ validTo: 'On or after the From date' })
+    expect((await request(app).post(base).set(auth(fx.tokens.bgUserA1a)).send({ leaveType: 'Holiday', validFrom: '2026-12-01' })).status).toBe(400)
+    expect((await request(app).post(base).set(auth(fx.tokens.bgUserA1a)).send({ leaveType: 'Sick' })).status).toBe(400)
+
+    expect((await request(app).get(base).set(auth(fx.tokens.bgUserB1a))).status).toBe(404)
+    expect((await request(app).get(base).set(auth(fx.tokens.bgUserA1a))).body.data).toHaveLength(1)
+    expect((await request(app).delete(`${base}/${add.body.data.id}`).set(auth(fx.tokens.bgUserA1a))).status).toBe(200)
+    expect((await request(app).get(base).set(auth(fx.tokens.bgUserA1a))).body.data).toHaveLength(0)
+  })
+
+  it('keeps a document issue date', async () => {
+    const d = (await create({ name: 'Papers' })).body.data
+    const up = await request(app).post(`/api/drivers/${d.id}/documents`).set(auth(fx.tokens.bgUserA1a))
+      .send({ title: 'Licence', docType: 'Driving Licence', issueDate: '2021-03-01', expiryDate: '2031-03-01', fileName: 'l.pdf', data: PDF })
+    expect(up.status).toBe(201)
+    expect(up.body.data).toMatchObject({ issueDate: '2021-03-01', expiryDate: '2031-03-01' })
+  })
+
   it('deleting a driver takes its photo and documents with it', async () => {
     const d = (await create({ name: 'Gone' })).body.data
     await request(app).put(`/api/drivers/${d.id}/photo`).set(auth(fx.tokens.bgUserA1a)).send({ image: PNG })
@@ -110,5 +155,12 @@ describe('document expiry alert', () => {
   it('names the document that is expiring', () => {
     const r = evaluateLicence({ type: 'license_expiry', params: { days: 30 } }, { visaExpiry: new Date('2026-11-20T00:00:00Z') }, {}, NOW, 'visaExpiry', 'Visa')
     expect(r.fire.message).toBe('Visa expires in 14 days')
+  })
+
+  it('watches life insurance and mediclaim too', async () => {
+    const { DRIVER_EXPIRIES } = await import('../src/lib/alertEngine.js')
+    expect(DRIVER_EXPIRIES.map(([f]) => f)).toEqual(expect.arrayContaining(['lifeInsuranceExpiry', 'mediclaimExpiry']))
+    const r = evaluateLicence({ type: 'license_expiry', params: { days: 30 } }, { mediclaimExpiry: new Date('2026-11-20T00:00:00Z') }, {}, NOW, 'mediclaimExpiry', 'Mediclaim')
+    expect(r.fire.message).toBe('Mediclaim expires in 14 days')
   })
 })

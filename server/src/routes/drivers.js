@@ -17,7 +17,7 @@ import { ibuttonKey } from '../lib/alertEngine.js'
 import { randomBytes } from 'node:crypto'
 import { asyncHandler, badRequest, conflict, HttpError, notFound } from '../lib/http.js'
 import { fromBase64, sniffDocument, sniffImage } from '../lib/files.js'
-import { optionalDate, optionalEmail, optionalId, optionalText, requiredId, requiredText } from '../lib/fields.js'
+import { booleanField, optionalDate, optionalEmail, optionalId, optionalText, requiredId, requiredText } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 
@@ -45,6 +45,10 @@ const ibuttonField = () =>
  */
 export const DEPARTMENTS = ['Operations', 'Logistics', 'Delivery', 'Transport', 'Sales', 'Maintenance', 'Administration', 'Security', 'Other']
 
+/** "Tag Via" in the reference: how the driver is identified on the tracker. */
+export const TAG_TYPES = ['iButton', 'RFID', 'Beacon']
+const listField = list => z.union([z.enum(list), z.literal(''), z.null()]).default(null).transform(v => v || null)
+
 const driverFields = {
   name: requiredText('Name', 120),
   ibuttonCode: ibuttonField(),
@@ -56,7 +60,8 @@ const driverFields = {
   department: z.union([z.enum(DEPARTMENTS), z.literal(''), z.null()]).default(null).transform(v => v || null),
   joiningDate: optionalDate(),
   licenseNo: optionalText(60),
-  licenseCategory: optionalText(60),
+  // One or more classes, comma separated ("Light Vehicle, Heavy Vehicle").
+  licenseCategory: optionalText(300),
   licenseIssueDate: optionalDate(),
   licenseExpiry: optionalDate(),
   licenseCountry: optionalText(60),
@@ -68,9 +73,28 @@ const driverFields = {
   notes: optionalText(1000),
   // Drivers alone may be Suspended (kept on file, off duty).
   status: z.enum(['Active', 'Inactive', 'Suspended']).default('Active'),
+  contactNumber2: optionalText(30),
+  country: optionalText(60),
+  state: optionalText(60),
+  city: optionalText(60),
+  zipCode: optionalText(20),
+  street1: optionalText(200),
+  street2: optionalText(200),
+  tagType: listField(TAG_TYPES),
+  leavingDate: optionalDate(),
+  retirementDate: optionalDate(),
+  drivingSince: optionalDate(),
+  licenseAvailable: booleanField(true),
+  lifeInsuranceNo: optionalText(60),
+  lifeInsuranceExpiry: optionalDate(),
+  mediclaimNo: optionalText(60),
+  mediclaimExpiry: optionalDate(),
 }
 
-const DATE_FIELDS = ['dateOfBirth', 'joiningDate', 'licenseIssueDate', 'licenseExpiry', 'visaExpiry', 'emiratesIdExpiry', 'medicalExpiry']
+const DATE_FIELDS = [
+  'dateOfBirth', 'joiningDate', 'licenseIssueDate', 'licenseExpiry', 'visaExpiry', 'emiratesIdExpiry', 'medicalExpiry',
+  'leavingDate', 'retirementDate', 'drivingSince', 'lifeInsuranceExpiry', 'mediclaimExpiry',
+]
 
 const createSchema = z.object({ bgId: requiredId('Business Group'), ...driverFields })
 const updateSchema = z.object(driverFields)
@@ -394,6 +418,54 @@ router.delete(
   })
 )
 
+// ── Leave ───────────────────────────────────────────────────────────────────
+
+export const LEAVE_TYPES = ['Annual', 'Sick', 'Emergency', 'Unpaid', 'Maternity / Paternity', 'Other']
+const leaveSchema = z.object({
+  leaveType: z.enum(LEAVE_TYPES),
+  days: z.union([z.number(), z.string(), z.null()]).default(null)
+    .transform(v => (v === null || v === '' ? null : Number(v)))
+    .refine(v => v === null || (Number.isInteger(v) && v >= 0 && v <= 366), 'Whole days, 0 to 366'),
+  validFrom: optionalDate().refine(v => v !== null, 'From date is required'),
+  validTo: optionalDate(),
+  notes: optionalText(300),
+})
+const publicLeave = l => ({ ...l, validFrom: day(l.validFrom), validTo: day(l.validTo) })
+
+router.get(
+  '/:id/leaves',
+  asyncHandler(async (req, res) => {
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const rows = await prisma.driverLeave.findMany({ where: { driverId: driver.id }, orderBy: { validFrom: 'desc' } })
+    res.json({ data: rows.map(publicLeave) })
+  })
+)
+
+router.post(
+  '/:id/leaves',
+  validate(leaveSchema),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    if (req.body.validTo && req.body.validTo < req.body.validFrom) {
+      throw badRequest('The leave ends before it starts', { validTo: 'On or after the From date' })
+    }
+    const row = await prisma.driverLeave.create({ data: { ...req.body, driverId: driver.id } })
+    res.status(201).json({ data: publicLeave(row) })
+  })
+)
+
+router.delete(
+  '/:id/leaves/:lid',
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const { count } = await prisma.driverLeave.deleteMany({ where: { id: req.params.lid, driverId: driver.id } })
+    if (!count) throw notFound('Leave')
+    res.json({ data: { id: req.params.lid } })
+  })
+)
+
 // ── Photo ───────────────────────────────────────────────────────────────────
 // PUT { image: base64 } / DELETE. Shown through GET /api/driver-photos/:key
 // (routes/driverPhotos.js), public like the profile photo: the key is 128
@@ -440,12 +512,13 @@ router.delete(
 
 const MAX_DOC_BYTES = 5 * 1024 * 1024
 export const DOC_TYPES = ['Driving Licence', 'Visa', 'Emirates ID', 'Passport', 'Medical Fitness', 'Other']
-const DOC_SELECT = { id: true, title: true, docType: true, expiryDate: true, fileName: true, mimeType: true, size: true, createdAt: true }
-const publicDoc = d => ({ ...d, expiryDate: d.expiryDate ? d.expiryDate.toISOString().slice(0, 10) : null })
+const DOC_SELECT = { id: true, title: true, docType: true, issueDate: true, expiryDate: true, fileName: true, mimeType: true, size: true, createdAt: true }
+const publicDoc = d => ({ ...d, issueDate: day(d.issueDate), expiryDate: day(d.expiryDate) })
 
 const documentSchema = z.object({
   title: requiredText('Title', 120),
   docType: z.enum(DOC_TYPES).default('Other'),
+  issueDate: optionalDate(),
   expiryDate: optionalDate(),
   fileName: requiredText('File name', 200),
   data: z.string().min(16).max(Math.ceil((MAX_DOC_BYTES * 4) / 3) + 64),
@@ -470,9 +543,9 @@ router.post(
     const mimeType = sniffDocument(data)
     if (!mimeType) throw badRequest('Upload a PDF, JPEG, PNG or WebP file', { data: 'Unsupported file type' })
     if (data.length > MAX_DOC_BYTES) throw new HttpError(413, 'The file is too large (max 5 MB)')
-    const { title, docType, expiryDate, fileName } = req.body
+    const { title, docType, issueDate, expiryDate, fileName } = req.body
     const row = await prisma.driverDocument.create({
-      data: { driverId: driver.id, title, docType, expiryDate, fileName, mimeType, size: data.length, data },
+      data: { driverId: driver.id, title, docType, issueDate, expiryDate, fileName, mimeType, size: data.length, data },
       select: DOC_SELECT,
     })
     res.status(201).json({ data: publicDoc(row) })
