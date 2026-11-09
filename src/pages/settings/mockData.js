@@ -1377,6 +1377,26 @@ export function driverForDevice(device) {
 }
 
 /**
+ * What the Live Map shows as a device's driver (client, 2026-11-09): the name
+ * with the Driver ID (iButton) beside it whenever there is one, and
+ * "Unregistered Driver" when the tracker reads an ID no driver holds — that
+ * is shown rather than falling back to the vehicle's assigned driver.
+ * @returns {{ name: string, code: string, registered: boolean, driver?: object } | null}
+ */
+export function driverDisplayForDevice(device) {
+  const fresh = device?.ibutton && (device.lastTs == null || device.ibuttonTs == null || device.lastTs - device.ibuttonTs <= IBUTTON_FRESH_SEC)
+  const code = fresh ? ibuttonKey(device.ibutton) : ''
+  if (code) {
+    const d = driverForIbutton(code)
+    return d ? { name: d.name, code, registered: true, driver: d } : { name: 'Unregistered Driver', code, registered: false }
+  }
+  const d = driverForVehicleImei(device?.ident)
+  if (d) return { name: d.name, code: ibuttonKey(d.ibuttonCode), registered: true, driver: d }
+  const meta = device?.master?.driver?.name
+  return meta ? { name: meta, code: '', registered: true } : null
+}
+
+/**
  * Live driver lookup for one device. Subscribes to drivers AND vehicles: the
  * IMEI → vehicle half of the join can change without any driver row changing.
  */

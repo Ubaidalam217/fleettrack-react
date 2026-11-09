@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, Search, Camera, Trash2, FileText, Upload, ExternalLink } from 'lucide-react'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
@@ -17,7 +18,10 @@ import {
   listDriverDocuments, uploadDriverDocument, deleteDriverDocument, openDriverDocument,
   listDriverAssignments, addDriverAssignment, endDriverAssignment, deleteDriverAssignment,
   listDriverIncidents, addDriverIncident, deleteDriverIncident, INCIDENT_TYPES,
+  listUnregisteredDriverIds,
 } from '../../data/settings'
+import UnregisteredDriverIds from './UnregisteredDriverIds'
+import UnregisteredDriverDialog from '../../components/tracking/UnregisteredDriverDialog'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import { IS_REAL } from '../../data/mode'
@@ -96,7 +100,7 @@ function nextExpiry(d) {
 // A function of the vehicle lookup rather than a constant, so the Vehicle column
 // re-renders when a vehicle is renamed on its own page.
 const columnsFor = vehicleById => [
-  { key: 'driverNo',  label: 'Driver ID', render: row => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{driverCode(row)}</span> },
+  { key: 'driverNo',  label: 'Driver No.', render: row => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{driverCode(row)}</span> },
   {
     key: 'name',
     label: 'Driver',
@@ -124,7 +128,7 @@ const columnsFor = vehicleById => [
       ) : '—'
     },
   },
-  { key: 'ibuttonCode', label: 'iButton', render: row => row.ibuttonCode || '—' },
+  { key: 'ibuttonCode', label: 'Driver ID', render: row => row.ibuttonCode || '—' },
   {
     key: 'vehicle',
     label: 'Vehicle',
@@ -481,6 +485,34 @@ export default function Driver(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
+  // Driver IDs the trackers read that no driver holds (client, 2026-11-09).
+  // Fetched again whenever the drivers change, so a registered one drops off.
+  const [unregistered, setUnregistered] = useState([])
+  const [assigning, setAssigning] = useState(null)
+  useEffect(() => {
+    let live = true
+    listUnregisteredDriverIds().then(rows => { if (live) setUnregistered(rows ?? []) }).catch(() => {})
+    return () => { live = false }
+  }, [drivers])
+
+  // "Register" from the Live Map arrives as ?register=<Driver ID>&bg=<Business Group>.
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    const code = params.get('register')
+    if (!code || access.loading || !access.canAdd) return
+    setErrors({})
+    setStagedPhoto(null)
+    setDraft({ ...emptyDriver(), companyId: params.get('bg') || bgFilter, ibuttonCode: code })
+    setParams({}, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, access.loading, access.canAdd])
+
+  const registerId = row => {
+    setErrors({})
+    setStagedPhoto(null)
+    setDraft({ ...emptyDriver(), companyId: row.vehicle?.bgId || bgFilter, ibuttonCode: row.code })
+  }
+
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
     const list = drivers.filter(d => {
@@ -565,7 +597,7 @@ export default function Driver(props) {
     const tag = String(draft.ibuttonCode ?? '').replace(/[\s:-]/g, '').toUpperCase()
     if (tag && !/^[0-9A-F]{4,32}$/.test(tag)) next.ibuttonCode = 'Use the code as the tracker shows it, e.g. 94000001D9DF0801'
     else if (tag && /^0+$/.test(tag)) next.ibuttonCode = 'An all-zero code means no tag is inserted'
-    else if (tag && isIbuttonTaken(tag, draft.id)) next.ibuttonCode = 'This iButton is already assigned to another driver.'
+    else if (tag && isIbuttonTaken(tag, draft.id)) next.ibuttonCode = 'This Driver ID is already assigned to another driver.'
 
     if (Object.keys(next).length) {
       setErrors(next)
@@ -778,7 +810,7 @@ export default function Driver(props) {
                 </select>
               </Field>
               <Field
-                label="iButton / Driver ID"
+                label="Driver ID (iButton card)"
                 error={errors.ibuttonCode}
                 hint="The tag code the tracker reports (Live Map › Live Data › ibutton.code)"
               >
@@ -885,6 +917,14 @@ export default function Driver(props) {
                 )}
               </div>
 
+              <UnregisteredDriverIds
+                rows={unregistered}
+                canAdd={access.canAdd}
+                canWrite={access.canWrite}
+                onRegister={registerId}
+                onAssign={row => setAssigning(row)}
+              />
+
               <TableToolbar count={rows.length} noun="driver" plural="drivers">
                 {access.canAdd && (
                   <button
@@ -937,6 +977,15 @@ export default function Driver(props) {
         />
       )}
 
+      {assigning && (
+        <UnregisteredDriverDialog
+          code={assigning.code}
+          vehicleName={assigning.vehicle?.plateNo || ''}
+          bgId={assigning.vehicle?.bgId || ''}
+          onClose={() => setAssigning(null)}
+          onDone={msg => push(msg, { tone: 'success' })}
+        />
+      )}
       <ToastStack toasts={toasts} onDismiss={dismiss} />
     </SettingsLayout>
   )

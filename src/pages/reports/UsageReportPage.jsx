@@ -7,7 +7,7 @@ import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import LocationMapModal from '../../components/reports/LocationMapModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
-import { driverNameForDevice, driverForIbutton } from '../../data/settings'
+import { driverNameForDevice, driverForIbutton, ibuttonKey } from '../../data/settings'
 import { fetchMovementMessages, formatDateTime, formatDateLabel, formatTime, formatPrintDate, isAbortError } from '../../utils/movementReport'
 import { reverseGeocodeMany, geocodeKey, shortenAddress } from '../../utils/geocode'
 import { locationUrl } from '../../utils/mapLink'
@@ -496,7 +496,15 @@ export default function UsageReportPage({ variant, ...props }) {
       .map(v => {
         const assigned = driverNameForDevice({ ...v.vehicle, ibutton: null }) || '—'
         // Each trip's driver is the iButton tag read during it; the assigned driver otherwise.
-        const trips = v.trips.map(t => ({ ...t, driver: (t.ibutton && (driverForIbutton(t.ibutton)?.name || `Tag ${t.ibutton}`)) || assigned }))
+        // The Driver ID always shows with a card read during the trip, and a card
+        // nobody holds is an "Unregistered Driver" (client, 2026-11-09).
+        const tagLabel = code => {
+          const key = ibuttonKey(code)
+          if (!key) return ''
+          const d = driverForIbutton(key)
+          return d ? `${d.name} · ID ${key}` : `Unregistered Driver · ID ${key}`
+        }
+        const trips = v.trips.map(t => ({ ...t, driver: tagLabel(t.ibutton) || assigned }))
         const names = [...new Set(trips.map(t => t.driver))]
         return { ...v, trips, driver: names.length === 1 ? names[0] : names.length ? names.join(', ') : assigned }
       })

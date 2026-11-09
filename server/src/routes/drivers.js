@@ -10,6 +10,10 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import prisma from '../prisma.js'
+import { Prisma } from '@prisma/client'
+import { buildAcl } from '../lib/flespiGrant.js'
+import * as flespi from '../lib/flespi.js'
+import { ibuttonKey } from '../lib/alertEngine.js'
 import { randomBytes } from 'node:crypto'
 import { asyncHandler, badRequest, conflict, HttpError, notFound } from '../lib/http.js'
 import { fromBase64, sniffDocument, sniffImage } from '../lib/files.js'
@@ -149,6 +153,69 @@ router.get(
       include: INCLUDE,
     })
     res.json({ data: rows.map(publicDriver) })
+  })
+)
+
+/**
+ * Driver IDs (iButton tags) the caller's trackers have read lately that no
+ * driver holds (client, 2026-11-09: "all unregistered driver IDs show in the
+ * Driver menu, so we can select that"). From our own telemetry history:
+ * each tag with the vehicle that read it last, when, and how many messages
+ * carried it. Before `/:id`, which would otherwise take the path.
+ */
+export const UNREGISTERED_DAYS = 30
+
+router.get(
+  '/unregistered-ids',
+  asyncHandler(async (req, res) => {
+    const days = Math.min(90, Math.max(1, Number(req.query.days) || UNREGISTERED_DAYS))
+    const since = Math.floor(Date.now() / 1000) - days * 86_400
+    let { deviceIds } = await buildAcl(req.scope)
+    // Every device rather than "all": the history is keyed by device, so a
+    // per-device range is an index scan where an open one is the whole table.
+    if (deviceIds === null) deviceIds = flespi.isConfigured() ? await flespi.allDeviceIds() : []
+    if (!deviceIds.length) { res.json({ data: [] }); return }
+
+    const rows = await prisma.$queryRaw`
+      SELECT extra->>'ibutton.code' AS code, "deviceId", max(ts)::int AS last, count(*)::int AS reads
+      FROM "TelemetryMessage"
+      WHERE "deviceId" IN (${Prisma.join(deviceIds)}) AND ts >= ${since} AND extra->>'ibutton.code' IS NOT NULL
+      GROUP BY 1, 2`
+
+    const held = new Set((await prisma.driver.findMany({ where: { ibuttonCode: { not: null } }, select: { ibuttonCode: true } }))
+      .map(d => ibuttonKey(d.ibuttonCode)))
+    const byCode = new Map()
+    for (const r of rows) {
+      const code = ibuttonKey(r.code)
+      if (!code || held.has(code)) continue
+      const hit = byCode.get(code)
+      if (!hit) byCode.set(code, { code, lastSeen: r.last, reads: r.reads, deviceId: r.deviceId })
+      else {
+        hit.reads += r.reads
+        if (r.last > hit.lastSeen) { hit.lastSeen = r.last; hit.deviceId = r.deviceId }
+      }
+    }
+    const list = [...byCode.values()].sort((a, b) => b.lastSeen - a.lastSeen).slice(0, 200)
+
+    // The vehicle each tag was last read in, through the tracker's IMEI.
+    const imeiOf = new Map()
+    try {
+      for (const [imei, id] of await flespi.deviceMap()) imeiOf.set(id, imei)
+    } catch { /* Flespi unreachable: the list still has the device ids */ }
+    const imeis = [...new Set(list.map(u => imeiOf.get(u.deviceId)).filter(Boolean))]
+    const vehicles = imeis.length
+      ? await prisma.vehicle.findMany({
+        where: scopedWhere('vehicle', req.scope, { imei: { in: imeis } }),
+        select: { id: true, imei: true, plateNo: true, fleetNo: true, bgId: true, bg: { select: { name: true } } },
+      })
+      : []
+    const byImei = new Map(vehicles.map(v => [v.imei, v]))
+    res.json({
+      data: list.map(u => {
+        const v = byImei.get(imeiOf.get(u.deviceId))
+        return { ...u, vehicle: v ? { id: v.id, plateNo: v.plateNo, fleetNo: v.fleetNo, bgId: v.bgId, bgName: v.bg?.name ?? '' } : null }
+      }),
+    })
   })
 )
 

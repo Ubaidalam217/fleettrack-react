@@ -50,7 +50,7 @@ const TREND_STYLE = { Improving: { color: '#15803d', fontWeight: 700 }, Deterior
 const hours = sec => (sec ? (sec / 3600).toFixed(1) : '0.0')
 
 const PERF_COLUMNS = [
-  { key: 'code',     label: 'Driver ID',      width: '7%',  pdf: 6 },
+  { key: 'code',     label: 'Driver No.',     width: '7%',  pdf: 6 },
   { key: 'name',     label: 'Driver',         width: '13%', pdf: 11 },
   { key: 'trips',    label: 'Trips',          width: '4.5%', pdf: 4, align: 'right' },
   { key: 'distance', label: 'Distance (km)',  width: '7%',  pdf: 6, align: 'right' },
@@ -68,7 +68,7 @@ const PERF_COLUMNS = [
 ]
 
 const RISK_COLUMNS = [
-  { key: 'code',     label: 'Driver ID',        width: '7%',  pdf: 6 },
+  { key: 'code',     label: 'Driver No.',       width: '7%',  pdf: 6 },
   { key: 'name',     label: 'Driver',           width: '13%', pdf: 11 },
   { key: 'score',    label: 'Safety Score',     width: '7%',  pdf: 6, align: 'right' },
   { key: 'rating',   label: 'Rating',           width: '6%',  pdf: 5 },
@@ -87,7 +87,7 @@ const NOID_COLUMNS = [
   { key: 'trips',    label: 'Trips',           width: '8%',  pdf: 7, align: 'right' },
   { key: 'distance', label: 'Distance (km)',   width: '12%', pdf: 10, align: 'right' },
   { key: 'drive',    label: 'Driving',         width: '12%', pdf: 10 },
-  { key: 'tags',     label: 'Unassigned iButton tags read', width: '50%', pdf: 40 },
+  { key: 'tags',     label: 'Unregistered Driver IDs read', width: '50%', pdf: 40 },
 ]
 
 function expiryText(e) {
@@ -178,7 +178,7 @@ export default function DriverPerformanceReport(props) {
       rows: drivers.map(d => {
         const notes = []
         if (d.suspendedDriving) notes.push(`Drove while suspended (${d.suspendedDriving})`)
-        if (d.trips && !d.identifiedBy.tag) notes.push('No iButton used')
+        if (d.trips && !d.identifiedBy.tag) notes.push('No Driver ID card used')
         return {
           key: d.driverId, code: driverCode(d), name: d.name,
           score: d.safetyScore ?? '—', rating: d.rating, trend: TREND_TEXT[d.trend] ?? d.trend,
@@ -200,7 +200,7 @@ export default function DriverPerformanceReport(props) {
     total: `Vehicles ${data?.unidentified?.length ?? 0}   ·   Trips ${(data?.unidentified ?? []).reduce((n, u) => n + u.trips, 0)}`,
     rows: (data?.unidentified ?? []).map(u => ({
       key: u.vehicleId, vehicle: u.vehicle, trips: u.trips, distance: km(u.distanceKm), drive: hms(u.driveSec),
-      tags: u.unknownTags.length ? `${u.unknownTags.join(', ')} — assign under Settings › Driver` : '—',
+      tags: u.unknownTags.length ? `${u.unknownTags.join(', ')} — register under Settings › Driver` : '—',
     })),
   }], [data])
 

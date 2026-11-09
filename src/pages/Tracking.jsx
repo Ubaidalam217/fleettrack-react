@@ -14,6 +14,7 @@ import { DEFAULT_REPLAY_FIELDS } from '../components/tracking/replayFields'
 import VehicleActionMenu from '../components/tracking/VehicleActionMenu'
 import VehicleConsole from '../components/tracking/VehicleConsole'
 import VehicleInfoDialog from '../components/tracking/VehicleInfoDialog'
+import UnregisteredDriverDialog from '../components/tracking/UnregisteredDriverDialog'
 import NearestAssetsModal from '../components/tracking/NearestAssetsModal'
 import ConfirmDialog from '../components/tracking/ConfirmDialog'
 import ToastStack from '../components/tracking/Toasts'
@@ -26,7 +27,7 @@ import {
 import { fetchDeviceTrack, buildSegments } from '../utils/replay'
 import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/traces'
 import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
-import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, useGroups, driverNameForDevice, settingsProfileForImei, vehicleByImei } from '../data/settings'
+import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, useGroups, driverNameForDevice, driverDisplayForDevice, settingsProfileForImei, vehicleByImei } from '../data/settings'
 import { useSession } from '../data/session'
 import { IS_REAL } from '../data/mode'
 import FleetTreeHeader, { GroupsToggle } from '../components/tracking/FleetTreeHeader'
@@ -440,6 +441,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const [consoleVehicleId, setConsoleVehicleId] = useState(null)
   // "Vehicle information" (custom fields) from the ⋮ menu.
   const [infoVehicleId, setInfoVehicleId] = useState(null)
+  // An unregistered Driver ID tapped in the list: { code, vehicleId }.
+  const [unregDriver, setUnregDriver] = useState(null)
   const [nearestVehicleId, setNearestVehicleId] = useState(null)
   const [pendingCommand, setPendingCommand]     = useState(null) // { vehicleId, actionKey }
   const [commandBusy, setCommandBusy]           = useState(false)
@@ -1143,17 +1146,43 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
             </div>
           )}
           {/* One line (client, option 3): speed · last update · fleet no · driver.
-              No driver assigned → no driver at all. */}
-          <div
-            title={`Last update: ${fmt(v.lastTs)}`}
-            style={{ fontSize: 11, color: 'var(--c-text2)', paddingLeft: 17, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          >
-            {[
-              v.speed != null ? `${v.speed} km/h` : 'N/A',
-              fmtShort(v.lastTs),
-              v.master?.fleetNo,
-              driverNameForDevice(v),
-            ].filter(Boolean).join(' · ')}
+              The driver comes with its Driver ID, and an ID nobody holds shows
+              as "Unregistered" and opens the register dialog (client,
+              2026-11-09). No driver at all → nothing. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 17, minWidth: 0, fontSize: 11, color: 'var(--c-text2)' }}>
+            <span title={`Last update: ${fmt(v.lastTs)}`} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+              {[v.speed != null ? `${v.speed} km/h` : 'N/A', fmtShort(v.lastTs), v.master?.fleetNo].filter(Boolean).join(' · ')}
+            </span>
+            {(() => {
+              const drv = driverDisplayForDevice(v)
+              if (!drv) return null
+              if (drv.registered) {
+                return (
+                  <span title={drv.code ? `${drv.name} · Driver ID ${drv.code}` : drv.name} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    · {drv.name}{drv.code && <span style={{ color: 'var(--c-text3)' }}> · ID {drv.code}</span>}
+                  </span>
+                )
+              }
+              return (
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); setUnregDriver({ code: drv.code, vehicleId: v.id }) }}
+                  title={`Unregistered Driver · ID ${drv.code} — register it`}
+                  aria-label={`Unregistered Driver, ID ${drv.code}. Register it`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, maxWidth: '100%',
+                    padding: '2px 7px', borderRadius: 999, cursor: 'pointer', fontSize: 10.5, fontWeight: 700,
+                    color: '#b45309', background: 'color-mix(in srgb, #f59e0b 14%, transparent)',
+                    border: '1px solid color-mix(in srgb, #f59e0b 45%, transparent)',
+                  }}
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                    <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4M12 17h.01" />
+                  </svg>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Unregistered · ID {drv.code}</span>
+                </button>
+              )
+            })()}
           </div>
         </div>
 
@@ -1830,6 +1859,19 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           </div>
         </div>
       </div>
+
+      {unregDriver && (() => {
+        const uv = vehicles.find(x => x.id === unregDriver.vehicleId)
+        return (
+          <UnregisteredDriverDialog
+            code={unregDriver.code}
+            vehicleName={uv ? vehicleName(uv) : ''}
+            bgId={uv ? settingsProfileForImei(uv.ident).bgId || '' : ''}
+            onClose={() => setUnregDriver(null)}
+            onDone={msg => pushToast(msg, { tone: 'success' })}
+          />
+        )
+      })()}
 
       {infoVehicle && (
         <VehicleInfoDialog

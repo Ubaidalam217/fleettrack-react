@@ -60,7 +60,7 @@ export {
 
   // Drivers: the store, and who drives which vehicle.
   emptyDriver, useDrivers, driversForCompany,
-  driverForVehicleId, driverForVehicleImei, driverNameForDevice, useDriverForImei,
+  driverForVehicleId, driverForVehicleImei, driverNameForDevice, driverDisplayForDevice, useDriverForImei,
   ibuttonKey, driverForIbutton, isIbuttonTaken, driverForDevice, useDriverForDevice,
   DRIVER_DEPARTMENTS, LICENCE_CATEGORIES, DRIVER_DOC_TYPES, driverCode, INCIDENT_TYPES,
 
@@ -321,6 +321,16 @@ export function removeBranch(id) {
 export function addVehicle(row) {
   if (!IS_REAL) return done(mock.addVehicle(row))
   return write(async () => A.vehicle.toFe(await post('/api/vehicles', A.vehicle.toApiCreate(row))))
+}
+
+/**
+ * Driver IDs (iButton tags) the trackers read lately that no driver holds:
+ * [{ code, lastSeen, reads, deviceId, vehicle }] (server: routes/drivers.js).
+ * From the server's telemetry history, so empty in demo mode.
+ */
+export function listUnregisteredDriverIds(days) {
+  if (!IS_REAL) return Promise.resolve([])
+  return get('/api/drivers/unregistered-ids', days ? { days } : undefined)
 }
 
 /**

@@ -16,7 +16,8 @@ import {
 import { useAddress } from '../../hooks/useAddress'
 import { useVisible } from '../../hooks/useVisible'
 import { shortenAddress } from '../../utils/geocode'
-import { useSettingsProfile, useDriverForDevice, useDrivers, driverForIbutton, ibuttonKey, updateDriver } from '../../data/settings'
+import { useSettingsProfile, useDriverForDevice, useDrivers, driverForIbutton, ibuttonKey, updateDriver, driverDisplayForDevice } from '../../data/settings'
+import UnregisteredDriverDialog from './UnregisteredDriverDialog'
 import { licenceExpiryState, formatExpiryDate } from '../../utils/licenceExpiry'
 import { BASE_URL, HEADERS } from '../../hooks/flespiConfig'
 
@@ -349,6 +350,55 @@ function DriverInfo({ v }) {
   const found = useDriverForDevice(v)
   const driver = found?.driver ?? null
   const d = v.master.driver
+  const profile = useSettingsProfile(v.ident)
+  const [registering, setRegistering] = useState(false)
+  // An ID the tracker reads that no driver holds (client, 2026-11-09).
+  const shown = driverDisplayForDevice(v)
+  const unregistered = shown && !shown.registered ? shown.code : ''
+
+  if (unregistered) {
+    return (
+      <>
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 14, padding: '16px 18px', borderRadius: 14,
+          border: '1px solid color-mix(in srgb, #f59e0b 40%, transparent)', background: 'color-mix(in srgb, #f59e0b 9%, var(--c-card))',
+        }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706', background: 'color-mix(in srgb, #f59e0b 18%, transparent)' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4M12 17h.01" />
+            </svg>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--c-text1)' }}>Unregistered Driver</div>
+            <div style={{ fontSize: 12.5, color: 'var(--c-text2)', marginTop: 3 }}>
+              Driver ID <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontWeight: 700, color: 'var(--c-text1)' }}>{unregistered}</code>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--c-text3)', lineHeight: 1.6, marginTop: 6 }}>
+              The tracker reads this Driver ID, but no driver holds it. Register it to see who is driving.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRegistering(true)}
+            style={{
+              flexShrink: 0, height: 38, padding: '0 16px', borderRadius: 10, border: 0, cursor: 'pointer',
+              background: 'var(--ft-accent)', color: '#fff', fontSize: 12.5, fontWeight: 700,
+            }}
+          >
+            Register or assign
+          </button>
+        </div>
+        {registering && (
+          <UnregisteredDriverDialog
+            code={unregistered}
+            vehicleName={v.master?.plateNo || v.name}
+            bgId={profile.linked ? profile.bgId : ''}
+            onClose={() => setRegistering(false)}
+          />
+        )}
+      </>
+    )
+  }
 
   if (!driver && !hasDriver(v.master)) {
     return (
@@ -371,6 +421,8 @@ function DriverInfo({ v }) {
         <Section title="Driver" caption={found.viaTag ? `identified by iButton ${v.ibutton}` : 'from Settings > Driver'}>
           <Grid>
             <Field label="Name"       value={driver.name} />
+            {/* The Driver ID always shows with the driver (client, 2026-11-09). */}
+            <Field label="Driver ID"  value={(found.viaTag ? ibuttonKey(v.ibutton) : ibuttonKey(driver.ibuttonCode)) || null} />
             <Field label="Mobile"     value={telLink(driver.mobile)} />
             <Field label="Licence No" value={driver.licenseNo} />
             <Field
