@@ -323,6 +323,21 @@ export function addVehicle(row) {
   return write(async () => A.vehicle.toFe(await post('/api/vehicles', A.vehicle.toApiCreate(row))))
 }
 
+/**
+ * A vehicle's custom fields ([{ name, value }]) — on their own endpoint, which
+ * leaves the Flespi device alone (server: routes/vehicles.js).
+ */
+export function updateVehicleCustomFields(id, fields) {
+  if (!IS_REAL) {
+    return done(mock.updateVehicle(id, {
+      customFields: fields.filter(f => f.name.trim() || f.value.trim()).map(f => ({ name: f.name.trim(), value: f.value.trim() })),
+      customFieldsUpdatedAt: new Date().toISOString(),
+      customFieldsUpdatedBy: 'Demo user',
+    }))
+  }
+  return write(async () => A.vehicle.toFe(await put(`/api/vehicles/${id}/custom-fields`, { fields })))
+}
+
 export function updateVehicle(id, patch) {
   if (!IS_REAL) return done(mock.updateVehicle(id, patch))
   return write(async () =>

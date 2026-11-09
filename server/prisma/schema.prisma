@@ -202,6 +202,15 @@ model Vehicle {
   /// Stored as UTC midnight of that day; the API speaks "YYYY-MM-DD".
   validUntil DateTime?
 
+  /// Custom fields (client, 2026-11-09): whatever the client keeps against the
+  /// vehicle — contract numbers, dates, contact names, e-mails, phones — as
+  /// [{ name, value }] in the order they were entered. Saved on their own
+  /// (PUT /api/vehicles/:id/custom-fields), never through the vehicle form.
+  customFields          Json      @default("[]")
+  customFieldsUpdatedAt DateTime?
+  /// Who last changed them, as a name to show ("Super Admin", an e-mail).
+  customFieldsUpdatedBy String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

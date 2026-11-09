@@ -13,6 +13,7 @@ import ReplayInfoCard, { REPLAY_INFO_CSS } from '../components/tracking/ReplayIn
 import { DEFAULT_REPLAY_FIELDS } from '../components/tracking/replayFields'
 import VehicleActionMenu from '../components/tracking/VehicleActionMenu'
 import VehicleConsole from '../components/tracking/VehicleConsole'
+import VehicleInfoDialog from '../components/tracking/VehicleInfoDialog'
 import NearestAssetsModal from '../components/tracking/NearestAssetsModal'
 import ConfirmDialog from '../components/tracking/ConfirmDialog'
 import ToastStack from '../components/tracking/Toasts'
@@ -314,6 +315,12 @@ function PopupFit() {
 // Menu glyphs. Inline rather than lucide-react imports to match the rest of
 // this page, which draws its own icons.
 const MenuIcon = {
+  info: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5.5M12 7.6v.2" />
+    </svg>
+  ),
   follow: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
@@ -431,6 +438,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // ever about the selected vehicle — but it still holds an id rather than a
   // boolean, so the open dialog cannot be re-pointed by a change of selection.
   const [consoleVehicleId, setConsoleVehicleId] = useState(null)
+  // "Vehicle information" (custom fields) from the ⋮ menu.
+  const [infoVehicleId, setInfoVehicleId] = useState(null)
   const [nearestVehicleId, setNearestVehicleId] = useState(null)
   const [pendingCommand, setPendingCommand]     = useState(null) // { vehicleId, actionKey }
   const [commandBusy, setCommandBusy]           = useState(false)
@@ -951,6 +960,13 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // panel's toolbar, which is where the fields it changes are on screen.
   const menuItemsFor = (v) => [
     {
+      key: 'info',
+      label: 'Vehicle information',
+      icon: MenuIcon.info,
+      onSelect: () => setInfoVehicleId(v.id),
+    },
+    { type: 'separator' },
+    {
       key: 'follow',
       label: 'Follow',
       icon: MenuIcon.follow,
@@ -1010,6 +1026,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // Resolved from the live list rather than captured at open time, so an
   // in-flight telemetry push cannot leave a modal showing a stale vehicle.
   const consoleVehicle = consoleVehicleId != null ? vehicles.find(v => v.id === consoleVehicleId) ?? null : null
+  const infoVehicle    = infoVehicleId    != null ? vehicles.find(v => v.id === infoVehicleId) ?? null : null
   const nearestVehicle = nearestVehicleId != null ? vehicles.find(v => v.id === nearestVehicleId) ?? null : null
   const commandVehicle = pendingCommand   != null ? vehicles.find(v => v.id === pendingCommand.vehicleId) ?? null : null
   const commandAction  = pendingCommand   != null ? ACTIONS[pendingCommand.actionKey] : null
@@ -1812,6 +1829,16 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           </div>
         </div>
       </div>
+
+      {infoVehicle && (
+        <VehicleInfoDialog
+          vehicle={infoVehicle}
+          title={vehicleName(infoVehicle)}
+          onClose={() => setInfoVehicleId(null)}
+          onSaved={msg => pushToast(msg, { tone: 'success' })}
+          onRegister={() => { setInfoVehicleId(null); setConsoleVehicleId(infoVehicle.id) }}
+        />
+      )}
 
       {consoleVehicle && (
         <VehicleConsole

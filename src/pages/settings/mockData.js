@@ -300,6 +300,8 @@ export function emptyVehicle() {
     // Validity: "YYYY-MM-DD", the day the vehicle's service is valid until
     // (client 2026-11-06). Filterable on the Live Map.
     validUntil:    '',
+    // Custom fields: [{ name, value }] the client keeps against the vehicle.
+    customFields:  [],
   }
 }
 
@@ -605,7 +607,13 @@ const SEED_USERS = [
 // them — they stay on the seeds as extra identifiers and are simply absent on
 // anything added since.
 const SEED_VEHICLES = [
-  { id: 'v1', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 12345-G1', vehicleId: 'FL-01', imei: '863071011234501', odometer: '184320', make: 'Volvo',      model: 'FH16',     deviceType: 'Teltonika FMB920', mobileNo: '+971 50 111 2201', validUntil: '2026-10-31' },
+  { id: 'v1', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 12345-G1', vehicleId: 'FL-01', imei: '863071011234501', odometer: '184320', make: 'Volvo',      model: 'FH16',     deviceType: 'Teltonika FMB920', mobileNo: '+971 50 111 2201', validUntil: '2026-10-31',
+    customFields: [
+      { name: 'Contract (Project) SAP Number', value: 'P30312' },
+      { name: 'Contract End Date', value: '09/07/2027' },
+      { name: 'Contract Administrator Name', value: 'Mr. Ahmed Khan' },
+      { name: 'Contract Administrator E-Mail', value: 'admin@example.com' },
+    ] },
   { id: 'v2', companyId: 'c1', branchId: 'b1', groupId: 'g1', subGroup: 'Heavy',  vehicleNumber: 'AD 55401-B2', vehicleId: 'FL-02', imei: '863071011234502', odometer: '96110',  make: 'Volvo',      model: 'FH16',     deviceType: 'Teltonika FMB920', mobileNo: '+971 50 111 2202', validUntil: '2026-11-25' },
   { id: 'v3', companyId: 'c1', branchId: 'b2', groupId: 'g1', subGroup: 'Light',  vehicleNumber: 'AD 77120-A4', vehicleId: 'FL-03', imei: '863071011234503', odometer: '52400',  make: 'Toyota',     model: 'HiAce',    deviceType: 'Teltonika FMB130', mobileNo: '+971 50 111 2203', validUntil: '2027-06-30' },
   { id: 'v4', companyId: 'c1', branchId: '',   groupId: 'g1', subGroup: '',       vehicleNumber: 'AD 30988-C1', vehicleId: 'FL-04', imei: '863071011234504', odometer: '31875',  make: 'Nissan',     model: 'Navara',   deviceType: 'Teltonika FMB130', mobileNo: '' },

@@ -48,6 +48,39 @@ const vehicleFields = {
   groupId: optionalId(),
 }
 
+/**
+ * Custom fields: free name → value pairs. Blank rows are dropped; a value with
+ * no name, or the same name twice (ignoring case), is refused with the row it
+ * is on, so the form can point at it.
+ */
+export const MAX_CUSTOM_FIELDS = 100
+const customFieldsSchema = z.object({
+  fields: z
+    .array(z.object({
+      name: z.union([z.string(), z.null()]).default('').transform(v => String(v ?? '').trim()),
+      value: z.union([z.string(), z.number(), z.null()]).default('').transform(v => String(v ?? '').trim()),
+    }))
+    .max(MAX_CUSTOM_FIELDS, `Up to ${MAX_CUSTOM_FIELDS} custom fields per vehicle`),
+})
+
+function cleanCustomFields(rows) {
+  const errors = {}
+  const seen = new Map()
+  const out = []
+  rows.forEach((f, i) => {
+    if (!f.name && !f.value) return
+    if (!f.name) { errors[`fields.${i}.name`] = 'Give this field a name'; return }
+    if (f.name.length > 80) { errors[`fields.${i}.name`] = 'Up to 80 characters'; return }
+    if (f.value.length > 1000) { errors[`fields.${i}.value`] = 'Up to 1000 characters'; return }
+    const key = f.name.toLowerCase()
+    if (seen.has(key)) { errors[`fields.${i}.name`] = 'This name is already used above'; return }
+    seen.set(key, i)
+    out.push({ name: f.name, value: f.value })
+  })
+  if (Object.keys(errors).length) throw badRequest('Check the highlighted fields', errors)
+  return out
+}
+
 const createSchema = z.object({
   bgId: requiredId('Business group'),
   branchId: optionalId(),
@@ -251,6 +284,30 @@ router.put(
     // device ids may no longer match.
     await revokeGrantsForBg(existing.bgId)
     res.json({ data: row, flespi: flespiDevice })
+  })
+)
+
+/**
+ * Custom fields only. Separate from PUT /:id on purpose: that one also updates
+ * the Flespi device, and a note about a contract must not touch the tracker.
+ */
+router.put(
+  '/:id/custom-fields',
+  validate(customFieldsSchema),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const fields = cleanCustomFields(req.body.fields)
+    const row = await prisma.vehicle.update({
+      where: { id: existing.id },
+      data: {
+        customFields: fields,
+        customFieldsUpdatedAt: new Date(),
+        customFieldsUpdatedBy: req.user?.shortName || req.user?.email || null,
+      },
+      include: VEHICLE_INCLUDE,
+    })
+    res.json({ data: row })
   })
 )
 

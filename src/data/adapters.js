@@ -169,6 +169,13 @@ export const vehicle = {
     vehicleType: orBlank(r.vehicleType),
     // The API sends the date as an ISO timestamp; the form binds "YYYY-MM-DD".
     validUntil: r.validUntil ? String(r.validUntil).slice(0, 10) : '',
+    // Custom fields ride along read-only here: they are saved through their own
+    // endpoint (updateVehicleCustomFields), never with the vehicle form.
+    customFields: Array.isArray(r.customFields)
+      ? r.customFields.map(f => ({ name: String(f?.name ?? ''), value: String(f?.value ?? '') }))
+      : [],
+    customFieldsUpdatedAt: r.customFieldsUpdatedAt ?? null,
+    customFieldsUpdatedBy: r.customFieldsUpdatedBy ?? '',
   }),
   toApiCreate: r => ({
     bgId: r.companyId,
