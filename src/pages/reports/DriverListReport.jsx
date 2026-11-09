@@ -89,9 +89,9 @@ export default function DriverListReport(props) {
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [rows])
 
-  const company = bg ? companyNameFor(bg) : companies.length === 1 ? companies[0].name : 'All BGs'
+  const company = bg ? companyNameFor(bg) : companies.length === 1 ? companies[0].name : 'All Business Groups'
   const filters = [
-    ['BG', company],
+    ['Business Group', company],
     ['Status', status === 'all' ? 'All' : status],
     ['Licence', LICENCE_FILTERS.find(f => f.key === licence)?.label],
     ['Total Drivers', String(rows.length)],
@@ -120,9 +120,9 @@ export default function DriverListReport(props) {
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           {companies.length > 1 && (
             <label style={{ display: 'flex', flexDirection: 'column', minWidth: 200 }}>
-              <span style={LABEL}>BG</span>
+              <span style={LABEL}>BUSINESS GROUP</span>
               <select value={bg} onChange={e => setBg(e.target.value)} style={FIELD}>
-                <option value="">All BGs</option>
+                <option value="">All Business Groups</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>

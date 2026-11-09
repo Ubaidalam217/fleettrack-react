@@ -376,7 +376,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
                   ))}
                 </MultiSelect>
 
-                <MultiSelect label="COMPANY (BG)" summary={bgLabel} disabled={bgOptions.length === 0}>
+                <MultiSelect label="BUSINESS GROUP" summary={bgLabel} disabled={bgOptions.length === 0}>
                   <CheckRow checked={allBgs} onChange={() => setSelectedBgs(allBgs ? [] : null)}>
                     <strong>All companies</strong>
                   </CheckRow>

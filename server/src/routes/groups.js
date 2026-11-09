@@ -20,7 +20,7 @@ const router = Router()
 
 const createSchema = z.object({
   name: requiredText('Name'),
-  ggbId: requiredId('GGB'),
+  ggbId: requiredId('Group Global Admin'),
 })
 
 const updateSchema = z.object({
@@ -133,7 +133,7 @@ router.delete(
  */
 router.post(
   '/:id/move',
-  validate(z.object({ ggbId: requiredId('GGB') })),
+  validate(z.object({ ggbId: requiredId('Group Global Admin') })),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'group')
     const existing = await findScopedOrThrow('group', req.params.id, req.scope)

@@ -38,7 +38,7 @@ function fieldsFor(resellers, editing) {
   const lockParent = IS_REAL && editing
   return [
     {
-      name: 'resellerId', label: 'Group Global Admin (GGB)', required: true, type: 'select',
+      name: 'resellerId', label: 'Group Global Admin', required: true, type: 'select',
       options: resellers.map(r => ({ value: r.id, label: r.name })),
       disabled: lockParent,
       hint: lockParent ? 'A group cannot be moved to another Group Global Admin.' : undefined,
@@ -236,8 +236,8 @@ export default function Group(props) {
           title="Delete group?"
           body={`${pending.name} will be removed from ${resellerNameFor(pending.resellerId)}.`}
           note={modeNote(
-            'BGs in this group are kept and fall back to acting as their own group. Any Group Admin account scoped to this group is deleted.',
-            'BGs in this group are left in place and fall back to acting as their own group. This is mock data — nothing is sent to a server.'
+            'Business Groups in this group are kept and fall back to acting as their own group. Any Group Admin account scoped to this group is deleted.',
+            'Business Groups in this group are left in place and fall back to acting as their own group. This is mock data — nothing is sent to a server.'
           )}
           confirmLabel="Delete"
           onConfirm={confirmDelete}

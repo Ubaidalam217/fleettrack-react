@@ -160,7 +160,7 @@ async function assertScopeLinks(scope, role, body) {
       return { ggbId: null, groupId: null, bgId: null }
 
     case ROLES.GGB_ADMIN: {
-      if (!body.ggbId) throw badRequest('A GGB admin needs a GGB', { ggbId: 'Required' })
+      if (!body.ggbId) throw badRequest('A Group Global Admin account needs a Group Global Admin', { ggbId: 'Required' })
       const ggb = await assertWritableParent(scope, 'ggb', body.ggbId)
       return { ggbId: ggb.id, groupId: null, bgId: null }
     }

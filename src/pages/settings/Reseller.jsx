@@ -120,7 +120,7 @@ export default function Reseller(props) {
     }
   }
 
-  const title = !editing ? 'Group Global Admin (GGB)' : draft.id ? 'Edit Group Global Admin' : 'Add Group Global Admin'
+  const title = !editing ? 'Group Global Admin' : draft.id ? 'Edit Group Global Admin' : 'Add Group Global Admin'
 
   return (
     <SettingsLayout title={title} {...props}>

@@ -219,9 +219,9 @@ configureHttp({
  */
 export const ROLE_LABELS = Object.freeze({
   SUPER_ADMIN: 'Super Admin',
-  GGB_ADMIN: 'GGB Admin',
+  GGB_ADMIN: 'Group Global Admin',
   GROUP_ADMIN: 'Group Admin',
-  BG_USER: 'BG User',
+  BG_USER: 'Business Group User',
   SUB_USER: 'Sub User',
 })
 

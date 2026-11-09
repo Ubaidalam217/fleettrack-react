@@ -49,7 +49,7 @@ const ERROR_TAB = {
 
 const COLUMNS = [
   { key: 'name',     label: 'Sub-user Name', bold: true },
-  { key: 'company',  label: 'BG', render: row => companyNameFor(row.companyId) },
+  { key: 'company',  label: 'Business Group', render: row => companyNameFor(row.companyId) },
   {
     key: 'vehicles',
     label: 'Assigned Vehicles',
@@ -215,7 +215,7 @@ export default function CompanySubuser(props) {
     if (saving) return
 
     const next = {}
-    if (!draft.companyId)    next.companyId = 'BG is required'
+    if (!draft.companyId)    next.companyId = 'Business Group is required'
     if (!draft.name.trim())  next.name      = 'Short Name is required'
 
     if (!draft.email.trim()) next.email = 'User Name is required'
@@ -333,7 +333,7 @@ export default function CompanySubuser(props) {
             {/* ── Tab 1: My Account ── */}
             {tab === 'account' && (
               <div style={GRID}>
-                <Field label="BG (Business Group)" required error={errors.companyId}>
+                <Field label="Business Group" required error={errors.companyId}>
                   <select
                     ref={firstRef}
                     name="companyId"
@@ -488,7 +488,7 @@ export default function CompanySubuser(props) {
                     type="button"
                     style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
                     disabled={noCompanies}
-                    title={noCompanies ? 'Add a BG first' : undefined}
+                    title={noCompanies ? 'Add a Business Group first' : undefined}
                     onClick={() => openAdd()}
                   >
                     <Plus size={14} strokeWidth={2.6} />
@@ -507,7 +507,7 @@ export default function CompanySubuser(props) {
                   !access.canWrite
                     ? 'No sub-users to show.'
                     : noCompanies
-                      ? 'No BGs on file — add a Business Group before creating sub-users.'
+                      ? 'No Business Groups on file — add one before creating sub-users.'
                       : 'No sub-users yet — use Add Subuser to create one.'
                 }
               />

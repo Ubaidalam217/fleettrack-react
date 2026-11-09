@@ -72,7 +72,8 @@ export default function VehicleListReport(props) {
         companyId: reg?.companyId || NOT_REGISTERED,
         vehicleId: reg?.vehicleId || lv?.name || '—',
         plateNo: reg?.vehicleNumber || '—',
-        branch: reg ? branchNameFor(reg.branchId) : '—',
+        // No branch: the client (Business Group) is the branch.
+        branch: reg ? (reg.branchId ? branchNameFor(reg.branchId) : companyNameFor(reg.companyId)) : '—',
         makeModel: [reg?.make, reg?.model].filter(Boolean).join(' ') || '—',
         type: reg?.vehicleType || '—',
         imei: reg?.imei || lv?.ident || '—',
@@ -145,9 +146,9 @@ export default function VehicleListReport(props) {
       .sort((a, b) => (a.key === NOT_REGISTERED) - (b.key === NOT_REGISTERED) || a.label.localeCompare(b.label))
   }, [withLocation])
 
-  const company = bg ? companyNameFor(bg) : companies.length === 1 ? companies[0].name : 'All BGs'
+  const company = bg ? companyNameFor(bg) : companies.length === 1 ? companies[0].name : 'All Business Groups'
   const filters = [
-    ['BG', company],
+    ['Business Group', company],
     ['Status', status === 'all' ? 'All' : STATUS[status]?.label],
     ['Search', query.trim() || '—'],
     ['Total Vehicles', String(withLocation.length)],
@@ -176,9 +177,9 @@ export default function VehicleListReport(props) {
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           {companies.length > 1 && (
             <label style={{ display: 'flex', flexDirection: 'column', minWidth: 200 }}>
-              <span style={LABEL}>BG</span>
+              <span style={LABEL}>BUSINESS GROUP</span>
               <select value={bg} onChange={e => setBg(e.target.value)} style={FIELD}>
-                <option value="">All BGs</option>
+                <option value="">All Business Groups</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>

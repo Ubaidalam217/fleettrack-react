@@ -114,7 +114,7 @@ export default function MoveDialog({ kind, node, onClose, push }) {
 
   const line = (n, one, many) => `${n} ${n === 1 ? one : many}`
   const items = [
-    kind === 'group' && line(impact.bgs, 'BG', 'BGs'),
+    kind === 'group' && line(impact.bgs, 'Business Group', 'Business Groups'),
     line(impact.branches, 'branch', 'branches'),
     line(impact.vehicles, 'vehicle', 'vehicles'),
     line(impact.users, 'user account', 'user accounts'),
@@ -132,7 +132,7 @@ export default function MoveDialog({ kind, node, onClose, push }) {
             <ArrowRightLeft size={18} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--c-text1)' }}>Move {kind === 'group' ? 'group' : 'BG'} “{node.name}”</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--c-text1)' }}>Move {kind === 'group' ? 'group' : 'Business Group'} “{node.name}”</div>
             <div style={{ fontSize: 12, color: 'var(--c-text3)', marginTop: 3 }}>Now in: {here}</div>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" disabled={saving}
@@ -141,7 +141,7 @@ export default function MoveDialog({ kind, node, onClose, push }) {
           </button>
         </div>
 
-        <Field label={kind === 'group' ? 'Move to GGB' : 'Move to'} required error={error}>
+        <Field label={kind === 'group' ? 'Move to Group Global Admin' : 'Move to'} required error={error}>
           <select value={target} onChange={e => { setTarget(e.target.value); setError(null) }} style={inputStyle(!!error)} disabled={saving}>
             <option value="">— Select —</option>
             {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -155,7 +155,7 @@ export default function MoveDialog({ kind, node, onClose, push }) {
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--c-text3)', marginBottom: 4 }}>Moves with it</div>
           <div style={{ fontSize: 12.5, color: 'var(--c-text1)', lineHeight: 1.5 }}>{items.join(' · ')}</div>
           <div style={{ fontSize: 11.5, color: 'var(--c-text3)', marginTop: 6, lineHeight: 1.45 }}>
-            Users keep their logins. Admins of the old {kind === 'group' ? 'GGB' : 'GGB / group'} stop seeing these vehicles; admins of the new one start.
+            Users keep their logins. Admins of the old {kind === 'group' ? 'Group Global Admin' : 'Group Global Admin / Group'} stop seeing these vehicles; admins of the new one start.
           </div>
         </div>
 

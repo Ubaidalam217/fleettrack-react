@@ -69,9 +69,9 @@ const MATCH_NONE = Object.freeze({ id: { in: [] } })
 
 /** The entity name used by the helpers → its Prisma delegate and 404 label. */
 const ENTITIES = Object.freeze({
-  ggb: { delegate: 'ggb', label: 'GGB' },
+  ggb: { delegate: 'ggb', label: 'Group Global Admin' },
   group: { delegate: 'group', label: 'Group' },
-  bg: { delegate: 'businessGroup', label: 'Business group' },
+  bg: { delegate: 'businessGroup', label: 'Business Group' },
   branch: { delegate: 'branch', label: 'Branch' },
   vehicle: { delegate: 'vehicle', label: 'Vehicle' },
   user: { delegate: 'user', label: 'User' },

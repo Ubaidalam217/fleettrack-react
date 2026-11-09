@@ -82,7 +82,7 @@ function cleanCustomFields(rows) {
 }
 
 const createSchema = z.object({
-  bgId: requiredId('Business group'),
+  bgId: requiredId('Business Group'),
   branchId: optionalId(),
   ...vehicleFields,
 })
@@ -147,7 +147,7 @@ async function resolveGroup(groupId, bgId) {
     select: { id: true },
   })
   if (!group) {
-    throw badRequest('Group must belong to the same GGB as the vehicle’s business group', {
+    throw badRequest('Group must belong to the same Group Global Admin as the vehicle’s Business Group', {
       groupId: 'Invalid group',
     })
   }

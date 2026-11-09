@@ -218,8 +218,8 @@ function VehicleInfo({ v, onOpenInfo, onOpenConsole }) {
 
   const validity = row?.validUntil ? validityState(row.validUntil) : null
   const [vColor, vNote] = VALIDITY_TONE[validity] ?? []
-  const groupName = profile.linked && profile.groupName !== 'BG is its own group' && profile.groupName !== '—' ? profile.groupName : ''
-  const branchName = profile.linked && profile.branchName !== '—' ? profile.branchName : ''
+  const groupName = profile.linked && profile.groupName !== 'Business Group is its own group' && profile.groupName !== '—' ? profile.groupName : ''
+  const branchName = profile.linked && profile.branchName !== '—' ? profile.branchName : ''  // the client's name when it has no branch
   const fields = row?.customFields ?? []
   const color = statusColor(v.status)
   const position = address ?? (v.lat != null && v.lng != null ? `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}` : null)

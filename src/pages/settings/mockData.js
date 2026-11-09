@@ -1294,8 +1294,11 @@ export function settingsProfileForImei(imei) {
     vehicle:    row,
     bgId:       row.companyId,
     bgName:     company?.name || '—',
-    groupName:  groupId ? groupNameFor(groupId) : (company ? 'BG is its own group' : '—'),
-    branchName: branchNameFor(row.branchId),
+    groupName:  groupId ? groupNameFor(groupId) : (company ? 'Business Group is its own group' : '—'),
+    // Client, 2026-11-09: a vehicle with no branch counts the client (its
+    // Business Group) as its branch.
+    branchName: row.branchId ? branchNameFor(row.branchId) : (company?.name || '—'),
+    branchIsBg: !row.branchId,
     subGroup:   row.subGroup   || '',
     plateNo:    row.vehicleNumber || '',
     // `vehicleId` is the operator's own identifier for the asset, and Fleet No

@@ -68,7 +68,7 @@ const driverFields = {
 
 const DATE_FIELDS = ['dateOfBirth', 'joiningDate', 'licenseIssueDate', 'licenseExpiry', 'visaExpiry', 'emiratesIdExpiry', 'medicalExpiry']
 
-const createSchema = z.object({ bgId: requiredId('Business group'), ...driverFields })
+const createSchema = z.object({ bgId: requiredId('Business Group'), ...driverFields })
 const updateSchema = z.object(driverFields)
 const listQuery = z.object({ bgId: z.string().trim().min(1).optional() })
 

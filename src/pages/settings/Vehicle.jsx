@@ -33,7 +33,7 @@ import { get } from '../../data/http'
 const COLUMNS = [
   { key: 'vehicleNumber', label: 'Vehicle Number', bold: true },
   { key: 'imei',          label: 'IMEI' },
-  { key: 'company',       label: 'BG', render: row => companyNameFor(row.companyId) },
+  { key: 'company',       label: 'Business Group', render: row => companyNameFor(row.companyId) },
   {
     key: 'makeModel',
     label: 'Make/Model',
@@ -192,7 +192,7 @@ export default function Vehicle(props) {
     if (saving) return
 
     const next = {}
-    if (!draft.companyId)              next.companyId     = 'BG is required'
+    if (!draft.companyId)              next.companyId     = 'Business Group is required'
     if (!draft.vehicleNumber.trim())   next.vehicleNumber = 'Vehicle Number is required'
     if (!draft.imei.trim())            next.imei          = 'IMEI Number is required'
     // Digits-only is a hard stop; an unusual *length* is only a warning, so it
@@ -268,10 +268,10 @@ export default function Vehicle(props) {
                   also have to strip its sub-user assignments and alert memberships
                   in the old BG, which is a transfer operation rather than an edit. */}
               <Field
-                label="BG (Business Group)"
+                label="Business Group"
                 required
                 error={errors.companyId}
-                hint={IS_REAL && draft.id ? 'A vehicle cannot be moved to another BG.' : undefined}
+                hint={IS_REAL && draft.id ? 'A vehicle cannot be moved to another Business Group.' : undefined}
               >
                 <select
                   ref={firstRef}
@@ -306,9 +306,9 @@ export default function Vehicle(props) {
                 >
                   <option value="">
                     {!draft.companyId
-                      ? '— Select a BG first —'
+                      ? '— Select a Business Group first —'
                       : branches.length === 0
-                        ? '— No branches for this BG —'
+                        ? '— No branches for this Business Group —'
                         : '— None —'}
                   </option>
                   {branches.map(b => (
@@ -327,7 +327,7 @@ export default function Vehicle(props) {
                     readOnly
                     tabIndex={-1}
                     aria-readonly="true"
-                    title="Taken from the selected BG's group"
+                    title="Taken from the selected Business Group's group"
                     style={{
                       ...inputStyle(false),
                       background: 'var(--c-thead)',
@@ -348,10 +348,10 @@ export default function Vehicle(props) {
                   >
                     <option value="">
                       {!draft.companyId
-                        ? '— Select a BG first —'
+                        ? '— Select a Business Group first —'
                         : groups.length === 0
-                          ? '— No groups for this GGB —'
-                          : '— None (BG is its own group) —'}
+                          ? '— No groups for this Group Global Admin —'
+                          : '— None (the Business Group is its own group) —'}
                     </option>
                     {groups.map(g => (
                       <option key={g.id} value={g.id}>{g.name}</option>
@@ -521,7 +521,7 @@ export default function Vehicle(props) {
                       disabled={noCompanies}
                       // A vehicle has to belong to a BG, so with none on file the
                       // form would open with an unsatisfiable required dropdown.
-                      title={noCompanies ? 'Add a BG first' : undefined}
+                      title={noCompanies ? 'Add a Business Group first' : undefined}
                       onClick={openAdd}
                     >
                       <Plus size={14} strokeWidth={2.6} />
@@ -550,7 +550,7 @@ export default function Vehicle(props) {
                   !access.canWrite
                     ? 'No vehicles to show.'
                     : noCompanies
-                      ? 'No BGs on file — add a Business Group before registering vehicles.'
+                      ? 'No Business Groups on file — add one before registering vehicles.'
                       : 'No vehicles yet — use Add Vehicle to register one.'
                 }
               />

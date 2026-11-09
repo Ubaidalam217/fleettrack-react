@@ -35,9 +35,9 @@ const RANK = { SUPER_ADMIN: 0, GGB_ADMIN: 1, GROUP_ADMIN: 2, BG_USER: 3, SUB_USE
 const canCreate = (roleKey, role) => !IS_REAL || roleKey == null || RANK[roleKey] < RANK[role]
 
 const KIND = {
-  ggb:    { noun: 'GGB',    role: ADMIN_ROLES.GGB_ADMIN,   label: 'GGB Admins' },
+  ggb:    { noun: 'Group Global Admin', role: ADMIN_ROLES.GGB_ADMIN, label: 'Group Global Admins' },
   group:  { noun: 'Group',  role: ADMIN_ROLES.GROUP_ADMIN, label: 'Group Admins' },
-  bg:     { noun: 'BG',     role: 'BG_USER',               label: 'BG Users' },
+  bg:     { noun: 'Business Group', role: 'BG_USER', label: 'Business Group Users' },
   branch: { noun: 'Branch', role: null,                    label: null },
 }
 
@@ -198,7 +198,7 @@ export async function createNodeUsers(kind, nodeId, users) {
 /** The "Main user" section of the Add GGB / Group / BG form. */
 export function NewNodeUsers({ kind, users, setUsers: setList, errors = {}, mayAdd, onEdit }) {
   const noun = KIND[kind]?.noun ?? ''
-  const roleLabel = { ggb: 'GGB Admin', group: 'Group Admin', bg: 'BG User' }[kind]
+  const roleLabel = { ggb: 'Group Global Admin', group: 'Group Admin', bg: 'Business Group User' }[kind]
   const setUsers = fn => { setList(fn); onEdit?.() }
   const setField = (i, k, v) => setUsers(list => list.map((u, j) => (j === i ? { ...u, [k]: v } : u)))
   if (!mayAdd) {
@@ -471,8 +471,8 @@ export default function NodeUsersPanel({ kind, node, bgId, roleKey, onClose, pus
           {(kind === 'bg' || kind === 'branch') && mayAddSub && (
             <p style={{ fontSize: 11.5, color: 'var(--c-text3)', margin: '0 2px', lineHeight: 1.5 }}>
               {kind === 'branch'
-                ? 'Add opens the sub-user form with this BG filled in. A sub-user added here sees only this branch’s vehicles.'
-                : 'Add opens the sub-user form with this BG filled in. That sub-user sees every vehicle of the BG.'}
+                ? 'Add opens the sub-user form with this Business Group filled in. A sub-user added here sees only this branch’s vehicles.'
+                : 'Add opens the sub-user form with this Business Group filled in. That sub-user sees every vehicle of the Business Group.'}
             </p>
           )}
         </div>
@@ -520,7 +520,7 @@ export function PermissionsButton({ onClick }) {
   )
 }
 
-const ROLE_NAME = { GGB_ADMIN: 'GGB Admin', GROUP_ADMIN: 'Group Admin', BG_USER: 'BG User', SUB_USER: 'Sub-user' }
+const ROLE_NAME = { GGB_ADMIN: 'Group Global Admin', GROUP_ADMIN: 'Group Admin', BG_USER: 'Business Group User', SUB_USER: 'Sub-user' }
 
 /** Whether the signed-in user may set permissions at all (User accounts: Edit). */
 export function useCanSetPermissions() {

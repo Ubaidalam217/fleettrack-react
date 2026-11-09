@@ -53,7 +53,7 @@ function fieldsFor(resellers, { editing, derivedParent }) {
   const lockGgb = IS_REAL && (editing || derivedParent)
   return [
     {
-      name: 'resellerId', label: 'Group Global Admin (GGB)', type: 'select',
+      name: 'resellerId', label: 'Group Global Admin', type: 'select',
       options: resellers.map(r => ({ value: r.id, label: r.name })),
       disabled: lockGgb,
       hint: !IS_REAL ? undefined
@@ -180,7 +180,7 @@ export default function Company(props) {
   // fieldsFor(). Only meaningful in real mode; mock mode always has the seeds.
   const derivedParent = IS_REAL && resellers.length === 0
 
-  const title = !editing ? 'Business Group (BG)' : draft.id ? 'Edit Business Group' : 'Add Business Group'
+  const title = !editing ? 'Business Group' : draft.id ? 'Edit Business Group' : 'Add Business Group'
 
   return (
     <SettingsLayout title={title} {...props}>

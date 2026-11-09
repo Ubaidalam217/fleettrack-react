@@ -51,7 +51,7 @@ const alertFields = {
   status: statusField(),
 }
 
-const createSchema = z.object({ bgId: requiredId('Business group'), ...alertFields })
+const createSchema = z.object({ bgId: requiredId('Business Group'), ...alertFields })
 const updateSchema = z.object(alertFields)
 
 const listQuerySchema = z.object({

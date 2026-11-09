@@ -98,7 +98,7 @@ function companyLabelFor(vehicles) {
     return p.linked && p.bgName && p.bgName !== '—' ? p.bgName : null
   }).filter(Boolean))]
   if (names.length === 0) return 'FleetmaxX'
-  return names.length <= 3 ? names.join(', ') : `${names.length} BGs`
+  return names.length <= 3 ? names.join(', ') : `${names.length} Business Groups`
 }
 
 export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {

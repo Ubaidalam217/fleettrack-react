@@ -45,12 +45,12 @@ async function revokeAdmins({ ggbIds = [], groupIds = [] }) {
 
 /** Move a group, its BGs and everything under them to another GGB. */
 export async function moveGroup(scope, groupId, targetGgbId) {
-  if (scope.role !== ROLES.SUPER_ADMIN) throw forbidden('Only a Super Admin can move a group to another GGB')
+  if (scope.role !== ROLES.SUPER_ADMIN) throw forbidden('Only a Super Admin can move a group to another Group Global Admin')
   const group = await prisma.group.findUnique({ where: { id: groupId } })
   if (!group) throw notFound('Group')
   const target = await prisma.ggb.findUnique({ where: { id: String(targetGgbId ?? '') }, select: { id: true } })
-  if (!target) throw badRequest('Choose the GGB to move to', { ggbId: 'Invalid GGB' })
-  if (target.id === group.ggbId) throw badRequest('The group is already in this GGB', { ggbId: 'Same GGB' })
+  if (!target) throw badRequest('Choose the Group Global Admin to move to', { ggbId: 'Invalid Group Global Admin' })
+  if (target.id === group.ggbId) throw badRequest('The group is already in this Group Global Admin', { ggbId: 'Same Group Global Admin' })
 
   const bgs = await prisma.businessGroup.findMany({ where: { groupId }, select: { id: true } })
   const bgIds = bgs.map(b => b.id)
@@ -68,7 +68,7 @@ export async function moveGroup(scope, groupId, targetGgbId) {
  */
 export async function moveBg(scope, bgId, { ggbId, groupId }) {
   const bg = await prisma.businessGroup.findUnique({ where: { id: bgId } })
-  if (!bg) throw notFound('Business group')
+  if (!bg) throw notFound('Business Group')
 
   let target
   if (groupId) {
@@ -77,14 +77,14 @@ export async function moveBg(scope, bgId, { ggbId, groupId }) {
     target = { ggbId: group.ggbId, groupId: group.id }
   } else {
     const ggb = await prisma.ggb.findUnique({ where: { id: String(ggbId ?? '') }, select: { id: true } })
-    if (!ggb) throw badRequest('Choose the GGB to move to', { ggbId: 'Invalid GGB' })
+    if (!ggb) throw badRequest('Choose the Group Global Admin to move to', { ggbId: 'Invalid Group Global Admin' })
     target = { ggbId: ggb.id, groupId: null }
   }
 
   if (scope.role === ROLES.GGB_ADMIN) {
     // Its own BGs only, and only inside its own GGB.
-    if (bg.ggbId !== scope.ggbId) throw notFound('Business group')
-    if (target.ggbId !== scope.ggbId) throw forbidden('A GGB admin can only move a business group inside its own GGB')
+    if (bg.ggbId !== scope.ggbId) throw notFound('Business Group')
+    if (target.ggbId !== scope.ggbId) throw forbidden('A Group Global Admin can only move a Business Group inside its own Group Global Admin')
   } else if (scope.role !== ROLES.SUPER_ADMIN) {
     throw forbidden('Your role may not move business groups')
   }

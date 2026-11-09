@@ -265,7 +265,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
   // group leaves its vehicles free to sit under a GGB-level group instead.
   const bg      = companies.find(c => c.id === sform.companyId) ?? null
   const groupId = sform.groupId || bg?.groupId || ''
-  const groupDisplay = !bg ? '' : groupId ? groupNameFor(groupId) : 'BG is its own group'
+  const groupDisplay = !bg ? '' : groupId ? groupNameFor(groupId) : 'Business Group is its own group'
   const ggbDisplay   = bg ? resellerNameFor(bg.resellerId) : ''
 
   const submit = async e => {
@@ -278,7 +278,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
     if (settingsActive) {
       // Required on both paths: on an unmatched device it is what makes the
       // link valid, and a linked row cannot be left without its BG either.
-      if (!sform.companyId) next.s_companyId = 'BG is required'
+      if (!sform.companyId) next.s_companyId = 'Business Group is required'
       // Only reachable while creating — a matched profile is by definition the
       // row that owns this IMEI. Catches the record being registered in another
       // tab while this dialog sat open.
@@ -528,7 +528,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
                 )}
 
                 <div style={GRID}>
-                  <Field label="BG (Business Group)" required error={errors.s_companyId}>
+                  <Field label="Business Group" required error={errors.s_companyId}>
                     <select
                       name="s-companyId"
                       value={sform.companyId}
@@ -546,15 +546,15 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
                   <ReadOnlyField
                     label="Group"
                     name="s-group"
-                    value={groupDisplay || '— Select a BG first —'}
-                    hint="From the selected BG"
+                    value={groupDisplay || '— Select a Business Group first —'}
+                    hint="From the selected Business Group"
                   />
 
                   <ReadOnlyField
-                    label="GGB"
+                    label="Group Global Admin"
                     name="s-ggb"
-                    value={ggbDisplay || '— Select a BG first —'}
-                    hint="From the selected BG"
+                    value={ggbDisplay || '— Select a Business Group first —'}
+                    hint="From the selected Business Group"
                   />
 
                   <Field label="Branch">
@@ -570,9 +570,9 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
                     >
                       <option value="">
                         {!sform.companyId
-                          ? '— Select a BG first —'
+                          ? '— Select a Business Group first —'
                           : branches.length === 0
-                            ? '— No branches for this BG —'
+                            ? '— No branches for this Business Group —'
                             : '— None —'}
                       </option>
                       {branches.map(b => (
@@ -643,7 +643,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
                   </Field>
                 </div>
 
-                <LockNote>GROUP AND GGB COME WITH THE BG — READ-ONLY</LockNote>
+                <LockNote>GROUP AND GROUP GLOBAL ADMIN COME WITH THE BUSINESS GROUP — READ-ONLY</LockNote>
               </>
             )}
           </Block>

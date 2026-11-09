@@ -46,7 +46,7 @@ const geofenceFields = {
   active: z.boolean().default(true),
 }
 
-const createSchema = z.object({ bgId: requiredId('Business group'), ...geofenceFields })
+const createSchema = z.object({ bgId: requiredId('Business Group'), ...geofenceFields })
 const updateSchema = z.object(geofenceFields)
 
 const listQuerySchema = z.object({

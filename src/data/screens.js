@@ -49,9 +49,9 @@ export const SCREEN_MODULES = [
   {
     id: 'settings', label: 'Settings',
     screens: [
-      { id: '/settings/reseller', label: 'GGB',                kind: 'data' },
+      { id: '/settings/reseller', label: 'Group Global Admin', kind: 'data' },
       { id: '/settings/group',    label: 'Group',              kind: 'data' },
-      { id: '/settings/company',  label: 'BG',                 kind: 'data' },
+      { id: '/settings/company',  label: 'Business Group',     kind: 'data' },
       { id: '/settings/branch',   label: 'Branch',             kind: 'data' },
       { id: 'users',              label: 'User accounts',      kind: 'data', hint: 'The Users panels and the sub-user form' },
       { id: '/settings/vehicle',  label: 'Vehicle',            kind: 'data' },

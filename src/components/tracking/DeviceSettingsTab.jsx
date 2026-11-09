@@ -181,7 +181,7 @@ export default function DeviceSettingsTab({ v }) {
       )}
 
       {!data.canEdit && (
-        <div style={{ fontSize: 11.5, color: 'var(--c-text3)' }}>Only an administrator (Super Admin or GGB Admin) can change the tracker settings.</div>
+        <div style={{ fontSize: 11.5, color: 'var(--c-text3)' }}>Only an administrator (Super Admin or Group Global Admin) can change the tracker settings.</div>
       )}
 
       {SECTIONS.map(section => {

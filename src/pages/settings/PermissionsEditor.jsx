@@ -15,7 +15,7 @@ import { SCREEN_MODULES, levelsFor, levelIn, grantCap, atLeast } from '../../dat
  * everything at Full — "no restriction" — which is how it behaved before.
  */
 
-const ROLE_LABEL = { GGB_ADMIN: 'GGB Admin', GROUP_ADMIN: 'Group Admin', BG_USER: 'BG User', SUB_USER: 'Sub-user' }
+const ROLE_LABEL = { GGB_ADMIN: 'Group Global Admin', GROUP_ADMIN: 'Group Admin', BG_USER: 'Business Group User', SUB_USER: 'Sub-user' }
 
 /**
  * A full map: every screen with an explicit level, so presets are visible —

@@ -233,7 +233,7 @@ export default function Branch(props) {
                   branch's BG only at creation time, because moving it would carry
                   its vehicles and its sub-user assignments into another tenant. */}
               <Field
-                label="Business Group (BG)"
+                label="Business Group"
                 required
                 error={errors.companyId}
                 hint={IS_REAL && draft.id ? 'A branch cannot be moved to another Business Group.' : undefined}

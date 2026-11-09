@@ -44,7 +44,7 @@ function StatusPill({ status }) {
 }
 
 const COLUMNS = [
-  { key: 'company',  label: 'BG', bold: true, render: row => companyNameFor(row.companyId) },
+  { key: 'company',  label: 'Business Group', bold: true, render: row => companyNameFor(row.companyId) },
   { key: 'email',    label: 'Username (email)' },
   { key: 'status',   label: 'Status', render: row => <StatusPill status={row.status} /> },
 ]
@@ -88,7 +88,7 @@ export default function User(props) {
     if (saving) return
 
     const next = {}
-    if (!draft.companyId)    next.companyId = 'BG is required'
+    if (!draft.companyId)    next.companyId = 'Business Group is required'
     if (!draft.email.trim()) next.email     = 'Email is required'
     // The email is the username, so this is the login-uniqueness check too. Only
     // the accounts in scope are visible here; the server's case-insensitive unique
@@ -155,7 +155,7 @@ export default function User(props) {
             subtitle="Fields marked with * are required. The username is the email address."
           >
             <div style={GRID}>
-              <Field label="BG (Business Group)" required error={errors.companyId}>
+              <Field label="Business Group" required error={errors.companyId}>
                 <select
                   ref={firstRef}
                   name="companyId"
@@ -287,7 +287,7 @@ export default function User(props) {
                     disabled={noCompanies}
                     // An account has to belong to a BG, so with none on file the
                     // form would open with an unsatisfiable required dropdown.
-                    title={noCompanies ? 'Add a BG first' : undefined}
+                    title={noCompanies ? 'Add a Business Group first' : undefined}
                     onClick={openAdd}
                   >
                     <Plus size={14} strokeWidth={2.6} />
@@ -307,7 +307,7 @@ export default function User(props) {
                   !access.canWrite
                     ? 'No users to show.'
                     : noCompanies
-                      ? 'No BGs on file — add a Business Group before creating users.'
+                      ? 'No Business Groups on file — add one before creating users.'
                       : 'No users yet — use Add User to create one.'
                 }
               />

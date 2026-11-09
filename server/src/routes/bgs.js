@@ -80,7 +80,7 @@ async function resolveGroup(groupId, ggbId) {
     where: { id: groupId, ggbId },
     select: { id: true },
   })
-  if (!group) throw badRequest('Group must belong to the same GGB', { groupId: 'Invalid group' })
+  if (!group) throw badRequest('Group must belong to the same Group Global Admin', { groupId: 'Invalid group' })
   return group.id
 }
 
@@ -103,14 +103,14 @@ async function resolveGroup(groupId, ggbId) {
 async function resolveNewBgParents(scope, body) {
   switch (scope.role) {
     case ROLES.SUPER_ADMIN: {
-      if (!body.ggbId) throw badRequest('GGB is required', { ggbId: 'Required' })
+      if (!body.ggbId) throw badRequest('Group Global Admin is required', { ggbId: 'Required' })
       const ggb = await assertWritableParent(scope, 'ggb', body.ggbId)
       return { ggbId: ggb.id, groupId: await resolveGroup(body.groupId, ggb.id) }
     }
 
     case ROLES.GGB_ADMIN: {
-      if (!scope.ggbId) throw forbidden('Your account is not linked to a GGB')
-      if (body.ggbId && body.ggbId !== scope.ggbId) throw notFound('GGB')
+      if (!scope.ggbId) throw forbidden('Your account is not linked to a Group Global Admin')
+      if (body.ggbId && body.ggbId !== scope.ggbId) throw notFound('Group Global Admin')
       return { ggbId: scope.ggbId, groupId: await resolveGroup(body.groupId, scope.ggbId) }
     }
 
@@ -120,7 +120,7 @@ async function resolveNewBgParents(scope, body) {
         select: { id: true, ggbId: true },
       })
       if (!group) throw forbidden('Your account is not linked to an existing group')
-      if (body.ggbId && body.ggbId !== group.ggbId) throw notFound('GGB')
+      if (body.ggbId && body.ggbId !== group.ggbId) throw notFound('Group Global Admin')
       if (body.groupId && body.groupId !== group.id) {
         throw badRequest('A group admin can only create business groups in its own group', {
           groupId: 'Must be your own group',

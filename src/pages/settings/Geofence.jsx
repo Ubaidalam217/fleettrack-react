@@ -42,7 +42,7 @@ const COLUMNS = [
   { key: 'kind', label: 'Kind', render: row => KIND_LABEL[row.kind] ?? row.kind },
   { key: 'shape', label: 'Shape', render: row => SHAPE_LABEL[row.shape] ?? row.shape },
   { key: 'category', label: 'Category', muted: true, render: row => row.category || '—' },
-  { key: 'company', label: 'BG', render: row => companyNameFor(row.companyId) },
+  { key: 'company', label: 'Business Group', render: row => companyNameFor(row.companyId) },
 ]
 
 export default function Geofence(props) {
@@ -98,7 +98,7 @@ export default function Geofence(props) {
     if (saving) return
 
     const next = {}
-    if (!draft.companyId)   next.companyId = 'BG is required'
+    if (!draft.companyId)   next.companyId = 'Business Group is required'
     if (!draft.name.trim()) next.name      = 'Name is required'
     if (draft.shape === 'POLYGON') {
       if ((draft.points ?? []).length < 3) {
@@ -158,10 +158,10 @@ export default function Geofence(props) {
               gap: '14px 16px',
             }}>
               <Field
-                label="BG (Business Group)"
+                label="Business Group"
                 required
                 error={errors.companyId}
-                hint={IS_REAL && draft.id ? 'A geofence cannot be moved to another BG.' : undefined}
+                hint={IS_REAL && draft.id ? 'A geofence cannot be moved to another Business Group.' : undefined}
               >
                 <select
                   ref={firstRef}
@@ -279,7 +279,7 @@ export default function Geofence(props) {
                 )}
               </span>
               {!draft.companyId ? (
-                <p style={{ fontSize: 12, color: 'var(--c-text3)' }}>Pick a BG first.</p>
+                <p style={{ fontSize: 12, color: 'var(--c-text3)' }}>Pick a Business Group first.</p>
               ) : (
                 <GeofenceMapEditor
                   draft={draft}
@@ -333,7 +333,7 @@ export default function Geofence(props) {
                     type="button"
                     style={{ ...PRIMARY_BTN, opacity: noCompanies ? 0.5 : 1, cursor: noCompanies ? 'not-allowed' : 'pointer' }}
                     disabled={noCompanies}
-                    title={noCompanies ? 'Add a BG first' : undefined}
+                    title={noCompanies ? 'Add a Business Group first' : undefined}
                     onClick={openAdd}
                   >
                     <Plus size={14} strokeWidth={2.6} />
@@ -352,7 +352,7 @@ export default function Geofence(props) {
                   !access.canWrite
                     ? 'No geofences to show.'
                     : noCompanies
-                      ? 'No Business Groups on file — add a BG before creating geofences.'
+                      ? 'No Business Groups on file — add one before creating geofences.'
                       : 'No geofences yet — use Add Geofence to create one.'
                 }
               />

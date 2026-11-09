@@ -4,7 +4,8 @@
  * shown ("woh tu Master k pass ho ga").
  *
  * A level that does not exist is skipped: a BG with no Group is a top-level
- * entry of its own, and a vehicle with no Branch sits directly under its BG.
+ * entry of its own. A vehicle with no Branch is under a branch named after its
+ * Business Group — the client counts as the branch (client, 2026-11-09).
  * Each role starts below itself:
  *   Super Admin, GGB Admin  Group → BG → Branch
  *   Group Admin             BG → Branch
@@ -13,7 +14,7 @@
  * Settings" group, last.
  */
 
-export const LEVEL_LABEL = { group: 'Group', bg: 'BG', branch: 'Branch', none: '' }
+export const LEVEL_LABEL = { group: 'Group', bg: 'Business Group', branch: 'Branch', none: '' }
 
 const LEVELS_BY_ROLE = {
   SUPER_ADMIN: ['group', 'bg', 'branch'],
@@ -46,7 +47,10 @@ export function placeVehicle(v, ctx) {
   return {
     group: groupId ? { id: groupId, name: group?.name || 'Group' } : null,
     bg: { id: row.companyId, name: bg?.name || 'Business Group' },
-    branch: row.branchId ? { id: row.branchId, name: branch?.name || 'Branch' } : null,
+    // No branch: the client (Business Group) is the branch (client, 2026-11-09).
+    branch: row.branchId
+      ? { id: row.branchId, name: branch?.name || 'Branch' }
+      : { id: `bg:${row.companyId}`, name: bg?.name || 'Business Group' },
   }
 }
 
@@ -76,7 +80,7 @@ export function buildFleetTree(vehicles, placeOf, levels) {
     let node = root
     for (const level of levels) {
       const part = place[level]
-      if (!part) continue // e.g. a BG with no Group, a vehicle with no Branch
+      if (!part) continue // e.g. a BG with no Group
       const key = `${node.key}/${level}:${part.id}`
       let child = node.children.find(c => c.key === key)
       if (!child) {

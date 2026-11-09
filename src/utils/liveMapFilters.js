@@ -53,8 +53,9 @@ export function vehicleAttributes(v, profile, now) {
     deviceType: (row?.deviceType || '').trim(),
     company:    row?.companyId || '',
     companyName: profile?.linked ? profile.bgName : '',
-    branch:     row?.branchId || '',
-    branchName: row?.branchId ? profile.branchName : '',
+    // No branch: the client (Business Group) is the branch.
+    branch:     row?.branchId || (row?.companyId ? `bg:${row.companyId}` : ''),
+    branchName: row ? profile.branchName : '',
     validity:   validityState(row?.validUntil, now),
   }
 }

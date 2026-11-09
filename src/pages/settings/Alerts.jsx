@@ -345,7 +345,7 @@ const COLUMNS = [
   { key: 'name',     label: 'Name',       bold: true },
   { key: 'type',     label: 'Alert Type', render: typeLabelOf },
   { key: 'severity', label: 'Severity',   render: row => <SeverityChip severity={row.severity} /> },
-  { key: 'company',  label: 'BG',         render: row => companyNameFor(row.companyId) },
+  { key: 'company',  label: 'Business Group', render: row => companyNameFor(row.companyId) },
   { key: 'vehicles', label: 'Vehicles',   render: vehiclesLabel },
   { key: 'notify',   label: 'Notify',     render: notifyLabel },
   { key: 'status',   label: 'Status',     render: row => <StatusPill status={row.status} /> },
@@ -900,7 +900,7 @@ export default function Alerts(props) {
     const next = {}
     if (!draft.name.trim()) next.name      = 'Alert Name is required'
     if (!draft.type)        next.type      = 'Alert Type is required'
-    if (!draft.companyId)   next.companyId = 'BG is required'
+    if (!draft.companyId)   next.companyId = 'Business Group is required'
 
     Object.assign(next, validateAlertSettings(draft.type, draft.settings))
 
@@ -908,7 +908,7 @@ export default function Alerts(props) {
     // is a hard stop rather than a saved no-op.
     if (draft.companyId && byVehicle) {
       if (vehicles.length === 0) {
-        next.scope = 'This BG has no vehicles to watch.'
+        next.scope = 'This Business Group has no vehicles to watch.'
       } else if (!draft.allVehicles && draft.vehicleIds.length === 0) {
         next.scope = 'Select at least one vehicle, or switch on All Vehicles.'
       }
@@ -1027,10 +1027,10 @@ export default function Alerts(props) {
                     validated against that BG and re-pointing it would leave the rule
                     watching vehicles from a tenant it no longer belongs to. */}
                 <Field
-                  label="Apply To — BG"
+                  label="Apply To — Business Group"
                   required
                   error={errors.companyId}
-                  hint={IS_REAL && draft.id ? 'An alert cannot be moved to another BG.' : undefined}
+                  hint={IS_REAL && draft.id ? 'An alert cannot be moved to another Business Group.' : undefined}
                 >
                   <select
                     name="companyId"
@@ -1107,7 +1107,7 @@ export default function Alerts(props) {
                     !draft.companyId
                       ? 'Select a Business Group to choose which geofences this alert watches.'
                       : bgGeofences.length === 0
-                        ? 'No geofences for this BG yet. The alert will watch any you add under Settings > Geofence.'
+                        ? 'No geofences for this Business Group yet. The alert will watch any you add under Settings > Geofence.'
                         : null
                   }
                   error={errors.geofenceIds}
@@ -1241,7 +1241,7 @@ export default function Alerts(props) {
                     disabled={noCompanies}
                     // An alert has to be scoped to a BG, so with none on file the
                     // form would open with an unsatisfiable required dropdown.
-                    title={noCompanies ? 'Add a BG first' : undefined}
+                    title={noCompanies ? 'Add a Business Group first' : undefined}
                     onClick={openAdd}
                   >
                     <Plus size={14} strokeWidth={2.6} />
@@ -1260,7 +1260,7 @@ export default function Alerts(props) {
                   !access.canWrite
                     ? 'No alerts to show.'
                     : noCompanies
-                      ? 'No BGs on file — add a Business Group before creating alerts.'
+                      ? 'No Business Groups on file — add one before creating alerts.'
                       : 'No alerts yet — use Add Alert to create one.'
                 }
               />

@@ -29,7 +29,7 @@ const router = Router()
 
 const createSchema = z.object({
   name: requiredText('Name'),
-  bgId: requiredId('Business group'),
+  bgId: requiredId('Business Group'),
   parentBranchId: optionalId(),
 })
 

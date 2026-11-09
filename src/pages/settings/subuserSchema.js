@@ -99,9 +99,9 @@ export const ACCESS_TREE = {
       label: 'Settings',
       subModules: [
         { id: 'settings.users', label: 'Users', screens: [
-          { id: '/settings/reseller',        label: 'GGB (Group Global Admin)' },
+          { id: '/settings/reseller',        label: 'Group Global Admin' },
           { id: '/settings/group',           label: 'Group' },
-          { id: '/settings/company',         label: 'BG (Business Group)' },
+          { id: '/settings/company',         label: 'Business Group' },
           { id: '/settings/branch',          label: 'Branch' },
           { id: '/settings/user',            label: 'User' },
           { id: '/settings/company-subuser', label: 'Company Subuser' },

@@ -108,7 +108,7 @@ const columnsFor = vehicleById => [
     ),
   },
   { key: 'employeeId', label: 'Employee ID', render: row => row.employeeId || '—' },
-  { key: 'company',    label: 'BG', render: row => companyNameFor(row.companyId) },
+  { key: 'company',    label: 'Business Group', render: row => companyNameFor(row.companyId) },
   { key: 'department', label: 'Department', render: row => row.department || '—' },
   { key: 'mobile',     label: 'Mobile', render: row => row.mobile || '—' },
   {
@@ -559,7 +559,7 @@ export default function Driver(props) {
     if (saving) return
 
     const next = {}
-    if (!draft.companyId)   next.companyId = 'BG is required'
+    if (!draft.companyId)   next.companyId = 'Business Group is required'
     if (!draft.name.trim()) next.name      = 'Name is required'
     if (draft.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(draft.email.trim())) next.email = 'Enter a valid email address'
     const tag = String(draft.ibuttonCode ?? '').replace(/[\s:-]/g, '').toUpperCase()
@@ -671,10 +671,10 @@ export default function Driver(props) {
               {/* Locked on an existing driver in real mode: the API takes a
                   driver's BG only at creation, and checks its vehicle against it. */}
               <Field
-                label="BG (Business Group)"
+                label="Business Group"
                 required
                 error={errors.companyId}
-                hint={bgLocked ? 'A driver cannot be moved to another BG.' : undefined}
+                hint={bgLocked ? 'A driver cannot be moved to another Business Group.' : undefined}
               >
                 <select
                   ref={firstRef}
@@ -764,7 +764,7 @@ export default function Driver(props) {
                   style={{ ...inputStyle(!!errors.vehicleId), opacity: suspended || !draft.companyId || bgVehicles.length === 0 ? 0.6 : 1 }}
                 >
                   <option value="">
-                    {!draft.companyId ? '— Select a BG first —' : bgVehicles.length === 0 ? '— No vehicles for this BG —' : '— None —'}
+                    {!draft.companyId ? '— Select a Business Group first —' : bgVehicles.length === 0 ? '— No vehicles for this Business Group —' : '— None —'}
                   </option>
                   {bgVehicles.map(v => {
                     const current = driverForVehicleId(v.id)
@@ -876,10 +876,10 @@ export default function Driver(props) {
                   <select
                     value={bgFilter}
                     onChange={e => setBgFilter(e.target.value)}
-                    aria-label="Filter by BG"
+                    aria-label="Filter by Business Group"
                     style={{ ...inputStyle(false), flex: '0 1 240px', width: 'auto', minWidth: 180 }}
                   >
-                    <option value="">All BGs</option>
+                    <option value="">All Business Groups</option>
                     {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 )}
@@ -893,7 +893,7 @@ export default function Driver(props) {
                     disabled={noCompanies}
                     // A driver has to belong to a BG, so with none on file the
                     // form would open with an unsatisfiable required dropdown.
-                    title={noCompanies ? 'Add a BG first' : undefined}
+                    title={noCompanies ? 'Add a Business Group first' : undefined}
                     onClick={openAdd}
                   >
                     <Plus size={14} strokeWidth={2.6} />
@@ -914,7 +914,7 @@ export default function Driver(props) {
                     : !access.canWrite
                       ? 'No drivers to show.'
                       : noCompanies
-                        ? 'No BGs on file — add a Business Group before adding drivers.'
+                        ? 'No Business Groups on file — add one before adding drivers.'
                         : 'No drivers yet — use Add Driver to add one.'
                 }
               />
