@@ -1,6 +1,6 @@
 import {
   Layers, Users, Car, Bell, IdCard,
-  Database, MapPinned, ListChecks,
+  Database, MapPinned, ListChecks, Receipt,
 } from 'lucide-react'
 import { filterMenu, ancestorIdsIn, labelForPathIn } from './navTree'
 
@@ -45,7 +45,16 @@ export const SETTINGS_MENU = [
       { id: 'driver', label: 'Driver', icon: IdCard, path: '/settings/driver' },
     ],
   },
-  { id: 'master',     label: 'Master',             icon: Database,   path: '/settings/master' },
+  // Master, as in the reference (Settings › Master). Expense is its first page
+  // (client, 2026-11-09); the reference's others are not built yet.
+  {
+    id: 'master',
+    label: 'Master',
+    icon: Database,
+    children: [
+      { id: 'expense', label: 'Expense', icon: Receipt, path: '/settings/expense' },
+    ],
+  },
   { id: 'geofence',   label: 'Address - Geofence', icon: MapPinned,  path: '/settings/geofence' },
   { id: 'bulk',       label: 'Bulk Action',        icon: ListChecks, path: '/settings/bulk-action' },
 ]

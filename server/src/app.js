@@ -34,6 +34,7 @@ import geocodeRoutes from './routes/geocode.js'
 import flespiProxyRoutes from './routes/flespiProxy.js'
 import reportRoutes from './routes/reports.js'
 import driverRoutes from './routes/drivers.js'
+import expenseRoutes from './routes/expenses.js'
 import { requireScreen, WRITE_SCREENS } from './lib/permissions.js'
 import alertEventRoutes from './routes/alertEvents.js'
 import assistantRoutes from './routes/assistant.js'
@@ -85,6 +86,7 @@ export function createApp() {
   app.use('/api/me/avatar', express.json({ limit: '800kb' }))
   // Driver photos and scanned documents (5 MB each, base64).
   app.use('/api/drivers', express.json({ limit: '8mb' }))
+  app.use('/api/expenses', express.json({ limit: '8mb' }))
   // The Flespi webhook: batches of device messages, so its own larger limit.
   // Mounted before the request log and before auth — it has its own token.
   app.use('/api/ingest', express.json({ limit: '20mb' }), ingestRoutes)
@@ -164,6 +166,7 @@ export function createApp() {
   app.use('/api/geocode', geocodeRoutes)
   app.use('/api/reports', reportRoutes)
   app.use('/api/drivers', requireScreen(WRITE_SCREENS['/api/drivers']), driverRoutes)
+  app.use('/api/expenses', requireScreen(WRITE_SCREENS['/api/expenses']), expenseRoutes)
   app.use('/api/driver-performance', driverPerformanceRoutes)
   app.use('/api/device-settings', deviceSettingsRoutes)
   app.use('/api/replay-shares', replayShareRoutes)

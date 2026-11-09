@@ -38,10 +38,10 @@ const ADMINS_AND_BG = [ROLE.SUPER_ADMIN, ROLE.GGB_ADMIN, ROLE.GROUP_ADMIN, ROLE.
 
 /** Mirror of WRITABLE in server/src/lib/scope.js. Keep in step. */
 const WRITABLE = Object.freeze({
-  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
-  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
-  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
-  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
+  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
+  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
+  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
+  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
   SUB_USER: new Set(),
 })
 
@@ -71,6 +71,8 @@ const PAGE_ROLES = Object.freeze({
   // A sub-user keeps it, read-only: the server narrows the list to the drivers
   // of its own vehicles.
   driver: ALL,
+  // The same for expenses: a sub-user reads those of its own vehicles.
+  expense: ALL,
 })
 
 /** Settings page id → the entity its Add/Edit/Delete buttons write. */
@@ -85,6 +87,7 @@ export const PAGE_ENTITY = Object.freeze({
   alerts: 'alert',
   geofence: 'geofence',
   driver: 'driver',
+  expense: 'expense',
 })
 
 /**

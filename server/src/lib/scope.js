@@ -79,6 +79,7 @@ const ENTITIES = Object.freeze({
   geofence: { delegate: 'geofence', label: 'Geofence' },
   driver: { delegate: 'driver', label: 'Driver' },
   alertEvent: { delegate: 'alertEvent', label: 'Alert event' },
+  expense: { delegate: 'expense', label: 'Expense' },
 })
 
 /**
@@ -273,6 +274,11 @@ export function alertEventWhere(scope) {
   return { AND: [base, { vehicleId: { in: scope.assignedVehicleIds ?? [] } }] }
 }
 
+/** Expenses follow their BG, narrowed for a sub-user to its own vehicles. */
+export function expenseWhere(scope) {
+  return alertEventWhere(scope)
+}
+
 const WHERE_BUILDERS = Object.freeze({
   ggb: ggbWhere,
   group: groupWhere,
@@ -284,6 +290,7 @@ const WHERE_BUILDERS = Object.freeze({
   geofence: geofenceWhere,
   driver: driverWhere,
   alertEvent: alertEventWhere,
+  expense: expenseWhere,
 })
 
 /**
@@ -346,10 +353,10 @@ export async function findScoped(entity, id, scope, opts = {}) {
  * assertWritableParent() below. Flagged for the client to confirm.
  */
 const WRITABLE = Object.freeze({
-  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
-  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
-  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
-  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert', 'geofence', 'driver']),
+  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
+  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
+  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
+  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
   // Read-only, explicitly. An empty set rather than a missing key so a typo in a
   // role name can never be mistaken for "sub-user, therefore no writes".
   SUB_USER: new Set(),

@@ -114,6 +114,7 @@ model BusinessGroup {
   geofences Geofence[]
   drivers     Driver[]
   alertEvents AlertEvent[]
+  expenses    Expense[]
 
   @@index([ggbId])
   @@index([groupId])
@@ -222,6 +223,7 @@ model Vehicle {
   alertEvents AlertEvent[]
   driverAssignments DriverAssignment[]
   driverIncidents   DriverIncident[]
+  expenses          Expense[]
 
   @@index([bgId])
   @@index([branchId])
@@ -876,4 +878,56 @@ model ReplayShare {
   revokedAt   DateTime?
 
   @@index([createdById])
+}
+
+/// What a vehicle costs (Settings › Master › Expense, client 2026-11-09).
+/// Variable: one cost on one day (expenseDate, odometer, work time).
+/// Fix: a cost over a period (fromDate to toDate).
+model Expense {
+  id        String  @id @default(cuid())
+  bgId      String
+  /// Null once the vehicle is deleted; vehicleLabel keeps its plate.
+  vehicleId    String?
+  vehicleLabel String
+
+  category    String
+  type        String
+  subType     String?
+  expenseDate DateTime?
+  fromDate    DateTime?
+  toDate      DateTime?
+  odometer    Float?
+  workMinutes Int?
+  fuelSource  String?
+  vendor      String?
+  amount      Float
+  referenceNo String?
+  description String?
+
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bg      BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicle Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  bills   ExpenseBill[]
+
+  @@index([bgId])
+  @@index([vehicleId])
+}
+
+/// A bill or receipt for an expense (up to three), PDF or image.
+model ExpenseBill {
+  id        String   @id @default(cuid())
+  expenseId String
+  fileName  String
+  mimeType  String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId])
 }

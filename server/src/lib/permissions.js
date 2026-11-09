@@ -40,6 +40,7 @@ export const WRITE_SCREENS = Object.freeze({
   '/api/alerts': '/settings/alerts',
   '/api/geofences': '/settings/geofence',
   '/api/drivers': '/settings/driver',
+  '/api/expenses': '/settings/expense',
   '/api/users': 'users',
 })
 

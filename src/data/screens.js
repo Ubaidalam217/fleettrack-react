@@ -58,6 +58,7 @@ export const SCREEN_MODULES = [
       { id: '/settings/alerts',   label: 'Alert rules',        kind: 'data' },
       { id: '/settings/driver',   label: 'Driver',             kind: 'data' },
       { id: '/settings/geofence', label: 'Address - Geofence', kind: 'data' },
+      { id: '/settings/expense',  label: 'Expense',            kind: 'data' },
     ],
   },
 ]
