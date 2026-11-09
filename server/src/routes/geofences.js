@@ -15,7 +15,7 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import prisma from '../prisma.js'
 import { asyncHandler } from '../lib/http.js'
-import { optionalText, requiredId, requiredText } from '../lib/fields.js'
+import { optionalNumber, optionalText, requiredId, requiredText } from '../lib/fields.js'
 import { assertNameFree, assertValidGeometry } from '../lib/geofences.js'
 import {
   assertCanWrite,
@@ -44,6 +44,12 @@ const geofenceFields = {
   color: optionalText(20),
   description: optionalText(2000),
   active: z.boolean().default(true),
+  // Speed limit inside the zone and the grace before it is a violation.
+  speedLimitKmh: optionalNumber()
+    .refine(v => v === null || (Number.isInteger(v) && v >= 1 && v <= 300), 'A whole number from 1 to 300 km/h'),
+  speedGraceSec: optionalNumber()
+    .refine(v => v === null || (Number.isInteger(v) && v >= 0 && v <= 3600), 'Whole seconds, 0 to 3600')
+    .transform(v => v ?? 0),
 }
 
 const createSchema = z.object({ bgId: requiredId('Business Group'), ...geofenceFields })
@@ -144,6 +150,8 @@ function fields(body) {
     color: body.color,
     description: body.description,
     active: body.active,
+    speedLimitKmh: body.speedLimitKmh,
+    speedGraceSec: body.speedLimitKmh ? body.speedGraceSec : 0,
   }
 }
 

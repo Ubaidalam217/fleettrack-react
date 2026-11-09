@@ -42,6 +42,10 @@ const COLUMNS = [
   { key: 'kind', label: 'Kind', render: row => KIND_LABEL[row.kind] ?? row.kind },
   { key: 'shape', label: 'Shape', render: row => SHAPE_LABEL[row.shape] ?? row.shape },
   { key: 'category', label: 'Category', muted: true, render: row => row.category || '—' },
+  {
+    key: 'speedLimitKmh', label: 'Speed Limit', muted: true,
+    render: row => (row.speedLimitKmh ? `${row.speedLimitKmh} km/h · ${row.speedGraceSec || 0} s grace` : '—'),
+  },
   { key: 'company', label: 'Business Group', render: row => companyNameFor(row.companyId) },
 ]
 
@@ -106,6 +110,14 @@ export default function Geofence(props) {
       }
     } else if (!draft.radius || Number(draft.radius) <= 0 || draft.centerLat == null) {
       next.radius = 'Draw a circle on the map'
+    }
+    const limit = String(draft.speedLimitKmh ?? '').trim()
+    const grace = String(draft.speedGraceSec ?? '').trim()
+    if (limit && !(Number.isInteger(Number(limit)) && Number(limit) >= 1 && Number(limit) <= 300)) {
+      next.speedLimitKmh = 'A whole number from 1 to 300 km/h'
+    }
+    if (limit && grace && !(Number.isInteger(Number(grace)) && Number(grace) >= 0 && Number(grace) <= 3600)) {
+      next.speedGraceSec = 'Whole seconds, 0 to 3600'
     }
     if (Object.keys(next).length) {
       setErrors(next)
@@ -267,6 +279,57 @@ export default function Geofence(props) {
                   style={{ ...inputStyle(false), resize: 'vertical', fontFamily: 'inherit' }}
                 />
               </Field>
+            </div>
+
+            <div style={{ marginTop: 18 }}>
+              <span className="ft-label" style={{ display: 'block', marginBottom: 4 }}>Speed limit in this zone</span>
+              <p style={{ margin: '0 0 10px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--c-text3)' }}>
+                Used by the <strong style={{ color: 'var(--c-text2)' }}>Geo Zone Speed Violation</strong> alert. Leave the limit empty for no limit here.
+              </p>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                gap: '14px 16px',
+              }}>
+                <Field label="Speed limit (km/h)" error={errors.speedLimitKmh}>
+                  <input
+                    name="speedLimitKmh"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={300}
+                    value={draft.speedLimitKmh ?? ''}
+                    onChange={e => set('speedLimitKmh', e.target.value)}
+                    placeholder="No limit"
+                    aria-invalid={!!errors.speedLimitKmh || undefined}
+                    style={inputStyle(!!errors.speedLimitKmh)}
+                  />
+                </Field>
+                <Field
+                  label="Grace time (seconds)"
+                  error={errors.speedGraceSec}
+                  hint={String(draft.speedLimitKmh ?? '').trim()
+                    ? 'Over the limit for less than this is only recorded. 0 alerts at once.'
+                    : 'Set a speed limit first.'}
+                >
+                  <input
+                    name="speedGraceSec"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={3600}
+                    value={draft.speedGraceSec ?? ''}
+                    onChange={e => set('speedGraceSec', e.target.value)}
+                    placeholder="0"
+                    disabled={!String(draft.speedLimitKmh ?? '').trim()}
+                    aria-invalid={!!errors.speedGraceSec || undefined}
+                    style={{
+                      ...inputStyle(!!errors.speedGraceSec),
+                      ...(!String(draft.speedLimitKmh ?? '').trim() && { opacity: 0.55, cursor: 'not-allowed' }),
+                    }}
+                  />
+                </Field>
+              </div>
             </div>
 
             <div style={{ marginTop: 18 }}>

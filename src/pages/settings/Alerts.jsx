@@ -269,6 +269,8 @@ const SETTINGS_RENDERERS = {
 // The Geo Zone type's direction is a grid cell (SETTINGS_RENDERERS); its fence
 // list is a full-width picker below the grid.
 const GEOFENCE_TYPES = new Set(['geofence'])
+// Types that pick geofences; only GEOFENCE_TYPES take part in the overlap check.
+const GEOFENCE_PICKER_TYPES = new Set(['geofence', 'geofence_speed'])
 
 const DIR_SET = { enter: ['enter'], exit: ['exit'], both: ['enter', 'exit'] }
 
@@ -596,6 +598,12 @@ const KIND_LABEL = { GEOFENCE: 'Geofence', ADDRESS: 'Address' }
 
 function geofenceSub(g) {
   return [KIND_LABEL[g.kind] ?? g.kind, g.category, g.active === false && 'inactive'].filter(Boolean).join(' · ')
+}
+
+/** The zone's own limit, for the Geo Zone Speed Violation picker. */
+function speedZoneSub(g) {
+  const limit = g.speedLimitKmh ? `${g.speedLimitKmh} km/h · ${g.speedGraceSec || 0} s grace` : 'No speed limit, skipped'
+  return [limit, g.active === false && 'inactive'].filter(Boolean).join(' · ')
 }
 
 // ── Email recipients ───────────────────────────────────────────────────────
@@ -1092,7 +1100,20 @@ export default function Alerts(props) {
                 </div>
               )}
 
-              {GEOFENCE_TYPES.has(draft.type) && (
+              {draft.type === 'geofence_speed' && (
+                <div role="note" style={{
+                  marginTop: 18, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.55,
+                  background: 'color-mix(in srgb, var(--ft-accent) 8%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--ft-accent) 28%, transparent)', color: 'var(--c-text2)',
+                }}>
+                  Each zone uses its own <strong style={{ color: 'var(--c-text1)' }}>speed limit</strong> and{' '}
+                  <strong style={{ color: 'var(--c-text1)' }}>grace time</strong>, set under Settings › Address - Geofence.
+                  Over the limit for longer than the grace raises this alert; a shorter excursion is only recorded in
+                  Notifications, without the bell or email. Zones with no speed limit are skipped.
+                </div>
+              )}
+
+              {GEOFENCE_PICKER_TYPES.has(draft.type) && (
                 <PickList
                   label="Geofences"
                   field="geofenceIds"
@@ -1112,7 +1133,7 @@ export default function Alerts(props) {
                   }
                   error={errors.geofenceIds}
                   itemLabel={g => g.name}
-                  itemSub={geofenceSub}
+                  itemSub={draft.type === 'geofence_speed' ? speedZoneSub : geofenceSub}
                 />
               )}
 

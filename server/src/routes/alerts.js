@@ -98,6 +98,7 @@ function cleanParams(body) {
       }
     case 'geofence_enter':
     case 'geofence_exit':
+    case 'geofence_speed':
       return { geofenceIds: Array.isArray(p.geofenceIds) ? [...new Set(p.geofenceIds.map(String))] : [] }
     case 'night_driving':
       if (!HHMM.test(p.from) || !HHMM.test(p.to) || p.from === p.to) {

@@ -133,6 +133,53 @@ describe('evaluate', () => {
     expect(evaluate({ type: 'geofence', params: {} }, away, inside, NOW, ctx).fire.message).toBe('Left Mussafah Depot')
   })
 
+  it('Geo Zone Speed Violation: within the grace is a record, past it an alert, grace 0 at once', () => {
+    const zone = { id: 'g1', name: 'Mussafah Depot', shape: 'CIRCLE', centerLat: 24.4, centerLng: 54.4, radius: 500, speedLimitKmh: 40, speedGraceSec: 10 }
+    const a = { type: 'geofence_speed', params: { geofenceIds: [] } }
+    const ctx = { geofences: [zone] }
+    const at = (speed, ts, o = {}) => tel({ speed, ts, ...o })
+
+    // 41 km/h for 8 s, then back to 30: recorded only.
+    let r = evaluate(a, at(41, NOW - 20), {}, NOW, ctx)
+    expect(r.fire).toBeNull()
+    r = evaluate(a, at(44, NOW - 12), r.state, NOW, ctx)
+    expect(r.fire).toBeNull()
+    r = evaluate(a, at(30, NOW - 5), r.state, NOW, ctx)
+    expect(r.fire).toMatchObject({ recordOnly: true, value: 44 })
+    expect(r.fire.message).toBe('Over the speed limit in Mussafah Depot for 8 s, within the 10 s grace: 44 km/h (limit 40 km/h)')
+    expect(r.state.zones).toEqual({})
+
+    // 41 km/h held for 10 s: an alert, once for the episode.
+    r = evaluate(a, at(41, NOW - 30), {}, NOW, ctx)
+    r = evaluate(a, at(42, NOW - 20), r.state, NOW, ctx)
+    expect(r.fire.recordOnly).toBeUndefined()
+    expect(r.fire.message).toBe('Geo Zone speed violation in Mussafah Depot: 42 km/h (limit 40 km/h, over for 10 s)')
+    r = evaluate(a, at(50, NOW - 10), r.state, NOW, ctx)
+    expect(r.fire).toBeNull()
+    // Back under, no extra record for an episode that already alerted.
+    expect(evaluate(a, at(20, NOW - 5), r.state, NOW, ctx).fire).toBeNull()
+
+    // A few km/h under the limit is still the same episode (hysteresis).
+    r = evaluate(a, at(41, NOW - 30), {}, NOW, ctx)
+    r = evaluate(a, at(38, NOW - 25), r.state, NOW, ctx)
+    expect(r.fire).toBeNull()
+    expect(evaluate(a, at(41, NOW - 20), r.state, NOW, ctx).fire.message).toMatch(/over for 10 s/)
+
+    // Leaving the zone ends the episode too.
+    r = evaluate(a, at(60, NOW - 20), {}, NOW, ctx)
+    expect(evaluate(a, at(60, NOW - 15, { lat: 24.5 }), r.state, NOW, ctx).fire.message).toMatch(/on one reading, within the 10 s grace/)
+
+    // Grace 0: the first reading over the limit is the violation.
+    const strict = { geofences: [{ ...zone, speedGraceSec: 0 }] }
+    expect(evaluate(a, at(41, NOW - 20), {}, NOW, strict).fire.message).toBe('Geo Zone speed violation in Mussafah Depot: 41 km/h (limit 40 km/h)')
+
+    // Outside the zone, at the limit, without a limit, or not a chosen zone: nothing.
+    expect(evaluate(a, at(90, NOW - 20, { lat: 24.5 }), {}, NOW, strict).fire).toBeNull()
+    expect(evaluate(a, at(40, NOW - 20), {}, NOW, strict).fire).toBeNull()
+    expect(evaluate(a, at(90, NOW - 20), {}, NOW, { geofences: [{ ...zone, speedLimitKmh: null }] }).fire).toBeNull()
+    expect(evaluate({ ...a, params: { geofenceIds: ['other'] } }, at(90, NOW - 20), {}, NOW, strict).fire).toBeNull()
+  })
+
   it('Ignition On fires on the change only, never on the first sight', () => {
     const a = { type: 'ignition_on' }
     let r = evaluate(a, tel({ ignition: false }), {}, NOW)
@@ -282,6 +329,29 @@ describe('runAlertPass + /api/alert-events', () => {
     const [e] = await runAlertPass(NOW)
     expect(e.message).toMatch(/Driver: Tagged Tariq/)
     expect(e.driverId).toBe(tagged.id)
+  })
+
+  it('a Geo Zone speed excursion within the grace is stored already read, outside the cooldown', async () => {
+    await prisma.geofence.create({ data: { bgId: fx.bgA1a.id, name: 'Port Zone', kind: 'GEOFENCE', shape: 'CIRCLE', centerLat: 24.4, centerLng: 54.4, radius: 500, speedLimitKmh: 40, speedGraceSec: 60 } })
+    await prisma.alert.create({ data: { name: 'Zone speed', type: 'geofence_speed', bgId: fx.bgA1a.id, severity: 'High', params: { geofenceIds: [] }, allVehicles: true } })
+    const at = (speed, ts) => ({ 101: { 'position.speed': speed, 'position.latitude': 24.4, 'position.longitude': 54.4, timestamp: ts } })
+
+    telemetry = at(45, NOW - 20)
+    expect(await runAlertPass(NOW)).toHaveLength(0)
+    telemetry = at(20, NOW + 10)
+    const [rec] = await runAlertPass(NOW + 30)
+    expect(rec).toMatchObject({ type: 'geofence_speed', severity: 'Low', title: 'Zone speed · recorded', deviceId: 101 })
+    expect(rec.readAt).not.toBeNull()
+
+    // Not in the bell; and it does not hold back a real violation that follows.
+    const list = await request(app).get('/api/alert-events').set(auth(fx.tokens.bgUserA1a))
+    expect(list.body.unreadCount).toBe(0)
+    telemetry = at(50, NOW + 40)
+    expect(await runAlertPass(NOW + 60)).toHaveLength(0)
+    telemetry = at(52, NOW + 100)
+    const [alert] = await runAlertPass(NOW + 120)
+    expect(alert).toMatchObject({ severity: 'High', title: 'Zone speed', readAt: null })
+    expect(alert.message).toBe('PLATE-1: Geo Zone speed violation in Port Zone: 52 km/h (limit 40 km/h, over for 60 s)')
   })
 
   it('does nothing for an inactive rule', async () => {

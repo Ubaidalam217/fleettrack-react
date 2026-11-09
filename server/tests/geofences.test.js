@@ -151,6 +151,18 @@ describe('write permission', () => {
     expect(update.body.data.name).toBe('Kizad Yard — East')
   })
 
+  it('keeps a speed limit and grace per zone; no limit means no grace', async () => {
+    const send = body => request(app).post('/api/geofences').set(auth(fx.tokens.bgUserA1a)).send({ ...polygonBody(), bgId: fx.bgA1a.id, ...body })
+    const zone = await send({ name: 'Slow Zone', speedLimitKmh: '40', speedGraceSec: '10' })
+    expect(zone.status).toBe(201)
+    expect(zone.body.data).toMatchObject({ speedLimitKmh: 40, speedGraceSec: 10 })
+    const plain = await send({ name: 'Open Zone', speedLimitKmh: '', speedGraceSec: '25' })
+    expect(plain.body.data).toMatchObject({ speedLimitKmh: null, speedGraceSec: 0 })
+    const bad = await send({ name: 'Bad Zone', speedLimitKmh: 500, speedGraceSec: -1 })
+    expect(bad.status).toBe(400)
+    expect(Object.keys(bad.body.error.details).sort()).toEqual(['speedGraceSec', 'speedLimitKmh'])
+  })
+
   it('a BG user cannot create a geofence naming another BG — 404, not 403', async () => {
     const res = await request(app)
       .post('/api/geofences')

@@ -96,6 +96,14 @@ export const ALERT_TYPES = [
     defaults: () => ({ geofenceIds: [], allGeofences: true, direction: 'both' }),
   },
   {
+    // Client, 2026-11-09: each zone's own speed limit and grace time (set on
+    // the geofence). Within the grace it is only recorded, not alerted.
+    value: 'geofence_speed',
+    label: 'Geo Zone Speed Violation',
+    hint: 'Raised when a vehicle stays over a geo zone’s speed limit for longer than its grace time.',
+    defaults: () => ({ geofenceIds: [], allGeofences: true }),
+  },
+  {
     value: 'ignition_on',
     label: 'Ignition On',
     hint: 'Raised each time a vehicle’s ignition is switched on.',
@@ -357,6 +365,8 @@ export function emptyGeofence() {
     color: '#2563eb',
     description: '',
     active: true,
+    speedLimitKmh: '',
+    speedGraceSec: '0',
   }
 }
 

@@ -13,7 +13,7 @@
 
 import {
   Gauge, Hourglass, LogIn, LogOut, MapPin, Power, PowerOff, WifiOff,
-  Thermometer, Moon, IdCard, Bell, SlidersHorizontal, UserX,
+  Thermometer, Moon, IdCard, Bell, SlidersHorizontal, UserX, CircleGauge,
 } from 'lucide-react'
 
 export const SEVERITY_TONE = {
@@ -32,6 +32,7 @@ export const ALERT_TYPE_ICON = {
   geofence:       MapPin,
   geofence_enter: LogIn,
   geofence_exit:  LogOut,
+  geofence_speed: CircleGauge,
   ignition_on:    Power,
   ignition_off:   PowerOff,
   offline:        WifiOff,

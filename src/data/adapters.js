@@ -383,6 +383,9 @@ export const geofence = {
     color: orBlank(r.color) || '#2563eb',
     description: orBlank(r.description),
     active: r.active ?? true,
+    // Text inputs: '' is "no limit".
+    speedLimitKmh: r.speedLimitKmh == null ? '' : String(r.speedLimitKmh),
+    speedGraceSec: String(r.speedGraceSec ?? 0),
   }),
   toApiCreate: r => ({
     bgId: r.companyId,
@@ -406,6 +409,8 @@ export const geofence = {
     color: orNull(r.color),
     description: orNull(r.description),
     active: !!r.active,
+    speedLimitKmh: numOrNull(r.speedLimitKmh),
+    speedGraceSec: numOrNull(r.speedLimitKmh) === null ? 0 : (numOrNull(r.speedGraceSec) ?? 0),
   }),
 }
 
@@ -515,6 +520,8 @@ function alertParams(type, s) {
       // [] is the server's "every geofence of the BG", so the All box sends that
       // rather than today's ids — a fence drawn next month is covered too.
       return { geofenceIds: s.allGeofences ? [] : [...(s.geofenceIds ?? [])], direction: s.direction || 'both' }
+    case 'geofence_speed':
+      return { geofenceIds: s.allGeofences ? [] : [...(s.geofenceIds ?? [])] }
     case 'night_driving':
       return { from: s.from, to: s.to, minSpeedKmh: numOrNull(s.minSpeedKmh) }
     case 'license_expiry':

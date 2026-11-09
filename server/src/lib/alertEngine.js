@@ -64,6 +64,9 @@ export const TYPES = Object.freeze({
   geofence:       { label: 'Geo Zone',              defaults: { geofenceIds: [], direction: 'both' } },
   geofence_enter: { label: 'Geofence Entry',        defaults: { geofenceIds: [] } },
   geofence_exit:  { label: 'Geofence Exit',         defaults: { geofenceIds: [] } },
+  // Client, 2026-11-09: each geo zone's own speed limit, with a grace time —
+  // over the limit for less than the grace is only recorded, not alerted.
+  geofence_speed: { label: 'Geo Zone Speed Violation', defaults: { geofenceIds: [] } },
   ignition_on:    { label: 'Ignition On',           defaults: {} },
   ignition_off:   { label: 'Ignition Off',          defaults: {} },
   offline:        { label: 'Offline',               defaults: { minutes: 60 } },
@@ -233,6 +236,51 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
         else if (onExit && !inside && prev[g.id]) fire = { message: `Left ${g.name}`, value: null }
       }
       s.inside = next
+      return { state: s, fire }
+    }
+
+    case 'geofence_speed': {
+      // Per zone: { since, lastTs, peak, fired } while over its limit inside it.
+      // The grace is measured between messages — the tracker's reporting
+      // interval sets how finely it can be told apart.
+      const lat = num(tel?.lat), lng = num(tel?.lng)
+      if (!fresh || lat === null || lng === null || speed === null) return none
+      const wanted = Array.isArray(p.geofenceIds) && p.geofenceIds.length ? new Set(p.geofenceIds) : null
+      const fences = (ctx.geofences ?? []).filter(g => (!wanted || wanted.has(g.id)) && Number(g.speedLimitKmh) > 0)
+      const prev = s.zones ?? {}
+      const next = {}
+      let fire = null
+      for (const g of fences) {
+        const limit = Number(g.speedLimitKmh)
+        const grace = Math.max(0, Number(g.speedGraceSec) || 0)
+        const inside = inGeofence(lat, lng, g)
+        const was = prev[g.id]
+        if (inside && speed > limit) {
+          const z = was ? { ...was, lastTs: ts, peak: Math.max(was.peak, speed) } : { since: ts, lastTs: ts, peak: speed, fired: false }
+          if (!z.fired && ts - z.since >= grace && !fire) {
+            z.fired = true
+            const held = ts - z.since
+            fire = {
+              message: `Geo Zone speed violation in ${g.name}: ${Math.round(z.peak)} km/h (limit ${limit} km/h${held ? `, over for ${held} s` : ''})`,
+              value: z.peak,
+            }
+          }
+          next[g.id] = z
+        } else if (was) {
+          // Still within a few km/h of the limit inside the zone: the same episode.
+          if (inside && speed > limit - SPEED_HYSTERESIS_KMH) { next[g.id] = was; continue }
+          // Ended before the grace ran out: recorded, not alerted.
+          if (!was.fired && !fire) {
+            const held = Math.max(0, was.lastTs - was.since)
+            fire = {
+              message: `Over the speed limit in ${g.name} ${held ? `for ${held} s` : 'on one reading'}, within the ${grace} s grace: ${Math.round(was.peak)} km/h (limit ${limit} km/h)`,
+              value: was.peak,
+              recordOnly: true,
+            }
+          }
+        }
+      }
+      s.zones = next
       return { state: s, fire }
     }
 
@@ -441,7 +489,11 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
   const record = (alert, subject, prev, result, event) => {
     const last = prev?.lastFiredAt ?? 0
     let next = result.state
-    if (result.fire && now - last >= COOLDOWN_SEC) {
+    // A within-grace excursion is a record, not an alert: it is stored already
+    // read (no bell), never emailed, and does not start the cooldown.
+    if (result.fire?.recordOnly) {
+      events.push({ ...event, alertId: alert.id, bgId: alert.bgId, type: alert.type, severity: 'Low', title: `${alert.name} · recorded`, message: result.fire.message, value: result.fire.value ?? null, occurredAt: new Date(now * 1000), readAt: new Date(now * 1000) })
+    } else if (result.fire && now - last >= COOLDOWN_SEC) {
       next = { ...next, lastFiredAt: now }
       events.push({ ...event, alertId: alert.id, bgId: alert.bgId, type: alert.type, severity: alert.severity, title: alert.name, message: result.fire.message, value: result.fire.value ?? null, occurredAt: new Date(now * 1000) })
     }
@@ -509,6 +561,7 @@ async function emailEvents(events, alerts) {
   const byId = new Map(alerts.map(a => [a.id, a]))
   for (const e of events) {
     const alert = byId.get(e.alertId)
+    if (e.readAt) continue // a within-grace record, not an alert
     if (!alert?.notify?.email || !alert.emails?.length) continue
     const sent = await sendAlertEmail(alert.emails, e)
     if (sent) await prisma.alertEvent.update({ where: { id: e.id }, data: { emailedAt: new Date() } })

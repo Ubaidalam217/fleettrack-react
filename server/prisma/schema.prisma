@@ -500,6 +500,13 @@ model Geofence {
   description String?
   active      Boolean @default(true)
 
+  /// Speed limit inside the zone (client, 2026-11-09), for the "Geo Zone
+  /// Speed Violation" alert. Null: no limit here.
+  speedLimitKmh Int?
+  /// How long the vehicle may stay over that limit before it is a violation.
+  /// Shorter excursions are only recorded; 0 alerts at once.
+  speedGraceSec Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
