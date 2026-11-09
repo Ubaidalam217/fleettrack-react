@@ -53,7 +53,27 @@ export const EXTRA_FIELDS = Object.freeze([
   'can.fuel.consumed.high.resolution',
   'position.altitude',
   'ibutton.code',
+  // Probe 1's companions: a 0 °C with 0 % humidity and a 0 V battery is no
+  // probe at all (src/utils/sensorReadings.js).
+  'ble.sensor.humidity.1',
+  'ble.sensor.battery.voltage.1',
 ])
+
+/**
+ * Sensor readings are not carried forward from older messages (client,
+ * 2026-11-10): a fuel or temperature value the device has stopped sending is
+ * not current, and carrying it forward stamped it with the newest message's
+ * time, so a July fuel 0 % read as live.
+ */
+const SENSOR_COLUMNS = new Set(['fuel', 'temperature'])
+const isSensorKey = k => k.startsWith('ble.sensor.') || k.startsWith('can.fuel.')
+const withoutSensors = extra => {
+  if (!extra) return extra
+  const kept = Object.fromEntries(Object.entries(extra).filter(([k]) => !isSensorKey(k)))
+  return Object.keys(kept).length ? kept : null
+}
+/** A seeded telemetry field older than this before the newest one is dropped. */
+const SEED_SENSOR_MAX_AGE = 15 * 60
 
 /** EXTRA_FIELDS kept as text (the rest are numbers or booleans). */
 const TEXT_EXTRA = new Set(['ibutton.code'])
@@ -144,9 +164,11 @@ export function ingest(messages) {
       // Keep the last known value of a field a message did not carry.
       const merged = { ...row }
       if (prev) {
-        for (const col of Object.values(FIELD_MAP)) if (merged[col] === null) merged[col] = prev[col]
+        for (const col of Object.values(FIELD_MAP)) {
+          if (merged[col] === null && !SENSOR_COLUMNS.has(col)) merged[col] = prev[col]
+        }
         if (!merged.ident) merged.ident = prev.ident
-        if (!merged.extra && prev.extra) merged.extra = prev.extra
+        if (!merged.extra && prev.extra) merged.extra = withoutSensors(prev.extra)
       }
       latest.set(row.deviceId, merged)
       dirty.add(row.deviceId)
@@ -328,11 +350,15 @@ export async function seedFromFlespi() {
   for (const item of JSON.parse(res.text).result ?? []) {
     const t = item.telemetry ?? {}
     const msg = { 'device.id': item.id }
-    for (const [k, v] of Object.entries(t)) msg[k] = v?.value
-    if (msg.timestamp == null) {
-      const stamps = Object.values(t).map(v => v?.ts).filter(Boolean)
-      if (stamps.length) msg.timestamp = Math.max(...stamps)
+    const stamps = Object.values(t).map(v => v?.ts).filter(Boolean)
+    const newest = stamps.length ? Math.max(...stamps) : null
+    for (const [k, v] of Object.entries(t)) {
+      // A sensor field the device stopped sending is no current reading.
+      const sensor = isSensorKey(k) || k === 'fuel.sensor.value'
+      if (sensor && newest !== null && (v?.ts ?? 0) < newest - SEED_SENSOR_MAX_AGE) continue
+      msg[k] = v?.value
     }
+    if (msg.timestamp == null && newest !== null) msg.timestamp = newest
     const row = normalize(msg)
     if (!row) continue
     const prev = latest.get(row.deviceId)

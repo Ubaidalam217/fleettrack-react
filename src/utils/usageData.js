@@ -72,6 +72,10 @@ const FIELDS = [
   'ble.sensor.temperature.2',
   'ble.sensor.temperature.3',
   'ble.sensor.temperature.4',
+  // Companions of probe 1, to tell a no-probe 0 °C from a real one (sensorReadings.js).
+  'ble.sensor.humidity.1',
+  'ble.sensor.battery.voltage.1',
+  'ble.sensor.battery.level.1',
 ].join(',')
 
 // Returns today's raw messages (00:00 local to now) for a device, sorted

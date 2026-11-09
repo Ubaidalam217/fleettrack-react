@@ -12,16 +12,17 @@
 //
 // Current Fuel Level is read as a percentage per the spec's own "10% jump"
 // framing — Flespi does not confirm the sensor is calibrated that way.
+//
+// Placeholder readings are not readings (client, 2026-11-10): a probe slot
+// with nothing paired reports 0 °C with 0 % humidity, a CAN bus with no fuel
+// data reports 0 litres consumed, and a fuel level that never leaves 0 is no
+// sensor at all. See utils/sensorReadings.js.
+
+import { messageTemperature } from './sensorReadings'
 
 const FUEL_LEVEL_FIELD = 'fuel.sensor.value'
 const FUEL_CONSUMED_FIELD = 'can.fuel.consumed.high.resolution'
 const FUEL_CONSUMED_FALLBACK_FIELD = 'can.fuel.consumed'
-const TEMPERATURE_FIELDS = [
-  'ble.sensor.temperature.1',
-  'ble.sensor.temperature.2',
-  'ble.sensor.temperature.3',
-  'ble.sensor.temperature.4',
-]
 
 // A same-step jump this large reads as a filling event rather than normal
 // consumption drift.
@@ -34,33 +35,33 @@ function num(v) {
   return typeof v === 'number' && Number.isFinite(v) ? v : null
 }
 
-// Average of whichever BLE probes this message actually reports — devices
-// with one probe wired report only .1, so this degrades to that single value.
-function avgTemperature(m) {
-  const vals = TEMPERATURE_FIELDS.map(f => num(m[f])).filter(v => v != null)
-  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
-}
+// A cumulative fuel counter of 0 is a CAN bus with no fuel data, not an empty one.
+const counter = v => { const n = num(v); return n != null && n > 0 ? n : null }
 
 function computeFuel(messages, liveSnapshot) {
-  const levels = [] // { level, ignition } per message that reported one, in order
+  let levels = [] // { level, ignition, ts } per message that reported one, in order
   let consumedFirst = null
   let consumedLast = null
 
   for (const m of messages) {
     const level = num(m[FUEL_LEVEL_FIELD])
-    if (level != null) levels.push({ level, ignition: m['engine.ignition.status'] ?? null })
+    if (level != null) levels.push({ level, ignition: m['engine.ignition.status'] ?? null, ts: m.timestamp ?? null })
 
-    const consumed = num(m[FUEL_CONSUMED_FIELD]) ?? num(m[FUEL_CONSUMED_FALLBACK_FIELD])
+    const consumed = counter(m[FUEL_CONSUMED_FIELD]) ?? counter(m[FUEL_CONSUMED_FALLBACK_FIELD])
     if (consumed != null) {
       if (consumedFirst == null) consumedFirst = consumed
       consumedLast = consumed
     }
   }
 
-  const currentLevel = num(liveSnapshot?.fuelLevel) ?? (levels.length ? levels[levels.length - 1].level : null)
+  // A level that never leaves 0 all day is no sensor.
+  const live = num(liveSnapshot?.fuelLevel)
+  if (levels.length && levels.every(l => l.level === 0) && (live == null || live === 0)) levels = []
+  const currentLevel = live != null && (live !== 0 || levels.length) ? live : null
+  const last = levels.length ? levels[levels.length - 1] : null
 
   // Nothing at all for this vehicle — section is not configured, hide it.
-  if (currentLevel == null && consumedFirst == null) return null
+  if (currentLevel == null && !last && consumedFirst == null) return null
 
   // Fill/theft need at least two level samples to see a jump between them.
   let fillEvents = null
@@ -77,6 +78,9 @@ function computeFuel(messages, liveSnapshot) {
 
   return {
     currentLevel,
+    // When the live value is not current, the last reading today and its time.
+    lastLevel: currentLevel == null && last ? last.level : null,
+    lastLevelAt: currentLevel == null && last ? last.ts : null,
     consumedToday: consumedFirst != null && consumedLast != null ? consumedLast - consumedFirst : null,
     fillEvents,
     theftEvents,
@@ -85,16 +89,25 @@ function computeFuel(messages, liveSnapshot) {
 
 function computeTemperature(messages, liveSnapshot) {
   const temps = []
+  let lastAt = null
   for (const m of messages) {
-    const t = avgTemperature(m)
-    if (t != null) temps.push(t)
+    const t = messageTemperature(m)
+    if (t != null) {
+      temps.push(t)
+      lastAt = m.timestamp ?? lastAt
+    }
   }
 
-  const current = num(liveSnapshot?.temperature) ?? (temps.length ? temps[temps.length - 1] : null)
-  if (current == null && temps.length === 0) return null
+  const current = num(liveSnapshot?.temperature)
+  // Nothing today: the device's last real reading, however old, still tells something.
+  const older = temps.length ? null : num(liveSnapshot?.temperatureLast)
+  if (current == null && temps.length === 0 && older == null) return null
 
   return {
     current,
+    // When there is no current reading, the last real one and its time.
+    last: current == null ? (temps.length ? temps[temps.length - 1] : older) : null,
+    lastAt: current == null ? (temps.length ? lastAt : liveSnapshot?.temperatureLastTs ?? null) : null,
     max: temps.length ? Math.max(...temps) : null,
     avg: temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : null,
     min: temps.length ? Math.min(...temps) : null,

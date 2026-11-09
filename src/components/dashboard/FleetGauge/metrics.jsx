@@ -18,7 +18,8 @@ export function buildFleetMetrics(fleetData) {
     { label: 'Safety Score',    value: '96.5', unit: '%',    icon: <ShieldIcon />, estimated: true  },
     { label: 'Vehicle Uptime',  value: uptime, unit: '%',    icon: <PulseIcon />,  estimated: false },
     { label: 'Maintenance Due', value: '2',    unit: 'veh',  icon: <WrenchIcon />, estimated: true  },
-    { label: 'Fuel Efficiency', value: '17.3', unit: 'km/L', icon: <DropIcon />,   estimated: true  },
+    // No tracker reports fuel yet (probe 2026-11-09), so no number rather than a made-up one.
+    { label: 'Fuel Efficiency', value: '-',    unit: 'km/L', icon: <DropIcon />,   estimated: false },
     { label: 'Trips On-time',   value: '83',   unit: '%',    icon: <RocketIcon />, estimated: true  },
   ]
 }

@@ -3,6 +3,7 @@ import { BASE_URL, HEADERS, hasFlespiToken } from './flespiConfig'
 import { IS_REAL, API_URL } from '../data/mode'
 import { normalizeMaster, cacheRawMetadata } from '../services/vehicleMaster'
 import { useScopedSnapshot } from '../data/fleetScope'
+import { liveFuelLevel, liveTemperature, probeTemperature, flatTelemetry } from '../utils/sensorReadings'
 
 // Live fleet state, kept fresh by polling the Flespi proxy.
 //
@@ -69,7 +70,7 @@ async function fetchDeviceMeta() {
 // Latest telemetry for every device in one request — what each poll fetches.
 async function fetchTelemetrySnapshot() {
   const res = await fetch(
-    `${BASE_URL}/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,engine.ignition.status,timestamp,fuel.sensor.value,ble.sensor.temperature.1,ibutton.code`,
+    `${BASE_URL}/gw/devices/all/telemetry/position.latitude,position.longitude,position.speed,position.direction,engine.ignition.status,timestamp,fuel.sensor.value,ble.sensor.temperature.1,ble.sensor.humidity.1,ble.sensor.battery.voltage.1,ibutton.code`,
     { headers: HEADERS }
   )
   if (!res.ok) {
@@ -95,8 +96,13 @@ function parseTelemetry(items) {
       ignition: t['engine.ignition.status']?.value    ?? null,
       lastTs:   t['timestamp']?.value ?? (tsCandidates.length ? Math.max(...tsCandidates) : null),
       // Sensors tab (Phase 3) — current fuel level / BLE probe temperature.
-      fuelLevel:    t['fuel.sensor.value']?.value        ?? null,
-      temperature:  t['ble.sensor.temperature.1']?.value ?? null,
+      // Only when that field itself was reported lately, and not a no-probe 0
+      // (utils/sensorReadings.js): a stale or placeholder value is no reading.
+      fuelLevel:    liveFuelLevel(t),
+      temperature:  liveTemperature(t),
+      // The last real reading however old, for "Last Temperature · 7 h ago".
+      temperatureLast:   probeTemperature(flatTelemetry(t), 1),
+      temperatureLastTs: t['ble.sensor.temperature.1']?.ts ?? null,
       // Driver-ID tag (iButton) and when it was last read; Settings > Driver maps it to a name.
       ibutton:      typeof t['ibutton.code']?.value === 'string' ? t['ibutton.code'].value : null,
       ibuttonTs:    t['ibutton.code']?.ts ?? null,
@@ -158,6 +164,8 @@ function applyDeviceMeta(meta) {
       lastTs:   prev.lastTs   ?? null,
       fuelLevel:   prev.fuelLevel   ?? null,
       temperature: prev.temperature ?? null,
+      temperatureLast:   prev.temperatureLast   ?? null,
+      temperatureLastTs: prev.temperatureLastTs ?? null,
     }
     next.status = vehicleStatus(next)
     vehiclesById.set(id, next)
@@ -189,8 +197,12 @@ function applyTelemetrySnapshot(telemetry) {
       heading:  tel.heading  ?? prev.heading  ?? null,
       ignition: tel.ignition ?? prev.ignition ?? null,
       lastTs:   tel.lastTs   ?? prev.lastTs   ?? null,
-      fuelLevel:   tel.fuelLevel   ?? prev.fuelLevel   ?? null,
-      temperature: tel.temperature ?? prev.temperature ?? null,
+      // Not carried from the previous poll: a reading that went stale or
+      // turned out to be a placeholder is no longer current.
+      fuelLevel:   tel.fuelLevel   ?? null,
+      temperature: tel.temperature ?? null,
+      temperatureLast:   tel.temperatureLast   ?? prev.temperatureLast   ?? null,
+      temperatureLastTs: tel.temperatureLastTs ?? prev.temperatureLastTs ?? null,
       ibutton:     tel.ibutton     ?? prev.ibutton     ?? null,
       ibuttonTs:   tel.ibuttonTs   ?? prev.ibuttonTs   ?? null,
     }

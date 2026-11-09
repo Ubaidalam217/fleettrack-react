@@ -29,6 +29,9 @@ export const GEO_ZONE_FIELDS = [
   'engine.ignition.status',
   ...DISTANCE_FIELDS,
   'ble.sensor.temperature.1',
+  // Its companions: a 0 °C with 0 % humidity and a 0 V battery is no probe (sensorReadings.js).
+  'ble.sensor.humidity.1',
+  'ble.sensor.battery.voltage.1',
 ].join(',')
 
 /**

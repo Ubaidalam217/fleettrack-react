@@ -354,6 +354,15 @@ describe('runAlertPass + /api/alert-events', () => {
     expect(alert.message).toBe('PLATE-1: Geo Zone speed violation in Port Zone: 52 km/h (limit 40 km/h, over for 60 s)')
   })
 
+  it('a temperature slot with no probe (0 °C, 0 % humidity) raises no "below minimum"', async () => {
+    await prisma.alert.create({ data: { name: 'Cold chain', type: 'temperature', bgId: fx.bgA1a.id, severity: 'High', minTemp: 2, maxTemp: 8, allVehicles: true } })
+    telemetry = { 101: { 'position.speed': 0, 'ble.sensor.temperature.1': 0, 'ble.sensor.humidity.1': 0, timestamp: NOW - 20 } }
+    expect(await runAlertPass(NOW)).toHaveLength(0)
+    telemetry = { 101: { 'position.speed': 0, 'ble.sensor.temperature.1': 0.5, 'ble.sensor.humidity.1': 60, timestamp: NOW - 10 } }
+    // A real 0.5 °C does alert (the fixture's own reefer rule fires too).
+    expect((await runAlertPass(NOW + 30)).map(e => e.title)).toContain('Cold chain')
+  })
+
   it('does nothing for an inactive rule', async () => {
     await overspeedRule(fx.bgA1a.id, { status: 'Inactive' })
     telemetry = { 101: { 'position.speed': 150, timestamp: NOW - 20 } }

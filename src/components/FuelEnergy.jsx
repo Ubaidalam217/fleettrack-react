@@ -1,63 +1,29 @@
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import EstimatedBadge from './EstimatedBadge'
+import { Droplet } from 'lucide-react'
 
-const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-const data = DAYS.map((day, i) => ({ day, fuel: [130,145,125,155,165,90,85][i] }))
-
-function CustomTooltip({ active, payload, label, isDark }) {
-  if (!active || !payload?.length) return null
-  const bg  = isDark ? '#162035' : '#ffffff'
-  const ttl = isDark ? '#ffffff' : '#1e293b'
-  const bd  = isDark ? '#253055' : '#e2e8f0'
-  const bdy = isDark ? '#9ca3af' : '#64748b'
-  return (
-    <div style={{ background: bg, border: `1px solid ${bd}`, borderRadius: 8, padding: '8px 12px', fontSize: 11 }}>
-      <p style={{ color: ttl, fontWeight: 600, marginBottom: 2 }}>{label}</p>
-      <p style={{ color: bdy }}>{payload[0].value} L</p>
-    </div>
-  )
-}
-
-export default function FuelEnergy({ isDark }) {
-  const tick = isDark ? '#9ca3af' : '#64748b'
-  const grid = isDark ? 'rgba(37,48,85,0.6)' : 'rgba(226,232,240,0.8)'
-
+/**
+ * Dashboard › Fuel & Energy. It used to show fixed sample numbers (895 L,
+ * 4.5 L/h and a made-up week). No tracker on this account reports fuel yet
+ * (read-only probe, 2026-11-09: no fuel sensor, and the one CAN bus with fuel
+ * fields reads 0), so the card says so instead of showing numbers that look
+ * measured. It fills in once a fuel sensor or CAN fuel data is connected and
+ * its field and unit are known (utils/sensorReadings.js).
+ */
+export default function FuelEnergy() {
   return (
     <div className="ft-card">
       <div style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <h3 className="ft-card-title">Fuel &amp; Energy</h3>
-          <EstimatedBadge />
-        </div>
+        <h3 className="ft-card-title">Fuel &amp; Energy</h3>
         <p className="ft-card-sub">Consumption last 7 days</p>
-        <p className="ft-card-note">* Fuel data estimated from vehicle activity. Direct sensor integration available with premium telemetry.</p>
       </div>
-
-      <div className="grid grid-cols-2 gap-2.5 mb-4">
-        <div className="ft-inset p-3 text-center">
-          <div className="text-base font-bold" style={{ color: 'var(--c-text1)' }}>895 L</div>
-          <div className="text-[10px] mt-0.5" style={{ color: 'var(--c-text3)' }}>Total Consumed</div>
+      <div className="ft-inset" style={{ padding: '22px 16px', textAlign: 'center' }}>
+        <span style={{
+          width: 40, height: 40, borderRadius: 12, margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--ft-accent)', background: 'color-mix(in srgb, var(--ft-accent) 12%, transparent)',
+        }} aria-hidden="true"><Droplet size={18} /></span>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text1)' }}>No fuel sensor data yet</div>
+        <div style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--c-text3)', marginTop: 4 }}>
+          Fuel use shows here once a fuel sensor or the vehicle’s CAN fuel data is connected to the tracker.
         </div>
-        <div className="ft-inset p-3 text-center">
-          <div className="text-base font-bold text-emerald-500">4.5 L/h</div>
-          <div className="text-[10px] mt-0.5" style={{ color: 'var(--c-text3)' }}>Avg per hour</div>
-        </div>
-      </div>
-
-      <div className="h-[80px] md:h-[120px] ft-push">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 0, right: 4, bottom: 0, left: -20 }}>
-            <CartesianGrid stroke={grid} vertical={false} />
-            <XAxis dataKey="day" tick={{ fontSize: 10, fill: tick }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: tick }} axisLine={false} tickLine={false} />
-            <Tooltip content={<CustomTooltip isDark={isDark} />} cursor={{ fill: isDark ? 'color-mix(in srgb, var(--ft-accent) 5%, transparent)' : 'color-mix(in srgb, var(--ft-accent) 4%, transparent)' }} />
-            <Bar dataKey="fuel" radius={[4,4,0,0]} isAnimationActive={false}>
-              {data.map((_, i) => (
-                <Cell key={i} fill="color-mix(in srgb, var(--ft-accent) 70%, transparent)" />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
       </div>
     </div>
   )

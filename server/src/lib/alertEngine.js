@@ -33,6 +33,7 @@ import { sendAlertEmail } from './mailer.js'
 import { haversineMeters } from '../../../src/utils/distance.js'
 import { telemetryResponse } from './telemetry.js'
 import { runReminderPass } from './reminders.js'
+import { liveTemperature } from '../../../src/utils/sensorReadings.js'
 
 const UAE_OFFSET_SEC = 4 * 3600
 /** Telemetry older than this is not evaluated for speed / ignition / position rules. */
@@ -47,6 +48,8 @@ const STILL_KMH = 3
 const TELEMETRY_FIELDS = [
   'position.latitude', 'position.longitude', 'position.speed',
   'engine.ignition.status', 'ble.sensor.temperature.1', 'timestamp', 'ibutton.code',
+  // Probe 1's companions, to tell a no-probe 0 °C from a real one.
+  'ble.sensor.humidity.1', 'ble.sensor.battery.voltage.1',
   // The odometer, for distance-based reminders (lib/reminders.js).
   'vehicle.mileage',
 ].join(',')
@@ -443,7 +446,11 @@ export async function fetchTelemetry() {
       lat: t['position.latitude']?.value ?? null,
       lng: t['position.longitude']?.value ?? null,
       ignition: t['engine.ignition.status']?.value ?? null,
-      temperature: t['ble.sensor.temperature.1']?.value ?? null,
+      // Only a real probe reading the device still sends: a field left over
+      // from older messages, or a no-probe 0 °C, would raise a false "below
+      // the minimum" (src/utils/sensorReadings.js). Judged against the
+      // device's own newest message; evaluate() checks that one for age.
+      temperature: liveTemperature(t, t.timestamp?.value ?? (stamps.length ? Math.max(...stamps) : undefined)),
       ibutton: ibuttonKey(t['ibutton.code']?.value),
       mileage: t['vehicle.mileage']?.value ?? null,
       ts: t.timestamp?.value ?? (stamps.length ? Math.max(...stamps) : null),

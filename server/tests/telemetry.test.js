@@ -89,6 +89,18 @@ describe('POST /api/ingest/flespi', () => {
     expect(T.getLatest(101)).toMatchObject({ ts: NOW - 10, speed: 0, lat: 24.4, ignition: true })
   })
 
+  it('does not carry a sensor reading forward to a message without it', async () => {
+    await post([msg({
+      timestamp: NOW - 20, 'ble.sensor.temperature.1': 23.6, 'ble.sensor.humidity.1': 57, 'fuel.sensor.value': 64,
+      'ibutton.code': '94000001D9DF0801',
+    })])
+    await post([{ 'device.id': 101, timestamp: NOW - 10, 'position.speed': 0 }])
+    const latest = T.getLatest(101)
+    expect(latest).toMatchObject({ ts: NOW - 10, lat: 24.4, temperature: null, fuel: null })
+    // The driver tag still carries; the probe's humidity does not.
+    expect(latest.extra).toEqual({ 'ibutton.code': '94000001D9DF0801' })
+  })
+
   it('accepts 5,000 vehicles in one batch', async () => {
     const big = Array.from({ length: 5000 }, (_, i) => msg({ 'device.id': 1000 + i }))
     const res = await post(big)

@@ -23,6 +23,7 @@
 // "no reading" is 0.0, not a blank cell, so that is what every vehicle without
 // sensor data gets too.
 import { analyzeVehicle } from './geoZoneEngine'
+import { probeTemperature } from './sensorReadings'
 import { settingsProfileForImei } from '../data/settings'
 import { reverseGeocodeMany, geocodeKey, shortenAddress, countUncached } from './geocode'
 
@@ -99,9 +100,11 @@ function findMessageAtTs(messages, ts) {
   return candidates[0] ?? null
 }
 
+// A no-probe 0 °C (0 % humidity, 0 V battery) is no reading, so it neither
+// shows as a value nor drags an average down (utils/sensorReadings.js).
 function temperatureAtTs(messages, ts) {
   const m = findMessageAtTs(messages, ts)
-  return num(m?.['ble.sensor.temperature.1'])
+  return m ? probeTemperature(m, 1) : null
 }
 
 function temperatureAvg(messages, fromTs, toTs) {
@@ -109,7 +112,7 @@ function temperatureAvg(messages, fromTs, toTs) {
   for (const m of messages) {
     const ts = m.timestamp
     if (ts == null || ts < fromTs || ts > toTs) continue
-    const t = num(m['ble.sensor.temperature.1'])
+    const t = probeTemperature(m, 1)
     if (t != null) { sum += t; n++ }
   }
   return n > 0 ? sum / n : null

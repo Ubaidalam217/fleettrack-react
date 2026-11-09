@@ -492,6 +492,14 @@ function Usage({ v }) {
   )
 }
 
+/** "12 min ago" / "3 h ago" for a reading's time in seconds; '' when unknown. */
+function sinceLabel(ts) {
+  if (!ts) return 'earlier today'
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - ts))
+  if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min ago`
+  return s < 48 * 3600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`
+}
+
 function Sensors({ v }) {
   const { loading, error, status, messages } = useVehicleUsage(v.id)
   const data = useMemo(() => computeSensors(messages, v), [messages, v])
@@ -525,7 +533,9 @@ function Sensors({ v }) {
       {fuel && (
         <Section title="Fuel Monitoring">
           <Grid>
-            <Field label="Current Fuel Level" value={fuel.currentLevel != null ? `${fuel.currentLevel.toFixed(0)}%` : null} />
+            {fuel.currentLevel == null && fuel.lastLevel != null
+              ? <Field label="Last Fuel Level" value={`${fuel.lastLevel.toFixed(0)}% · ${sinceLabel(fuel.lastLevelAt)}`} />
+              : <Field label="Current Fuel Level" value={fuel.currentLevel != null ? `${fuel.currentLevel.toFixed(0)}%` : null} />}
             <Field label="Fuel Consumed Today" value={fuel.consumedToday != null ? `${fuel.consumedToday.toFixed(1)} L` : null} />
             <Field label="Fuel Filling Events" value={fuel.fillEvents} />
             <Field label="Fuel Theft Events" value={fuel.theftEvents} color={fuel.theftEvents ? '#ef4444' : undefined} />
@@ -536,7 +546,9 @@ function Sensors({ v }) {
       {temperature && (
         <Section title="Temperature Monitoring">
           <Grid>
-            <Field label="Current Temperature" value={temperature.current != null ? `${temperature.current.toFixed(1)}°C` : null} />
+            {temperature.current == null && temperature.last != null
+              ? <Field label="Last Temperature" value={`${temperature.last.toFixed(1)}°C · ${sinceLabel(temperature.lastAt)}`} />
+              : <Field label="Current Temperature" value={temperature.current != null ? `${temperature.current.toFixed(1)}°C` : null} />}
             <Field label="Max Temperature Today" value={temperature.max != null ? `${temperature.max.toFixed(1)}°C` : null} />
             <Field label="Average Temperature Today" value={temperature.avg != null ? `${temperature.avg.toFixed(1)}°C` : null} />
             <Field label="Min Temperature Today" value={temperature.min != null ? `${temperature.min.toFixed(1)}°C` : null} />
