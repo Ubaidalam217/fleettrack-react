@@ -363,7 +363,7 @@ function DriverDocuments({ driver, canWrite, push }) {
   )
 }
 
-const todayStr = () => new Date().toISOString().slice(0, 10)
+const todayStr = () => new Date().toLocaleDateString('en-CA')
 const SMALL_BTN = { padding: '5px 9px', fontSize: 11.5 }
 
 /**

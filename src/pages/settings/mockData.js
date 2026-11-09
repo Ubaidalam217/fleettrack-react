@@ -164,6 +164,8 @@ export const ALERT_TYPES = [
 const LEGACY_ALERT_TYPES = {
   geofence_enter: { label: 'Geofence Entry', direction: 'enter' },
   geofence_exit:  { label: 'Geofence Exit',  direction: 'exit' },
+  // Not an alert rule: raised by Settings › Master › Reminder Rule (lib/reminders.js).
+  reminder:       { label: 'Maintenance Reminder' },
 }
 
 /** Geo Zone directions, in the order the form shows them. */

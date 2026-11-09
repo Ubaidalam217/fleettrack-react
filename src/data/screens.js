@@ -59,6 +59,7 @@ export const SCREEN_MODULES = [
       { id: '/settings/driver',   label: 'Driver',             kind: 'data' },
       { id: '/settings/geofence', label: 'Address - Geofence', kind: 'data' },
       { id: '/settings/expense',  label: 'Expense',            kind: 'data' },
+      { id: '/settings/reminder-rule', label: 'Reminder Rule',  kind: 'data', hint: 'Also Mark done in Reminder Status' },
     ],
   },
 ]

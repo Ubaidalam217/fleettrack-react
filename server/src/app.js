@@ -35,6 +35,7 @@ import flespiProxyRoutes from './routes/flespiProxy.js'
 import reportRoutes from './routes/reports.js'
 import driverRoutes from './routes/drivers.js'
 import expenseRoutes from './routes/expenses.js'
+import { router as reminderRoutes, ruleRouter as reminderRuleRoutes } from './routes/reminders.js'
 import { requireScreen, WRITE_SCREENS } from './lib/permissions.js'
 import alertEventRoutes from './routes/alertEvents.js'
 import assistantRoutes from './routes/assistant.js'
@@ -167,6 +168,8 @@ export function createApp() {
   app.use('/api/reports', reportRoutes)
   app.use('/api/drivers', requireScreen(WRITE_SCREENS['/api/drivers']), driverRoutes)
   app.use('/api/expenses', requireScreen(WRITE_SCREENS['/api/expenses']), expenseRoutes)
+  app.use('/api/reminder-rules', requireScreen(WRITE_SCREENS['/api/reminder-rules']), reminderRuleRoutes)
+  app.use('/api/reminders', requireScreen(WRITE_SCREENS['/api/reminders']), reminderRoutes)
   app.use('/api/driver-performance', driverPerformanceRoutes)
   app.use('/api/device-settings', deviceSettingsRoutes)
   app.use('/api/replay-shares', replayShareRoutes)

@@ -115,6 +115,8 @@ model BusinessGroup {
   drivers     Driver[]
   alertEvents AlertEvent[]
   expenses    Expense[]
+  reminderRules ReminderRule[]
+  reminderAcks  ReminderAck[]
 
   @@index([ggbId])
   @@index([groupId])
@@ -224,6 +226,9 @@ model Vehicle {
   driverAssignments DriverAssignment[]
   driverIncidents   DriverIncident[]
   expenses          Expense[]
+  reminders         ReminderVehicle[]
+  reminderAcks      ReminderAck[]
+  engineHours       VehicleEngineHours?
 
   @@index([bgId])
   @@index([branchId])
@@ -930,4 +935,110 @@ model ExpenseBill {
   expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
 
   @@index([expenseId])
+}
+
+/// A maintenance or renewal reminder (Settings › Master › Reminder Rule, client
+/// 2026-11-10, after the reference system). Recurring or One Time, counted by
+/// duration, distance and/or engine hours, whichever comes first, for each of
+/// its vehicles from that vehicle's own start point (ReminderVehicle).
+model ReminderRule {
+  id        String  @id @default(cuid())
+  bgId      String
+  name      String
+  /// "Oil Change", "Insurance"… (the reference's grouped list, or own text).
+  type      String
+  recurring Boolean @default(true)
+
+  byDuration    Boolean @default(true)
+  byDistance    Boolean @default(false)
+  byEngineHours Boolean @default(false)
+  /// Recurring: Daily | Weekly | Monthly, every `every` of those. One Time: at `every` months.
+  frequency  String  @default("Monthly")
+  every      Int?
+  notifyDays Int?
+  everyKm    Float?
+  notifyKm   Float?
+  everyHours  Float?
+  notifyHours Float?
+
+  notifyInApp Boolean  @default(true)
+  notifyEmail Boolean  @default(false)
+  emails      String[] @default([])
+  active      Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bg       BusinessGroup     @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicles ReminderVehicle[]
+  acks     ReminderAck[]
+
+  @@index([bgId])
+}
+
+/// One vehicle on a reminder rule: where its count starts, and its state.
+model ReminderVehicle {
+  id        String @id @default(cuid())
+  ruleId    String
+  vehicleId String
+
+  /// The cycle starts here (the reference's "Reminder Start Date"); Mark done moves it.
+  startDate   DateTime
+  /// Distance and engine hours already run in this cycle before the start date.
+  kmBefore    Float @default(0)
+  hoursBefore Float @default(0)
+  /// Odometer and counted engine hours when the cycle started (filled by the server).
+  startOdometer    Float?
+  startEngineHours Float?
+  /// A renewal's own dates; the expiry stands for the duration when set.
+  issueDate  DateTime?
+  expiryDate DateTime?
+
+  /// The last step notified in this cycle (due | overdue), so each is sent once.
+  alerted     String?
+  /// A One Time reminder that was done.
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  rule    ReminderRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  vehicle Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, vehicleId])
+  @@index([vehicleId])
+}
+
+/// "Mark done" (the reference's Acknowledgement History). Kept when the rule or vehicle goes.
+model ReminderAck {
+  id           String   @id @default(cuid())
+  bgId         String
+  ruleId       String?
+  ruleName     String
+  type         String
+  vehicleId    String?
+  vehicleLabel String
+  doneAt       DateTime
+  odometer     Float?
+  engineHours  Float?
+  note         String?
+  expenseId    String?
+  byName       String?
+  createdAt    DateTime @default(now())
+
+  bg      BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  rule    ReminderRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  vehicle Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([bgId])
+  @@index([vehicleId])
+}
+
+/// Engine hours the server counts from ignition-on time (the trackers send no hour meter).
+model VehicleEngineHours {
+  vehicleId    String   @id
+  hours        Float    @default(0)
+  lastTs       Int?
+  lastIgnition Boolean?
+  updatedAt    DateTime @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 }

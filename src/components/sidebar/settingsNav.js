@@ -1,6 +1,6 @@
 import {
   Layers, Users, Car, Bell, IdCard,
-  Database, MapPinned, ListChecks, Receipt,
+  Database, MapPinned, ListChecks, Receipt, BellRing,
 } from 'lucide-react'
 import { filterMenu, ancestorIdsIn, labelForPathIn } from './navTree'
 
@@ -52,6 +52,7 @@ export const SETTINGS_MENU = [
     label: 'Master',
     icon: Database,
     children: [
+      { id: 'reminder-rule', label: 'Reminder Rule', icon: BellRing, path: '/settings/reminder-rule' },
       { id: 'expense', label: 'Expense', icon: Receipt, path: '/settings/expense' },
     ],
   },

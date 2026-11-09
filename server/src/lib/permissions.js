@@ -41,6 +41,9 @@ export const WRITE_SCREENS = Object.freeze({
   '/api/geofences': '/settings/geofence',
   '/api/drivers': '/settings/driver',
   '/api/expenses': '/settings/expense',
+  '/api/reminder-rules': '/settings/reminder-rule',
+  // Mark done is a change to the reminder.
+  '/api/reminders': '/settings/reminder-rule',
   '/api/users': 'users',
 })
 

@@ -1,6 +1,6 @@
 import {
   Route, Car, FileBarChart, FileText, Navigation, AlertTriangle,
-  Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma, ShieldCheck,
+  Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma, ShieldCheck, Wrench, History,
 } from 'lucide-react'
 import { labelForPathIn } from './navTree'
 
@@ -78,6 +78,18 @@ export const REPORT_CATEGORIES = [
         desc: 'Per driver: distance, hours, harsh driving, fatigue, incidents, safety score, trend and risk levels.' },
       { id: 'gyr',              label: 'GYR Report',              icon: Gauge,         path: '/reports/gyr',             ready: true,
         desc: 'Green / Yellow / Red rating of each vehicle or driver from its exceptions.' },
+    ],
+  },
+  {
+    // Client, 2026-11-10, after the reference system's Reports › Reminder.
+    id: 'reminder',
+    title: 'Reminder',
+    desc: 'Maintenance and renewal reminders: what is due now and what was done.',
+    reports: [
+      { id: 'reminder-status',  label: 'Reminder Status',          icon: Wrench,  path: '/reports/reminder-status',  ready: true,
+        desc: 'Every vehicle on every reminder: Overdue, Due, Upcoming or Completed, and Mark done.' },
+      { id: 'reminder-history', label: 'Acknowledgement History',  icon: History, path: '/reports/reminder-history', ready: true,
+        desc: 'Each reminder marked done, with the date, odometer, note and who did it.' },
     ],
   },
   {

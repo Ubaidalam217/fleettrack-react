@@ -20,6 +20,9 @@ import SettingsAlerts         from './pages/settings/Alerts'
 import SettingsGeofence       from './pages/settings/Geofence'
 import SettingsDriver         from './pages/settings/Driver'
 import SettingsExpense        from './pages/settings/Expense'
+import SettingsReminderRule   from './pages/settings/ReminderRule'
+import ReminderStatusReport   from './pages/reports/ReminderStatusReport'
+import ReminderHistoryReport  from './pages/reports/ReminderHistoryReport'
 import SettingsComingSoon     from './pages/settings/ComingSoon'
 // Reports module — Movement Report, plus the two Daywise sheets (step 2)
 import WorkingHourReport       from './pages/reports/WorkingHourReport'
@@ -178,6 +181,7 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/settings/geofence"        element={guard(<SettingsGeofence       {...themeProps} />)} />
         <Route path="/settings/driver"          element={guard(<SettingsDriver         {...themeProps} />)} />
         <Route path="/settings/expense"         element={guard(<SettingsExpense        {...themeProps} />)} />
+        <Route path="/settings/reminder-rule"   element={guard(<SettingsReminderRule   {...themeProps} />)} />
         {/* Master is a group now (Expense under it); old links land on its first page. */}
         <Route path="/settings/master"          element={<Navigate to="/settings/expense" replace />} />
         {/* …and the branches that share one placeholder until they get built. */}
@@ -198,6 +202,8 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/reports/summary-usage" element={guard(<UsageReportPage variant="summary" {...themeProps} />)} />
         <Route path="/reports/trip"          element={guard(<UsageReportPage variant="trip" {...themeProps} />)} />
         <Route path="/reports/event"         element={guard(<EventOccurrenceReport {...themeProps} />)} />
+        <Route path="/reports/reminder-status"  element={guard(<ReminderStatusReport  {...themeProps} />)} />
+        <Route path="/reports/reminder-history" element={guard(<ReminderHistoryReport {...themeProps} />)} />
         <Route path="/reports/working-hour"  element={guard(<WorkingHourReport  {...themeProps} />)} />
         <Route path="/reports/private-usage" element={guard(<UsageReportPage variant="privateUsage" {...themeProps} />)} />
         <Route path="/reports/geo-zone"      element={guard(<GeoZoneReport      {...themeProps} />)} />

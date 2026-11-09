@@ -20,6 +20,7 @@ import {
   expenseDay, periodDays,
 } from '../../data/expenses'
 import { exportExpensesExcel } from '../../utils/expenseExport'
+import { reminderStatus, markReminderDone, vehicleMeters, REMINDER_STATUS } from '../../data/reminders'
 import { fileToBase64 } from '../../utils/imageUpload'
 import { formatExpiryDate } from '../../utils/licenceExpiry'
 
@@ -69,7 +70,7 @@ const CSS = `
 @media (max-width: 900px){.exp-sum{grid-template-columns:repeat(2,minmax(0,1fr))}}
 `
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => new Date().toLocaleDateString('en-CA')
 const aed = n => `AED ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtSize = n => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
 const MAX_BILL_BYTES = 5 * 1024 * 1024
@@ -77,7 +78,7 @@ const MAX_BILL_BYTES = 5 * 1024 * 1024
 function emptyExpense(companyId = '') {
   return {
     id: null, companyId, branchId: '', vehicleId: '',
-    category: 'Variable', type: 'Fuel', subType: '',
+    category: 'Variable', type: 'Fuel', subType: '', completesReminder: '',
     expenseDate: today(), fromDate: '', toDate: '',
     odometer: '', workHours: '', fuelSource: '',
     vendor: '', amount: '', referenceNo: '', description: '',
@@ -106,6 +107,9 @@ export default function Expense(props) {
   const [exporting, setExporting] = useState(false)
   const formRef = useRef(null)
   const billRef = useRef(null)
+  // The chosen vehicle's open reminders, and whether the odometer came from the tracker.
+  const [vehReminders, setVehReminders] = useState([])
+  const [odoFromTracker, setOdoFromTracker] = useState(false)
 
   const reload = () => setReloadKey(k => k + 1)
   const setFilter = (k, v) => setFilters(f => ({ ...f, [k]: v, ...(k === 'category' ? { type: '' } : {}) }))
@@ -168,6 +172,31 @@ export default function Expense(props) {
   }
   const closeForm = () => { setErrors({}); setStaged([]); setDraft(null) }
 
+  // On picking a vehicle: its open reminders, and (on a new expense with no
+  // odometer typed) the tracker's odometer now.
+  const pickedVehicle = draft?.vehicleId ?? ''
+  const isNew = !draft?.id
+  useEffect(() => {
+    setVehReminders([])
+    setOdoFromTracker(false)
+    if (!IS_REAL || !pickedVehicle) return
+    let live = true
+    reminderStatus({ vehicleId: pickedVehicle })
+      .then(rows => { if (live) setVehReminders((rows ?? []).filter(r => r.status !== 'completed' && r.active)) })
+      .catch(() => {})
+    if (isNew) {
+      vehicleMeters([pickedVehicle])
+        .then(m => {
+          const odo = m?.[pickedVehicle]?.odometer
+          if (!live || odo == null) return
+          setDraft(d => (d && d.vehicleId === pickedVehicle && d.odometer === '' ? { ...d, odometer: String(Math.round(odo)) } : d))
+          setOdoFromTracker(true)
+        })
+        .catch(() => {})
+    }
+    return () => { live = false }
+  }, [pickedVehicle, isNew])
+
   const set = (key, value) => {
     setDraft(d => {
       const next = { ...d, [key]: value }
@@ -222,6 +251,22 @@ export default function Expense(props) {
     setSaving(true)
     try {
       const row = draft.id ? await updateExpense(draft.id, body) : await addExpense(body)
+      // "Marks reminder done": the next cycle starts from this expense.
+      const rem = draft.completesReminder ? vehReminders.find(r => r.ruleId === draft.completesReminder) : null
+      if (rem) {
+        try {
+          await markReminderDone({
+            ruleId: rem.ruleId, vehicleId: draft.vehicleId,
+            doneAt: (variable ? draft.expenseDate : draft.fromDate) > today() ? today() : (variable ? draft.expenseDate : draft.fromDate),
+            odometer: variable && draft.odometer !== '' ? Number(draft.odometer) : null,
+            note: [draft.type, draft.subType.trim(), draft.referenceNo.trim()].filter(Boolean).join(' · '),
+            expenseId: row.id, newExpiry: variable ? null : draft.toDate,
+          })
+          push(`${rem.ruleName} marked done`, { tone: 'success' })
+        } catch (err) {
+          handleApiError(err, { push })
+        }
+      }
       let failed = 0
       for (const f of staged) {
         try { await uploadExpenseBill(row.id, { fileName: f.name, data: await fileToBase64(f) }) } catch { failed += 1 }
@@ -368,6 +413,20 @@ export default function Expense(props) {
                   {bgVehicles.map(v => <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>)}
                 </select>
               </DF>
+              {vehReminders.length > 0 && (
+                <DF id={fid('completesReminder')} label="Marks reminder done (optional)" span={12}
+                  hint="Saving this expense marks the reminder done and starts its next cycle.">
+                  <select id={fid('completesReminder')} name="completesReminder" value={draft.completesReminder}
+                    onChange={e => set('completesReminder', e.target.value)} style={ctl(false)}>
+                    <option value="">— None —</option>
+                    {vehReminders.map(r => (
+                      <option key={r.ruleId} value={r.ruleId}>
+                        {r.ruleName} ({r.type}) · {REMINDER_STATUS[r.status].label}{r.detail ? ` · ${r.detail}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </DF>
+              )}
             </div>
           </DSection>
 
@@ -377,7 +436,12 @@ export default function Expense(props) {
               {variable ? (
                 <>
                   {date('expenseDate', 'Expense date', { required: true })}
-                  {text('odometer', 'Odometer (km)', { placeholder: '120450', max: 12, inputMode: 'decimal' })}
+                  <DF id={fid('odometer')} label="Odometer (km)" error={errors.odometer}
+                    hint={odoFromTracker && !errors.odometer ? 'From the tracker now; change it if needed.' : undefined}>
+                    <input id={fid('odometer')} name="odometer" value={draft.odometer} inputMode="decimal" maxLength={12} placeholder="120450"
+                      onChange={e => { set('odometer', e.target.value); setOdoFromTracker(false) }} autoComplete="off"
+                      aria-invalid={!!errors.odometer || undefined} style={ctl(!!errors.odometer)} />
+                  </DF>
                   {text('workHours', 'Work hours (h:mm)', { placeholder: '2:30', max: 8 })}
                 </>
               ) : (

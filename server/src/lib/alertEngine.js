@@ -32,6 +32,7 @@ import * as flespi from './flespi.js'
 import { sendAlertEmail } from './mailer.js'
 import { haversineMeters } from '../../../src/utils/distance.js'
 import { telemetryResponse } from './telemetry.js'
+import { runReminderPass } from './reminders.js'
 
 const UAE_OFFSET_SEC = 4 * 3600
 /** Telemetry older than this is not evaluated for speed / ignition / position rules. */
@@ -46,6 +47,8 @@ const STILL_KMH = 3
 const TELEMETRY_FIELDS = [
   'position.latitude', 'position.longitude', 'position.speed',
   'engine.ignition.status', 'ble.sensor.temperature.1', 'timestamp', 'ibutton.code',
+  // The odometer, for distance-based reminders (lib/reminders.js).
+  'vehicle.mileage',
 ].join(',')
 
 /** An iButton code as stored on a driver: upper-case hex, '' when no tag is in. */
@@ -423,7 +426,7 @@ async function fetchCustomParams(names) {
   return out
 }
 
-async function fetchTelemetry() {
+export async function fetchTelemetry() {
   // Our own copy first (lib/telemetry.js) — no Flespi call while the webhook delivers.
   let payload = telemetryResponse(null)
   if (!payload) {
@@ -442,6 +445,7 @@ async function fetchTelemetry() {
       ignition: t['engine.ignition.status']?.value ?? null,
       temperature: t['ble.sensor.temperature.1']?.value ?? null,
       ibutton: ibuttonKey(t['ibutton.code']?.value),
+      mileage: t['vehicle.mileage']?.value ?? null,
       ts: t.timestamp?.value ?? (stamps.length ? Math.max(...stamps) : null),
     })
   }
@@ -450,8 +454,12 @@ async function fetchTelemetry() {
 
 const vehicleName = v => v.plateNo || v.fleetNo || v.imei
 
-/** One pass over every active rule. Returns the events it created. */
-export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
+/**
+ * One pass over every active rule. Returns the events it created. `pre` may
+ * carry telemetry and the IMEI map already fetched this tick (the reminder
+ * pass shares them), so the fleet is read once.
+ */
+export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}) {
   const alerts = await prisma.alert.findMany({
     where: { status: 'Active', type: { in: Object.keys(TYPES) } },
     include: { vehicles: { select: { vehicleId: true } } },
@@ -476,8 +484,8 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000)) {
       : [],
     needsFences ? prisma.geofence.findMany({ where: { bgId: { in: bgIds }, active: true } }) : [],
     prisma.alertState.findMany({ where: { alertId: { in: alerts.map(a => a.id) } } }),
-    needsTelemetry ? fetchTelemetry() : new Map(),
-    needsTelemetry ? flespi.deviceMap() : new Map(),
+    needsTelemetry ? (pre.telemetry ?? fetchTelemetry()) : new Map(),
+    needsTelemetry ? (pre.deviceByImei ?? flespi.deviceMap()) : new Map(),
     customNames.length ? fetchCustomParams(customNames) : new Map(),
     // Drivers with an iButton tag: the one whose tag is in the reader is the one driving.
     prisma.driver.findMany({ where: { bgId: { in: bgIds }, ibuttonCode: { not: null } }, select: { id: true, name: true, bgId: true, ibuttonCode: true, status: true } }),
@@ -578,10 +586,22 @@ async function tick() {
   if (running) return
   running = true
   try {
-    const events = await runAlertPass()
-    if (events.length) console.log(`[fleetmax] alerts: ${events.length} raised`)
+    // Read the fleet once for both passes.
+    const pre = { telemetry: await fetchTelemetry(), deviceByImei: await flespi.deviceMap() }
+    try {
+      const events = await runAlertPass(undefined, pre)
+      if (events.length) console.log(`[fleetmax] alerts: ${events.length} raised`)
+    } catch (err) {
+      console.error(`[fleetmax] alert pass failed: ${err.message}`)
+    }
+    try {
+      const reminders = await runReminderPass(pre.telemetry, pre.deviceByImei)
+      if (reminders.length) console.log(`[fleetmax] reminders: ${reminders.length} raised`)
+    } catch (err) {
+      console.error(`[fleetmax] reminder pass failed: ${err.message}`)
+    }
   } catch (err) {
-    console.error(`[fleetmax] alert pass failed: ${err.message}`)
+    console.error(`[fleetmax] telemetry read failed: ${err.message}`)
   } finally {
     running = false
   }

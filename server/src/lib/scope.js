@@ -80,6 +80,8 @@ const ENTITIES = Object.freeze({
   driver: { delegate: 'driver', label: 'Driver' },
   alertEvent: { delegate: 'alertEvent', label: 'Alert event' },
   expense: { delegate: 'expense', label: 'Expense' },
+  reminderRule: { delegate: 'reminderRule', label: 'Reminder' },
+  reminderAck: { delegate: 'reminderAck', label: 'Reminder record' },
 })
 
 /**
@@ -291,6 +293,10 @@ const WHERE_BUILDERS = Object.freeze({
   driver: driverWhere,
   alertEvent: alertEventWhere,
   expense: expenseWhere,
+  // A reminder rule is BG-wide like a geofence; its status rows are narrowed to
+  // the caller's vehicles. Its history follows the vehicles like alert events.
+  reminderRule: geofenceWhere,
+  reminderAck: alertEventWhere,
 })
 
 /**
@@ -353,10 +359,10 @@ export async function findScoped(entity, id, scope, opts = {}) {
  * assertWritableParent() below. Flagged for the client to confirm.
  */
 const WRITABLE = Object.freeze({
-  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
-  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
-  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
-  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense']),
+  SUPER_ADMIN: new Set(['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense', 'reminderRule']),
+  GGB_ADMIN: new Set(['group', 'bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense', 'reminderRule']),
+  GROUP_ADMIN: new Set(['bg', 'branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense', 'reminderRule']),
+  BG_USER: new Set(['branch', 'vehicle', 'user', 'alert', 'geofence', 'driver', 'expense', 'reminderRule']),
   // Read-only, explicitly. An empty set rather than a missing key so a typo in a
   // role name can never be mistaken for "sub-user, therefore no writes".
   SUB_USER: new Set(),
