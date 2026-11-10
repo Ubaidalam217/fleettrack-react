@@ -4,8 +4,11 @@
 
 html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
 
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+/* No scroll bars anywhere (client, 2026-11-10): areas still scroll with the
+   wheel, touchpad, touch and keyboard; only the bar is not drawn. `.no-scrollbar`
+   was the per-element version of this and is kept for the places that use it. */
+*, .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+*::-webkit-scrollbar, .no-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 /* ══════════════════════════════════════════════════════════════════════════
    FleetmaX palette
