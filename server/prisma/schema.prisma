@@ -1080,3 +1080,22 @@ model VehicleMove {
   @@index([vehicleId])
   @@index([imei])
 }
+
+/// Live location share (client, 2026-11-10): a link that shows one vehicle's
+/// current position, updating, until it expires — "share location for a set
+/// time from the 3 dots". Unlike ReplayShare nothing is stored with it: the
+/// public page asks for the position while the link is open.
+model LocationShare {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  deviceId    Int
+  vehicleName String
+  expiresAt   DateTime
+  createdById String
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+
+  @@index([createdById])
+  @@index([deviceId])
+}
+

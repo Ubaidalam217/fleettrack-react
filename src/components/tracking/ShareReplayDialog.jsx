@@ -22,7 +22,8 @@ const pad = n => String(n).padStart(2, '0')
 const toInput = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 const fmt = ts => new Date(ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
-function CopyRow({ label, value, icon: Icon }) {
+/** A read-only box with the link and a Copy button (also used by ShareLocationDialog). */
+export function CopyRow({ label, value, icon: Icon }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
     try {

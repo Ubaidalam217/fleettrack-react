@@ -45,6 +45,7 @@ import driverPhotoRoutes from './routes/driverPhotos.js'
 import driverPerformanceRoutes from './routes/driverPerformance.js'
 import deviceSettingsRoutes from './routes/deviceSettings.js'
 import { router as replayShareRoutes, publicRouter as publicReplayRoutes } from './routes/replayShares.js'
+import { router as locationShareRoutes, publicRouter as publicLocationRoutes } from './routes/locationShares.js'
 import ingestRoutes from './routes/ingest.js'
 import liveRoutes from './routes/live.js'
 
@@ -110,6 +111,16 @@ export function createApp() {
     skip: () => env.isTest,
     message: { error: { message: 'Too many requests. Try again in a minute.' } },
   }), publicReplayRoutes)
+  // Public: a shared live location (routes/locationShares.js). The page asks
+  // every 15 s; the limit leaves room for several people on one network.
+  app.use('/api/public/location', rateLimit({
+    windowMs: 60_000,
+    max: 60,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    skip: () => env.isTest,
+    message: { error: { message: 'Too many requests. Try again in a minute.' } },
+  }), publicLocationRoutes)
 
   /**
    * Rate limit on login only.
@@ -174,6 +185,7 @@ export function createApp() {
   app.use('/api/driver-performance', driverPerformanceRoutes)
   app.use('/api/device-settings', deviceSettingsRoutes)
   app.use('/api/replay-shares', replayShareRoutes)
+  app.use('/api/location-shares', locationShareRoutes)
   app.use('/api/alert-events', alertEventRoutes)
   app.use('/api/vehicle-moves', vehicleMoveRoutes)
   // Live push of vehicle updates from the Flespi webhook (routes/live.js).

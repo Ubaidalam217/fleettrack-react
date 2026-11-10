@@ -1,7 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
+import { tripsFromPoints, visibleReplayTrips, isZeroTrip } from '../../utils/replayTrips'
 import { REPLAY_FIELDS } from './replayFields'
 import ShareReplayDialog from './ShareReplayDialog'
+import ReplayTripsList from './ReplayTripsList'
+import ReplayExportMenu from './ReplayExportMenu'
+import { useTripPlaces } from '../../hooks/useTripPlaces'
 
 // Playback rates offered by the selector.
 const SPEEDS = [0.5, 1, 2, 5, 10]
@@ -172,6 +176,9 @@ export default function ReplayPanel({ replay, vehicleName }) {
     points, index, playing, loading, error, truncated, status,
     speed, fields, range, vehicleId,
     onStop, onLoad, onPlayToggle, onSeek, onSpeedChange, onFieldsChange,
+    // `points` above is what plays: the whole loaded range (allPoints), or
+    // the one trip picked in the list here (trip; null = whole range).
+    trip: playingTrip = null, allPoints = points, onSelectTrip,
   } = replay
 
   const [presetKey, setPresetKey] = useState('today')
@@ -184,9 +191,53 @@ export default function ReplayPanel({ replay, vehicleName }) {
   const [rangeOpen, setRangeOpen] = useState(true)
   const [gearOpen, setGearOpen]   = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [tripsOpen, setTripsOpen] = useState(true)
+  const [exportError, setExportError] = useState(null)
+
+  // 0 km trips hidden by default, as in the Trip Report, so the two count alike.
+  const [showZero, setShowZero]   = useState(false)
 
   const hasPoints = points.length > 0
   const current   = points[index] ?? null
+
+  // The Trip Report's trips, cut from the points already loaded — no fetch.
+  const allTrips = useMemo(() => tripsFromPoints(allPoints), [allPoints])
+  const zeroCount = useMemo(() => allTrips.filter(isZeroTrip).length, [allTrips])
+  const { trips } = useMemo(() => visibleReplayTrips(allTrips, !showZero), [allTrips, showZero])
+  // The playing trip as the list numbers it (matched by start, since hiding
+  // 0 km trips renumbers the rest).
+  const selectedTrip = playingTrip ? trips.find(t => t.startTs === playingTrip.startTs) ?? null : null
+  const places = useTripPlaces(trips)
+
+  // Hiding 0 km trips while one of them is playing would leave it playing
+  // with nothing selected in the list — go back to the whole range instead.
+  const toggleZero = () => {
+    if (showZero && playingTrip && isZeroTrip(playingTrip)) onSelectTrip(null)
+    setShowZero(s => !s)
+  }
+
+  // Playback starts: fold the trip list away, the way the range picker folds
+  // after Load — a tall dock would cover the marker it is replaying. Edge-
+  // triggered, so reopening the list mid-playback sticks.
+  const wasPlayingRef = useRef(false)
+  useEffect(() => {
+    if (playing && !wasPlayingRef.current) setTripsOpen(false)
+    wasPlayingRef.current = playing
+  }, [playing])
+
+  // Exports what is on screen: the picked trip, or the whole loaded range.
+  const runExport = async (format) => {
+    setExportError(null)
+    try {
+      const mod  = await import('../../utils/replayExport')
+      const opts = { vehicle: vehicleName, points, trips, trip: selectedTrip ?? playingTrip, places }
+      if (format === 'xlsx') await mod.exportReplayExcel(opts)
+      else if (format === 'kml') mod.exportReplayKml(opts)
+      else mod.exportReplayGpx(opts)
+    } catch {
+      setExportError('Could not build the export file. Please try again.')
+    }
+  }
 
   const rangeTs = () => {
     if (presetKey === 'custom') {
@@ -246,6 +297,9 @@ export default function ReplayPanel({ replay, vehicleName }) {
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {vehicleName}
+          {selectedTrip && (
+            <span style={{ color: 'var(--ft-accent)', fontWeight: 700 }}> · Trip {selectedTrip.no}</span>
+          )}
         </span>
 
         {!rangeOpen && (
@@ -263,6 +317,13 @@ export default function ReplayPanel({ replay, vehicleName }) {
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
+        )}
+
+        {hasPoints && (
+          <ReplayExportMenu
+            scopeLabel={selectedTrip ? `Trip ${selectedTrip.no}` : 'Whole range'}
+            onExport={runExport}
+          />
         )}
 
         {hasPoints && range && (
@@ -374,6 +435,24 @@ export default function ReplayPanel({ replay, vehicleName }) {
           No route loaded yet — pick a range and press Load.
         </div>
       )}
+      {exportError && <div role="alert" style={{ fontSize: 11, color: '#ef4444' }}>{exportError}</div>}
+
+      {/* Trips — above the playback row, so folding the list never moves the
+          play button out from under the pointer (the dock grows upwards). */}
+      {allPoints.length > 0 && onSelectTrip && (
+        <ReplayTripsList
+          trips={trips}
+          selectedNo={selectedTrip?.no ?? null}
+          zeroCount={zeroCount}
+          showZero={showZero}
+          onToggleZero={toggleZero}
+          allPoints={allPoints}
+          places={places}
+          open={tripsOpen}
+          onToggle={() => setTripsOpen(o => !o)}
+          onSelect={onSelectTrip}
+        />
+      )}
 
       {/* Playback */}
       {hasPoints && (
@@ -476,12 +555,13 @@ export default function ReplayPanel({ replay, vehicleName }) {
         </div>
       )}
 
+      {/* Like Export, Share takes the picked trip, or the whole loaded range. */}
       {shareOpen && range && (
         <ShareReplayDialog
           vehicleId={vehicleId}
-          vehicleName={vehicleName}
-          fromTs={range.fromTs}
-          toTs={range.toTs}
+          vehicleName={selectedTrip ? `${vehicleName} · Trip ${selectedTrip.no}` : vehicleName}
+          fromTs={selectedTrip ? selectedTrip.startTs : range.fromTs}
+          toTs={selectedTrip ? selectedTrip.endTs : range.toTs}
           onClose={() => setShareOpen(false)}
         />
       )}

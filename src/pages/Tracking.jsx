@@ -16,6 +16,7 @@ import VehicleConsole from '../components/tracking/VehicleConsole'
 import VehicleInfoDialog from '../components/tracking/VehicleInfoDialog'
 import UnregisteredDriverDialog from '../components/tracking/UnregisteredDriverDialog'
 import NearestAssetsModal from '../components/tracking/NearestAssetsModal'
+import ShareLocationDialog from '../components/tracking/ShareLocationDialog'
 import ConfirmDialog from '../components/tracking/ConfirmDialog'
 import ToastStack from '../components/tracking/Toasts'
 import { useToasts } from '../hooks/useToasts'
@@ -25,6 +26,7 @@ import {
   filterLabel, filterColor, countByFilter, matchesFilter,
 } from '../utils/vehicleStatus'
 import { fetchDeviceTrack, buildSegments } from '../utils/replay'
+import { tripPoints } from '../utils/replayTrips'
 import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/traces'
 import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
 import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, useGroups, driverNameForDevice, driverDisplayForDevice, settingsProfileForImei, vehicleByImei } from '../data/settings'
@@ -166,6 +168,26 @@ function ReplayFollow({ point }) {
 
     if (dx || dy) map.panBy([dx, dy], { animate: false })
   }, [point]) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
+}
+
+// Frames a replay trip when one is picked in the dock (and the whole range
+// when going back to it). `fit.n` is a counter, so picking the same trip again
+// re-frames it. The bottom padding is the dock's live height — the trip list
+// makes it taller than FOLLOW_INSET assumes — capped so a short map can still
+// show the route.
+function ReplayFitBounds({ fit }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!fit?.points?.length) return
+    const dock   = map.getContainer().parentElement?.querySelector('.track-replay-dock')
+    const height = map.getSize().y
+    const bottom = Math.min((dock?.offsetHeight ?? 150) + 30, height * 0.55)
+    map.fitBounds(
+      L.latLngBounds(fit.points.map(p => [p.lat, p.lng])),
+      { paddingTopLeft: [50, 60], paddingBottomRight: [50, bottom], maxZoom: 16, animate: true }
+    )
+  }, [fit]) // eslint-disable-line react-hooks/exhaustive-deps
   return null
 }
 
@@ -352,6 +374,14 @@ const MenuIcon = {
       <circle cx="12" cy="10" r="2.5" />
     </svg>
   ),
+  share: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="18" cy="5" r="2.6" />
+      <circle cx="6" cy="12" r="2.6" />
+      <circle cx="18" cy="19" r="2.6" />
+      <path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4" />
+    </svg>
+  ),
 }
 
 // Leaflet caches its container size, so any layout change that resizes the map
@@ -444,6 +474,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // An unregistered Driver ID tapped in the list: { code, vehicleId }.
   const [unregDriver, setUnregDriver] = useState(null)
   const [nearestVehicleId, setNearestVehicleId] = useState(null)
+  // Client, 2026-11-10: share a vehicle's live location for a set time.
+  const [shareVehicleId, setShareVehicleId] = useState(null)
   const [pendingCommand, setPendingCommand]     = useState(null) // { vehicleId, actionKey }
   const [commandBusy, setCommandBusy]           = useState(false)
 
@@ -496,6 +528,13 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const [replayStatus, setReplayStatus]       = useState(null)
   const [replaySpeed, setReplaySpeed]         = useState(1)
   const [replayFields, setReplayFields]       = useState(loadFields)
+  // replayPoints is what plays. Picking a trip in the dock narrows it to that
+  // trip's slice of replayAllPoints — the whole loaded range, kept so going
+  // back (or to another trip) never re-fetches. The dock lists the trips
+  // (utils/replayTrips.js); replayTrip is the one playing, null = whole range.
+  const [replayAllPoints, setReplayAllPoints] = useState([])
+  const [replayTrip, setReplayTrip]           = useState(null)
+  const [replayFit, setReplayFit]             = useState(null)
 
   const setFields = useCallback(next => {
     setReplayFields(next)
@@ -564,6 +603,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const clearReplay = useCallback(() => {
     setReplayVehicleId(null)
     setReplayPoints([])
+    setReplayAllPoints([])
+    setReplayTrip(null)
+    setReplayFit(null)
     setReplayIndex(0)
     setReplayPlaying(false)
     setReplayError(null)
@@ -631,6 +673,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     try {
       const { points, truncated } = await fetchDeviceTrack(replayVehicleId, fromTs, toTs, setReplayStatus)
       setReplayPoints(points)
+      setReplayAllPoints(points)
+      setReplayTrip(null)
       setReplayIndex(0)
       setReplayPlaying(false)
       setReplayTruncated(truncated)
@@ -643,11 +687,26 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     } catch (e) {
       setReplayError(e.message)
       setReplayPoints([])
+      setReplayAllPoints([])
+      setReplayTrip(null)
     } finally {
       setReplayLoading(false)
       setReplayStatus(null)
     }
   }, [replayVehicleId])
+
+  // Play one trip (from the dock's list) or, with null, the whole range again —
+  // a slice of what is loaded, then the map is framed on it. Back on the whole
+  // range the playhead stays on the point it was on inside the trip.
+  const selectReplayTrip = useCallback((trip) => {
+    const pts = trip ? tripPoints(replayAllPoints, trip) : replayAllPoints
+    if (!pts.length) return
+    setReplayPlaying(false)
+    setReplayPoints(pts)
+    setReplayTrip(trip ?? null)
+    setReplayIndex(trip ? 0 : clamp((replayTrip?.fromIdx ?? 0) + replayIndex, 0, pts.length - 1))
+    setReplayFit(f => ({ points: pts, n: (f?.n ?? 0) + 1 }))
+  }, [replayAllPoints, replayTrip, replayIndex])
 
   // Track the viewport so the list toggle can behave differently per breakpoint
   // without a second piece of state to keep in sync.
@@ -1004,6 +1063,12 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       icon: MenuIcon.nearest,
       onSelect: () => setNearestVehicleId(v.id),
     },
+    {
+      key: 'share-location',
+      label: 'Share Live Location',
+      icon: MenuIcon.share,
+      onSelect: () => setShareVehicleId(v.id),
+    },
   ]
 
   const replay = {
@@ -1024,6 +1089,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     onSeek:         (idx) => { setReplayPlaying(false); setReplayIndex(idx) },
     onSpeedChange:  setReplaySpeed,
     onFieldsChange: setFields,
+    trip:         replayTrip,
+    allPoints:    replayAllPoints,
+    onSelectTrip: selectReplayTrip,
   }
 
   // Resolved from the live list rather than captured at open time, so an
@@ -1031,6 +1099,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const consoleVehicle = consoleVehicleId != null ? vehicles.find(v => v.id === consoleVehicleId) ?? null : null
   const infoVehicle    = infoVehicleId    != null ? vehicles.find(v => v.id === infoVehicleId) ?? null : null
   const nearestVehicle = nearestVehicleId != null ? vehicles.find(v => v.id === nearestVehicleId) ?? null : null
+  const shareVehicle   = shareVehicleId   != null ? vehicles.find(v => v.id === shareVehicleId) ?? null : null
   const commandVehicle = pendingCommand   != null ? vehicles.find(v => v.id === pendingCommand.vehicleId) ?? null : null
   const commandAction  = pendingCommand   != null ? ACTIONS[pendingCommand.actionKey] : null
 
@@ -1339,6 +1408,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
              list toggle and the replay dock are absolutely positioned inside
              it and would otherwise keep floating over the sheet. */
           overflow: hidden;
+          /* Its height is the flex layout's, never its content's, so the replay
+             dock can size its trip list to it (cqh in ReplayTripsList.jsx). */
+          container-type: size;
         }
 
         /* List toggle. Lives inside .track-map, so it can never land on top of
@@ -1800,6 +1872,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   ))}
 
                   {replayPoint && <ReplayFollow point={replayPoint} />}
+                  {/* After ReplayFollow: framing a picked trip is the last word on
+                      the view. Always mounted, so it only acts when a trip is
+                      picked — never on a stale pick when a new route loads. */}
+                  <ReplayFitBounds fit={replayFit} />
 
                   {replayPoint && (
                     <VehicleMarker
@@ -1889,6 +1965,14 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           onClose={() => setConsoleVehicleId(null)}
           onSaved={handleSaved}
           onError={msg => pushToast(msg, { tone: 'error', duration: 7000 })}
+        />
+      )}
+
+      {shareVehicle && (
+        <ShareLocationDialog
+          vehicleId={shareVehicle.id}
+          vehicleName={vehicleName(shareVehicle)}
+          onClose={() => setShareVehicleId(null)}
         />
       )}
 
