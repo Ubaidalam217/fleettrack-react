@@ -32,7 +32,8 @@ async function writeUpdate(stamp, code) {
   await fs.writeFile(path.join(dir, 'assets', 'f00d'), 'png-bytes')
   await fs.writeFile(path.join(dir, 'metadata.json'), JSON.stringify({
     version: 0, bundler: 'metro', build: code,
-    fileMetadata: { android: { bundle: BUNDLE, assets: [{ path: 'assets/f00d', ext: 'png' }] } },
+    // Written the way `expo export` writes it on Windows: a backslash path.
+    fileMetadata: { android: { bundle: BUNDLE, assets: [{ path: 'assets\\f00d', ext: 'png' }] } },
   }))
   await fs.writeFile(path.join(dir, 'expoConfig.json'), JSON.stringify({ name: 'FleetmaxX', slug: 'fleetmax' }))
 }
@@ -81,6 +82,10 @@ describe('GET /api/app-updates/manifest', () => {
     expect(m.launchAsset.contentType).toBe('application/javascript')
     expect(m.assets).toHaveLength(1)
     expect(m.assets[0]).toMatchObject({ contentType: 'image/png', fileExtension: '.png' })
+    // The Windows path comes out with a forward slash, and the file is there.
+    expect(new URL(m.assets[0].url).searchParams.get('asset')).toBe('assets/f00d')
+    const img = new URL(m.assets[0].url)
+    expect((await request(app).get(`${img.pathname}${img.search}`)).status).toBe(200)
     expect(m.extra.expoClient.slug).toBe('fleetmax')
 
     // The launch asset's URL hands back the newest bundle.

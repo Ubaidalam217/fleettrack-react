@@ -61,6 +61,18 @@ async function latestUpdateDir(runtimeVersion) {
   return stamps.length ? { dir: path.join(dir, String(stamps[0])), stamp: stamps[0] } : null
 }
 
+/**
+ * One platform's files of an update, paths with forward slashes: an update
+ * exported on Windows lists "assets\abc", which on this server would be part
+ * of a file name.
+ */
+function platformFiles(metadata, platform) {
+  const files = metadata.fileMetadata?.[platform]
+  if (!files?.bundle) return null
+  const slash = p => String(p).replace(/\\/g, '/')
+  return { bundle: slash(files.bundle), assets: (files.assets ?? []).map(a => ({ ...a, path: slash(a.path) })) }
+}
+
 function protocolError(message) {
   return new HttpError(400, message)
 }
@@ -116,8 +128,8 @@ router.get(
 
     const metadataBuf = await fs.readFile(path.join(latest.dir, 'metadata.json'))
     const metadata = JSON.parse(metadataBuf.toString('utf8'))
-    const files = metadata.fileMetadata?.[platform]
-    if (!files?.bundle) throw new HttpError(500, `The update has no ${platform} bundle`)
+    const files = platformFiles(metadata, platform)
+    if (!files) throw new HttpError(500, `The update has no ${platform} bundle`)
 
     const id = uuidFrom(sha256(metadataBuf).toString('hex'))
     if (protocolVersion === 1 && req.get('expo-current-update-id') === id) {
@@ -137,7 +149,7 @@ router.get(
       createdAt: new Date(latest.stamp * 1000).toISOString(),
       runtimeVersion,
       launchAsset: await assetEntry({ ...common, rel: files.bundle, ext: 'bundle', isLaunch: true }),
-      assets: await Promise.all((files.assets ?? []).map(a => assetEntry({ ...common, rel: a.path, ext: a.ext }))),
+      assets: await Promise.all(files.assets.map(a => assetEntry({ ...common, rel: a.path, ext: a.ext }))),
       metadata: {},
       extra: { expoClient },
     }
@@ -165,7 +177,7 @@ router.get(
       throw new HttpError(404, 'Asset not found')
     }
     const metadata = JSON.parse(await fs.readFile(path.join(latest.dir, 'metadata.json'), 'utf8'))
-    const files = metadata.fileMetadata?.[platform]
+    const files = platformFiles(metadata, platform)
     const isLaunch = files?.bundle === asset
     const ext = files?.assets?.find(a => a.path === asset)?.ext ?? path.extname(asset)
     res.set('Content-Type', isLaunch ? 'application/javascript' : mimeOf(ext))
