@@ -28,6 +28,7 @@ import ViolationOverviewReport from './pages/reports/ViolationOverviewReport'
 import PowerFailureReport     from './pages/reports/PowerFailureReport'
 import TachoReport            from './pages/reports/TachoReport'
 import ReallocationHistoryReport from './pages/reports/ReallocationHistoryReport'
+import HeatMapReport          from './pages/reports/HeatMapReport'
 import SettingsComingSoon     from './pages/settings/ComingSoon'
 // Reports module — Movement Report, plus the two Daywise sheets (step 2)
 import WorkingHourReport       from './pages/reports/WorkingHourReport'
@@ -219,6 +220,7 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/reports/tacho-graph"       element={guard(<TachoReport variant="graph" {...themeProps} />)} />
         <Route path="/reports/tacho-data"        element={guard(<TachoReport variant="data"  {...themeProps} />)} />
         <Route path="/reports/reallocation-history" element={guard(<ReallocationHistoryReport {...themeProps} />)} />
+        <Route path="/reports/heat-map"          element={guard(<HeatMapReport {...themeProps} />)} />
         <Route path="/reports/working-hour"  element={guard(<WorkingHourReport  {...themeProps} />)} />
         <Route path="/reports/private-usage" element={guard(<UsageReportPage variant="privateUsage" {...themeProps} />)} />
         <Route path="/reports/geo-zone"      element={guard(<GeoZoneReport      {...themeProps} />)} />

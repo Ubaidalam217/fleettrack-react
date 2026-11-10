@@ -2,7 +2,7 @@ import {
   Route, Car, FileBarChart, FileText, Navigation, AlertTriangle,
   Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma, ShieldCheck, Wrench, History,
   Activity, TrendingUp, TrendingDown, CircleParking, ListOrdered, PlugZap, ChartLine, Table2, Shuffle,
-  ClipboardList, MapPin, Trophy,
+  ClipboardList, MapPin, Trophy, Flame,
 } from 'lucide-react'
 import { labelForPathIn } from './navTree'
 
@@ -64,6 +64,9 @@ export const REPORT_CATEGORIES = [
         desc: 'One line per vehicle summing the whole period: first start, last stop, time, distance and exceptions.' },
       { id: 'private-usage',    label: 'Private Usage Report',    icon: UserRound,    path: '/reports/private-usage',    ready: true,
         desc: 'Business and private use split by the hours you set.' },
+      // Client, 2026-11-10: "the heatmap of vehicles presence or any event where occurred".
+      { id: 'heat-map',         label: 'Heat Map',                icon: Flame,        path: '/reports/heat-map',         ready: true,
+        desc: 'Where the vehicles spend their time, or where events keep happening, coloured on the map.' },
     ],
   },
   {
@@ -149,6 +152,8 @@ export const OIL_GAS_CATEGORIES = [
         desc: 'The tracker readings message by message: time, speed, odometer, ignition and RPM.' },
       { id: 'og-tacho-graph',     label: 'Tacho Graph Report',     icon: ChartLine,    path: '/reports/tacho-graph',      ready: true,
         desc: 'Speed, distance and trips on one timeline for a vehicle, with RPM where the tracker sends it.' },
+      { id: 'og-heat-map',        label: 'Heat Map',               icon: Flame,        path: '/reports/heat-map',         ready: true,
+        desc: 'Where the vehicles spend their time, or where events keep happening, coloured on the map.' },
     ],
   },
   {
