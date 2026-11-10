@@ -179,6 +179,13 @@ const schema = z.object({
    * updates live. Defaults to server/app-updates (gitignored).
    */
   APP_UPDATES_DIR: z.string().optional(),
+
+  /**
+   * Mobile push notifications (lib/push.js): the path of the Firebase
+   * project's service-account JSON (Project settings › Service accounts ›
+   * Generate new private key). Off until set. A secret: never in the repo.
+   */
+  FCM_SERVICE_ACCOUNT_FILE: z.string().optional(),
 })
 
 const parsed = schema.safeParse(process.env)

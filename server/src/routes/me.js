@@ -146,4 +146,42 @@ router.delete(
   })
 )
 
+/**
+ * The mobile app's phone, for alert notifications (lib/push.js).
+ *
+ *   PUT    /api/me/push-devices  { token, platform }  this phone takes my alerts
+ *   DELETE /api/me/push-devices  { token }            signing out: stop
+ *
+ * A token is one phone: signing in there as someone else moves it to them, so
+ * the last account signed in is the one notified.
+ */
+const pushDeviceSchema = z.object({
+  token: z.string().trim().min(20).max(4096),
+  platform: z.enum(['android', 'ios']),
+})
+
+router.put(
+  '/push-devices',
+  validate(pushDeviceSchema),
+  asyncHandler(async (req, res) => {
+    const { token, platform } = req.body
+    await prisma.pushDevice.upsert({
+      where: { token },
+      create: { token, platform, userId: req.scope.userId },
+      update: { platform, userId: req.scope.userId },
+    })
+    res.status(204).end()
+  })
+)
+
+router.delete(
+  '/push-devices',
+  validate(z.object({ token: z.string().trim().min(1).max(4096) })),
+  asyncHandler(async (req, res) => {
+    // Only this account's own row: one user cannot sign another's phone out.
+    await prisma.pushDevice.deleteMany({ where: { token: req.body.token, userId: req.scope.userId } })
+    res.status(204).end()
+  })
+)
+
 export default router

@@ -33,6 +33,7 @@ import env from '../env.js'
 import prisma from '../prisma.js'
 import * as flespi from './flespi.js'
 import { sendAlertEmail } from './mailer.js'
+import { pushEvents } from './push.js'
 import { haversineMeters } from '../../../src/utils/distance.js'
 import { telemetryResponse, isServing, coverageStart, messagesBetween } from './telemetry.js'
 import { harshEpisodes, describeHarsh, HARSH_MS2 } from '../../../src/utils/harshEvents.js'
@@ -669,6 +670,8 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
   const created = []
   for (const e of events) created.push(await prisma.alertEvent.create({ data: e }))
   if (created.length) emailEvents(created, alerts).catch(err => console.error(`[fleetmax] alert email failed: ${err.message}`))
+  // The mobile app's notifications (lib/push.js); never throws.
+  if (created.length) pushEvents(created)
   return created
 }
 

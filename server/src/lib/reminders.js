@@ -16,6 +16,7 @@
 
 import prisma from '../prisma.js'
 import { sendAlertEmail } from './mailer.js'
+import { pushEvents } from './push.js'
 
 /** The reference's grouped Reminder Type list; any other text is accepted. */
 export const REMINDER_TYPES = Object.freeze({
@@ -207,5 +208,7 @@ export async function runReminderPass(telemetry, deviceByImei, now = Math.floor(
       }
     }
   }
+  // The mobile app's notifications (lib/push.js); never throws.
+  if (created.length) pushEvents(created)
   return created
 }

@@ -41,3 +41,7 @@ docs/FleetmaX-What-We-Built.*
 
 # Mobile app over-the-air updates, uploaded to the server (server/src/routes/appUpdates.js)
 server/app-updates/
+
+# Secrets and test leftovers: Firebase service-account keys never go in the repo
+*service-account*.json
+server/tests/.tmp-*

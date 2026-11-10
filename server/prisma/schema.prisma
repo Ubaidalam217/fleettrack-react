@@ -312,6 +312,7 @@ model User {
   branches SubuserBranch[]
   flespiGrant FlespiGrant?
   avatar      UserAvatar?
+  pushDevices PushDevice[]
 
   @@index([ggbId])
   @@index([groupId])
@@ -1099,3 +1100,19 @@ model LocationShare {
   @@index([deviceId])
 }
 
+/// A phone signed in to the mobile app that takes alert notifications
+/// (client, 2026-11-10). `token` is its Firebase Cloud Messaging token; one
+/// phone has one token, so signing in as someone else moves the row.
+/// Removed on sign-out, and when FCM says the token is no longer valid.
+model PushDevice {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
