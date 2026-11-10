@@ -173,6 +173,12 @@ const schema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   MAIL_FROM: z.string().optional(),
+
+  /**
+   * Mobile app over-the-air updates (routes/appUpdates.js): where the uploaded
+   * updates live. Defaults to server/app-updates (gitignored).
+   */
+  APP_UPDATES_DIR: z.string().optional(),
 })
 
 const parsed = schema.safeParse(process.env)
@@ -203,6 +209,7 @@ export const env = Object.freeze({
   isProduction: raw.NODE_ENV === 'production',
   /** The URL any Prisma client in this process should actually connect to. */
   databaseUrl: isTest ? raw.TEST_DATABASE_URL : raw.DATABASE_URL,
+  appUpdatesDir: path.resolve(serverRoot, raw.APP_UPDATES_DIR ?? 'app-updates'),
   bcryptRounds: isTest ? 4 : raw.BCRYPT_ROUNDS,
   // The suite never talks to the real Flespi account, even with a token in .env:
   // a vehicle test would otherwise create, rename or re-ident live devices.

@@ -339,7 +339,7 @@ export default function Sidebar({ sidebarOpen }) {
       <style>{SIDEBAR_CSS}</style>
 
       <aside
-        className="fixed lg:relative inset-y-0 left-0 flex-shrink-0 z-50"
+        className="ft-sidebar fixed lg:relative inset-y-0 left-0 flex-shrink-0 z-50"
         style={{
           width:    isOpen ? SIDEBAR_WIDTH : 0,
           minWidth: isOpen ? SIDEBAR_WIDTH : 0,

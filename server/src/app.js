@@ -47,6 +47,7 @@ import deviceSettingsRoutes from './routes/deviceSettings.js'
 import { router as replayShareRoutes, publicRouter as publicReplayRoutes } from './routes/replayShares.js'
 import { router as locationShareRoutes, publicRouter as publicLocationRoutes } from './routes/locationShares.js'
 import ingestRoutes from './routes/ingest.js'
+import appUpdateRoutes from './routes/appUpdates.js'
 import liveRoutes from './routes/live.js'
 
 /**
@@ -101,6 +102,8 @@ export function createApp() {
   // Public: profile photos by unguessable key, so <img src> works without a token.
   app.use('/api/avatars', avatarRoutes)
   app.use('/api/driver-photos', driverPhotoRoutes)
+  // Public: the mobile app's over-the-air updates (routes/appUpdates.js).
+  app.use('/api/app-updates', appUpdateRoutes)
   // Public: a shared replay, opened without signing in (routes/replayShares.js).
   // Its own limiter, since anyone on the internet can reach it.
   app.use('/api/public/replay', rateLimit({

@@ -38,3 +38,6 @@ docs/FleetmaX-What-We-Built.*
 
 # Claude Code local state (agent worktrees)
 .claude/
+
+# Mobile app over-the-air updates, uploaded to the server (server/src/routes/appUpdates.js)
+server/app-updates/

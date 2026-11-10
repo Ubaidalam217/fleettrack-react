@@ -162,7 +162,7 @@ export default function ReportsHub({ catalog = 'reports', ...props }) {
   return (
     <PageShell title={C.title} subtitle={C.subtitle} {...props}>
       {/* Tabs */}
-      <div role="tablist" style={{ display: 'flex', gap: 4, marginTop: 16, borderBottom: '1px solid var(--c-border)', overflowX: 'auto' }}>
+      <div role="tablist" className="ft-hub-tabs" style={{ display: 'flex', gap: 4, marginTop: 16, borderBottom: '1px solid var(--c-border)', overflowX: 'auto' }}>
         {TABS.map(t => {
           const on = tab === t.id
           const count = t.id === 'favs' ? favs.length : null
