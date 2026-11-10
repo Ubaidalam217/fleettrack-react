@@ -237,7 +237,13 @@ describe('vehicle odometer and group', () => {
 })
 
 describe('sub-user assignment', () => {
+  // These are about the vehicles assigned one by one. The fixture sub-user also
+  // holds a branch, whose vehicles it now sees too (lib/scope.js), so the
+  // branch is taken away first where the test reads what the sub-user sees.
+  const withoutBranches = () => prisma.subuserBranch.deleteMany({ where: { userId: fx.users.subUserA1a.id } })
+
   it('replaces the vehicle set', async () => {
+    await withoutBranches()
     const res = await request(app)
       .put(`/api/users/${fx.users.subUserA1a.id}/vehicles`)
       .set(auth(fx.tokens.bgUserA1a))
@@ -276,6 +282,7 @@ describe('sub-user assignment', () => {
   })
 
   it('clears the set with an empty list', async () => {
+    await withoutBranches()
     const res = await request(app)
       .put(`/api/users/${fx.users.subUserA1a.id}/vehicles`)
       .set(auth(fx.tokens.bgUserA1a))
