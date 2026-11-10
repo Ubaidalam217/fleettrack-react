@@ -18,6 +18,7 @@ import {
   formatHoursMinutes, formatKm, isAbortError,
 } from '../../utils/daywise'
 import { exportDaywiseExcel, exportDaywisePdf, printDaywiseReport } from '../../utils/daywiseExport'
+import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import ReportsBackLink from '../../components/reports/ReportsBackLink'
 
 /**
@@ -307,14 +308,15 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
   ], [V])
   const columns = useMemo(() => visibleColumns(allColumns, hiddenCols), [allColumns, hiddenCols])
 
-  const title = `${V.title} — ${monthLabel(year, monthNo)}`
+  const reportTitle = useReportTitle(V.title)
+  const title = `${reportTitle} — ${monthLabel(year, monthNo)}`
   const lastElapsed = lastElapsedDay(year, monthNo)
   const days = daysInMonth(year, monthNo)
 
   const exportMeta = {
-    title: V.title,
+    title: reportTitle,
     monthLabel: monthLabel(year, monthNo),
-    exportName: V.exportName,
+    exportName: reportTitle === V.title ? V.exportName : fileNameOf(reportTitle),
     selection: selectionLabel,
     bgLabel,
   }
@@ -338,7 +340,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
             {/* ── header ── */}
             <div className="report-screen-only" style={{ marginBottom: 16 }}>
               <ReportsBackLink />
-              <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>{V.title}</h1>
+              <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>{reportTitle}</h1>
               <p style={{ fontSize: 12.5, color: 'var(--c-text3)', margin: '4px 0 0' }}>{V.subtitle}</p>
             </div>
 

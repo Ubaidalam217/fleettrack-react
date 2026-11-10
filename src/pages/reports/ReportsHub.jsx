@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Search, Star, X, FilePlus2 } from 'lucide-react'
 import PageShell from '../../components/PageShell'
-import { REPORT_CATEGORIES, REPORTS_MENU } from '../../components/sidebar/reportsNav'
+import {
+  REPORT_CATEGORIES, REPORTS_MENU, OIL_GAS_CATEGORIES, OIL_GAS_MENU, REPORTS_HUB_PATH, OIL_GAS_HUB_PATH,
+} from '../../components/sidebar/reportsNav'
 import { useCurrentUser } from '../../services/authUser'
 import { useCanOpen } from '../../data/screens'
 
@@ -13,7 +15,25 @@ import { useCanOpen } from '../../data/screens'
  * cards with a filter box on top, like Ctrack MaXx, not from a long list.
  * Favourites are per viewer and per user, so they live in localStorage; losing
  * them (private window, cleared data) only empties the Favourites tab.
+ *
+ * The same page is the Oil & Gas hub (`catalog="oilGas"`, client 2026-11-10):
+ * the client's IVMS list under its own menu, apart from the normal catalog.
  */
+
+const CATALOGS = {
+  reports: {
+    title: 'Run a Report',
+    subtitle: 'Choose a report to set its vehicles, dates and filters.',
+    categories: REPORT_CATEGORIES, menu: REPORTS_MENU, hub: REPORTS_HUB_PATH,
+  },
+  oilGas: {
+    title: 'Oil & Gas Reports',
+    subtitle: 'The IVMS reports for oil and gas operations. Choose one to set its vehicles, dates and filters.',
+    categories: OIL_GAS_CATEGORIES, menu: OIL_GAS_MENU, hub: OIL_GAS_HUB_PATH,
+    // Its reports open under the client's names (components/reports/useReportTitle.js).
+    titles: true,
+  },
+}
 
 const favKey = user => `ft-report-favs:${user?.id ?? user?.email ?? 'anon'}`
 
@@ -33,11 +53,12 @@ function saveFavs(key, ids) {
 const matches = (report, q) =>
   !q || report.label.toLowerCase().includes(q) || report.desc.toLowerCase().includes(q)
 
-function ReportRow({ report, fav, onToggleFav }) {
+function ReportRow({ report, hub, titled, fav, onToggleFav }) {
   const Icon = report.icon
   return (
     <div className="ft-report-row">
-      <Link to={report.path} title={report.desc} className="ft-report-link">
+      {/* The hub rides along so the report's back link returns here. */}
+      <Link to={report.path} state={titled ? { hub, title: report.label } : { hub }} title={report.desc} className="ft-report-link">
         <Icon size={15} strokeWidth={2} style={{ flexShrink: 0, color: 'var(--ft-accent)' }} />
         <span style={{ flex: 1, minWidth: 0 }}>{report.label}</span>
         {!report.ready && <span className="ft-report-soon">Soon</span>}
@@ -57,7 +78,7 @@ function ReportRow({ report, fav, onToggleFav }) {
   )
 }
 
-function CategoryCard({ title, desc, reports, favs, onToggleFav }) {
+function CategoryCard({ title, desc, reports, hub, titled, favs, onToggleFav }) {
   return (
     <section style={{
       borderRadius: 12, overflow: 'hidden', background: 'var(--c-card)',
@@ -74,7 +95,7 @@ function CategoryCard({ title, desc, reports, favs, onToggleFav }) {
       </header>
       <div style={{ padding: '6px 0' }}>
         {reports.map(r => (
-          <ReportRow key={r.id} report={r} fav={favs.includes(r.id)} onToggleFav={onToggleFav} />
+          <ReportRow key={r.id} report={r} hub={hub} titled={titled} fav={favs.includes(r.id)} onToggleFav={onToggleFav} />
         ))}
       </div>
     </section>
@@ -86,7 +107,8 @@ const TABS = [
   { id: 'favs', label: 'Favourite Reports', icon: Star },
 ]
 
-export default function ReportsHub(props) {
+export default function ReportsHub({ catalog = 'reports', ...props }) {
+  const C = CATALOGS[catalog] ?? CATALOGS.reports
   const user = useCurrentUser()
   const key = favKey(user)
   const [favState, setFavState] = useState(() => ({ key, ids: loadFavs(key) }))
@@ -106,18 +128,18 @@ export default function ReportsHub(props) {
   const canOpen = useCanOpen()
   const cards = useMemo(() => {
     if (tab === 'favs') {
-      const reports = REPORTS_MENU.filter(r => canOpen(r.path) && favs.includes(r.id) && matches(r, q))
+      const reports = C.menu.filter(r => canOpen(r.path) && favs.includes(r.id) && matches(r, q))
       return reports.length ? [{ id: 'favs', title: 'My Favourites', desc: 'Reports you starred, for quick access.', reports }] : []
     }
-    return REPORT_CATEGORIES
+    return C.categories
       .map(c => ({ ...c, reports: c.reports.filter(r => canOpen(r.path) && matches(r, q)) }))
       .filter(c => c.reports.length)
   // canOpen changes with the session only.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, favs, q])
+  }, [tab, favs, q, C])
 
   return (
-    <PageShell title="Run a Report" subtitle="Choose a report to set its vehicles, dates and filters." {...props}>
+    <PageShell title={C.title} subtitle={C.subtitle} {...props}>
       {/* Tabs */}
       <div role="tablist" style={{ display: 'flex', gap: 4, marginTop: 16, borderBottom: '1px solid var(--c-border)' }}>
         {TABS.map(t => {
@@ -180,7 +202,7 @@ export default function ReportsHub(props) {
       {cards.length ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16, alignItems: 'start' }}>
           {cards.map(c => (
-            <CategoryCard key={c.id} title={c.title} desc={c.desc} reports={c.reports} favs={favs} onToggleFav={toggleFav} />
+            <CategoryCard key={c.id} title={c.title} desc={c.desc} reports={c.reports} hub={C.hub} titled={C.titles} favs={favs} onToggleFav={toggleFav} />
           ))}
         </div>
       ) : (

@@ -9,6 +9,7 @@ import { getDriverPerformance, getFatigueRule, setFatigueRule, driverCode } from
 import { useSession } from '../../data/session'
 import { IS_REAL } from '../../data/mode'
 import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
+import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { hms, km } from '../../utils/usageReports'
 
@@ -98,6 +99,7 @@ function expiryText(e) {
 const ALL_COLUMNS = columnChoices(PERF_COLUMNS, RISK_COLUMNS, NOID_COLUMNS)
 
 export default function DriverPerformanceReport(props) {
+  const title = useReportTitle('Driver Performance & Risk')
   // One column choice across the three tables; a table with none left is not shown.
   const [hiddenCols, setHiddenCols] = useHiddenColumns('driver-performance')
   const shown = cols => cols.filter(c => !hiddenCols.has(c.key))
@@ -212,7 +214,7 @@ export default function DriverPerformanceReport(props) {
   ] : []
 
   const exportOpts = () => ({
-    title: 'Driver Performance & Risk Report',
+    title: title === 'Driver Performance & Risk' ? 'Driver Performance & Risk Report' : title,
     subtitle: 'FleetmaxX',
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate: applied?.printDate,
@@ -234,7 +236,7 @@ export default function DriverPerformanceReport(props) {
 
   return (
     <ReportFrame
-      title="Driver Performance & Risk"
+      title={title}
       desc="Per driver: distance, hours, harsh driving, fatigue and incidents, with a safety score, its trend and rule-based risk levels."
       {...props}
     >
@@ -294,8 +296,8 @@ export default function DriverPerformanceReport(props) {
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <ColumnPicker columns={ALL_COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
-                  <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Driver_Performance_Report')} icon={FileDown} primary>Download PDF</ToolbarButton>
-                  <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Driver_Performance_Report')} icon={FileSpreadsheet}>Download Excel</ToolbarButton>
+                  <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), title === 'Driver Performance & Risk' ? 'Driver_Performance_Report' : fileNameOf(title))} icon={FileDown} primary>Download PDF</ToolbarButton>
+                  <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), title === 'Driver Performance & Risk' ? 'Driver_Performance_Report' : fileNameOf(title))} icon={FileSpreadsheet}>Download Excel</ToolbarButton>
                   <ToolbarButton onClick={() => window.print()} icon={Printer}>Print</ToolbarButton>
                 </div>
               </div>

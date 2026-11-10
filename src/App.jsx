@@ -169,6 +169,7 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/charts"         element={guard(<Charts         {...themeProps} />)} />
         {/* "Run a Report": the category cards every report is opened from. */}
         <Route path="/reports"        element={guard(<ReportsHub {...themeProps} />)} />
+        <Route path="/reports/oil-gas" element={guard(<ReportsHub catalog="oilGas" {...themeProps} />)} />
         <Route path="/settings"       element={guard(<SettingsPage   {...themeProps} />)} />
         <Route path="/settings/profile" element={guard(<SettingsPage {...themeProps} />)} />
         <Route path="/notifications"  element={guard(<Notifications  {...themeProps} />)} />

@@ -27,6 +27,7 @@ import {
 } from '../../utils/geoZoneExport'
 import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
 import ReportsBackLink from '../../components/reports/ReportsBackLink'
+import { useReportTitle } from '../../components/reports/useReportTitle'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, columnChoices } from '../../utils/reportColumns'
 
@@ -147,6 +148,7 @@ const TAB_COLUMNS = {
 // ── page ──────────────────────────────────────────────────────────────────
 
 export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme }) {
+  const title = useReportTitle('Geo Zone Visit Report')
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   )
@@ -395,7 +397,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
 
             <div className="report-screen-only" style={{ marginBottom: 16 }}>
               <ReportsBackLink />
-              <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>Geo Zone Visit Report</h1>
+              <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>{title}</h1>
               <p style={{ fontSize: 12.5, color: 'var(--c-text3)', margin: '4px 0 0' }}>
                 Trips, visits and dwell time at your geofences and addresses, derived from one Flespi fetch per run.
               </p>

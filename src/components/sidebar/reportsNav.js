@@ -2,6 +2,7 @@ import {
   Route, Car, FileBarChart, FileText, Navigation, AlertTriangle,
   Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma, ShieldCheck, Wrench, History,
   Activity, TrendingUp, TrendingDown, CircleParking, ListOrdered, PlugZap, ChartLine, Table2, Shuffle,
+  ClipboardList, MapPin, Trophy,
 } from 'lucide-react'
 import { labelForPathIn } from './navTree'
 
@@ -63,28 +64,6 @@ export const REPORT_CATEGORIES = [
         desc: 'One line per vehicle summing the whole period: first start, last stop, time, distance and exceptions.' },
       { id: 'private-usage',    label: 'Private Usage Report',    icon: UserRound,    path: '/reports/private-usage',    ready: true,
         desc: 'Business and private use split by the hours you set.' },
-      // Client, 2026-11-10 (Ctrack MaXx's Tacho Analysis): speed, distance and trips over time.
-      { id: 'tacho-graph',      label: 'Tacho Graph Report',      icon: ChartLine,    path: '/reports/tacho-graph',      ready: true,
-        desc: 'Speed, distance and trips on one timeline for a vehicle, with RPM where the tracker sends it.' },
-      { id: 'tacho-data',       label: 'Tacho Data Report',       icon: Table2,       path: '/reports/tacho-data',       ready: true,
-        desc: 'The readings behind the Tacho Graph: time, speed, odometer, ignition and RPM, message by message.' },
-    ],
-  },
-  {
-    // Client, 2026-11-10 (Ctrack MaXx's utilisation summaries): actual use against
-    // the hours each vehicle is expected to work (24 h a day unless changed).
-    id: 'utilization',
-    title: 'Utilization',
-    desc: 'How much each vehicle is used against the hours it is expected to work.',
-    reports: [
-      { id: 'asset-utilization', label: 'Asset Utilization Report', icon: Activity,      path: '/reports/asset-utilization', ready: true,
-        desc: 'Per vehicle: expected and utilised time, driving and idling, distance and days used.' },
-      { id: 'over-utilization',  label: 'Over Utilization Report',  icon: TrendingUp,    path: '/reports/over-utilization',  ready: true,
-        desc: 'Vehicles used more than expected, with the days that went over.' },
-      { id: 'under-utilization', label: 'Under Utilization Report', icon: TrendingDown,  path: '/reports/under-utilization', ready: true,
-        desc: 'Vehicles used less than expected.' },
-      { id: 'not-used-assets',   label: 'Not Used Assets Report',   icon: CircleParking, path: '/reports/not-used-assets',   ready: true,
-        desc: 'Vehicles that did not move in the period: since when, and where they stand.' },
     ],
   },
   {
@@ -101,10 +80,6 @@ export const REPORT_CATEGORIES = [
         desc: 'Per driver: distance, hours, harsh driving, fatigue, incidents, safety score, trend and risk levels.' },
       { id: 'gyr',              label: 'GYR Report',              icon: Gauge,         path: '/reports/gyr',             ready: true,
         desc: 'Green / Yellow / Red rating of each vehicle or driver from its exceptions.' },
-      { id: 'violation-overview', label: 'Violation Overview Report', icon: ListOrdered, path: '/reports/violation-overview', ready: true,
-        desc: 'How many violations of each kind every vehicle and driver had in the period.' },
-      { id: 'power-failure',    label: 'Power Failure Report',    icon: PlugZap,       path: '/reports/power-failure',   ready: true,
-        desc: 'Each time a tracker lost its external power: when, for how long, the lowest voltage and where.' },
     ],
   },
   {
@@ -139,17 +114,131 @@ export const REPORT_CATEGORIES = [
         desc: 'Every vehicle with its group, device and last report.' },
       { id: 'driver-list',      label: 'List of Drivers',         icon: IdCard,        path: '/reports/drivers',         ready: true,
         desc: 'Every driver with licence details and assigned vehicle.' },
-      { id: 'reallocation-history', label: 'Reallocation History Report', icon: Shuffle, path: '/reports/reallocation-history', ready: true,
-        desc: 'Each time a vehicle moved to another Business Group or branch: when, from where to where, and by whom.' },
     ],
   },
 ]
 
-/** Every report, flat — what the title lookups walk. */
+/**
+ * Oil & Gas (client, 2026-11-10): the IVMS report list the client sent, under
+ * its own menu and in the client's own words — "the last reports will be in a
+ * new menu of Oil & Gas, not in the normal listing" — and in the same five
+ * cards as the normal catalog, no others: "only make 5 menu and mix them in
+ * those only".
+ *
+ * Eight of them were built for it and are found only here. The rest are
+ * reports the normal catalog already had under another name: each row here
+ * carries the client's name and opens that report under it (Road Safety RAG is
+ * the GYR Report, and so on). Ids are prefixed so a favourite here is not one
+ * there.
+ */
+export const OIL_GAS_CATEGORIES = [
+  {
+    id: 'og-activity',
+    title: 'Activity',
+    desc: 'Where your vehicles went and how far: trips, distance, zone visits and the speed record.',
+    reports: [
+      { id: 'og-trip',            label: 'Trip Report',            icon: Navigation,   path: '/reports/trip',             ready: true,
+        desc: 'Each trip from ignition on to off: start, end, distance and duration.' },
+      { id: 'og-trip-summary',    label: 'Trip Summary Report',    icon: Sigma,        path: '/reports/summary-usage',    ready: true,
+        desc: 'One line per vehicle summing every trip of the period.' },
+      { id: 'og-distance-driven', label: 'Distance Driven Report', icon: Route,        path: '/reports/daywise-distance', ready: true,
+        desc: 'Distance driven per vehicle, day by day, with totals.' },
+      { id: 'og-area-utilization', label: 'Area Utilization Report', icon: MapPinned,  path: '/reports/geo-zone',         ready: true,
+        desc: 'Visits to your geofences and addresses, with time inside each.' },
+      { id: 'og-tacho-data',      label: 'Tacho Data Report',      icon: Table2,       path: '/reports/tacho-data',       ready: true,
+        desc: 'The tracker readings message by message: time, speed, odometer, ignition and RPM.' },
+      { id: 'og-tacho-graph',     label: 'Tacho Graph Report',     icon: ChartLine,    path: '/reports/tacho-graph',      ready: true,
+        desc: 'Speed, distance and trips on one timeline for a vehicle, with RPM where the tracker sends it.' },
+    ],
+  },
+  {
+    id: 'og-risk',
+    title: 'Risk & Safety',
+    desc: 'Exceptions that need attention: violations, driver rating and power cuts.',
+    reports: [
+      { id: 'og-road-safety-rag',   label: 'Road Safety RAG Report',   icon: Gauge,        path: '/reports/gyr',                ready: true,
+        desc: 'Red / Amber / Green rating of each vehicle or driver from its violations.' },
+      { id: 'og-violation-overview', label: 'Violation Overview Report', icon: ListOrdered, path: '/reports/violation-overview', ready: true,
+        desc: 'How many violations of each kind every vehicle and driver had in the period.' },
+      { id: 'og-violation-location', label: 'Violation Location Report', icon: MapPin,     path: '/reports/event',              ready: true,
+        desc: 'Every violation with where it happened and the vehicle’s speed and status then.' },
+      { id: 'og-best-driver',       label: 'Best Driver Report',       icon: Trophy,       path: '/reports/driver-performance', ready: true,
+        desc: 'Drivers ranked by safety score: distance, hours, harsh driving and incidents.' },
+      { id: 'og-power-failure',     label: 'Power Failure Report',     icon: PlugZap,      path: '/reports/power-failure',      ready: true,
+        desc: 'Each time a tracker lost its external power: when, for how long, the lowest voltage and where.' },
+    ],
+  },
+  {
+    id: 'og-reminder',
+    title: 'Reminder',
+    desc: 'Maintenance and renewal reminders: what is due now and what was done.',
+    reports: [
+      { id: 'og-reminder-status',  label: 'Reminder Status',         icon: Wrench,  path: '/reports/reminder-status',  ready: true,
+        desc: 'Every vehicle on every reminder: Overdue, Due, Upcoming or Completed, and Mark done.' },
+      { id: 'og-reminder-history', label: 'Acknowledgement History', icon: History, path: '/reports/reminder-history', ready: true,
+        desc: 'Each reminder marked done, with the date, odometer, note and who did it.' },
+    ],
+  },
+  {
+    // Ctrack MaXx's utilisation summaries: use against the hours a vehicle is
+    // expected to work (24 h a day unless changed).
+    id: 'og-time',
+    title: 'Time Card',
+    desc: 'Operating time: how much each vehicle is used against the hours it is expected to work.',
+    reports: [
+      { id: 'og-daily-utilization', label: 'Daily Utilization Report', icon: Clock,        path: '/reports/working-hour',      ready: true,
+        desc: 'Engine-on hours per vehicle, day by day across the month, with totals.' },
+      { id: 'og-asset-utilization', label: 'Asset Utilization Report', icon: Activity,     path: '/reports/asset-utilization', ready: true,
+        desc: 'Per vehicle: expected and utilised time, driving and idling, distance and days used.' },
+      { id: 'og-over-utilization',  label: 'Over Utilization Report',  icon: TrendingUp,   path: '/reports/over-utilization',  ready: true,
+        desc: 'Vehicles used longer than expected in a day, with the days that went over.' },
+      { id: 'og-under-utilization', label: 'Under Utilization Report', icon: TrendingDown, path: '/reports/under-utilization', ready: true,
+        desc: 'Vehicles used less than expected.' },
+      { id: 'og-not-used-assets',   label: 'Not Used Assets Report',   icon: CircleParking, path: '/reports/not-used-assets',  ready: true,
+        desc: 'Vehicles that did not move in the period: since when, and where they stand.' },
+    ],
+  },
+  {
+    id: 'og-lists',
+    title: 'Fleet Lists',
+    desc: 'Your fleet on paper: vehicles, their state and where their trackers have been.',
+    reports: [
+      { id: 'og-asset-status',      label: 'Asset Status Report',      icon: ClipboardList, path: '/reports/vehicles',             ready: true,
+        desc: 'Every vehicle with its group, device, status and last report.' },
+      { id: 'og-assets-list',       label: 'Assets List Report',       icon: Car,           path: '/reports/vehicles',             ready: true,
+        desc: 'Every vehicle with its group, device and details.' },
+      { id: 'og-reallocation-history', label: 'Reallocation History Report', icon: Shuffle, path: '/reports/reallocation-history', ready: true,
+        desc: 'Each time a vehicle moved to another Business Group or branch, or a tracker to another vehicle.' },
+    ],
+  },
+]
+
+/** Every report of the normal catalog, flat. */
 export const REPORTS_MENU = REPORT_CATEGORIES.flatMap(c => c.reports)
+/** Every Oil & Gas report, flat. */
+export const OIL_GAS_MENU = OIL_GAS_CATEGORIES.flatMap(c => c.reports)
+/**
+ * Every report page once, whichever menu lists it — what permissions and the
+ * title lookups walk. A page in both menus keeps its normal name here.
+ */
+export const ALL_REPORTS = [...REPORTS_MENU, ...OIL_GAS_MENU]
+  .filter((r, i, all) => all.findIndex(x => x.path === r.path) === i)
 
 /** The "Run a Report" hub, where the sidebar's Reports entry goes. */
 export const REPORTS_HUB_PATH = '/reports'
+/** The Oil & Gas hub, the sidebar's Oil & Gas entry. */
+export const OIL_GAS_HUB_PATH = '/reports/oil-gas'
+
+const NORMAL_PATHS = new Set(REPORTS_MENU.map(r => r.path))
+
+/**
+ * The hub a report page goes back to: the one it was opened from (a link from
+ * a hub says so in its state), else Oil & Gas for a report only it lists.
+ */
+export function hubForReport(pathname, state) {
+  if (state?.hub === OIL_GAS_HUB_PATH || state?.hub === REPORTS_HUB_PATH) return state.hub
+  return !NORMAL_PATHS.has(pathname) && OIL_GAS_MENU.some(r => r.path === pathname) ? OIL_GAS_HUB_PATH : REPORTS_HUB_PATH
+}
 
 /** Human label for a reports path — lets ReportPlaceholder title itself. */
-export const labelForPath = pathname => labelForPathIn(REPORTS_MENU, pathname)
+export const labelForPath = pathname => labelForPathIn(ALL_REPORTS, pathname)

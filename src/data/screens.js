@@ -14,7 +14,7 @@
 
 import { IS_REAL } from './mode.js'
 import { useSession } from './session.js'
-import { REPORT_CATEGORIES } from '../components/sidebar/reportsNav'
+import { ALL_REPORTS } from '../components/sidebar/reportsNav'
 
 export const LEVELS = [
   { value: 'none',      label: 'No Access', short: 'None' },
@@ -44,7 +44,8 @@ export const SCREEN_MODULES = [
   },
   {
     id: 'reports', label: 'Reports',
-    screens: REPORT_CATEGORIES.flatMap(c => c.reports.map(r => ({ id: r.path, label: r.label, kind: 'page' }))),
+    // Normal and Oil & Gas reports, each page once.
+    screens: ALL_REPORTS.map(r => ({ id: r.path, label: r.label, kind: 'page' })),
   },
   {
     id: 'settings', label: 'Settings',

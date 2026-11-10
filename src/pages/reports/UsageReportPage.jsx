@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
+import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import PaperTable from '../../components/reports/PaperTable'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
@@ -350,6 +351,8 @@ const coords = (lat, lng) => (lat != null && lng != null ? `${lat.toFixed(5)}, $
 
 export default function UsageReportPage({ variant, ...props }) {
   const V = VARIANTS[variant]
+  const title = useReportTitle(V.title)
+  const file = title === V.title ? V.file : fileNameOf(title)
   const [hiddenCols, setHiddenCols] = useHiddenColumns(`usage-${variant}`)
   const shownCols = useVisibleColumns(V.columns, hiddenCols)
   const { data } = useFlespiData()
@@ -528,7 +531,7 @@ export default function UsageReportPage({ variant, ...props }) {
   const dataRows = groups.reduce((n, g) => n + g.rows.filter(r => r.kind !== 'band').length, 0)
 
   const exportOpts = () => ({
-    title: V.title,
+    title,
     subtitle: 'FleetmaxX',
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate: applied?.printDate,
@@ -544,7 +547,7 @@ export default function UsageReportPage({ variant, ...props }) {
   const truncated = raw && [...raw.byDevice.values()].some(e => e?.truncated)
 
   return (
-    <ReportFrame title={V.title} desc={V.desc} {...props}>
+    <ReportFrame title={title} desc={V.desc} {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}
@@ -676,20 +679,20 @@ export default function UsageReportPage({ variant, ...props }) {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <ColumnPicker columns={V.columns} hidden={hiddenCols} onChange={setHiddenCols} />
-              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), V.file)} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
-              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), V.file)} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), file)} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), file)} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!dataRows}>Print</ToolbarButton>
             </div>
           </div>
 
           <PaperTable
-            title={V.title}
+            title={title}
             company="FleetmaxX"
             filters={filters}
             columns={shownCols}
             groups={groups}
             printDate={applied.printDate}
-            onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: V.title, location: r.location })}
+            onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: title, location: r.location })}
             emptyText="No trips in this period for the selected vehicles."
           />
         </>

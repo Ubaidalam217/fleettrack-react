@@ -6,8 +6,8 @@ import {
 } from 'lucide-react'
 import { useCurrentUser, initials, firstName } from '../services/authUser'
 import SettingsMenu from './sidebar/SettingsMenu'
-import ReportsMenu from './sidebar/ReportsMenu'
-import { REPORTS_MENU } from './sidebar/reportsNav'
+import ReportsMenu, { OilGasMenu } from './sidebar/ReportsMenu'
+import { REPORTS_MENU, OIL_GAS_MENU } from './sidebar/reportsNav'
 import { useCanOpen } from '../data/screens'
 
 export const SIDEBAR_WIDTH = 260
@@ -27,6 +27,8 @@ const NAV_SECTIONS = [
       // Like Settings below: not a link but its own nested tree, so the section
       // renderer hands the whole row to <ReportsMenu />.
       { id: 'reports', custom: 'reports-menu' },
+      // Client, 2026-11-10: the Oil & Gas reports, apart from the normal list.
+      { id: 'oil-gas', custom: 'oil-gas-menu' },
       { label: 'Charts',    icon: BarChart2,       path: '/charts' },
     ],
   },
@@ -311,6 +313,7 @@ export default function Sidebar({ sidebarOpen }) {
     return () => cancelAnimationFrame(id)
   }, [])
   const anyReportOpen = REPORTS_MENU.some(r => canOpen(r.path))
+  const anyOilGasOpen = OIL_GAS_MENU.some(r => canOpen(r.path))
 
   // Only matters in the uncontrolled case, but it is cheap and keeps the
   // fallback honest across a resize.
@@ -402,6 +405,9 @@ export default function Sidebar({ sidebarOpen }) {
                     }
                     if (item.custom === 'reports-menu') {
                       return anyReportOpen ? <ReportsMenu key={item.id} /> : null
+                    }
+                    if (item.custom === 'oil-gas-menu') {
+                      return anyOilGasOpen ? <OilGasMenu key={item.id} /> : null
                     }
 
                     // Permissions: a screen this user has No Access to is not listed.

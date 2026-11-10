@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
+import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import PaperTable from '../../components/reports/PaperTable'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
@@ -82,6 +83,7 @@ const COLUMNS = [
 ]
 
 export default function EventOccurrenceReport(props) {
+  const title = useReportTitle('Event Occurrence Report')
   const [hiddenCols, setHiddenCols] = useHiddenColumns('event-occurrence')
   const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
   const { data } = useFlespiData()
@@ -227,7 +229,7 @@ export default function EventOccurrenceReport(props) {
   ] : []
 
   const exportOpts = () => ({
-    title: 'Event Occurrence Report',
+    title,
     subtitle: 'FleetmaxX',
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate: applied?.printDate,
@@ -247,7 +249,7 @@ export default function EventOccurrenceReport(props) {
 
   return (
     <ReportFrame
-      title="Event Occurrence Report"
+      title={title}
       desc="Every alert raised in the period, laid out like the Movement Report, with the vehicle's status, speed and location at that moment."
       {...props}
     >
@@ -356,14 +358,14 @@ export default function EventOccurrenceReport(props) {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <ColumnPicker columns={COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
-              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Event_Occurrence_Report')} icon={FileDown} primary disabled={!total}>Download PDF</ToolbarButton>
-              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Event_Occurrence_Report')} icon={FileSpreadsheet} disabled={!total}>Download Excel</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), fileNameOf(title))} icon={FileDown} primary disabled={!total}>Download PDF</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), fileNameOf(title))} icon={FileSpreadsheet} disabled={!total}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!total}>Print</ToolbarButton>
             </div>
           </div>
 
           <PaperTable
-            title="Event Occurrence Report"
+            title={title}
             company="FleetmaxX"
             filters={filters}
             columns={shownCols}

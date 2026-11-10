@@ -15,6 +15,7 @@ import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
 import { geocodeKey, reverseGeocodeMany } from '../../utils/geocode'
 import { locationUrl } from '../../utils/mapLink'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
+import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 
 /**
  * List of Vehicles — the fleet register, after Ctrack's Fleet Status Report:
@@ -43,6 +44,7 @@ const COLUMNS = [
 const NOT_REGISTERED = '__unregistered'
 
 export default function VehicleListReport(props) {
+  const title = useReportTitle('List of Vehicles')
   const [hiddenCols, setHiddenCols] = useHiddenColumns('vehicle-list')
   const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
   const { data } = useFlespiData()
@@ -155,7 +157,7 @@ export default function VehicleListReport(props) {
   ]
 
   const exportOpts = () => ({
-    title: 'List of Vehicles',
+    title,
     subtitle: company,
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate,
@@ -169,7 +171,7 @@ export default function VehicleListReport(props) {
 
   return (
     <ReportFrame
-      title="List of Vehicles"
+      title={title}
       desc="Every vehicle with its registration details, driver, live status, last update and last location."
       {...props}
     >
@@ -207,14 +209,14 @@ export default function VehicleListReport(props) {
         <div style={{ fontSize: 12.5, color: 'var(--c-text2)' }}>{withLocation.length} vehicle{withLocation.length === 1 ? '' : 's'}</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <ColumnPicker columns={COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
-          <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'List_of_Vehicles')} icon={FileDown} primary disabled={!withLocation.length}>Download PDF</ToolbarButton>
-          <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'List_of_Vehicles')} icon={FileSpreadsheet} disabled={!withLocation.length}>Download Excel</ToolbarButton>
+          <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), fileNameOf(title))} icon={FileDown} primary disabled={!withLocation.length}>Download PDF</ToolbarButton>
+          <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), fileNameOf(title))} icon={FileSpreadsheet} disabled={!withLocation.length}>Download Excel</ToolbarButton>
           <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!withLocation.length}>Print</ToolbarButton>
         </div>
       </div>
 
       <PaperTable
-        title="List of Vehicles"
+        title={title}
         company={company}
         filters={filters}
         columns={shownCols}
