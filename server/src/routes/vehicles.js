@@ -297,6 +297,29 @@ router.put(
 )
 
 /**
+ * Put a vehicle in another branch of its own Business Group (client,
+ * 2026-11-10: "add vehicles from the BG, Group, GGB or Branch itself" — the
+ * Vehicles panel on those pages). Only the branch changes, so unlike PUT /:id
+ * the Flespi device is not touched. No branch means the BG is its branch.
+ * The change goes into the Reallocation History.
+ */
+router.put(
+  '/:id/branch',
+  validate(z.object({ branchId: optionalId() })),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const branchId = await resolveBranch(req.body.branchId, existing.bgId)
+    const history = await editMoves(existing, {}, { branchId, groupId: existing.groupId }, actorOf(req))
+    const [row] = await prisma.$transaction([
+      prisma.vehicle.update({ where: { id: existing.id }, data: { branchId }, include: VEHICLE_INCLUDE }),
+      prisma.vehicleMove.createMany({ data: history }),
+    ])
+    res.json({ data: row })
+  })
+)
+
+/**
  * Move one vehicle to another Business Group (client, 2026-11-10: "Reallocation
  * will be from Business Group change"). Not an edit: what the old BG gave the
  * vehicle does not follow it — its sub-users lose it, its alert and reminder

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Plus, FileBadge, BellPlus, ArrowRightLeft } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
 import { Field, FormActions, FormCard } from './FormKit'
@@ -160,9 +160,25 @@ export default function Vehicle(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
-  const openAdd   = ()  => { setErrors({}); setDraft(emptyVehicle()) }
+  const openAdd   = (preset = {}) => { setErrors({}); setDraft({ ...emptyVehicle(), ...preset }) }
   const openEdit  = row => { setErrors({}); setDraft({ ...row }) }
   const closeForm = ()  => { setErrors({}); setDraft(null) }
+
+  // Deep link from the Vehicles panel on the GGB / Group / BG / Branch pages:
+  // ?new=1&bg=<id>&branch=<id> opens Add with the BG (and branch) filled in.
+  // Acted on once, so the save itself cannot reopen the form.
+  const [params, setParams] = useSearchParams()
+  const handledLink = useRef(null)
+  useEffect(() => {
+    const key = params.toString()
+    if (!key || handledLink.current === key || !params.get('new')) return
+    handledLink.current = key
+    const bg = params.get('bg') || ''
+    // The group follows the BG, as when the BG is chosen in the form.
+    openAdd({ companyId: bg, branchId: params.get('branch') || '', groupId: bg ? groupIdForCompany(bg) : '' })
+    setParams({}, { replace: true })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
 
   const set = (key, value) => {
     setDraft(d => {
@@ -525,7 +541,7 @@ export default function Vehicle(props) {
                       // A vehicle has to belong to a BG, so with none on file the
                       // form would open with an unsatisfiable required dropdown.
                       title={noCompanies ? 'Add a Business Group first' : undefined}
-                      onClick={openAdd}
+                      onClick={() => openAdd()}
                     >
                       <Plus size={14} strokeWidth={2.6} />
                       Add Vehicle

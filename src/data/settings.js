@@ -349,6 +349,16 @@ export function updateVehicleCustomFields(id, fields) {
 }
 
 /**
+ * Put a vehicle in another branch of its own BG, or in none ('') — the
+ * Vehicles panel's Assign / Take out (PUT /api/vehicles/:id/branch). Only the
+ * branch changes; the Flespi device is not touched.
+ */
+export function assignVehicleBranch(id, branchId) {
+  if (!IS_REAL) return done(mock.updateVehicle(id, { branchId: branchId || '' }))
+  return write(() => put(`/api/vehicles/${id}/branch`, { branchId: branchId || null }))
+}
+
+/**
  * Move one vehicle to another Business Group (POST /api/vehicles/:id/transfer).
  * Its old BG's sub-user access, rule memberships and driver stay behind.
  */

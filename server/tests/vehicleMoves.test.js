@@ -115,3 +115,23 @@ describe('tracker history', () => {
     ])
   })
 })
+
+describe('PUT /api/vehicles/:id/branch', () => {
+  const place = (token, v, branchId) => request(app).put(`/api/vehicles/${v.id}/branch`).set(auth(token)).send({ branchId })
+
+  it('puts a vehicle in another branch of its BG, records it, and can take it out again', async () => {
+    const v1 = fx.vehicles.v1
+    const res = await place(fx.tokens.bgUserA1a, v1, fx.branches.yard.id)
+    expect(res.status).toBe(200)
+    expect(res.body.data.branchId).toBe(fx.branches.yard.id)
+    expect((await place(fx.tokens.bgUserA1a, v1, null)).body.data.branchId).toBeNull()
+    const rows = (await moves(fx.tokens.superAdmin)).body.data.map(m => [m.fromName, m.toName]).reverse()
+    expect(rows).toEqual([['Mussafah Depot', 'Al Ain Yard'], ['Al Ain Yard', fx.bgA1a.name]])
+  })
+
+  it('refuses a branch of another BG and a sub-user', async () => {
+    expect((await place(fx.tokens.bgUserA1a, fx.vehicles.v1, fx.branches.jebelAli.id)).status).toBe(400)
+    expect((await place(fx.tokens.subUserA1a, fx.vehicles.v1, fx.branches.yard.id)).status).toBe(403)
+  })
+})
+

@@ -14,6 +14,7 @@ import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import OrgTabs from './OrgTabs'
 import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions, NewNodeUsers, emptyNewUser, validateNewUsers, createNodeUsers, useMayAddNodeUsers } from './NodeUsersPanel'
+import NodeVehiclesPanel, { VehiclesButton, useNodeVehicleCount } from './NodeVehiclesPanel'
 import { useSession } from '../../data/session'
 import { sessionLevel as usersLevel } from '../../data/screens'
 
@@ -39,6 +40,9 @@ export default function Reseller(props) {
   const session = useSession()
   const countUsers = useNodeUserCount('ggb')
   const [usersOf, setUsersOf] = useState(null)
+  // Client, 2026-11-10: "add vehicles from BG, Group, GGB or Branch itself".
+  const countVehicles = useNodeVehicleCount('ggb')
+  const [vehiclesOf, setVehiclesOf] = useState(null)
   const [permsFor, setPermsFor] = useState(null)
   const mayPerms = useCanSetPermissions()
   const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
@@ -182,6 +186,7 @@ export default function Reseller(props) {
                   render: row => (
                     <div style={{ display: 'flex', gap: 6 }}>
                       <UsersButton count={countUsers(row)} onClick={() => setUsersOf(row)} />
+                      <VehiclesButton count={countVehicles(row)} onClick={() => setVehiclesOf(row)} />
                       {mayPerms && <PermissionsButton onClick={() => setPermsFor(row)} />}
                     </div>
                   ),
@@ -224,6 +229,10 @@ export default function Reseller(props) {
           onOpenUsers={() => { setUsersOf(permsFor); setPermsFor(null) }}
           onClose={() => setPermsFor(null)}
         />
+      )}
+
+      {vehiclesOf && (
+        <NodeVehiclesPanel kind="ggb" node={vehiclesOf} push={push} onClose={() => setVehiclesOf(null)} />
       )}
 
       {usersOf && (

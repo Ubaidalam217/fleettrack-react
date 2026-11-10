@@ -15,6 +15,7 @@ import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import OrgTabs from './OrgTabs'
 import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions, NewNodeUsers, emptyNewUser, validateNewUsers, createNodeUsers, useMayAddNodeUsers } from './NodeUsersPanel'
+import NodeVehiclesPanel, { VehiclesButton, useNodeVehicleCount } from './NodeVehiclesPanel'
 import { useSession } from '../../data/session'
 import { sessionLevel as usersLevel } from '../../data/screens'
 import MoveDialog, { MoveButton, canMove } from './MoveDialog'
@@ -57,6 +58,9 @@ export default function Group(props) {
   const session = useSession()
   const countUsers = useNodeUserCount('group')
   const [usersOf, setUsersOf] = useState(null)
+  // Client, 2026-11-10: "add vehicles from BG, Group, GGB or Branch itself".
+  const countVehicles = useNodeVehicleCount('group')
+  const [vehiclesOf, setVehiclesOf] = useState(null)
   const [permsFor, setPermsFor] = useState(null)
   const mayPerms = useCanSetPermissions()
   // …and can be moved, with everything under it, to another parent.
@@ -209,6 +213,7 @@ export default function Group(props) {
                   render: row => (
                     <div style={{ display: 'flex', gap: 6 }}>
                       <UsersButton count={countUsers(row)} onClick={() => setUsersOf(row)} />
+                      <VehiclesButton count={countVehicles(row)} onClick={() => setVehiclesOf(row)} />
                       {mayPerms && <PermissionsButton onClick={() => setPermsFor(row)} />}
                       {mayMove && <MoveButton onClick={() => setMoving(row)} />}
                     </div>
@@ -258,6 +263,10 @@ export default function Group(props) {
           onOpenUsers={() => { setUsersOf(permsFor); setPermsFor(null) }}
           onClose={() => setPermsFor(null)}
         />
+      )}
+
+      {vehiclesOf && (
+        <NodeVehiclesPanel kind="group" node={vehiclesOf} push={push} onClose={() => setVehiclesOf(null)} />
       )}
 
       {usersOf && (
