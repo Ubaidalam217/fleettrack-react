@@ -11,7 +11,7 @@
 
 import prisma from '../prisma.js'
 import { bearerFrom, verifyToken } from '../lib/jwt.js'
-import { buildScope, ROLES } from '../lib/scope.js'
+import { buildScope, ROLES, vehiclesInBranches } from '../lib/scope.js'
 import { asyncHandler, forbidden, unauthorized } from '../lib/http.js'
 
 /** Everything the scope builder and the profile serialiser need, and no hash. */
@@ -65,7 +65,11 @@ export const requireAuth = asyncHandler(async (req, _res, next) => {
   if (user.status !== 'Active') throw forbidden('This account is inactive')
 
   req.user = user
-  req.scope = buildScope(user)
+  // A sub-user also sees every vehicle in its branches, as they are now.
+  const branchVehicleIds = user.role === ROLES.SUB_USER && user.branches?.length
+    ? await vehiclesInBranches(user.bgId, user.branches.map(b => b.branchId))
+    : []
+  req.scope = buildScope(user, { branchVehicleIds })
   next()
 })
 

@@ -315,6 +315,9 @@ router.put(
       prisma.vehicle.update({ where: { id: existing.id }, data: { branchId }, include: VEHICLE_INCLUDE }),
       prisma.vehicleMove.createMany({ data: history }),
     ])
+    // A branch's sub-users gain or lose the vehicle, so their live Flespi
+    // tokens are re-issued with the new list.
+    await revokeGrantsForBg(existing.bgId)
     res.json({ data: row })
   })
 )

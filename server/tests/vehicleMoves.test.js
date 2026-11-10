@@ -61,8 +61,8 @@ describe('GET /api/vehicle-moves', () => {
     await put(fx.vehicles.v1, { branchId: fx.branches.yard.id })
     await put(fx.vehicles.v3, { branchId: fx.branches.depot.id })
     expect((await moves(fx.tokens.bgUserB1a)).body.data).toHaveLength(0)
-    // The sub-user holds v1 and v2 only.
-    expect((await moves(fx.tokens.subUserA1a)).body.data.map(m => m.vehicleLabel)).toEqual(['PLATE-1'])
+    // The sub-user holds v1 and v2, and v3 once it is in its branch (depot).
+    expect((await moves(fx.tokens.subUserA1a)).body.data.map(m => m.vehicleLabel).sort()).toEqual(['PLATE-1', 'PLATE-3'])
     const later = new Date(Date.now() + 60_000).toISOString()
     expect((await moves(fx.tokens.superAdmin, { from: later })).body.data).toHaveLength(0)
     expect((await moves(fx.tokens.superAdmin, { from: 'yesterday' })).status).toBe(400)
@@ -127,6 +127,17 @@ describe('PUT /api/vehicles/:id/branch', () => {
     expect((await place(fx.tokens.bgUserA1a, v1, null)).body.data.branchId).toBeNull()
     const rows = (await moves(fx.tokens.superAdmin)).body.data.map(m => [m.fromName, m.toName]).reverse()
     expect(rows).toEqual([['Mussafah Depot', 'Al Ain Yard'], ['Al Ain Yard', fx.bgA1a.name]])
+  })
+
+  it("gives a branch's sub-users the vehicles put in it or a branch below it, and takes them away again", async () => {
+    const mine = async () => (await request(app).get('/api/vehicles').set(auth(fx.tokens.subUserA1a))).body.data.map(v => v.plateNo).sort()
+    expect(await mine()).toEqual(['PLATE-1', 'PLATE-2']) // assigned one by one
+    await place(fx.tokens.bgUserA1a, fx.vehicles.v3, fx.branches.depot.id) // its branch
+    await place(fx.tokens.bgUserA1a, fx.vehicles.v4, fx.branches.nightShift.id) // two levels below it
+    expect(await mine()).toEqual(['PLATE-1', 'PLATE-2', 'PLATE-3', 'PLATE-4'])
+    expect((await request(app).get('/api/me/vehicles').set(auth(fx.tokens.subUserA1a))).body.data).toHaveLength(4)
+    await place(fx.tokens.bgUserA1a, fx.vehicles.v3, fx.branches.yard.id)
+    expect(await mine()).toEqual(['PLATE-1', 'PLATE-2', 'PLATE-4'])
   })
 
   it('refuses a branch of another BG and a sub-user', async () => {

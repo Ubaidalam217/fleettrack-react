@@ -183,8 +183,9 @@ export async function seedFixture() {
       // assigned, so "sees its BG" and "sees its assignments" give different
       // answers and the test can tell which one is in force.
       vehicles: { create: [{ vehicleId: v1.id }, { vehicleId: v2.id }] },
-      // A branch assignment that must NOT grant that branch's vehicles this
-      // phase: depot holds v1 (assigned) and bay1/nightShift sit under it.
+      // Its branch: depot holds v1 and bay1 (under depot) holds v2, both also
+      // assigned, so the branch adds nothing here; a vehicle put in depot or
+      // a branch below it later is the sub-user's too (lib/scope.js).
       branches: { create: [{ branchId: depot.id }] },
     },
   })

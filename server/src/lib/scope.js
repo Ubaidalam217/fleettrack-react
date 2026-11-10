@@ -94,8 +94,14 @@ const ENTITIES = Object.freeze({
  * different thing from an empty array ("narrowed to nothing"). A sub-user with
  * no assignments must see zero vehicles, not all of them, so the distinction has
  * to survive into the filters.
+ *
+ * A sub-user's vehicles are the ones assigned to it one by one AND every
+ * vehicle in its branches and their sub-branches (client, 2026-11-10: a
+ * vehicle put in a branch must show for that branch's login, later ones too).
+ * `branchVehicleIds` carries the second set, read per request by
+ * middleware/auth.js through vehiclesInBranches().
  */
-export function buildScope(user) {
+export function buildScope(user, { branchVehicleIds = [] } = {}) {
   const isSub = user.role === ROLES.SUB_USER
   return Object.freeze({
     userId: user.id,
@@ -103,9 +109,35 @@ export function buildScope(user) {
     ggbId: user.ggbId ?? null,
     groupId: user.groupId ?? null,
     bgId: user.bgId ?? null,
-    assignedVehicleIds: isSub ? (user.vehicles ?? []).map(v => v.vehicleId) : null,
+    assignedVehicleIds: isSub ? [...new Set([...(user.vehicles ?? []).map(v => v.vehicleId), ...branchVehicleIds])] : null,
     assignedBranchIds: isSub ? (user.branches ?? []).map(b => b.branchId) : null,
   })
+}
+
+/**
+ * Ids of the BG's vehicles that sit in any of `branchIds` or in a branch
+ * below one of them (branches nest to any depth).
+ */
+export async function vehiclesInBranches(bgId, branchIds) {
+  if (!bgId || !branchIds?.length) return []
+  const all = await prisma.branch.findMany({ where: { bgId }, select: { id: true, parentBranchId: true } })
+  const children = new Map()
+  for (const b of all) {
+    if (!b.parentBranchId) continue
+    if (!children.has(b.parentBranchId)) children.set(b.parentBranchId, [])
+    children.get(b.parentBranchId).push(b.id)
+  }
+  const seen = new Set()
+  const stack = branchIds.filter(id => all.some(b => b.id === id))
+  while (stack.length) {
+    const id = stack.pop()
+    if (seen.has(id)) continue
+    seen.add(id)
+    stack.push(...(children.get(id) ?? []))
+  }
+  if (!seen.size) return []
+  const rows = await prisma.vehicle.findMany({ where: { bgId, branchId: { in: [...seen] } }, select: { id: true } })
+  return rows.map(r => r.id)
 }
 
 export const isSuperAdmin = scope => scope.role === ROLES.SUPER_ADMIN
