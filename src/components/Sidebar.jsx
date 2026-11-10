@@ -6,8 +6,8 @@ import {
 } from 'lucide-react'
 import { useCurrentUser, initials, firstName } from '../services/authUser'
 import SettingsMenu from './sidebar/SettingsMenu'
-import ReportsMenu, { OilGasMenu } from './sidebar/ReportsMenu'
-import { REPORTS_MENU, OIL_GAS_MENU } from './sidebar/reportsNav'
+import ReportsMenu from './sidebar/ReportsMenu'
+import { ALL_REPORTS } from './sidebar/reportsNav'
 import { useCanOpen } from '../data/screens'
 
 export const SIDEBAR_WIDTH = 260
@@ -26,9 +26,8 @@ const NAV_SECTIONS = [
       { label: 'Live Map',  icon: MapPin,          path: '/tracking' },
       // Like Settings below: not a link but its own nested tree, so the section
       // renderer hands the whole row to <ReportsMenu />.
+      // Oil & Gas is a tab inside it (client, 2026-11-10), not a menu of its own.
       { id: 'reports', custom: 'reports-menu' },
-      // Client, 2026-11-10: the Oil & Gas reports, apart from the normal list.
-      { id: 'oil-gas', custom: 'oil-gas-menu' },
       { label: 'Charts',    icon: BarChart2,       path: '/charts' },
     ],
   },
@@ -312,8 +311,7 @@ export default function Sidebar({ sidebarOpen }) {
     const id = requestAnimationFrame(() => { if (navRef.current) navRef.current.scrollTop = savedNavScroll })
     return () => cancelAnimationFrame(id)
   }, [])
-  const anyReportOpen = REPORTS_MENU.some(r => canOpen(r.path))
-  const anyOilGasOpen = OIL_GAS_MENU.some(r => canOpen(r.path))
+  const anyReportOpen = ALL_REPORTS.some(r => canOpen(r.path))
 
   // Only matters in the uncontrolled case, but it is cheap and keeps the
   // fallback honest across a resize.
@@ -405,9 +403,6 @@ export default function Sidebar({ sidebarOpen }) {
                     }
                     if (item.custom === 'reports-menu') {
                       return anyReportOpen ? <ReportsMenu key={item.id} /> : null
-                    }
-                    if (item.custom === 'oil-gas-menu') {
-                      return anyOilGasOpen ? <OilGasMenu key={item.id} /> : null
                     }
 
                     // Permissions: a screen this user has No Access to is not listed.

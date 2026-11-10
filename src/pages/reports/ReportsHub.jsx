@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Search, Star, X, FilePlus2 } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Search, Star, X, FilePlus2, Fuel } from 'lucide-react'
 import PageShell from '../../components/PageShell'
 import {
   REPORT_CATEGORIES, REPORTS_MENU, OIL_GAS_CATEGORIES, OIL_GAS_MENU, REPORTS_HUB_PATH, OIL_GAS_HUB_PATH,
@@ -17,7 +17,10 @@ import { useCanOpen } from '../../data/screens'
  * them (private window, cleared data) only empties the Favourites tab.
  *
  * The same page is the Oil & Gas hub (`catalog="oilGas"`, client 2026-11-10):
- * the client's IVMS list under its own menu, apart from the normal catalog.
+ * the client's IVMS list, apart from the normal catalog. It is the third tab,
+ * after New Report and Favourite Reports ("Oil & Gas will come inside Reports,
+ * as its third menu"), and keeps its own URL so a report's back link and a
+ * bookmark land on it. Favourites hold reports of both catalogs.
  */
 
 const CATALOGS = {
@@ -95,7 +98,7 @@ function CategoryCard({ title, desc, reports, hub, titled, favs, onToggleFav }) 
       </header>
       <div style={{ padding: '6px 0' }}>
         {reports.map(r => (
-          <ReportRow key={r.id} report={r} hub={hub} titled={titled} fav={favs.includes(r.id)} onToggleFav={onToggleFav} />
+          <ReportRow key={r.id} report={r} hub={r.hub ?? hub} titled={r.titled ?? titled} fav={favs.includes(r.id)} onToggleFav={onToggleFav} />
         ))}
       </div>
     </section>
@@ -103,18 +106,34 @@ function CategoryCard({ title, desc, reports, hub, titled, favs, onToggleFav }) 
 }
 
 const TABS = [
-  { id: 'all',  label: 'New Report',        icon: FilePlus2 },
-  { id: 'favs', label: 'Favourite Reports', icon: Star },
+  { id: 'all',    label: 'New Report',        icon: FilePlus2 },
+  { id: 'favs',   label: 'Favourite Reports', icon: Star },
+  { id: 'oilGas', label: 'Oil & Gas',         icon: Fuel },
 ]
 
+// Starred reports of both catalogs, each opening the way its own tab opens it.
+const FAV_SOURCES = [CATALOGS.reports, CATALOGS.oilGas]
+
 export default function ReportsHub({ catalog = 'reports', ...props }) {
-  const C = CATALOGS[catalog] ?? CATALOGS.reports
+  const { state } = useLocation()
+  const navigate = useNavigate()
+  const C = catalog === 'oilGas' ? CATALOGS.oilGas : CATALOGS.reports
   const user = useCurrentUser()
   const key = favKey(user)
   const [favState, setFavState] = useState(() => ({ key, ids: loadFavs(key) }))
   // A different user signing in on the same tab gets their own list.
   const favs = favState.key === key ? favState.ids : loadFavs(key)
-  const [tab, setTab] = useState('all')
+  // Oil & Gas is a route of its own; the other two tabs share /reports.
+  const [localTab, setLocalTab] = useState(() => (state?.tab === 'favs' ? 'favs' : 'all'))
+  const tab = catalog === 'oilGas' ? 'oilGas' : localTab
+  const openTab = id => {
+    if (id === 'oilGas') {
+      if (catalog !== 'oilGas') navigate(OIL_GAS_HUB_PATH)
+      return
+    }
+    setLocalTab(id)
+    if (catalog === 'oilGas') navigate(REPORTS_HUB_PATH, { state: { tab: id } })
+  }
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
 
@@ -128,7 +147,9 @@ export default function ReportsHub({ catalog = 'reports', ...props }) {
   const canOpen = useCanOpen()
   const cards = useMemo(() => {
     if (tab === 'favs') {
-      const reports = C.menu.filter(r => canOpen(r.path) && favs.includes(r.id) && matches(r, q))
+      const reports = FAV_SOURCES.flatMap(S => S.menu
+        .filter(r => canOpen(r.path) && favs.includes(r.id) && matches(r, q))
+        .map(r => ({ ...r, hub: S.hub, titled: S.titles })))
       return reports.length ? [{ id: 'favs', title: 'My Favourites', desc: 'Reports you starred, for quick access.', reports }] : []
     }
     return C.categories
@@ -141,7 +162,7 @@ export default function ReportsHub({ catalog = 'reports', ...props }) {
   return (
     <PageShell title={C.title} subtitle={C.subtitle} {...props}>
       {/* Tabs */}
-      <div role="tablist" style={{ display: 'flex', gap: 4, marginTop: 16, borderBottom: '1px solid var(--c-border)' }}>
+      <div role="tablist" style={{ display: 'flex', gap: 4, marginTop: 16, borderBottom: '1px solid var(--c-border)', overflowX: 'auto' }}>
         {TABS.map(t => {
           const on = tab === t.id
           const count = t.id === 'favs' ? favs.length : null
@@ -150,9 +171,9 @@ export default function ReportsHub({ catalog = 'reports', ...props }) {
               key={t.id}
               role="tab"
               aria-selected={on}
-              onClick={() => setTab(t.id)}
+              onClick={() => openTab(t.id)}
               style={{
-                display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 14px',
+                display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 14px', flexShrink: 0, whiteSpace: 'nowrap',
                 border: 0, background: 'transparent', cursor: 'pointer', marginBottom: -1,
                 borderBottom: `2px solid ${on ? 'var(--ft-accent)' : 'transparent'}`,
                 color: on ? 'var(--c-text1)' : 'var(--c-text3)',
