@@ -17,7 +17,7 @@ const HIGH = new Set(['High', 'Critical'])
 
 /**
  * events → one row per vehicle (by: 'vehicle') or per driver (by: 'driver'):
- * { key, label, vehicles:Set, drivers:Set, counts: {type: n}, total, high, first, last }
+ * { key, label, vehicles:Set, drivers:Set, counts: {type: n}, total, high, first, last, events }
  * sorted by total, most first. Also the per-type totals and the types seen.
  *
  * @param {object[]} events     alert events (deviceId, type, severity, occurredAt, driver?)
@@ -44,7 +44,7 @@ export function overview(events, { by = 'vehicle', types = null, severities = nu
     const key = by === 'driver' ? (driver || '—') : String(e.deviceId)
     let r = rows.get(key)
     if (!r) {
-      r = { key, label: by === 'driver' ? (driver || 'No driver') : vehicle, vehicles: new Set(), drivers: new Set(), counts: {}, total: 0, high: 0, first: ts, last: ts }
+      r = { key, label: by === 'driver' ? (driver || 'No driver') : vehicle, vehicles: new Set(), drivers: new Set(), counts: {}, total: 0, high: 0, first: ts, last: ts, events: [] }
       rows.set(key, r)
     }
     r.vehicles.add(vehicle)
@@ -54,6 +54,8 @@ export function overview(events, { by = 'vehicle', types = null, severities = nu
     if (HIGH.has(e.severity)) r.high += 1
     if (ts < r.first) r.first = ts
     if (ts > r.last) r.last = ts
+    // Each event as the drill-down lists it (components/reports/EventListModal.jsx).
+    r.events.push({ id: e.id, deviceId: Number(e.deviceId), vehicle, driver, type: e.type, ts, severity: e.severity, message: e.message, value: e.value, lat: e.lat, lng: e.lng })
     totals[e.type] = (totals[e.type] ?? 0) + 1
     total += 1
   }

@@ -8,6 +8,8 @@
  *   are rescaled so the ones left still fill the page.
  *   `locate` makes the cell a button that calls onLocate(row) when the row has
  *   lat/lng — the same "show it on our map" as the Movement Report.
+ *   `clickable` makes a cell with a value (not 0 or —) a button that calls
+ *   onCellClick(row, column) — the Violation Overview's counts open their events.
  * groups:  [{ key, label, rows, total? }]
  *   A row `{ kind: 'band', label }` is a yellow sub-heading (a date, say);
  *   `row.zebra` shades a data row. Groups with no `zebra` set alternate by index.
@@ -31,7 +33,7 @@ function fillWidths(columns) {
   return columns.map((c, i) => ({ ...c, width: `${((pct[i] / sum) * 100).toFixed(3)}%` }))
 }
 
-export default function PaperTable({ title, company, filters = [], columns: given, groups, printDate, onLocate, emptyText }) {
+export default function PaperTable({ title, company, filters = [], columns: given, groups, printDate, onLocate, onCellClick, emptyText }) {
   const columns = fillWidths(given)
   const total = groups.reduce((s, g) => s + g.rows.filter(r => r.kind !== 'band').length, 0)
   // Zebra restarts under every band, the way the Movement Report shades.
@@ -106,6 +108,15 @@ export default function PaperTable({ title, company, filters = [], columns: give
                           onClick={() => onLocate(row)}
                           title="Show this location on the map"
                           style={{ padding: 0, border: 0, background: 'none', font: 'inherit', textAlign: 'left', cursor: 'pointer', color: '#0a7e9c', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 2 }}
+                        >
+                          {row[c.key]}
+                        </button>
+                      ) : c.clickable && onCellClick && row[c.key] && row[c.key] !== '—' ? (
+                        <button
+                          type="button"
+                          onClick={() => onCellClick(row, c)}
+                          title="Show these events"
+                          style={{ padding: 0, border: 0, background: 'none', font: 'inherit', fontWeight: 700, cursor: 'pointer', color: '#0a7e9c', textDecoration: 'underline', textUnderlineOffset: 2 }}
                         >
                           {row[c.key]}
                         </button>

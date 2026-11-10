@@ -3,6 +3,8 @@ import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-rea
 import ReportFrame from '../../components/reports/ReportFrame'
 import PaperTable from '../../components/reports/PaperTable'
 import ColumnPicker from '../../components/reports/ColumnPicker'
+import EventListModal from '../../components/reports/EventListModal'
+import EventTrackModal from '../../components/reports/EventTrackModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../../components/reports/controls'
 import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import { useFlespiData } from '../../hooks/useFlespiData'
@@ -24,6 +26,9 @@ import { overview, VIOLATION_TYPES } from '../../utils/violationOverview'
  * the signed-in user may see); an alert rule has to exist for a kind to count.
  *
  * Kind, severity and the grouping are filters over what was fetched.
+ *
+ * Client, 2026-11-10: every count opens its events, and each event opens on
+ * the map from where the violation began to where it ended.
  */
 
 const MAX_RANGE_DAYS = 31
@@ -65,6 +70,10 @@ export default function ViolationOverviewReport(props) {
   const [hiddenCols, setHiddenCols] = useHiddenColumns('violation-overview')
 
   const [raw, setRaw] = useState(null) // { events, truncated, applied }
+  const [eventList, setEventList] = useState(null) // { title, events } of a clicked count
+  const [track, setTrack] = useState(null)          // the event shown on the map
+  const closeList = useCallback(() => setEventList(null), [])
+  const closeTrack = useCallback(() => setTrack(null), [])
   const [progress, setProgress] = useState(null)
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
@@ -150,8 +159,8 @@ export default function ViolationOverviewReport(props) {
       { key: 'label',  label: by === 'driver' ? 'Driver' : 'Vehicle', width: '11%', pdf: 10 },
       { key: 'other',  label: by === 'driver' ? 'Vehicles' : 'Driver', width: '12%', pdf: 11 },
       ...(by === 'vehicle' ? [{ key: 'branch', label: 'Branch', width: '10%', pdf: 9 }] : []),
-      ...kinds.map(t => ({ key: `t_${t}`, label: alertTypeLabel(t), width: `${kindWidth}%`, pdf: 6, align: 'right' })),
-      { key: 'total',  label: 'Total',            width: '5%',  pdf: 5, align: 'right' },
+      ...kinds.map(t => ({ key: `t_${t}`, label: alertTypeLabel(t), width: `${kindWidth}%`, pdf: 6, align: 'right', clickable: true })),
+      { key: 'total',  label: 'Total',            width: '5%',  pdf: 5, align: 'right', clickable: true },
       { key: 'high',   label: 'High / Critical',  width: '6%',  pdf: 6, align: 'right' },
       { key: 'first',  label: 'First',            width: '10%', pdf: 10 },
       { key: 'last',   label: 'Last',             width: '10%', pdf: 10 },
@@ -184,6 +193,15 @@ export default function ViolationOverviewReport(props) {
       total: `Total ${result.total}   ·   High / Critical ${result.high}${perKind ? `   ·   ${perKind}` : ''}`,
     }]
   }, [result, vehicles, by])
+
+  // A count opens the events behind it: one kind, or all of the row's.
+  const openCount = (row, col) => {
+    const r = result?.rows.find(x => x.key === row.key)
+    if (!r) return
+    const type = col.key.startsWith('t_') ? col.key.slice(2) : null
+    const events = r.events.filter(e => !type || e.type === type).sort((a, b) => b.ts - a.ts)
+    setEventList({ title: `${r.label} · ${type ? alertTypeLabel(type) : 'All violations'}`, events })
+  }
 
   const applied = raw?.applied
   const filters = applied ? [
@@ -324,10 +342,14 @@ export default function ViolationOverviewReport(props) {
             columns={shownCols}
             groups={groups}
             printDate={applied.printDate}
+            onCellClick={openCount}
             emptyText="No alerts of these kinds in this period for the selected vehicles."
           />
         </>
       )}
+
+      <EventListModal list={eventList} onPick={setTrack} onClose={closeList} />
+      <EventTrackModal event={track} onClose={closeTrack} />
     </ReportFrame>
   )
 }

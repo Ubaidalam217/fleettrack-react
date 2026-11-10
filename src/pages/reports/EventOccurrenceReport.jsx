@@ -5,7 +5,7 @@ import { useReportTitle, fileNameOf } from '../../components/reports/useReportTi
 import PaperTable from '../../components/reports/PaperTable'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
-import LocationMapModal from '../../components/reports/LocationMapModal'
+import EventTrackModal from '../../components/reports/EventTrackModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { ALERT_TYPES, ALERT_SEVERITIES, alertTypeLabel, driverNameForDevice } from '../../data/settings'
@@ -206,6 +206,7 @@ export default function EventOccurrenceReport(props) {
           return {
             ...r,
             vehicle: v.vehicleId,
+            deviceId: v.deviceId,
             location,
             odo: r.odoKm != null ? r.odoKm.toFixed(3) : '—',
             dateTime: formatDateTime(r.ts),
@@ -371,13 +372,14 @@ export default function EventOccurrenceReport(props) {
             columns={shownCols}
             groups={groups}
             printDate={applied.printDate}
-            onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.ts, vehicleId: r.vehicle, status: `${r.alert} · ${r.status}`, location: r.location })}
+            // Client, 2026-11-10: the violation on the map from where it began to where it ended.
+            onLocate={r => setLocated({ deviceId: r.deviceId, vehicle: r.vehicle, type: r.alertType, ts: r.ts, message: r.message, severity: r.severity, lat: r.lat, lng: r.lng })}
             emptyText="No alerts were raised for this selection."
           />
         </>
       )}
 
-      <LocationMapModal point={located} onClose={closeLocated} />
+      <EventTrackModal event={located} onClose={closeLocated} />
     </ReportFrame>
   )
 }
