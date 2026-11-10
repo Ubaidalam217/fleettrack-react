@@ -67,6 +67,16 @@ function IdleSettings({ settings, errors, onChange }) {
   )
 }
 
+function HarshSettings({ settings, errors, onChange }) {
+  return (
+    <NumberField
+      label="Harder Than (m/s²)" name="thresholdMs2" placeholder="3.5" step="0.1"
+      hint="1.5 – 9 m/s². 3.5 is a firm stop; lower catches more."
+      value={settings.thresholdMs2} error={errors.thresholdMs2} onChange={onChange}
+    />
+  )
+}
+
 function OfflineSettings({ settings, errors, onChange }) {
   return (
     <NumberField
@@ -264,6 +274,8 @@ const SETTINGS_RENDERERS = {
   temperature:    TemperatureSettings,
   night_driving:  NightSettings,
   license_expiry: LicenceSettings,
+  harsh_braking:      HarshSettings,
+  harsh_acceleration: HarshSettings,
 }
 
 // The Geo Zone type's direction is a grid cell (SETTINGS_RENDERERS); its fence

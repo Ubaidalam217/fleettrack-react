@@ -9,7 +9,8 @@
  */
 
 export const VIOLATION_TYPES = [
-  'overspeed', 'geofence_speed', 'idle', 'night_driving', 'suspended_driver', 'geofence', 'temperature', 'custom',
+  'overspeed', 'geofence_speed', 'harsh_braking', 'harsh_acceleration', 'idle', 'night_driving', 'suspended_driver',
+  'geofence', 'temperature', 'custom',
 ]
 
 const HIGH = new Set(['High', 'Critical'])

@@ -370,6 +370,38 @@ describe('runAlertPass + /api/alert-events', () => {
   })
 })
 
+// ── harsh driving (client, 2026-11-10) ──────────────────────────────────────
+
+describe('harsh braking and acceleration rules', () => {
+  const at = (t, speed) => ({ 'device.id': 101, timestamp: NOW - 60 + t, 'position.speed': speed, 'position.latitude': 24.4, 'position.longitude': 54.4 })
+  // 60 → 45 → 30 km/h a second apart is one stop; 30 → 10 in a second is a second one.
+  const recent = new Map([[101, [at(0, 60), at(1, 45), at(2, 30), at(20, 30), at(21, 10), at(40, 12)]]])
+
+  it('raises an event for each hard stop, dated when it began, and never twice', async () => {
+    await prisma.alert.create({ data: { name: 'Harsh stop', type: 'harsh_braking', bgId: fx.bgA1a.id, severity: 'Medium', params: { thresholdMs2: 3.5 }, allVehicles: true } })
+    const events = await runAlertPass(NOW, { recent })
+    expect(events).toHaveLength(2)
+    expect(events[0]).toMatchObject({ type: 'harsh_braking', deviceId: 101, value: 4.2, lat: 24.4 })
+    expect(events[0].occurredAt.getTime()).toBe((NOW - 60) * 1000)
+    expect(events[0].message).toBe('PLATE-1: Harsh braking: 60 → 30 km/h in 2 s (4.2 m/s²)')
+    expect(await runAlertPass(NOW + 30, { recent })).toHaveLength(0)
+  })
+
+  it('reads launches for an acceleration rule, at its own threshold', async () => {
+    await prisma.alert.create({ data: { name: 'Launch', type: 'harsh_acceleration', bgId: fx.bgA1a.id, severity: 'Low', params: { thresholdMs2: 2 }, allVehicles: true } })
+    const launch = new Map([[101, [at(0, 0), at(3, 25), at(4, 26)]]]) // 2.3 m/s²
+    const [e] = await runAlertPass(NOW, { recent: launch })
+    expect(e.message).toMatch(/Harsh acceleration: 0 → 25 km\/h in 3 s/)
+  })
+
+  it('takes a threshold between 1.5 and 9 m/s²', async () => {
+    const post = body => request(app).post('/api/alerts').set(auth(fx.tokens.bgUserA1a)).send({ bgId: fx.bgA1a.id, allVehicles: true, name: 'h', ...body })
+    expect((await post({ type: 'harsh_braking', params: { thresholdMs2: '4' } })).body.data.params).toEqual({ thresholdMs2: 4 })
+    expect((await post({ type: 'harsh_acceleration', params: {} })).body.data.params).toEqual({ thresholdMs2: 3.5 })
+    expect((await post({ type: 'harsh_braking', params: { thresholdMs2: '12' } })).status).toBe(400)
+  })
+})
+
 // ── /api/alerts validation of the new fields ────────────────────────────────
 
 describe('POST /api/alerts — engine types', () => {

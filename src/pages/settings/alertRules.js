@@ -94,6 +94,8 @@ const VALIDATORS = {
   temperature:    validateTemperature,
   night_driving:  validateNight,
   license_expiry: s => only('days', rangeError(s.days, 1, 365, 'days')),
+  harsh_braking:      s => only('thresholdMs2', rangeError(s.thresholdMs2, 1.5, 9, 'm/s²')),
+  harsh_acceleration: s => only('thresholdMs2', rangeError(s.thresholdMs2, 1.5, 9, 'm/s²')),
   custom:         validateCustom,
 }
 

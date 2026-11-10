@@ -17,6 +17,9 @@
  * BLE temperature probe — no fuel, door, harsh-driving or power fields (see
  * memory notes on the sensor probe). TYPES below is exactly the set those
  * fields can back, plus the driver licence check, which needs no telemetry.
+ * Harsh braking and acceleration are read off the speed between messages
+ * (src/utils/harshEvents.js), so those two rules also read the messages since
+ * the last pass, not only the latest telemetry.
  *
  * ── Edges, not levels ───────────────────────────────────────────────────────
  *
@@ -31,7 +34,8 @@ import prisma from '../prisma.js'
 import * as flespi from './flespi.js'
 import { sendAlertEmail } from './mailer.js'
 import { haversineMeters } from '../../../src/utils/distance.js'
-import { telemetryResponse } from './telemetry.js'
+import { telemetryResponse, isServing, coverageStart, messagesBetween } from './telemetry.js'
+import { harshEpisodes, describeHarsh, HARSH_MS2 } from '../../../src/utils/harshEvents.js'
 import { runReminderPass } from './reminders.js'
 import { liveTemperature } from '../../../src/utils/sensorReadings.js'
 
@@ -85,7 +89,22 @@ export const TYPES = Object.freeze({
   custom:         { label: 'Other (custom parameter)', defaults: { parameter: '', operator: '>', value: '' } },
   // Client, 2026-11-06: a suspended driver must not drive — raised when one's iButton is read.
   suspended_driver: { label: 'Suspended Driver Driving', defaults: {} },
+  // Client, 2026-11-10: harsh driving counts as a violation too. Every hard
+  // stop or launch is an event of its own (no cooldown), dated when it began.
+  harsh_braking:      { label: 'Harsh Braking',      defaults: { thresholdMs2: HARSH_MS2 } },
+  harsh_acceleration: { label: 'Harsh Acceleration', defaults: { thresholdMs2: HARSH_MS2 } },
 })
+
+/** The harsh types and which way the speed changes. */
+const HARSH_KIND = Object.freeze({ harsh_braking: 'braking', harsh_acceleration: 'acceleration' })
+/** How far back a harsh rule reads on its first pass, and at most after a pause. */
+const HARSH_FIRST_SEC = 120
+const HARSH_MAX_SEC = 15 * 60
+/** Read this far before the last pass too, so a stop split across two passes is whole. */
+const HARSH_OVERLAP_SEC = 60
+/** At most this many harsh events per vehicle and rule in one pass. */
+const HARSH_MAX_EVENTS = 20
+const HARSH_FIELDS = 'device.id,timestamp,position.speed,position.latitude,position.longitude'
 
 /** Operators an "Other" rule may use. `true` / `false` take no value. */
 export const CUSTOM_OPERATORS = ['>', '>=', '<', '<=', '=', '!=', 'true', 'false']
@@ -462,6 +481,29 @@ export async function fetchTelemetry() {
 const vehicleName = v => v.plateNo || v.fleetNo || v.imei
 
 /**
+ * The devices' messages between two times, oldest first: from our own history
+ * when it holds that stretch, else one Flespi read for all of them.
+ * @returns {Promise<Map<number, object[]>>}
+ */
+export async function fetchRecent(deviceIds, fromTs, toTs) {
+  const byDevice = new Map(deviceIds.map(id => [id, []]))
+  if (!deviceIds.length) return byDevice
+  const start = isServing() ? await coverageStart() : null
+  let rows
+  if (start !== null && start <= fromTs) {
+    rows = await messagesBetween(deviceIds, fromTs, toTs, { limit: 50_000 })
+  } else {
+    const data = encodeURIComponent(JSON.stringify({ from: fromTs, to: toTs, fields: HARSH_FIELDS }))
+    const res = await flespi.forward(`/gw/devices/${deviceIds.join(',')}/messages?data=${data}`, { timeoutMs: 20_000 })
+    if (res.status !== 200) throw new Error(`Flespi messages answered ${res.status}`)
+    rows = JSON.parse(res.text).result ?? []
+  }
+  for (const m of rows) byDevice.get(m['device.id'])?.push(m)
+  for (const list of byDevice.values()) list.sort((a, b) => a.timestamp - b.timestamp)
+  return byDevice
+}
+
+/**
  * One pass over every active rule. Returns the events it created. `pre` may
  * carry telemetry and the IMEI map already fetched this tick (the reminder
  * pass shares them), so the fleet is read once.
@@ -503,6 +545,32 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
   const changed = []
   const events = []
 
+  // Harsh rules read the messages since their last pass: one read for every
+  // device they cover, from the oldest place any of them stopped.
+  let recent = new Map()
+  const harshRules = alerts.filter(a => HARSH_KIND[a.type])
+  if (harshRules.length) {
+    const ids = new Set()
+    let from = now
+    for (const alert of harshRules) {
+      const listed = new Set(alert.vehicles.map(v => v.vehicleId))
+      for (const v of vehicles) {
+        if (v.bgId !== alert.bgId || !(alert.allVehicles || listed.has(v.id))) continue
+        const deviceId = deviceByImei.get(digits(v.imei))
+        if (deviceId === undefined) continue
+        ids.add(deviceId)
+        const last = stateOf.get(`${alert.id}|d:${deviceId}`)?.lastTs ?? now - HARSH_FIRST_SEC
+        from = Math.min(from, last - HARSH_OVERLAP_SEC)
+      }
+    }
+    from = Math.max(from, now - HARSH_MAX_SEC)
+    try {
+      recent = pre.recent ?? await fetchRecent([...ids], from, now)
+    } catch (err) {
+      console.error(`[fleetmax] harsh messages read failed: ${err.message}`)
+    }
+  }
+
   const record = (alert, subject, prev, result, event) => {
     const last = prev?.lastFiredAt ?? 0
     let next = result.state
@@ -515,6 +583,33 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
       events.push({ ...event, alertId: alert.id, bgId: alert.bgId, type: alert.type, severity: alert.severity, title: alert.name, message: result.fire.message, value: result.fire.value ?? null, occurredAt: new Date(now * 1000) })
     }
     if (JSON.stringify(next) !== JSON.stringify(prev ?? {})) changed.push({ alertId: alert.id, subject, state: next })
+  }
+
+  // Each hard stop or launch since the last pass is its own event, dated when it began.
+  function harshPass(alert, v, deviceId) {
+    const subject = `d:${deviceId}`
+    const prev = stateOf.get(`${alert.id}|${subject}`)
+    const since = prev?.lastTs ?? now - HARSH_FIRST_SEC
+    const msgs = recent.get(deviceId) ?? []
+    if (!msgs.length) return
+    const kind = HARSH_KIND[alert.type]
+    const threshold = num(Number(paramsOf(alert).thresholdMs2)) ?? HARSH_MS2
+    const found = harshEpisodes(msgs, { kind, thresholdMs2: threshold }).filter(e => e.startTs > since)
+    const tagDriver = telemetry.get(deviceId)?.ibutton ? byTag.get(telemetry.get(deviceId).ibutton) : undefined
+    const who = tagDriver && tagDriver.bgId === v.bgId ? tagDriver : v.driver
+    for (const e of found.slice(0, HARSH_MAX_EVENTS)) {
+      events.push({
+        alertId: alert.id, bgId: alert.bgId, type: alert.type, severity: alert.severity, title: alert.name,
+        message: `${vehicleName(v)}: ${describeHarsh(kind, e)}${who ? ` · Driver: ${who.name}` : ''}`,
+        value: Math.round(e.peakMs2 * 10) / 10,
+        occurredAt: new Date(e.startTs * 1000),
+        vehicleId: v.id, deviceId, driverId: who?.id ?? null, lat: e.lat, lng: e.lng,
+      })
+    }
+    // Up to the last stop found, or the newest message less the overlap, so a
+    // stop still going on at the end of this read is caught whole next time.
+    const lastTs = Math.max(since, ...found.map(e => e.startTs), msgs[msgs.length - 1].timestamp - HARSH_OVERLAP_SEC)
+    if (lastTs !== prev?.lastTs) changed.push({ alertId: alert.id, subject, state: { lastTs } })
   }
 
   for (const alert of alerts) {
@@ -539,6 +634,10 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
     const suspendedByTag = new Map(tagged.filter(d => d.bgId === alert.bgId && d.status === 'Suspended').map(d => [d.ibuttonCode, d]))
     for (const v of targets) {
       const deviceId = deviceByImei.get(digits(v.imei))
+      if (HARSH_KIND[alert.type]) {
+        if (deviceId !== undefined) harshPass(alert, v, deviceId)
+        continue
+      }
       const base = deviceId !== undefined ? telemetry.get(deviceId) : undefined
       if (!base) continue
       const tel = alert.type === 'custom' ? { ...base, params: customParams.get(deviceId) ?? {} } : base

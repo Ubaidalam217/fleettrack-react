@@ -155,6 +155,20 @@ export const ALERT_TYPES = [
     hint: 'Raised when the iButton of a driver marked Suspended is read with the engine on.',
     defaults: () => ({}),
   },
+  {
+    // Client, 2026-11-10: harsh driving counts as a violation. Read off the
+    // speed between messages (utils/harshEvents.js); every stop is an event.
+    value: 'harsh_braking',
+    label: 'Harsh Braking',
+    hint: 'Raised each time a vehicle slows down harder than the threshold.',
+    defaults: () => ({ thresholdMs2: '3.5' }),
+  },
+  {
+    value: 'harsh_acceleration',
+    label: 'Harsh Acceleration',
+    hint: 'Raised each time a vehicle speeds up harder than the threshold.',
+    defaults: () => ({ thresholdMs2: '3.5' }),
+  },
 ]
 
 /**

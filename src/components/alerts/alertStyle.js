@@ -13,7 +13,7 @@
 
 import {
   Gauge, Hourglass, LogIn, LogOut, MapPin, Power, PowerOff, WifiOff,
-  Thermometer, Moon, IdCard, Bell, SlidersHorizontal, UserX, CircleGauge, Wrench,
+  Thermometer, Moon, IdCard, Bell, SlidersHorizontal, UserX, CircleGauge, Wrench, ChevronsDown, ChevronsUp,
 } from 'lucide-react'
 
 export const SEVERITY_TONE = {
@@ -42,6 +42,8 @@ export const ALERT_TYPE_ICON = {
   license_expiry: IdCard,
   custom:         SlidersHorizontal,
   suspended_driver: UserX,
+  harsh_braking:      ChevronsDown,
+  harsh_acceleration: ChevronsUp,
 }
 
 export const alertTypeIcon = type => ALERT_TYPE_ICON[type] ?? Bell

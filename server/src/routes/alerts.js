@@ -123,6 +123,10 @@ function cleanParams(body) {
     case 'license_expiry':
       if (!positive(num('days'), 1, 365)) throw badRequest('Warn between 1 and 365 days before expiry', { days: '1–365 days' })
       return { days: num('days') }
+    case 'harsh_braking':
+    case 'harsh_acceleration':
+      if (!positive(num('thresholdMs2'), 1.5, 9)) throw badRequest('Set the threshold between 1.5 and 9 m/s²', { thresholdMs2: '1.5–9 m/s²' })
+      return { thresholdMs2: num('thresholdMs2') }
     default:
       return {}
   }
