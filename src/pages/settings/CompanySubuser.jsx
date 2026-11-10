@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Plus, Eye, EyeOff } from 'lucide-react'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
 import { Field, FormActions, FormCard } from './FormKit'
@@ -117,6 +117,36 @@ function CheckRow({ label, checked, onChange, disabled, title }) {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 
+/** A password input with a show / hide eye button. */
+function PasswordBox({ shown, onToggle, invalid, ...input }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        {...input}
+        type={shown ? 'text' : 'password'}
+        autoComplete="new-password"
+        spellCheck={false}
+        aria-invalid={invalid || undefined}
+        style={{ ...inputStyle(invalid), paddingRight: 38 }}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={shown ? 'Hide password' : 'Show password'}
+        aria-pressed={shown}
+        title={shown ? 'Hide password' : 'Show password'}
+        style={{
+          position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+          width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          border: 0, borderRadius: 6, background: 'transparent', color: 'var(--c-text3)', cursor: 'pointer',
+        }}
+      >
+        {shown ? <EyeOff size={15} /> : <Eye size={15} />}
+      </button>
+    </div>
+  )
+}
+
 export default function CompanySubuser(props) {
   const subusers  = useSubusers()
   const companies = useCompanies()
@@ -142,6 +172,12 @@ export default function CompanySubuser(props) {
   const formRef  = useRef(null)
 
   const editing = draft !== null
+  // Client, 2026-11-10: whoever adds a sub-user sees the password being set,
+  // not dots. An existing row starts hidden: what sits there is the default,
+  // not the user's password, which is stored only as a hash.
+  const [showPw, setShowPw] = useState(false)
+  const draftId = draft?.id ?? null
+  useEffect(() => { setShowPw(editing && !draftId) }, [editing, draftId])
 
   useEffect(() => {
     if (editing) firstRef.current?.focus()
@@ -412,25 +448,33 @@ export default function CompanySubuser(props) {
                   </div>
                 </Field>
 
-                <Field label="Password" required error={errors.password}>
-                  <input
+                {/* Write-only against the real API: the hash is never returned, so
+                    an existing row shows the default here. Leaving it alone keeps
+                    the current password; typing a new one resets it. */}
+                <Field
+                  label="Password"
+                  required
+                  error={errors.password}
+                  hint={draft.id ? 'Type a new password to reset it, or leave it as-is to keep the current one.' : 'Handed to the user for their first sign-in.'}
+                >
+                  <PasswordBox
                     name="password"
-                    type="password"
                     value={draft.password}
                     onChange={e => set('password', e.target.value)}
-                    aria-invalid={!!errors.password || undefined}
-                    style={inputStyle(!!errors.password)}
+                    invalid={!!errors.password}
+                    shown={showPw}
+                    onToggle={() => setShowPw(v => !v)}
                   />
                 </Field>
 
                 <Field label="Retype Password" required error={errors.retypePassword}>
-                  <input
+                  <PasswordBox
                     name="retypePassword"
-                    type="password"
                     value={confirm.password}
                     onChange={e => setConfirmField('password', e.target.value)}
-                    aria-invalid={!!errors.retypePassword || undefined}
-                    style={inputStyle(!!errors.retypePassword)}
+                    invalid={!!errors.retypePassword}
+                    shown={showPw}
+                    onToggle={() => setShowPw(v => !v)}
                   />
                 </Field>
 
