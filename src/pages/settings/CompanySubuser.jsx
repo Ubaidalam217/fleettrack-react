@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Eye, EyeOff } from 'lucide-react'
+import { Plus, Eye, EyeOff, Building2, KeyRound, ShieldCheck, Mail, MessageSquare, Lock, UserRound } from 'lucide-react'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
-import { Field, FormActions, FormCard } from './FormKit'
-import { PRIMARY_BTN, inputStyle } from './formStyles'
+import { PRIMARY_BTN, SECONDARY_BTN } from './formStyles'
+import { DFM_CSS, ctl } from './alignedFormStyles'
+import { DF, DSection, ReadOnly } from './AlignedForm'
 import ConfirmDialog from '../../components/tracking/ConfirmDialog'
 import ToastStack from '../../components/tracking/Toasts'
 import { useToasts } from '../../hooks/useToasts'
@@ -77,41 +78,21 @@ const COLUMNS = [
   },
 ]
 
-const GRID = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-  gap: '14px 16px',
+// The hero's initials: first letters of the first two words of the name.
+const initialsOf = name => name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('')
+
+const AVATAR = {
+  width: 56, height: 56, borderRadius: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  fontSize: 19, fontWeight: 800, letterSpacing: 0.5, color: 'var(--ft-accent)',
+  background: 'color-mix(in srgb, var(--ft-accent) 14%, transparent)',
 }
 
-const CHECK = { width: 15, height: 15, accentColor: 'var(--ft-accent)', cursor: 'pointer', flexShrink: 0 }
-
-const READONLY_INPUT = {
-  background: 'var(--c-thead)',
-  color: 'var(--c-text3)',
-  cursor: 'not-allowed',
-}
-
-// ── Small shared controls ──────────────────────────────────────────────────
-
-function CheckRow({ label, checked, onChange, disabled, title }) {
+/** An on / off chip in the aligned form's style (role="checkbox"). */
+function Chip({ on, onChange, icon: Icon, children }) {
   return (
-    <label
-      title={title}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 7,
-        fontSize: 12.5, color: disabled ? 'var(--c-text3)' : 'var(--c-text1)',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={e => onChange(e.target.checked)}
-        style={{ ...CHECK, cursor: disabled ? 'not-allowed' : 'pointer' }}
-      />
-      {label}
-    </label>
+    <button type="button" className="dfm-chip" role="checkbox" aria-checked={on} onClick={() => onChange(!on)}>
+      {Icon && <Icon size={14} />}{children}
+    </button>
   )
 }
 
@@ -123,11 +104,12 @@ function PasswordBox({ shown, onToggle, invalid, ...input }) {
     <div style={{ position: 'relative' }}>
       <input
         {...input}
+        id={input.id}
         type={shown ? 'text' : 'password'}
         autoComplete="new-password"
         spellCheck={false}
         aria-invalid={invalid || undefined}
-        style={{ ...inputStyle(invalid), paddingRight: 38 }}
+        style={ctl(invalid, { paddingRight: 40 })}
       />
       <button
         type="button"
@@ -356,169 +338,186 @@ export default function CompanySubuser(props) {
   }
 
   const noCompanies = companies.length === 0
+  const fid = n => `su-${n}`
+  const busyBtn = saving ? { opacity: 0.6, cursor: 'not-allowed' } : null
   const title = !editing ? 'Company Subuser' : draft.id ? 'Edit Subuser' : 'Add Subuser'
 
   return (
     <SettingsLayout title={title} {...props}>
       {editing ? (
-        <form ref={formRef} onSubmit={submit} noValidate>
-          <FormCard
-            title={draft.id ? 'Company Subuser Detail' : 'New sub-user'}
-            subtitle="Fields marked with * are required. The username is the email address."
-          >
-            {/* ── Tab 1: My Account ── */}
-            {tab === 'account' && (
-              <div style={GRID}>
-                <Field label="Business Group" required error={errors.companyId}>
-                  <select
-                    ref={firstRef}
-                    name="companyId"
-                    value={draft.companyId}
-                    onChange={e => set('companyId', e.target.value)}
-                    aria-invalid={!!errors.companyId || undefined}
-                    style={inputStyle(!!errors.companyId)}
-                  >
-                    <option value="">— Select —</option>
-                    {companies.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </Field>
+        <form ref={formRef} onSubmit={submit} noValidate className="dfm">
+          <style>{DFM_CSS}</style>
 
-                <Field label="Short Name" required error={errors.name}>
-                  <input
-                    name="name"
-                    value={draft.name}
-                    onChange={e => set('name', e.target.value)}
-                    aria-invalid={!!errors.name || undefined}
-                    placeholder="Mussafah Dispatch"
-                    style={inputStyle(!!errors.name)}
-                  />
-                </Field>
-
-                <Field label="User Name" required error={errors.email}>
-                  <input
-                    name="email"
-                    type="email"
-                    value={draft.email}
-                    onChange={e => set('email', e.target.value)}
-                    aria-invalid={!!errors.email || undefined}
-                    placeholder="Use Email Address as Username."
-                    style={inputStyle(!!errors.email)}
-                  />
-                </Field>
-
-                <Field label="Confirm Username" required error={errors.confirmEmail}>
-                  <input
-                    name="confirmEmail"
-                    type="email"
-                    value={confirm.username}
-                    onChange={e => setConfirmField('username', e.target.value)}
-                    aria-invalid={!!errors.confirmEmail || undefined}
-                    placeholder="Repeat the email address"
-                    style={inputStyle(!!errors.confirmEmail)}
-                  />
-                </Field>
-
-                {/* Not stored — rendered from the email, same as the User page. */}
-                <Field label="Username (login)">
-                  <input
-                    name="username"
-                    value={draft.email}
-                    readOnly
-                    tabIndex={-1}
-                    aria-readonly="true"
-                    placeholder="Set by the User Name field"
-                    style={{ ...inputStyle(false), ...READONLY_INPUT }}
-                  />
-                </Field>
-
-                <Field label="Share Credentials Via">
-                  <div style={{ display: 'flex', gap: 16, paddingTop: 4 }}>
-                    <CheckRow
-                      label="Email"
-                      checked={draft.shareVia.email}
-                      onChange={v => set('shareVia', { ...draft.shareVia, email: v })}
-                    />
-                    <CheckRow
-                      label="SMS"
-                      checked={draft.shareVia.sms}
-                      onChange={v => set('shareVia', { ...draft.shareVia, sms: v })}
-                    />
-                  </div>
-                </Field>
-
-                {/* Write-only against the real API: the hash is never returned, so
-                    an existing row shows the default here. Leaving it alone keeps
-                    the current password; typing a new one resets it. */}
-                <Field
-                  label="Password"
-                  required
-                  error={errors.password}
-                  hint={draft.id ? 'Type a new password to reset it, or leave it as-is to keep the current one.' : 'Handed to the user for their first sign-in.'}
-                >
-                  <PasswordBox
-                    name="password"
-                    value={draft.password}
-                    onChange={e => set('password', e.target.value)}
-                    invalid={!!errors.password}
-                    shown={showPw}
-                    onToggle={() => setShowPw(v => !v)}
-                  />
-                </Field>
-
-                <Field label="Retype Password" required error={errors.retypePassword}>
-                  <PasswordBox
-                    name="retypePassword"
-                    value={confirm.password}
-                    onChange={e => setConfirmField('password', e.target.value)}
-                    invalid={!!errors.retypePassword}
-                    shown={showPw}
-                    onToggle={() => setShowPw(v => !v)}
-                  />
-                </Field>
-
-                <Field label="Mobile Number">
-                  <input
-                    name="mobileNumber"
-                    type="tel"
-                    value={draft.mobileNumber}
-                    onChange={e => set('mobileNumber', e.target.value)}
-                    placeholder="+971 50 000 0000"
-                    style={inputStyle(false)}
-                  />
-                </Field>
-
-                <Field label="Enable Security Pin">
-                  <div style={{ paddingTop: 6 }}>
-                    <CheckRow
-                      label="Require a security PIN at login"
-                      checked={draft.enableSecurityPin}
-                      onChange={v => set('enableSecurityPin', v)}
-                    />
-                  </div>
-                </Field>
-
-                <Field label="Password Recovery Email">
-                  <input
-                    name="passwordRecoveryEmail"
-                    type="email"
-                    value={draft.passwordRecoveryEmail}
-                    onChange={e => set('passwordRecoveryEmail', e.target.value)}
-                    placeholder="recovery@company.ae"
-                    style={inputStyle(false)}
-                  />
-                </Field>
+          {/* ── Who ── */}
+          <div className="dfm-hero">
+            <div style={AVATAR} aria-hidden="true">{initialsOf(draft.name) || <UserRound size={24} />}</div>
+            <div className="dfm-hero-main">
+              <div className={`dfm-hero-name${draft.name.trim() ? '' : ' empty'}`}>{draft.name.trim() || 'New sub-user'}</div>
+              <div className="dfm-hero-meta">
+                <span className="dfm-code">Sub-user</span>
+                {draft.companyId && <span>{companyNameFor(draft.companyId)}</span>}
+                {draft.email.trim() && <span>{draft.email.trim()}</span>}
               </div>
-            )}
+            </div>
+          </div>
 
-            <FormActions
-              onBack={closeForm}
-              onReset={resetForm}
-              saveLabel={draft.id ? 'Save Changes' : 'Save'}
-              saving={saving}
-            />
-          </FormCard>
+          {/* The client kept only My Account (see TABS), so its fields are
+              split into sections rather than shown behind a tab bar. */}
+          <DSection icon={Building2} title="Account" desc="The Business Group this login belongs to, and the name it is shown under.">
+            <div className="dfm-grid">
+              <DF id={fid('companyId')} label="Business Group" required error={errors.companyId} span={6}>
+                <select
+                  ref={firstRef}
+                  id={fid('companyId')}
+                  name="companyId"
+                  value={draft.companyId}
+                  onChange={e => set('companyId', e.target.value)}
+                  aria-invalid={!!errors.companyId || undefined}
+                  style={ctl(!!errors.companyId)}
+                >
+                  <option value="">Select a Business Group</option>
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </DF>
+
+              <DF id={fid('name')} label="Short Name" required error={errors.name} span={6}>
+                <input
+                  id={fid('name')}
+                  name="name"
+                  value={draft.name}
+                  onChange={e => set('name', e.target.value)}
+                  aria-invalid={!!errors.name || undefined}
+                  placeholder="Mussafah Dispatch"
+                  style={ctl(!!errors.name)}
+                />
+              </DF>
+            </div>
+          </DSection>
+
+          <DSection icon={KeyRound} title="Sign-in" desc="The email address is the username. The user changes the password at first sign-in.">
+            <div className="dfm-grid">
+              <DF id={fid('email')} label="User Name (email)" required error={errors.email} span={6}>
+                <input
+                  id={fid('email')}
+                  name="email"
+                  type="email"
+                  value={draft.email}
+                  onChange={e => set('email', e.target.value)}
+                  aria-invalid={!!errors.email || undefined}
+                  placeholder="name@company.ae"
+                  autoComplete="off"
+                  style={ctl(!!errors.email)}
+                />
+              </DF>
+
+              <DF id={fid('confirmEmail')} label="Confirm User Name" required error={errors.confirmEmail} span={6}>
+                <input
+                  id={fid('confirmEmail')}
+                  name="confirmEmail"
+                  type="email"
+                  value={confirm.username}
+                  onChange={e => setConfirmField('username', e.target.value)}
+                  aria-invalid={!!errors.confirmEmail || undefined}
+                  placeholder="Repeat the email address"
+                  autoComplete="off"
+                  style={ctl(!!errors.confirmEmail)}
+                />
+              </DF>
+            </div>
+
+            {/* Write-only against the real API: the hash is never returned, so
+                an existing row shows the default here. Leaving it alone keeps
+                the current password; typing a new one resets it. */}
+            <div className="dfm-grid">
+              <DF
+                id={fid('password')}
+                label="Password"
+                required
+                error={errors.password}
+                span={6}
+                hint={draft.id ? 'Type a new password to reset it, or leave it as-is to keep the current one.' : 'Handed to the user for their first sign-in.'}
+              >
+                <PasswordBox
+                  id={fid('password')}
+                  name="password"
+                  value={draft.password}
+                  onChange={e => set('password', e.target.value)}
+                  invalid={!!errors.password}
+                  shown={showPw}
+                  onToggle={() => setShowPw(v => !v)}
+                />
+              </DF>
+
+              <DF id={fid('retypePassword')} label="Retype Password" required error={errors.retypePassword} span={6}>
+                <PasswordBox
+                  id={fid('retypePassword')}
+                  name="retypePassword"
+                  value={confirm.password}
+                  onChange={e => setConfirmField('password', e.target.value)}
+                  invalid={!!errors.retypePassword}
+                  shown={showPw}
+                  onToggle={() => setShowPw(v => !v)}
+                />
+              </DF>
+            </div>
+
+            <div className="dfm-grid">
+              {/* Not stored — rendered from the email, same as the User page. */}
+              <ReadOnly id={fid('username')} label="Login" value={draft.email.trim() || '—'} span={6} hint="Set by the User Name field." />
+
+              <DF id={fid('shareVia')} label="Share Credentials Via" group span={6}>
+                <div className="dfm-chips" role="group" aria-labelledby={`${fid('shareVia')}-label`}>
+                  <Chip icon={Mail} on={draft.shareVia.email} onChange={v => set('shareVia', { ...draft.shareVia, email: v })}>Email</Chip>
+                  <Chip icon={MessageSquare} on={draft.shareVia.sms} onChange={v => set('shareVia', { ...draft.shareVia, sms: v })}>SMS</Chip>
+                </div>
+              </DF>
+            </div>
+          </DSection>
+
+          <DSection icon={ShieldCheck} title="Contact & security" desc="Where to reach the user, and how they recover a lost password.">
+            <div className="dfm-grid">
+              <DF id={fid('mobileNumber')} label="Mobile Number" span={6}>
+                <input
+                  id={fid('mobileNumber')}
+                  name="mobileNumber"
+                  type="tel"
+                  value={draft.mobileNumber}
+                  onChange={e => set('mobileNumber', e.target.value)}
+                  placeholder="+971 50 000 0000"
+                  style={ctl(false)}
+                />
+              </DF>
+
+              <DF id={fid('passwordRecoveryEmail')} label="Password Recovery Email" span={6}>
+                <input
+                  id={fid('passwordRecoveryEmail')}
+                  name="passwordRecoveryEmail"
+                  type="email"
+                  value={draft.passwordRecoveryEmail}
+                  onChange={e => set('passwordRecoveryEmail', e.target.value)}
+                  placeholder="recovery@company.ae"
+                  style={ctl(false)}
+                />
+              </DF>
+
+              <DF id={fid('enableSecurityPin')} label="Security PIN" group span={12}>
+                <div className="dfm-chips" role="group" aria-labelledby={`${fid('enableSecurityPin')}-label`}>
+                  <Chip icon={Lock} on={draft.enableSecurityPin} onChange={v => set('enableSecurityPin', v)}>Require a security PIN at login</Chip>
+                </div>
+              </DF>
+            </div>
+          </DSection>
+
+          <div className="dfm-foot">
+            <span className="dfm-foot-note"><span className="dfm-req" aria-hidden="true">*</span> Required</span>
+            <button type="button" onClick={closeForm} style={{ ...SECONDARY_BTN, height: 40, ...busyBtn }} disabled={saving}>Back</button>
+            <button type="button" onClick={resetForm} style={{ ...SECONDARY_BTN, height: 40, ...busyBtn }} disabled={saving}>Reset</button>
+            <button type="submit" style={{ ...PRIMARY_BTN, height: 40, ...busyBtn }} disabled={saving}>
+              {saving ? 'Saving…' : draft.id ? 'Save Changes' : 'Save Sub-user'}
+            </button>
+          </div>
         </form>
       ) : (
         <>
