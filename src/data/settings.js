@@ -348,6 +348,15 @@ export function updateVehicleCustomFields(id, fields) {
   return write(async () => A.vehicle.toFe(await put(`/api/vehicles/${id}/custom-fields`, { fields })))
 }
 
+/**
+ * Move one vehicle to another Business Group (POST /api/vehicles/:id/transfer).
+ * Its old BG's sub-user access, rule memberships and driver stay behind.
+ */
+export function transferVehicle(id, { companyId, branchId }) {
+  if (!IS_REAL) return done(mock.updateVehicle(id, { companyId, branchId: branchId || '' }))
+  return write(() => post(`/api/vehicles/${id}/transfer`, { bgId: companyId, branchId: branchId || null }))
+}
+
 export function updateVehicle(id, patch) {
   if (!IS_REAL) return done(mock.updateVehicle(id, patch))
   return write(async () =>

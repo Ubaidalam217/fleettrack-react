@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, FileBadge, BellPlus } from 'lucide-react'
+import { Plus, FileBadge, BellPlus, ArrowRightLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
@@ -17,6 +17,7 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import VehicleMoveDialog from './VehicleMoveDialog'
 import { ObjectTabs } from './OrgTabs'
 import { IS_REAL } from '../../data/mode'
 import { get } from '../../data/http'
@@ -135,6 +136,8 @@ export default function Vehicle(props) {
   useGroups()
 
   const { toasts, push, dismiss } = useToasts()
+  // Client, 2026-11-10: one vehicle can move to another Business Group.
+  const [moving, setMoving] = useState(null)
   const access = usePageAccess('vehicle')
 
   const [draft,   setDraft]   = useState(null)
@@ -542,7 +545,11 @@ export default function Vehicle(props) {
                   label: `Create alert for ${row.vehicleNumber || row.imei}`,
                   icon: <BellPlus size={13} />,
                   onClick: () => navigate(`/settings/alerts?imei=${encodeURIComponent(row.imei)}`),
-                }]}
+                }, ...(access.canWrite ? [{
+                  label: `Move ${row.vehicleNumber || row.imei} to another Business Group`,
+                  icon: <ArrowRightLeft size={13} />,
+                  onClick: () => setMoving(row),
+                }] : [])]}
                 onEdit={openEdit}
                 onDelete={access.canDelete ? setPending : null}
                 canWrite={access.canWrite}
@@ -573,6 +580,7 @@ export default function Vehicle(props) {
         />
       )}
 
+      {moving && <VehicleMoveDialog vehicle={moving} push={push} onClose={() => setMoving(null)} />}
       <ToastStack toasts={toasts} onDismiss={dismiss} />
     </SettingsLayout>
   )

@@ -2,7 +2,10 @@
  * Reallocation History (client report list, 2026-11-10): a VehicleMove row each
  * time a vehicle lands under another branch, group or Group Global Admin —
  * from the vehicle form (branch, or the group of a group-less BG) and from
- * moving its BG or its group (lib/moves.js).
+ * moving its BG or its group (lib/moves.js) — or is moved to another Business
+ * Group on its own (POST /api/vehicles/:id/transfer). And, for the client's
+ * "device wise" view, each time a tracker is installed in a vehicle or taken
+ * out of one: on add, on an IMEI change and on delete.
  *
  * The rows are written in the same transaction as the change itself, so the
  * history cannot miss a move or record one that did not happen. Names are
@@ -33,6 +36,18 @@ async function namesOf(delegate, ids) {
   return new Map(rows.map(r => [r.id, r.name]))
 }
 
+/** A tracker installed in a vehicle (toName is the vehicle) or taken out of it (fromName). */
+export function deviceRow(v, imei, installed, by) {
+  const label = vehicleLabel(v)
+  return { ...row(v, 'device', installed ? null : label, installed ? label : null, by), imei: imei ?? null }
+}
+
+/** A vehicle moved to another Business Group, readable from both. */
+export function bgMoveRow(v, fromBg, toBg, toBranchName, by) {
+  const to = toBranchName ? `${toBg.name} / ${toBranchName}` : toBg.name
+  return { ...row({ ...v, bgId: toBg.id }, 'bg', fromBg.name, to, by), fromBgId: fromBg.id }
+}
+
 /**
  * The rows for a vehicle edit that changes its branch or its group.
  * `vehicle` is the row as it will read after the edit (for its label);
@@ -45,10 +60,13 @@ export async function editMoves(before, vehicle, { branchId, groupId }, by) {
   // The BG's own group is the vehicle's group whenever it has one.
   const groupBefore = before.groupId || bg?.groupId || null
   const groupAfter = groupId || bg?.groupId || null
-  if (!branchChanged && groupBefore === groupAfter) return []
+  // A new IMEI is the tracker swapped: the old one out, the new one in.
+  const swapped = !!vehicle.imei && vehicle.imei !== before.imei
+  if (!branchChanged && groupBefore === groupAfter && !swapped) return []
 
   const label = { ...before, ...vehicle }
   const out = []
+  if (swapped) out.push(deviceRow(label, before.imei, false, by), deviceRow(label, vehicle.imei, true, by))
   if (branchChanged) {
     const names = await namesOf('branch', [before.branchId, branchId])
     out.push(row(label, 'branch', names.get(before.branchId) ?? bg?.name, names.get(branchId) ?? bg?.name, by))

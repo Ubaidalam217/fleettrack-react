@@ -68,3 +68,50 @@ describe('GET /api/vehicle-moves', () => {
     expect((await moves(fx.tokens.superAdmin, { from: 'yesterday' })).status).toBe(400)
   })
 })
+
+describe('POST /api/vehicles/:id/transfer', () => {
+  const transfer = (token, v, body) => request(app).post(`/api/vehicles/${v.id}/transfer`).set(auth(token)).send(body)
+
+  it('moves one vehicle to another Business Group and leaves the old assignments behind', async () => {
+    const v1 = fx.vehicles.v1
+    const res = await transfer(fx.tokens.groupAdminA1, v1, { bgId: fx.bgA1b.id, branchId: fx.branches.jebelAli.id })
+    expect(res.status).toBe(200)
+    expect(res.body.data).toMatchObject({ bgId: fx.bgA1b.id, branchId: fx.branches.jebelAli.id })
+    expect(res.body.stripped.subuserAssignments).toBe(1) // subUserA1a held v1
+    // The old BG no longer has it; its sub-user lost it.
+    expect((await request(app).get('/api/vehicles').set(auth(fx.tokens.bgUserA1a))).body.data.map(v => v.id)).not.toContain(v1.id)
+    expect((await request(app).get('/api/vehicles').set(auth(fx.tokens.subUserA1a))).body.data.map(v => v.id)).toEqual([fx.vehicles.v2.id])
+
+    const [m] = (await moves(fx.tokens.superAdmin)).body.data
+    expect(m).toMatchObject({ level: 'bg', fromName: fx.bgA1a.name, toName: `${fx.bgA1b.name} / Jebel Ali Hub`, fromBgId: fx.bgA1a.id, bgId: fx.bgA1b.id })
+    // The BG it left still sees the move out; a BG with nothing to do with it does not.
+    expect((await moves(fx.tokens.bgUserA1a)).body.data.map(x => x.level)).toEqual(['bg'])
+    expect((await moves(fx.tokens.bgUserB1a)).body.data).toHaveLength(0)
+  })
+
+  it('needs both Business Groups in reach, and a different one', async () => {
+    expect((await transfer(fx.tokens.bgUserA1a, fx.vehicles.v1, { bgId: fx.bgB1a.id })).status).toBe(404)
+    expect((await transfer(fx.tokens.groupAdminA1, fx.vehicles.v1, { bgId: fx.bgA1a.id })).status).toBe(400)
+    expect((await transfer(fx.tokens.subUserA1a, fx.vehicles.v1, { bgId: fx.bgA1b.id })).status).toBe(403)
+  })
+})
+
+describe('tracker history', () => {
+  it('records a tracker installed with a new vehicle, swapped on an edit, and taken out on delete', async () => {
+    const created = await request(app).post('/api/vehicles').set(auth(fx.tokens.bgUserA1a)).send({ bgId: fx.bgA1a.id, imei: '869999000011111', plateNo: 'NEW-1' })
+    expect(created.status).toBe(201)
+    const id = created.body.data.id
+    await request(app).put(`/api/vehicles/${id}`).set(auth(fx.tokens.bgUserA1a)).send({ imei: '869999000022222', plateNo: 'NEW-1' })
+    await request(app).delete(`/api/vehicles/${id}`).set(auth(fx.tokens.bgUserA1a))
+
+    // The swap's two rows share a moment, so compare without order.
+    const rows = (await moves(fx.tokens.superAdmin, { level: 'device' })).body.data
+      .map(m => [m.imei, m.fromName, m.toName, m.vehicleId]).sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y)))
+    expect(rows).toEqual([
+      ['869999000011111', 'NEW-1', null, null],
+      ['869999000011111', null, 'NEW-1', null],
+      ['869999000022222', 'NEW-1', null, null],
+      ['869999000022222', null, 'NEW-1', null],
+    ])
+  })
+})

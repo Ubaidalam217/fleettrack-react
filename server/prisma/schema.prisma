@@ -1046,18 +1046,24 @@ model VehicleEngineHours {
 }
 
 /// Reallocation History (client report list, 2026-11-10): each time a vehicle
-/// changed branch, group or Group Global Admin. Names are kept as they read at
-/// the time, so the history survives a rename or a delete; `bgId` is the
-/// vehicle's BG, which is what scopes who may read it.
+/// changed branch, group, Group Global Admin or Business Group, and each time
+/// a tracker was installed in or taken out of a vehicle. Names are kept as they
+/// read at the time, so the history survives a rename or a delete; `bgId` is
+/// the vehicle's BG (after a Business Group move, the new one), which is what
+/// scopes who may read it — `fromBgId` lets the old BG read its move-out too.
 model VehicleMove {
   id           String  @id @default(cuid())
   bgId         String
+  /// The BG a 'bg' move came from; null otherwise.
+  fromBgId     String?
   /// Null once the vehicle is deleted; vehicleLabel and imei keep what it was.
   vehicleId    String?
   vehicleLabel String
+  /// The vehicle's tracker; for a 'device' row, the tracker that came or went.
   imei         String?
 
-  /// What changed: 'branch', 'group' or 'ggb'.
+  /// What changed: 'branch', 'group', 'ggb', 'bg', or 'device' — a tracker
+  /// installed (toName is the vehicle) or taken out (fromName is the vehicle).
   level    String
   fromName String?
   toName   String?
@@ -1070,5 +1076,7 @@ model VehicleMove {
   vehicle Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
 
   @@index([bgId, movedAt])
+  @@index([fromBgId])
   @@index([vehicleId])
+  @@index([imei])
 }

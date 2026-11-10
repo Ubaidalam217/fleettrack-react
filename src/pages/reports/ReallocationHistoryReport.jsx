@@ -13,8 +13,9 @@ import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 
 /**
  * Reallocation History Report (client report list, 2026-11-10): each time a
- * vehicle moved to another branch, group or Group Global Admin — when, from
- * where to where, and who did it. The server records the moves
+ * vehicle moved to another branch, group, Group Global Admin or Business
+ * Group — when, from where to where, and who did it — and, "device wise",
+ * which vehicles each tracker was installed in. The server records them
  * (server/src/lib/vehicleMoves.js) from the day this shipped; earlier moves
  * were never kept, so there is nothing to show before then.
  */
@@ -23,11 +24,26 @@ const MAX_RANGE_DAYS = 366
 const MOVE_LIMIT = 5000
 const LEVELS = [
   { key: 'all',    label: 'All' },
+  { key: 'bg',     label: 'Business Group' },
   { key: 'branch', label: 'Branch' },
   { key: 'group',  label: 'Group' },
   { key: 'ggb',    label: 'Group Global Admin' },
+  { key: 'device', label: 'Tracker' },
 ]
-const LEVEL_LABEL = { branch: 'Branch', group: 'Group', ggb: 'Group Global Admin' }
+const LEVEL_LABEL = { bg: 'Business Group', branch: 'Branch', group: 'Group', ggb: 'Group Global Admin' }
+
+/** A tracker row: installed in a vehicle (toName) or taken out of one (fromName). */
+const installed = m => m.level === 'device' && !!m.toName
+const deviceText = m => (installed(m) ? 'Tracker installed' : 'Tracker taken out')
+
+// Per tracker (client: "if we select by device wise then where this device installed history").
+const DEVICE_COLUMNS = [
+  { key: 'when',    label: 'Date / Time',     width: '16%', pdf: 15 },
+  { key: 'event',   label: 'Event',           width: '15%', pdf: 14 },
+  { key: 'vehicle', label: 'Vehicle',         width: '18%', pdf: 17 },
+  { key: 'bg',      label: 'Business Group',  width: '25%', pdf: 24 },
+  { key: 'by',      label: 'By',              width: '26%', pdf: 24 },
+]
 
 const COLUMNS = [
   { key: 'when',  label: 'Date / Time',     width: '15%', pdf: 14 },
@@ -47,9 +63,11 @@ export default function ReallocationHistoryReport(props) {
   const [fromTime, setFromTime] = useState('00:00')
   const [toTime, setToTime] = useState(() => timeStr(now))
   const [level, setLevel] = useState('all')
+  const [per, setPer] = useState('vehicle') // 'vehicle' | 'device'
   const [search, setSearch] = useState('')
-  const [hiddenCols, setHiddenCols] = useHiddenColumns('reallocation-history')
-  const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
+  const [hiddenCols, setHiddenCols] = useHiddenColumns(`reallocation-history-${per}`)
+  const columns = per === 'device' ? DEVICE_COLUMNS : COLUMNS
+  const shownCols = useVisibleColumns(columns, hiddenCols)
 
   const [raw, setRaw] = useState(null) // { moves, applied }
   const [busy, setBusy] = useState(false)
@@ -87,13 +105,37 @@ export default function ReallocationHistoryReport(props) {
     }
   }, [rangeValid, rangeTooLong, fromTs, toTs])
 
-  // Level and search filter what was fetched; one vehicle per group, oldest move first.
+  // Level and search filter what was fetched; one vehicle (or tracker) per group, oldest first.
   const groups = useMemo(() => {
     if (!raw) return []
     const q = search.trim().toLowerCase()
     const kept = raw.moves.filter(m =>
-      (level === 'all' || m.level === level) &&
+      (per === 'device' ? m.level === 'device' : level === 'all' || m.level === level) &&
       (!q || [m.vehicleLabel, m.imei, m.fromName, m.toName, m.bg?.name, m.movedByName].some(x => String(x ?? '').toLowerCase().includes(q))))
+    if (per === 'device') {
+      const byImei = new Map()
+      for (const m of kept) {
+        const key = m.imei || '—'
+        if (!byImei.has(key)) byImei.set(key, [])
+        byImei.get(key).push(m)
+      }
+      return [...byImei.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([imei, list]) => {
+        const rows = list.sort((a, b) => Date.parse(a.movedAt) - Date.parse(b.movedAt)).map(m => ({
+          key: m.id,
+          when: formatDateTime(Math.floor(Date.parse(m.movedAt) / 1000)),
+          event: deviceText(m),
+          vehicle: (installed(m) ? m.toName : m.fromName) || m.vehicleLabel,
+          bg: m.bg?.name || '—',
+          by: m.movedByName || '—',
+          cellStyle: { event: { fontWeight: 700, color: installed(m) ? '#15803d' : '#b91c1c' } },
+        }))
+        const last = list[list.length - 1]
+        return {
+          key: imei, label: `Tracker ${imei}`, rows,
+          total: installed(last) ? `Now in ${last.toName}` : `Not in a vehicle since ${rows[rows.length - 1].when}`,
+        }
+      })
+    }
     const byVehicle = new Map()
     for (const m of kept) {
       const key = m.vehicleId || `${m.vehicleLabel}|${m.imei}`
@@ -112,22 +154,24 @@ export default function ReallocationHistoryReport(props) {
             when: formatDateTime(Math.floor(Date.parse(m.movedAt) / 1000)),
             imei: m.imei || '—',
             bg: m.bg?.name || '—',
-            level: LEVEL_LABEL[m.level] ?? m.level,
-            from: m.fromName || '—',
-            to: m.toName || '—',
+            level: m.level === 'device' ? deviceText(m) : LEVEL_LABEL[m.level] ?? m.level,
+            // A tracker row names the tracker; the vehicle is the group.
+            from: m.level === 'device' ? (installed(m) ? '—' : `IMEI ${m.imei}`) : m.fromName || '—',
+            to: m.level === 'device' ? (installed(m) ? `IMEI ${m.imei}` : '—') : m.toName || '—',
             by: m.movedByName || '—',
             cellStyle: { to: { fontWeight: 700 } },
           })),
         total: `Moves : ${v.moves.length}`,
       }))
-  }, [raw, level, search])
+  }, [raw, level, search, per])
 
   const applied = raw?.applied
   const dataRows = groups.reduce((n, g) => n + g.rows.length, 0)
   const filters = applied ? [
     ['From Date', formatDateTime(applied.fromTs)],
     ['To Date', formatDateTime(applied.toTs)],
-    ['Moved', LEVELS.find(l => l.key === level)?.label ?? 'All'],
+    ['Per', per === 'device' ? 'Tracker' : 'Vehicle'],
+    ...(per === 'vehicle' ? [['Moved', LEVELS.find(l => l.key === level)?.label ?? 'All']] : []),
     ...(search.trim() ? [['Search', search.trim()]] : []),
   ] : []
 
@@ -147,7 +191,7 @@ export default function ReallocationHistoryReport(props) {
   return (
     <ReportFrame
       title="Reallocation History Report"
-      desc="Each time a vehicle moved to another branch, group or Group Global Admin: when, from where to where, and by whom."
+      desc="Each time a vehicle moved to another Business Group, branch, group or Group Global Admin, and where each tracker has been installed: when, from where to where, and by whom."
       {...props}
     >
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
@@ -185,9 +229,18 @@ export default function ReallocationHistoryReport(props) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginTop: 16 }}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ ...LABEL, marginBottom: 0, marginRight: 4 }}>MOVED</span>
-            {LEVELS.map(l => <Chip key={l.key} active={level === l.key} onClick={() => setLevel(l.key)}>{l.label}</Chip>)}
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ ...LABEL, marginBottom: 0, marginRight: 4 }}>ONE GROUP PER</span>
+              <Chip active={per === 'vehicle'} onClick={() => setPer('vehicle')}>Vehicle</Chip>
+              <Chip active={per === 'device'} onClick={() => setPer('device')}>Tracker</Chip>
+            </div>
+            {per === 'vehicle' && (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ ...LABEL, marginBottom: 0, marginRight: 4 }}>MOVED</span>
+                {LEVELS.map(l => <Chip key={l.key} active={level === l.key} onClick={() => setLevel(l.key)}>{l.label}</Chip>)}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {rangeTooLong && <span style={{ fontSize: 11.5, color: '#ef4444' }}>Choose {MAX_RANGE_DAYS} days or fewer.</span>}
@@ -228,12 +281,12 @@ export default function ReallocationHistoryReport(props) {
         <>
           <div className="report-screen-only" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
             <div style={{ fontSize: 12.5, color: 'var(--c-text2)' }}>
-              <strong style={{ color: 'var(--c-text1)' }}>{dataRows}</strong> move{dataRows === 1 ? '' : 's'}
-              {' · '}{groups.length} vehicle{groups.length === 1 ? '' : 's'}
+              <strong style={{ color: 'var(--c-text1)' }}>{dataRows}</strong> {per === 'device' ? 'event' : 'move'}{dataRows === 1 ? '' : 's'}
+              {' · '}{groups.length} {per === 'device' ? 'tracker' : 'vehicle'}{groups.length === 1 ? '' : 's'}
               {raw.moves.length >= MOVE_LIMIT && <span style={{ color: '#f97316' }}> · more moves than one report reads — narrow the range</span>}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <ColumnPicker columns={COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
+              <ColumnPicker columns={columns} hidden={hiddenCols} onChange={setHiddenCols} />
               <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Reallocation_History_Report')} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
               <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Reallocation_History_Report')} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!dataRows}>Print</ToolbarButton>
@@ -247,7 +300,7 @@ export default function ReallocationHistoryReport(props) {
             columns={shownCols}
             groups={groups}
             printDate={applied.printDate}
-            emptyText="No vehicle was moved in this period."
+            emptyText={per === 'device' ? 'No tracker was installed or taken out in this period.' : 'No vehicle was moved in this period.'}
           />
         </>
       )}

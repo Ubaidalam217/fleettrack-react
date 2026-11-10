@@ -17,7 +17,7 @@ import { imeiField, optionalDate, optionalId, optionalText, requiredId } from '.
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, isSuperAdmin, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { revokeGrantsForBg } from '../lib/flespiGrant.js'
-import { actorOf, editMoves } from '../lib/vehicleMoves.js'
+import { actorOf, bgMoveRow, deviceRow, editMoves } from '../lib/vehicleMoves.js'
 import * as flespi from '../lib/flespi.js'
 import { channelAddresses, deviceName, deviceTypes, syncVehicleDevice, unregisteredDevices } from '../lib/flespiDevices.js'
 
@@ -236,14 +236,17 @@ router.post(
     })
 
     const { bgId: _bgId, branchId, groupId, ...rest } = req.body
-    const row = await prisma.vehicle.create({
-      data: {
-        ...rest,
-        bgId: bg.id,
-        branchId: await resolveBranch(branchId, bg.id),
-        groupId: await resolveGroup(groupId, bg.id),
-      },
-      include: VEHICLE_INCLUDE,
+    const data = {
+      ...rest,
+      bgId: bg.id,
+      branchId: await resolveBranch(branchId, bg.id),
+      groupId: await resolveGroup(groupId, bg.id),
+    }
+    // The tracker's install goes into the Reallocation History with the vehicle.
+    const row = await prisma.$transaction(async tx => {
+      const created = await tx.vehicle.create({ data, include: VEHICLE_INCLUDE })
+      await tx.vehicleMove.create({ data: deviceRow(created, created.imei, true, actorOf(req)) })
+      return created
     })
     // The BG's fleet changed, so every live Flespi ACL under it is now too narrow.
     // Dropping the grants makes the next refresh mint one that includes this
@@ -294,6 +297,54 @@ router.put(
 )
 
 /**
+ * Move one vehicle to another Business Group (client, 2026-11-10: "Reallocation
+ * will be from Business Group change"). Not an edit: what the old BG gave the
+ * vehicle does not follow it — its sub-users lose it, its alert and reminder
+ * rules drop it, its driver is unassigned and any open driver assignment ends.
+ * The trips, alerts, expenses and history recorded so far stay with the old BG.
+ * The caller must be able to write vehicles in both BGs.
+ */
+router.post(
+  '/:id/transfer',
+  validate(z.object({ bgId: requiredId('Business Group'), branchId: optionalId() })),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const target = await assertWritableParent(req.scope, 'bg', req.body.bgId)
+    if (target.id === existing.bgId) throw badRequest('The vehicle is already in this Business Group', { bgId: 'Same Business Group' })
+    const branchId = await resolveBranch(req.body.branchId, target.id)
+    const [fromBg, branch, subusers, alerts, reminders, driver] = await Promise.all([
+      prisma.businessGroup.findUnique({ where: { id: existing.bgId }, select: { id: true, name: true } }),
+      branchId ? prisma.branch.findUnique({ where: { id: branchId }, select: { name: true } }) : null,
+      prisma.subuserVehicle.count({ where: { vehicleId: existing.id } }),
+      prisma.alertVehicle.count({ where: { vehicleId: existing.id } }),
+      prisma.reminderVehicle.count({ where: { vehicleId: existing.id } }),
+      prisma.driver.findUnique({ where: { vehicleId: existing.id }, select: { id: true, name: true } }),
+    ])
+    const [row] = await prisma.$transaction([
+      prisma.vehicle.update({
+        where: { id: existing.id },
+        data: { bgId: target.id, branchId, groupId: null },
+        include: VEHICLE_INCLUDE,
+      }),
+      prisma.subuserVehicle.deleteMany({ where: { vehicleId: existing.id } }),
+      prisma.alertVehicle.deleteMany({ where: { vehicleId: existing.id } }),
+      prisma.reminderVehicle.deleteMany({ where: { vehicleId: existing.id } }),
+      prisma.driver.updateMany({ where: { vehicleId: existing.id }, data: { vehicleId: null } }),
+      prisma.driverAssignment.updateMany({ where: { vehicleId: existing.id, endDate: null }, data: { endDate: new Date() } }),
+      prisma.vehicleMove.create({ data: bgMoveRow(existing, fromBg, target, branch?.name, actorOf(req)) }),
+    ])
+    // Both BGs' fleets changed, so their Flespi ACLs are stale.
+    await revokeGrantsForBg(existing.bgId)
+    await revokeGrantsForBg(target.id)
+    res.json({
+      data: row,
+      stripped: { subuserAssignments: subusers, alertAssignments: alerts, reminders, driver: driver?.name ?? null },
+    })
+  })
+)
+
+/**
  * Custom fields only. Separate from PUT /:id on purpose: that one also updates
  * the Flespi device, and a note about a contract must not touch the tracker.
  */
@@ -336,7 +387,11 @@ router.delete(
       prisma.alertVehicle.count({ where: { vehicleId: existing.id } }),
     ])
 
-    await prisma.vehicle.delete({ where: { id: existing.id } })
+    // Its tracker comes out in the Reallocation History; the row outlives the vehicle.
+    await prisma.$transaction([
+      prisma.vehicleMove.create({ data: deviceRow(existing, existing.imei, false, actorOf(req)) }),
+      prisma.vehicle.delete({ where: { id: existing.id } }),
+    ])
     // Revoked so a token minted before the delete cannot keep reading a device the
     // account is no longer entitled to.
     await revokeGrantsForBg(existing.bgId)
