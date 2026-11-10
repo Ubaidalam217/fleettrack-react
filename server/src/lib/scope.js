@@ -82,6 +82,7 @@ const ENTITIES = Object.freeze({
   expense: { delegate: 'expense', label: 'Expense' },
   reminderRule: { delegate: 'reminderRule', label: 'Reminder' },
   reminderAck: { delegate: 'reminderAck', label: 'Reminder record' },
+  vehicleMove: { delegate: 'vehicleMove', label: 'Reallocation record' },
 })
 
 /**
@@ -297,6 +298,8 @@ const WHERE_BUILDERS = Object.freeze({
   // the caller's vehicles. Its history follows the vehicles like alert events.
   reminderRule: geofenceWhere,
   reminderAck: alertEventWhere,
+  // Reallocation History follows the vehicles, like alert events.
+  vehicleMove: alertEventWhere,
 })
 
 /**

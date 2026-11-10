@@ -38,6 +38,7 @@ import expenseRoutes from './routes/expenses.js'
 import { router as reminderRoutes, ruleRouter as reminderRuleRoutes } from './routes/reminders.js'
 import { requireScreen, WRITE_SCREENS } from './lib/permissions.js'
 import alertEventRoutes from './routes/alertEvents.js'
+import vehicleMoveRoutes from './routes/vehicleMoves.js'
 import assistantRoutes from './routes/assistant.js'
 import avatarRoutes from './routes/avatars.js'
 import driverPhotoRoutes from './routes/driverPhotos.js'
@@ -174,6 +175,7 @@ export function createApp() {
   app.use('/api/device-settings', deviceSettingsRoutes)
   app.use('/api/replay-shares', replayShareRoutes)
   app.use('/api/alert-events', alertEventRoutes)
+  app.use('/api/vehicle-moves', vehicleMoveRoutes)
   // Live push of vehicle updates from the Flespi webhook (routes/live.js).
   app.use('/api/live', liveRoutes)
   app.use('/api/assistant', assistantRoutes)

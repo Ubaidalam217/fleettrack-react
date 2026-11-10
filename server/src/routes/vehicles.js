@@ -17,6 +17,7 @@ import { imeiField, optionalDate, optionalId, optionalText, requiredId } from '.
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, isSuperAdmin, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { revokeGrantsForBg } from '../lib/flespiGrant.js'
+import { actorOf, editMoves } from '../lib/vehicleMoves.js'
 import * as flespi from '../lib/flespi.js'
 import { channelAddresses, deviceName, deviceTypes, syncVehicleDevice, unregisteredDevices } from '../lib/flespiDevices.js'
 
@@ -271,15 +272,20 @@ router.put(
     // that is a transfer operation rather than an edit — the Settings form does
     // not offer it either.
     const { branchId, groupId, ...rest } = req.body
-    const row = await prisma.vehicle.update({
-      where: { id: existing.id },
-      data: {
-        ...rest,
-        branchId: await resolveBranch(branchId, existing.bgId),
-        groupId: await resolveGroup(groupId, existing.bgId),
-      },
-      include: VEHICLE_INCLUDE,
-    })
+    const next = {
+      branchId: await resolveBranch(branchId, existing.bgId),
+      groupId: await resolveGroup(groupId, existing.bgId),
+    }
+    // A new branch or group goes into the Reallocation History with the edit.
+    const history = await editMoves(existing, rest, next, actorOf(req))
+    const [row] = await prisma.$transaction([
+      prisma.vehicle.update({
+        where: { id: existing.id },
+        data: { ...rest, ...next },
+        include: VEHICLE_INCLUDE,
+      }),
+      prisma.vehicleMove.createMany({ data: history }),
+    ])
     // An edit can change the IMEI, which is the Flespi join key, so the ACL's
     // device ids may no longer match.
     await revokeGrantsForBg(existing.bgId)

@@ -1,6 +1,7 @@
 import {
   Route, Car, FileBarChart, FileText, Navigation, AlertTriangle,
   Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma, ShieldCheck, Wrench, History,
+  Activity, TrendingUp, TrendingDown, CircleParking, ListOrdered, PlugZap, ChartLine, Table2, Shuffle,
 } from 'lucide-react'
 import { labelForPathIn } from './navTree'
 
@@ -62,6 +63,28 @@ export const REPORT_CATEGORIES = [
         desc: 'One line per vehicle summing the whole period: first start, last stop, time, distance and exceptions.' },
       { id: 'private-usage',    label: 'Private Usage Report',    icon: UserRound,    path: '/reports/private-usage',    ready: true,
         desc: 'Business and private use split by the hours you set.' },
+      // Client, 2026-11-10 (Ctrack MaXx's Tacho Analysis): speed, distance and trips over time.
+      { id: 'tacho-graph',      label: 'Tacho Graph Report',      icon: ChartLine,    path: '/reports/tacho-graph',      ready: true,
+        desc: 'Speed, distance and trips on one timeline for a vehicle, with RPM where the tracker sends it.' },
+      { id: 'tacho-data',       label: 'Tacho Data Report',       icon: Table2,       path: '/reports/tacho-data',       ready: true,
+        desc: 'The readings behind the Tacho Graph: time, speed, odometer, ignition and RPM, message by message.' },
+    ],
+  },
+  {
+    // Client, 2026-11-10 (Ctrack MaXx's utilisation summaries): actual use against
+    // the hours each vehicle is expected to work (24 h a day unless changed).
+    id: 'utilization',
+    title: 'Utilization',
+    desc: 'How much each vehicle is used against the hours it is expected to work.',
+    reports: [
+      { id: 'asset-utilization', label: 'Asset Utilization Report', icon: Activity,      path: '/reports/asset-utilization', ready: true,
+        desc: 'Per vehicle: expected and utilised time, driving and idling, distance and days used.' },
+      { id: 'over-utilization',  label: 'Over Utilization Report',  icon: TrendingUp,    path: '/reports/over-utilization',  ready: true,
+        desc: 'Vehicles used more than expected, with the days that went over.' },
+      { id: 'under-utilization', label: 'Under Utilization Report', icon: TrendingDown,  path: '/reports/under-utilization', ready: true,
+        desc: 'Vehicles used less than expected.' },
+      { id: 'not-used-assets',   label: 'Not Used Assets Report',   icon: CircleParking, path: '/reports/not-used-assets',   ready: true,
+        desc: 'Vehicles that did not move in the period: since when, and where they stand.' },
     ],
   },
   {
@@ -78,6 +101,10 @@ export const REPORT_CATEGORIES = [
         desc: 'Per driver: distance, hours, harsh driving, fatigue, incidents, safety score, trend and risk levels.' },
       { id: 'gyr',              label: 'GYR Report',              icon: Gauge,         path: '/reports/gyr',             ready: true,
         desc: 'Green / Yellow / Red rating of each vehicle or driver from its exceptions.' },
+      { id: 'violation-overview', label: 'Violation Overview Report', icon: ListOrdered, path: '/reports/violation-overview', ready: true,
+        desc: 'How many violations of each kind every vehicle and driver had in the period.' },
+      { id: 'power-failure',    label: 'Power Failure Report',    icon: PlugZap,       path: '/reports/power-failure',   ready: true,
+        desc: 'Each time a tracker lost its external power: when, for how long, the lowest voltage and where.' },
     ],
   },
   {
@@ -112,6 +139,8 @@ export const REPORT_CATEGORIES = [
         desc: 'Every vehicle with its group, device and last report.' },
       { id: 'driver-list',      label: 'List of Drivers',         icon: IdCard,        path: '/reports/drivers',         ready: true,
         desc: 'Every driver with licence details and assigned vehicle.' },
+      { id: 'reallocation-history', label: 'Reallocation History Report', icon: Shuffle, path: '/reports/reallocation-history', ready: true,
+        desc: 'Each time a vehicle moved to another Business Group or branch: when, from where to where, and by whom.' },
     ],
   },
 ]

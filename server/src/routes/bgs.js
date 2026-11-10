@@ -22,6 +22,7 @@ import {
 } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { moveBg } from '../lib/moves.js'
+import { actorOf } from '../lib/vehicleMoves.js'
 import { revokeGrantsUnderBg } from '../lib/flespiGrant.js'
 
 const router = Router()
@@ -256,7 +257,7 @@ router.post(
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'bg')
     const existing = await findScopedOrThrow('bg', req.params.id, req.scope)
-    res.json({ data: await moveBg(req.scope, existing.id, req.body) })
+    res.json({ data: await moveBg(req.scope, existing.id, req.body, actorOf(req)) })
   })
 )
 

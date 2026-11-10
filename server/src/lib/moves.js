@@ -23,6 +23,7 @@ import prisma from '../prisma.js'
 import { badRequest, forbidden, notFound } from './http.js'
 import { ROLES } from './scope.js'
 import { revokeGrantsWhere } from './flespiGrant.js'
+import { bgMoves, groupMoves } from './vehicleMoves.js'
 
 /** What moves with a set of BGs — for the response, so the UI can say so. */
 async function countUnder(bgIds) {
@@ -44,7 +45,7 @@ async function revokeAdmins({ ggbIds = [], groupIds = [] }) {
 }
 
 /** Move a group, its BGs and everything under them to another GGB. */
-export async function moveGroup(scope, groupId, targetGgbId) {
+export async function moveGroup(scope, groupId, targetGgbId, by = null) {
   if (scope.role !== ROLES.SUPER_ADMIN) throw forbidden('Only a Super Admin can move a group to another Group Global Admin')
   const group = await prisma.group.findUnique({ where: { id: groupId } })
   if (!group) throw notFound('Group')
@@ -54,9 +55,11 @@ export async function moveGroup(scope, groupId, targetGgbId) {
 
   const bgs = await prisma.businessGroup.findMany({ where: { groupId }, select: { id: true } })
   const bgIds = bgs.map(b => b.id)
+  const history = await groupMoves(group, target.id, by)
   await prisma.$transaction([
     prisma.group.update({ where: { id: groupId }, data: { ggbId: target.id } }),
     prisma.businessGroup.updateMany({ where: { groupId }, data: { ggbId: target.id } }),
+    prisma.vehicleMove.createMany({ data: history }),
   ])
   await revokeAdmins({ ggbIds: [group.ggbId, target.id] })
   return { id: groupId, fromGgbId: group.ggbId, toGgbId: target.id, moved: await countUnder(bgIds) }
@@ -66,7 +69,7 @@ export async function moveGroup(scope, groupId, targetGgbId) {
  * Move a BG and everything under it into another group, or directly under a
  * GGB with no group (`groupId` null). With a group, the GGB is the group's.
  */
-export async function moveBg(scope, bgId, { ggbId, groupId }) {
+export async function moveBg(scope, bgId, { ggbId, groupId }, by = null) {
   const bg = await prisma.businessGroup.findUnique({ where: { id: bgId } })
   if (!bg) throw notFound('Business Group')
 
@@ -92,9 +95,11 @@ export async function moveBg(scope, bgId, { ggbId, groupId }) {
     throw badRequest('The business group is already there', { groupId: 'Same place' })
   }
 
+  const history = await bgMoves(bg, target, by)
   await prisma.$transaction([
     prisma.businessGroup.update({ where: { id: bgId }, data: target }),
     prisma.vehicle.updateMany({ where: { bgId }, data: { groupId: null } }),
+    prisma.vehicleMove.createMany({ data: history }),
   ])
   await revokeAdmins({ ggbIds: [bg.ggbId, target.ggbId], groupIds: [bg.groupId, target.groupId] })
   return { id: bgId, from: { ggbId: bg.ggbId, groupId: bg.groupId }, to: target, moved: await countUnder([bgId]) }

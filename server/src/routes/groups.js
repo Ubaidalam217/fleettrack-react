@@ -14,6 +14,7 @@ import { requiredId, requiredText } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { moveGroup } from '../lib/moves.js'
+import { actorOf } from '../lib/vehicleMoves.js'
 import { revokeGrantsUnderGroup } from '../lib/flespiGrant.js'
 
 const router = Router()
@@ -137,7 +138,7 @@ router.post(
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'group')
     const existing = await findScopedOrThrow('group', req.params.id, req.scope)
-    res.json({ data: await moveGroup(req.scope, existing.id, req.body.ggbId) })
+    res.json({ data: await moveGroup(req.scope, existing.id, req.body.ggbId, actorOf(req)) })
   })
 )
 

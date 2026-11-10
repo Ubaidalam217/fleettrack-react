@@ -23,6 +23,11 @@ import SettingsExpense        from './pages/settings/Expense'
 import SettingsReminderRule   from './pages/settings/ReminderRule'
 import ReminderStatusReport   from './pages/reports/ReminderStatusReport'
 import ReminderHistoryReport  from './pages/reports/ReminderHistoryReport'
+import UtilizationReport      from './pages/reports/UtilizationReport'
+import ViolationOverviewReport from './pages/reports/ViolationOverviewReport'
+import PowerFailureReport     from './pages/reports/PowerFailureReport'
+import TachoReport            from './pages/reports/TachoReport'
+import ReallocationHistoryReport from './pages/reports/ReallocationHistoryReport'
 import SettingsComingSoon     from './pages/settings/ComingSoon'
 // Reports module — Movement Report, plus the two Daywise sheets (step 2)
 import WorkingHourReport       from './pages/reports/WorkingHourReport'
@@ -204,6 +209,15 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/reports/event"         element={guard(<EventOccurrenceReport {...themeProps} />)} />
         <Route path="/reports/reminder-status"  element={guard(<ReminderStatusReport  {...themeProps} />)} />
         <Route path="/reports/reminder-history" element={guard(<ReminderHistoryReport {...themeProps} />)} />
+        <Route path="/reports/asset-utilization" element={guard(<UtilizationReport variant="asset" {...themeProps} />)} />
+        <Route path="/reports/over-utilization"  element={guard(<UtilizationReport variant="over"  {...themeProps} />)} />
+        <Route path="/reports/under-utilization" element={guard(<UtilizationReport variant="under" {...themeProps} />)} />
+        <Route path="/reports/not-used-assets"   element={guard(<UtilizationReport variant="notUsed" {...themeProps} />)} />
+        <Route path="/reports/violation-overview" element={guard(<ViolationOverviewReport {...themeProps} />)} />
+        <Route path="/reports/power-failure"     element={guard(<PowerFailureReport {...themeProps} />)} />
+        <Route path="/reports/tacho-graph"       element={guard(<TachoReport variant="graph" {...themeProps} />)} />
+        <Route path="/reports/tacho-data"        element={guard(<TachoReport variant="data"  {...themeProps} />)} />
+        <Route path="/reports/reallocation-history" element={guard(<ReallocationHistoryReport {...themeProps} />)} />
         <Route path="/reports/working-hour"  element={guard(<WorkingHourReport  {...themeProps} />)} />
         <Route path="/reports/private-usage" element={guard(<UsageReportPage variant="privateUsage" {...themeProps} />)} />
         <Route path="/reports/geo-zone"      element={guard(<GeoZoneReport      {...themeProps} />)} />

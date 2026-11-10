@@ -117,6 +117,7 @@ model BusinessGroup {
   expenses    Expense[]
   reminderRules ReminderRule[]
   reminderAcks  ReminderAck[]
+  vehicleMoves  VehicleMove[]
 
   @@index([ggbId])
   @@index([groupId])
@@ -229,6 +230,7 @@ model Vehicle {
   reminders         ReminderVehicle[]
   reminderAcks      ReminderAck[]
   engineHours       VehicleEngineHours?
+  moves             VehicleMove[]
 
   @@index([bgId])
   @@index([branchId])
@@ -1041,4 +1043,32 @@ model VehicleEngineHours {
   updatedAt    DateTime @updatedAt
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+}
+
+/// Reallocation History (client report list, 2026-11-10): each time a vehicle
+/// changed branch, group or Group Global Admin. Names are kept as they read at
+/// the time, so the history survives a rename or a delete; `bgId` is the
+/// vehicle's BG, which is what scopes who may read it.
+model VehicleMove {
+  id           String  @id @default(cuid())
+  bgId         String
+  /// Null once the vehicle is deleted; vehicleLabel and imei keep what it was.
+  vehicleId    String?
+  vehicleLabel String
+  imei         String?
+
+  /// What changed: 'branch', 'group' or 'ggb'.
+  level    String
+  fromName String?
+  toName   String?
+
+  movedById   String?
+  movedByName String?
+  movedAt     DateTime @default(now())
+
+  bg      BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicle Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([bgId, movedAt])
+  @@index([vehicleId])
 }
