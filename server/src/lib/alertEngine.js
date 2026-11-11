@@ -429,6 +429,14 @@ export function evaluateLicence(alert, driver, state, now, field = 'licenseExpir
   return { state: s, fire: { message, value: daysLeft } }
 }
 
+/**
+ * A vehicle document (permit, insurance…) under the same rule, but warned the
+ * document's own notify-before days ahead — the number entered with it.
+ */
+export function evaluateVehicleDocument(doc, state, now) {
+  return evaluateLicence({ params: { days: doc.notifyBeforeDays } }, doc, state, now, 'expiryDate', doc.name)
+}
+
 // ── the pass ────────────────────────────────────────────────────────────────
 
 const digits = v => String(v ?? '').replace(/\D/g, '')
@@ -521,7 +529,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
   const needsFences = alerts.some(a => a.type.startsWith('geofence'))
   const customNames = alerts.filter(a => a.type === 'custom').map(a => paramsOf(a).parameter)
 
-  const [vehicles, drivers, geofences, states, telemetry, deviceByImei, customParams, tagged] = await Promise.all([
+  const [vehicles, drivers, vehicleDocs, geofences, states, telemetry, deviceByImei, customParams, tagged] = await Promise.all([
     prisma.vehicle.findMany({
       where: { bgId: { in: bgIds } },
       select: { id: true, bgId: true, imei: true, plateNo: true, fleetNo: true, driver: { select: { id: true, name: true } } },
@@ -530,6 +538,12 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
       ? prisma.driver.findMany({
         where: { bgId: { in: bgIds }, status: 'Active', OR: DRIVER_EXPIRIES.map(([f]) => ({ [f]: { not: null } })) },
         include: { vehicle: { select: { id: true, plateNo: true, fleetNo: true, imei: true } } },
+      })
+      : [],
+    alerts.some(a => a.type === 'license_expiry')
+      ? prisma.vehicleDocument.findMany({
+        where: { expiryDate: { not: null }, vehicle: { bgId: { in: bgIds } } },
+        select: { id: true, name: true, expiryDate: true, notifyBeforeDays: true, vehicle: { select: { id: true, bgId: true, plateNo: true, fleetNo: true, imei: true } } },
       })
       : [],
     needsFences ? prisma.geofence.findMany({ where: { bgId: { in: bgIds }, active: true } }) : [],
@@ -625,6 +639,17 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
           if (result.fire) result.fire.message = `${who}: ${result.fire.message}`
           record(alert, subject, prev, result, { driverId: d.id, vehicleId: d.vehicle?.id ?? null })
         }
+      }
+      // The vehicles' own documents (Documents tab), for the vehicles the rule covers.
+      const listed = new Set(alert.vehicles.map(v => v.vehicleId))
+      for (const doc of vehicleDocs) {
+        const v = doc.vehicle
+        if (v.bgId !== alert.bgId || !(alert.allVehicles || listed.has(v.id))) continue
+        const subject = `vdoc:${doc.id}`
+        const prev = stateOf.get(`${alert.id}|${subject}`)
+        const result = evaluateVehicleDocument(doc, prev, now)
+        if (result.fire) result.fire.message = `${vehicleName(v)}: ${result.fire.message}`
+        record(alert, subject, prev, result, { vehicleId: v.id })
       }
       continue
     }

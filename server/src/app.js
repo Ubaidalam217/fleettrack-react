@@ -26,6 +26,7 @@ import groupRoutes from './routes/groups.js'
 import bgRoutes from './routes/bgs.js'
 import branchRoutes from './routes/branches.js'
 import vehicleRoutes from './routes/vehicles.js'
+import vehicleDocumentRoutes from './routes/vehicleDocuments.js'
 import userRoutes from './routes/users.js'
 import alertRoutes from './routes/alerts.js'
 import geofenceRoutes from './routes/geofences.js'
@@ -91,6 +92,7 @@ export function createApp() {
   // Driver photos and scanned documents (5 MB each, base64).
   app.use('/api/drivers', express.json({ limit: '8mb' }))
   app.use('/api/expenses', express.json({ limit: '8mb' }))
+  app.use('/api/vehicles/:vehicleId/documents', express.json({ limit: '8mb' }))
   // The Flespi webhook: batches of device messages, so its own larger limit.
   // Mounted before the request log and before auth — it has its own token.
   app.use('/api/ingest', express.json({ limit: '20mb' }), ingestRoutes)
@@ -169,6 +171,8 @@ export function createApp() {
   app.use('/api/groups', requireScreen(WRITE_SCREENS['/api/groups']), groupRoutes)
   app.use('/api/bgs', requireScreen(WRITE_SCREENS['/api/bgs']), bgRoutes)
   app.use('/api/branches', requireScreen(WRITE_SCREENS['/api/branches']), branchRoutes)
+  // Before /api/vehicles: a vehicle's documents (adding one needs Full, like a record).
+  app.use('/api/vehicles/:vehicleId/documents', requireScreen(WRITE_SCREENS['/api/vehicles']), vehicleDocumentRoutes)
   app.use('/api/vehicles', requireScreen(WRITE_SCREENS['/api/vehicles']), vehicleRoutes)
   app.use('/api/users', requireScreen(WRITE_SCREENS['/api/users']), userRoutes)
   app.use('/api/alerts', requireScreen(WRITE_SCREENS['/api/alerts']), alertRoutes)

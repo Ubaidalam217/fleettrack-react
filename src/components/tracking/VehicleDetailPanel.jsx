@@ -6,7 +6,8 @@ import { useNavigate } from 'react-router-dom'
 import DeviceSettingsTab from './DeviceSettingsTab'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { hasDriver } from '../../services/vehicleMaster'
-import { listDocuments, isReadOnly } from '../../services/documentStore'
+import VehicleDocumentsTab from './VehicleDocumentsTab'
+import { useVehicleDocuments } from '../../data/vehicleDocuments'
 import { useVehicleUsage, fmtOdometer } from '../../hooks/useVehicleUsage'
 import { computeSensors } from '../../utils/sensorsData'
 import {
@@ -714,9 +715,10 @@ function Alerts({ v }) {
 
   useEffect(() => { setThresholds(getThresholds(v.id)) }, [v.id])
 
-  const alerts = useMemo(() => computeAlerts(messages, v, thresholds), [messages, v, thresholds])
-  const navigate = useNavigate()
   const profile = useSettingsProfile(v.ident)
+  const { docs } = useVehicleDocuments(profile.linked ? profile.vehicle?.id : null)
+  const alerts = useMemo(() => computeAlerts(messages, v, thresholds, docs ?? []), [messages, v, thresholds, docs])
+  const navigate = useNavigate()
   const filtered = alerts.filter(a =>
     (severityFilter === 'All' || a.severity === severityFilter) &&
     (typeFilter === 'all' || a.type === typeFilter)
@@ -1043,50 +1045,6 @@ function Parameters({ v }) {
   )
 }
 
-function Documents({ v }) {
-  const docs = useMemo(() => listDocuments(v.id), [v.id])
-
-  return (
-    <>
-      <Section title={`Documents (${docs.length})`}>
-        {docs.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--c-text3)' }}>No documents on file.</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {docs.map(d => (
-              <div
-                key={d.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '9px 11px', borderRadius: 8,
-                  border: '1px solid var(--c-border)', backgroundColor: 'var(--c-card)',
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text1)' }}>{d.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--c-text3)', marginTop: 2 }}>
-                    Expires {d.expiryDate ?? '—'} · notify {d.notifyBeforeDays}d before
-                  </div>
-                </div>
-                {isReadOnly(d) && (
-                  <span style={{
-                    fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
-                    padding: '3px 7px', borderRadius: 5,
-                    color: 'var(--ft-accent)', backgroundColor: 'color-mix(in srgb, var(--ft-accent) 12%, transparent)',
-                  }}>
-                    PERMIT MGMT
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-      <Pending note="Add / Edit / Delete are backed by documentStore.js and persist in this browser. The forms, and download of the read-only Permit Management records, are Phase 5. Attachment upload needs a backend and stays disabled." />
-    </>
-  )
-}
-
 // ── Panel ──────────────────────────────────────────────────────────────────
 
 // Size controls. Stroke glyphs at 13px to sit level with the 12px tab labels.
@@ -1273,7 +1231,7 @@ export default function VehicleDetailPanel({
         {tab === 'Usage'        && <Usage       v={vehicle} />}
         {tab === 'Sensors'      && <Sensors     v={vehicle} />}
         {tab === 'Alerts'       && <Alerts     v={vehicle} />}
-        {tab === 'Documents'    && <Documents   v={vehicle} />}
+        {tab === 'Documents'    && <VehicleDocumentsTab v={vehicle} />}
         {tab === 'Live Data'    && <Parameters  key={vehicle.id} v={vehicle} />}
         {tab === 'Parameters'   && <DeviceSettingsTab key={vehicle.id} v={vehicle} />}
       </div>

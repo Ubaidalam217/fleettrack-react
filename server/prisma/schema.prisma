@@ -231,6 +231,7 @@ model Vehicle {
   reminderAcks      ReminderAck[]
   engineHours       VehicleEngineHours?
   moves             VehicleMove[]
+  documents         VehicleDocument[]
 
   @@index([bgId])
   @@index([branchId])
@@ -1115,4 +1116,32 @@ model PushDevice {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// A vehicle's papers (client spec 12: permit, insurance, registration,
+/// certificate…): name, dates, how many days before expiry to warn, and an
+/// optional scanned copy (PDF or image, 5 MB) kept in the database like a
+/// driver document. The Driver Licence & Document Expiry alert reads these.
+model VehicleDocument {
+  id               String    @id @default(cuid())
+  vehicleId        String
+  name             String
+  docType          String
+  number           String?
+  issueDate        DateTime?
+  expiryDate       DateTime?
+  notifyBeforeDays Int       @default(30)
+  note             String?
+  fileName         String?
+  mimeType         String?
+  size             Int?
+  data             Bytes?
+  /// Who added it, as a name to show.
+  createdBy        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
 }

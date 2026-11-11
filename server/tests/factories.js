@@ -49,12 +49,14 @@ export const TEST_PASSWORD = 'Test@123456'
  * an unrelated test failing three files later.
  */
 export async function resetDb() {
+  // The schema Prisma is pointed at (`?schema=` in TEST_DATABASE_URL, else
+  // public), so a run in a schema of its own leaves the others alone.
   const rows = await prisma.$queryRaw`
-    SELECT tablename FROM pg_tables
-    WHERE schemaname = 'public' AND tablename NOT LIKE '_prisma%'
+    SELECT schemaname, tablename FROM pg_tables
+    WHERE schemaname = current_schema() AND tablename NOT LIKE '_prisma%'
   `
   if (!rows.length) return
-  const list = rows.map(r => `"public"."${r.tablename}"`).join(', ')
+  const list = rows.map(r => `"${r.schemaname}"."${r.tablename}"`).join(', ')
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`)
 }
 

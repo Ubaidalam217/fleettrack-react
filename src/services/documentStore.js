@@ -1,23 +1,21 @@
-// Vehicle documents — seed file plus a localStorage overlay.
+// Vehicle document helpers: expiry status, and the documents an older version
+// kept in this browser.
 //
-// The client asked for a local JSON file and no file uploads. A file bundled
-// in the app is read-only at runtime, so Add/Edit/Delete would not survive a
-// refresh on the seed alone. This module layers user edits in localStorage on
-// top of the seed and treats the merged result as the source of truth, so the
-// spec's CRUD actually works in a demo.
-//
-// Attachments are deliberately unsupported: there is nowhere to put the bytes
-// without a backend. The field is carried through as null so the shape is
-// already right when file storage arrives.
-//
-// Documents whose source is 'permit-management' stand in for records the spec
-// says are auto-synced from Permit Management. They are read-only here.
-
-import seed from '../data/documents.json'
+// The documents themselves now live on the server (src/data/vehicleDocuments.js).
+// Before 2026-11-11 they were a demo seed file plus edits in localStorage under
+// OVERLAY_KEY, keyed by Flespi device id. The demo seed is gone; what a user
+// added or changed here is offered once for upload to the server (Documents
+// tab), and only cleared after that upload succeeds or the user discards it.
 
 const OVERLAY_KEY = 'ft_documents_overlay'
 
-export const READ_ONLY_SOURCE = 'permit-management'
+// The old seed's ids, so an edit to a demo record is still recognised as the
+// user's own data. Its read-only "Permit Management" records are not offered.
+const SEED_NAMES = {
+  'seed-8414546-insurance': 'Insurance',
+  'seed-8414546-registration': 'Registration (Mulkiya)',
+  'seed-8414548-insurance': 'Insurance',
+}
 
 function readOverlay() {
   try {
@@ -28,104 +26,33 @@ function readOverlay() {
   }
 }
 
-function writeOverlay(overlay) {
+const legacyDoc = doc => ({
+  name:             typeof doc?.name === 'string' ? doc.name : '',
+  expiryDate:       typeof doc?.expiryDate === 'string' ? doc.expiryDate : null,
+  notifyBeforeDays: Number.isFinite(doc?.notifyBeforeDays) ? doc.notifyBeforeDays : 30,
+})
+
+/** What this browser holds for a device: documents the user added or edited. */
+export function legacyDocuments(deviceId) {
+  const entry = readOverlay()[String(deviceId)]
+  if (!entry) return []
+  const edited = Object.entries(entry.edited ?? {})
+    .filter(([id]) => SEED_NAMES[id] && !(entry.deleted ?? []).includes(id))
+    .map(([id, patch]) => legacyDoc({ name: SEED_NAMES[id], ...patch }))
+  const added = (entry.added ?? []).filter(d => d?.source !== 'permit-management').map(legacyDoc)
+  return [...edited, ...added].filter(d => d.name || d.expiryDate)
+}
+
+/** Forgets this browser's copy for one device (after upload or discard). */
+export function clearLegacyDocuments(deviceId) {
   try {
-    localStorage.setItem(OVERLAY_KEY, JSON.stringify(overlay))
+    const overlay = readOverlay()
+    delete overlay[String(deviceId)]
+    if (Object.keys(overlay).length) localStorage.setItem(OVERLAY_KEY, JSON.stringify(overlay))
+    else localStorage.removeItem(OVERLAY_KEY)
   } catch {
-    // Quota or private-mode failure. Edits stay in memory for this page view.
+    // Storage blocked: nothing was readable either.
   }
-}
-
-function seedFor(deviceId) {
-  return seed.documents?.[String(deviceId)] ?? []
-}
-
-function normalizeDoc(doc) {
-  return {
-    id:               String(doc?.id ?? ''),
-    name:             typeof doc?.name === 'string' ? doc.name : '',
-    expiryDate:       typeof doc?.expiryDate === 'string' ? doc.expiryDate : null,
-    notifyBeforeDays: Number.isFinite(doc?.notifyBeforeDays) ? doc.notifyBeforeDays : 30,
-    attachment:       null,
-    source:           doc?.source === READ_ONLY_SOURCE ? READ_ONLY_SOURCE : 'local',
-  }
-}
-
-export function isReadOnly(doc) {
-  return doc?.source === READ_ONLY_SOURCE
-}
-
-/**
- * Documents for a vehicle: seed entries with any overlay edits applied,
- * followed by documents the user added. Deleted seed entries are filtered out.
- */
-export function listDocuments(deviceId) {
-  const key     = String(deviceId)
-  const overlay = readOverlay()[key] ?? { edited: {}, deleted: [], added: [] }
-  const deleted = new Set(overlay.deleted ?? [])
-
-  const fromSeed = seedFor(key)
-    .filter(d => !deleted.has(d.id))
-    .map(d => normalizeDoc({ ...d, ...(overlay.edited?.[d.id] ?? {}) }))
-
-  const added = (overlay.added ?? []).map(normalizeDoc)
-
-  return [...fromSeed, ...added]
-}
-
-function mutate(deviceId, fn) {
-  const key     = String(deviceId)
-  const overlay = readOverlay()
-  const entry   = overlay[key] ?? { edited: {}, deleted: [], added: [] }
-  const next    = fn({
-    edited:  { ...(entry.edited ?? {}) },
-    deleted: [...(entry.deleted ?? [])],
-    added:   [...(entry.added ?? [])],
-  })
-  writeOverlay({ ...overlay, [key]: next })
-  return listDocuments(key)
-}
-
-export function addDocument(deviceId, doc) {
-  const created = normalizeDoc({ ...doc, id: `doc-${crypto.randomUUID()}`, source: 'local' })
-  return mutate(deviceId, entry => ({ ...entry, added: [...entry.added, created] }))
-}
-
-export function updateDocument(deviceId, docId, patch) {
-  const target = listDocuments(deviceId).find(d => d.id === docId)
-  if (!target) return listDocuments(deviceId)
-  if (isReadOnly(target)) {
-    throw new Error('This document is synced from Permit Management and cannot be edited here.')
-  }
-
-  return mutate(deviceId, entry => {
-    const addedIdx = entry.added.findIndex(d => d.id === docId)
-    if (addedIdx !== -1) {
-      const added = [...entry.added]
-      added[addedIdx] = normalizeDoc({ ...added[addedIdx], ...patch })
-      return { ...entry, added }
-    }
-    // Seed entry — record the delta rather than copying the whole record, so
-    // later changes to the seed file still flow through for untouched fields.
-    return { ...entry, edited: { ...entry.edited, [docId]: { ...(entry.edited[docId] ?? {}), ...patch } } }
-  })
-}
-
-export function deleteDocument(deviceId, docId) {
-  const target = listDocuments(deviceId).find(d => d.id === docId)
-  if (!target) return listDocuments(deviceId)
-  if (isReadOnly(target)) {
-    throw new Error('This document is synced from Permit Management and cannot be deleted here.')
-  }
-
-  return mutate(deviceId, entry => {
-    if (entry.added.some(d => d.id === docId)) {
-      return { ...entry, added: entry.added.filter(d => d.id !== docId) }
-    }
-    const edited = { ...entry.edited }
-    delete edited[docId]
-    return { ...entry, edited, deleted: [...entry.deleted, docId] }
-  })
 }
 
 // Days until expiry — negative when already expired, null when no date set.

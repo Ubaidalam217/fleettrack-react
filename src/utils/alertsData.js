@@ -4,9 +4,9 @@
 // client-side from position.speed, position.direction and
 // engine.ignition.status (plus fuel.sensor.value / external.powersource.status
 // if a device ever starts reporting them; none does today — see the Phase 4
-// probe notes). Document Expiry reads the existing Documents module directly,
-// independent of telemetry, so it still shows up for a device with zero
-// messages today.
+// probe notes). Document Expiry reads the vehicle's documents (passed in from
+// the server's list), independent of telemetry, so it still shows up for a
+// device with zero messages today.
 //
 // Speed/heading derivatives are only computed across consecutive samples
 // 1-10s apart, and discarded above NOISE_CEILING_MS2: these devices report at
@@ -14,7 +14,7 @@
 // physically impossible values (tens of m/s²) that are reporting artifacts,
 // not real events.
 
-import { listDocuments, expiryState, daysUntilExpiry } from '../services/documentStore'
+import { expiryState, daysUntilExpiry } from '../services/documentStore'
 
 export const DEFAULT_THRESHOLDS = {
   overSpeedKmh: 80,
@@ -289,11 +289,11 @@ function detectFuel(messages, thresholds) {
   return alerts
 }
 
-// Independent of telemetry — reads the Documents module directly, so a
-// device with zero messages today can still surface a due/expired document.
-function detectDocumentExpiry(vehicleId) {
+// Independent of telemetry, so a device with zero messages today can still
+// surface a due/expired document.
+function detectDocumentExpiry(documents) {
   const now = Date.now()
-  return listDocuments(vehicleId)
+  return (documents || [])
     .map(doc => ({ doc, state: expiryState(doc, now), days: daysUntilExpiry(doc, now) }))
     .filter(x => x.state === 'expired' || x.state === 'due')
     .map(({ doc, state, days }) => ({
@@ -313,11 +313,12 @@ function withId(a) {
 
 /**
  * @param {object[]} messages   today's messages, sorted ascending (from fetchTodayMessages)
- * @param {object} vehicle      the vehicle object — only `.id` is read (for documents)
+ * @param {object} vehicle      the vehicle object (unused; kept for the callers)
  * @param {object} [thresholds] see DEFAULT_THRESHOLDS / getThresholds()
+ * @param {object[]} [documents] the vehicle's documents (data/vehicleDocuments.js)
  * @returns alerts sorted newest first
  */
-export function computeAlerts(messages, vehicle, thresholds = DEFAULT_THRESHOLDS) {
+export function computeAlerts(messages, vehicle, thresholds = DEFAULT_THRESHOLDS, documents = []) {
   const msgs = messages || []
   const raw = [
     ...detectOverSpeed(msgs, thresholds),
@@ -327,7 +328,7 @@ export function computeAlerts(messages, vehicle, thresholds = DEFAULT_THRESHOLDS
     ...detectIgnitionTransitions(msgs),
     ...detectPowerDisconnect(msgs),
     ...detectFuel(msgs, thresholds),
-    ...detectDocumentExpiry(vehicle.id),
+    ...detectDocumentExpiry(documents),
   ]
   return raw.map(withId).sort((a, b) => b.ts - a.ts)
 }

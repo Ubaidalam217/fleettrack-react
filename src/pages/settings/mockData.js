@@ -136,7 +136,7 @@ export const ALERT_TYPES = [
   {
     value: 'license_expiry',
     label: 'Driver Licence & Document Expiry',
-    hint: 'Raised when a driver’s licence, visa, Emirates ID or medical fitness is about to expire, and again when it has expired.',
+    hint: 'Raised when a driver’s licence, visa, Emirates ID or medical fitness — or a vehicle document (permit, insurance, registration…) — is about to expire, and again when it has expired. Vehicle documents warn their own “notify before” days ahead.',
     defaults: () => ({ days: '30' }),
     vehicles: false,
   },
