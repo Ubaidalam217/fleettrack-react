@@ -25,7 +25,9 @@ export default function FleetCompositionCard({ fleetData, loading }) {
       value: activeRate + '%',
     },
     {
-      num: '2', name: 'Fleet Uptime Rate',
+      // Not "uptime": Fleet Reliability's Uptime counts vehicles that reported in
+      // the last 15 minutes; this counts every vehicle that is not No Data.
+      num: '2', name: 'Data Coverage (not No Data)',
       status: uptimeRate >= 80 ? 'Normal' : uptimeRate >= 60 ? 'Fair' : 'Poor',
       statusColor: uptimeRate >= 80 ? 'text-emerald-500' : uptimeRate >= 60 ? 'text-amber-500' : 'text-rose-500',
       value: uptimeRate + '%',
