@@ -86,6 +86,9 @@ function vehicleIcon(type, color) {
     // so it can flip and clamp against the map edges, and a non-zero anchor
     // here would be a second, invisible term in that arithmetic.
     tooltipAnchor: [0, 0],
+    // Read by the Live Map's cluster bubbles (VehicleClusterLayer) for their
+    // status ring; Leaflet itself ignores it.
+    vehColor: color,
   })
   iconCache.set(key, icon)
   return icon
@@ -117,8 +120,6 @@ export default function VehicleMarker({
 
   useEffect(() => {
     const el = markerRef.current?.getElement()?.querySelector('.veh-rot')
-    if (!el) return
-
     const target = Number.isFinite(heading) ? heading : 0
     const prev   = angleRef.current
     // A node we have never written to has to be snapped, not animated:
@@ -136,6 +137,9 @@ export default function VehicleMarker({
       next = prev + delta
     }
     angleRef.current = next
+    // Off the map (inside a cluster bubble): keep the angle; the 'add' handler
+    // below puts it on the node Leaflet builds when the marker comes back.
+    if (!el) { nodeRef.current = null; return }
     nodeRef.current  = el
 
     if (fresh) {
@@ -149,6 +153,24 @@ export default function VehicleMarker({
   // `type` and `color` are in here because swapping either replaces the icon's
   // DOM node, and the replacement is born without the rotation we applied.
   }, [heading, type, color])
+
+  // A clustered marker is taken off the map and put back, with a brand-new node
+  // that starts at 0deg, whenever its bubble opens or closes or it moves.
+  useEffect(() => {
+    const marker = markerRef.current
+    if (!marker) return
+    const snap = () => {
+      const el = marker.getElement()?.querySelector('.veh-rot')
+      if (!el || angleRef.current == null) return
+      nodeRef.current = el
+      el.style.transition = 'none'
+      el.style.transform  = `rotate(${angleRef.current}deg)`
+      void el.offsetWidth
+      el.style.transition = ''
+    }
+    marker.on('add', snap)
+    return () => { marker.off('add', snap) }
+  }, [])
 
   useEffect(() => {
     if (autoOpenKey == null) return

@@ -87,6 +87,32 @@ router.patch(
 )
 
 /**
+ * PUT /api/me/live-refresh  { liveRefreshSec: 0 | 10 | 30 | 60 }
+ *
+ * How often the Live Map redraws for this account (Account Settings; 0 = on
+ * every update). Kept inside userSetting next to the account's other display
+ * preferences, merged so the keys an administrator set are left as they were.
+ */
+const liveRefreshSchema = z.object({
+  liveRefreshSec: z.union([z.literal(0), z.literal(10), z.literal(30), z.literal(60)]),
+})
+
+router.put(
+  '/live-refresh',
+  validate(liveRefreshSchema),
+  asyncHandler(async (req, res) => {
+    const userId = req.scope.userId
+    const row = await prisma.user.findUnique({ where: { id: userId }, select: { userSetting: true } })
+    const current = row?.userSetting && typeof row.userSetting === 'object' && !Array.isArray(row.userSetting) ? row.userSetting : {}
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { userSetting: { ...current, liveRefreshSec: req.body.liveRefreshSec } },
+    })
+    res.json({ data: publicUser(updated) })
+  })
+)
+
+/**
  * PUT /api/me/avatar    { image: "<base64>" }  — set the own profile photo
  * DELETE /api/me/avatar                          — remove it
  *

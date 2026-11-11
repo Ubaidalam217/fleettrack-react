@@ -250,6 +250,21 @@ describe('PATCH /api/me — own profile', () => {
   })
 })
 
+describe('PUT /api/me/live-refresh — Live Map refresh interval', () => {
+  it('saves one of the offered intervals into userSetting, keeping the other keys', async () => {
+    const res = await request(app).put('/api/me/live-refresh').set(auth(fx.tokens.subUserA1a)).send({ liveRefreshSec: 30 })
+    expect(res.status).toBe(200)
+    expect(res.body.data.userSetting).toMatchObject({ liveRefreshSec: 30 })
+    const again = await request(app).put('/api/me/live-refresh').set(auth(fx.tokens.subUserA1a)).send({ liveRefreshSec: 0 })
+    expect(again.body.data.userSetting.liveRefreshSec).toBe(0)
+  })
+
+  it('refuses any other value', async () => {
+    const res = await request(app).put('/api/me/live-refresh').set(auth(fx.tokens.subUserA1a)).send({ liveRefreshSec: 5 })
+    expect(res.status).toBe(400)
+  })
+})
+
 describe('Profile photo — PUT/DELETE /api/me/avatar, GET /api/avatars/:key', () => {
   // Only the first bytes decide the format; the rest can be anything.
   const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 7)])

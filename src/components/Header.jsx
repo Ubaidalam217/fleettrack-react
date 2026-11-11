@@ -13,7 +13,7 @@ import AssistantPanel       from './AssistantPanel'
  * amber blinking badge read as a fault that would clear on its own — it never did.
  * That case gets its own flat, non-blinking "Offline" instead.
  */
-function LiveBadge({ isConnected, noVehicles = false }) {
+function LiveBadge({ isConnected, noVehicles = false, refreshTag = null }) {
   const tone = isConnected
     ? { bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.2)', dot: 'bg-emerald-400', text: 'text-emerald-400' }
     : noVehicles
@@ -26,13 +26,19 @@ function LiveBadge({ isConnected, noVehicles = false }) {
     <div
       className="hidden sm:flex items-center gap-1.5 rounded-full px-2 md:px-2.5 py-1"
       style={{ background: tone.bg, border: `1px solid ${tone.border}` }}
-      title={noVehicles && !isConnected ? 'No vehicles are assigned to your account, so there is no live feed to connect to.' : undefined}
+      title={noVehicles && !isConnected
+        ? 'No vehicles are assigned to your account, so there is no live feed to connect to.'
+        : refreshTag ? `The map redraws every ${refreshTag} (Account Settings › Live refresh)` : undefined}
     >
       {/* No blink in the no-vehicles state: a pulsing dot promises activity. */}
       <span className={`h-1.5 w-1.5 rounded-full ${noVehicles && !isConnected ? '' : 'live-blink'} ${tone.dot}`}></span>
       <span className={`text-[10px] md:text-[11px] font-bold tracking-wide ${tone.text}`}>
         {label}
       </span>
+      {/* The Live Map's refresh interval, when it is not every update. */}
+      {isConnected && refreshTag && (
+        <span className={`text-[10px] md:text-[11px] font-semibold tabular-nums opacity-75 ${tone.text}`}>· {refreshTag}</span>
+      )}
     </div>
   )
 }
@@ -58,7 +64,7 @@ function DateTime({ time, date }) {
  * owns vehicle search; a third box in the header was a duplicate of one or the
  * other on every page it appeared on.
  */
-export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMenuClick, isConnected = true, noVehicles = false }) {
+export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMenuClick, isConnected = true, noVehicles = false, refreshTag = null }) {
   const [time, setTime] = useState('')
   const [date, setDate] = useState('')
   // Owned here rather than lifted to each page: every page already renders
@@ -116,7 +122,7 @@ export default function Header({ isDark, toggleTheme, themeMode, setTheme, onMen
         </button>
 
         {/* MQTT connection status badge */}
-        <LiveBadge isConnected={isConnected} noVehicles={noVehicles} />
+        <LiveBadge isConnected={isConnected} noVehicles={noVehicles} refreshTag={refreshTag} />
 
         {/* Date/Time */}
         <DateTime time={time} date={date} />

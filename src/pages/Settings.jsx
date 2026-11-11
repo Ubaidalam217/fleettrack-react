@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { squareJpegBase64 } from '../utils/imageUpload'
-import { User, Lock, Palette, Bell, Sun, Moon, Monitor, Check } from 'lucide-react'
+import { User, Lock, Palette, Bell, Sun, Moon, Monitor, Check, RefreshCw } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import Header  from '../components/Header'
 import ToastStack from '../components/tracking/Toasts'
@@ -12,6 +12,7 @@ import { useSession, changePassword, refreshMe, ROLE_LABELS } from '../data/sess
 import { request, errorMessage } from '../data/http'
 import { useCurrentUser } from '../services/authUser'
 import { getPermissionState, requestPermission } from '../services/pushNotifications'
+import { LIVE_REFRESH_OPTIONS, useLiveRefreshSec, saveLiveRefreshSec } from '../data/liveRefresh'
 
 /**
  * Account Settings — the page behind the header menu's Profile and Settings.
@@ -271,6 +272,67 @@ function AppearanceSection({ themeMode, setTheme }) {
   )
 }
 
+// ── Live Map ────────────────────────────────────────────────────────────────
+
+function LiveMapSection({ push }) {
+  const current = useLiveRefreshSec()
+  const [saving, setSaving] = useState(null)
+
+  const pick = async sec => {
+    if (sec === current || saving != null) return
+    setSaving(sec)
+    try {
+      await saveLiveRefreshSec(sec)
+      push(sec ? `The Live Map now redraws every ${sec} seconds` : 'The Live Map now updates live', { tone: 'success' })
+    } catch (err) {
+      push(errorMessage(err, 'Could not save the refresh interval'), { tone: 'error' })
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  return (
+    <Section
+      id="live-map"
+      icon={RefreshCw}
+      title="Live refresh"
+      subtitle="How often the Live Map's vehicle list, markers and status counts redraw. Every redraw shows the newest data received."
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+        {LIVE_REFRESH_OPTIONS.map(o => {
+          const on = current === o.sec
+          return (
+            <button
+              key={o.sec}
+              type="button"
+              onClick={() => pick(o.sec)}
+              aria-pressed={on}
+              disabled={saving != null}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 10, textAlign: 'left',
+                cursor: saving != null ? 'progress' : 'pointer',
+                border: `1.5px solid ${on ? 'var(--ft-accent)' : 'var(--c-border2)'}`,
+                background: on ? 'color-mix(in srgb, var(--ft-accent) 10%, var(--c-card))' : 'var(--c-input)',
+                color: 'var(--c-text1)',
+                opacity: saving != null && saving !== o.sec ? 0.6 : 1,
+              }}
+            >
+              <span style={{ flex: 1 }}>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 650 }}>{o.label}</span>
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--c-text3)' }}>{o.note}</span>
+              </span>
+              {on && <Check size={15} color="var(--ft-accent)" />}
+            </button>
+          )
+        })}
+      </div>
+      <p style={{ ...DEMO_NOTE, marginTop: 12 }}>
+        {IS_REAL ? 'Saved to your account, so it applies in every browser you sign in to.' : 'Saved in this browser.'}
+      </p>
+    </Section>
+  )
+}
+
 // ── Notifications ───────────────────────────────────────────────────────────
 
 const PERMISSION_TEXT = {
@@ -333,6 +395,7 @@ export default function Settings({ isDark, toggleTheme, themeMode, setTheme }) {
             <ProfileSection push={push} />
             <PasswordSection push={push} />
             <AppearanceSection themeMode={themeMode} setTheme={setTheme} />
+            <LiveMapSection push={push} />
             <NotificationsSection push={push} />
           </div>
         </main>

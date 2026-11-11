@@ -8,6 +8,8 @@ import VehicleDetailPanel from '../components/tracking/VehicleDetailPanel'
 import VehicleListCard, { LIST_CARD_CSS } from '../components/tracking/VehicleListCard'
 import VehiclePopup, { VEHICLE_POPUP_CSS } from '../components/tracking/VehiclePopup'
 import VehicleMarker, { VEHICLE_MARKER_CSS } from '../components/tracking/VehicleMarker'
+import VehicleClusterLayer, { VEHICLE_CLUSTER_CSS } from '../components/tracking/VehicleClusterLayer'
+import { useLiveRefreshSec, useThrottledValue, vehiclesGained, liveRefreshTag } from '../data/liveRefresh'
 import ReplayPanel from '../components/tracking/ReplayPanel'
 import ReplayInfoCard, { REPLAY_INFO_CSS } from '../components/tracking/ReplayInfoCard'
 import { DEFAULT_REPLAY_FIELDS } from '../components/tracking/replayFields'
@@ -439,12 +441,26 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // The list tree (Group → BG → Branch) reads these too.
   const groupsList = useGroups()
   const { user: me } = useSession()
+  // Marker clustering (15.2): on unless this user turned it off in this browser.
+  const clusterKey = `fm.liveMap.cluster.${me?.id ?? 'demo'}`
+  const [clusterOn, setClusterOn] = useState(() => {
+    try { return localStorage.getItem(clusterKey) !== '0' } catch { return true }
+  })
+  const toggleCluster = () => setClusterOn(on => {
+    try { localStorage.setItem(clusterKey, on ? '0' : '1') } catch { /* private window */ }
+    return !on
+  })
 
   // Live vehicle data, shared MQTT session, no REST polling. The map and shell
   // render immediately — nothing here gates the UI. Vehicles appear as MQTT
   // messages arrive; the hook's background REST bootstrap only fills in names
   // and last-known positions if and when it returns.
   const { vehicles: liveVehicles, isConnected, error, noVehicles, tokenError } = useFlespiMQTT()
+  // Account Settings › Live refresh: the list, markers and counts redraw from
+  // the feed at most this often (0 = every message). Traces still take every
+  // fix from liveVehicles, so a traced path loses no points between ticks.
+  const refreshSec = useLiveRefreshSec()
+  const shownVehicles = useThrottledValue(liveVehicles, refreshSec * 1000, vehiclesGained)
 
   // The Console writes to Flespi and gets the saved record back, but the MQTT
   // store is module-level and only reads device metadata once at startup.
@@ -454,9 +470,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const [masterOverrides, setMasterOverrides] = useState({})
   const vehicles = useMemo(() => (
     Object.keys(masterOverrides).length === 0
-      ? liveVehicles
-      : liveVehicles.map(v => (masterOverrides[v.id] ? { ...v, master: masterOverrides[v.id] } : v))
-  ), [liveVehicles, masterOverrides])
+      ? shownVehicles
+      : shownVehicles.map(v => (masterOverrides[v.id] ? { ...v, master: masterOverrides[v.id] } : v))
+  ), [shownVehicles, masterOverrides])
 
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts()
 
@@ -951,6 +967,31 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     .filter(v => v.lat != null && v.lng != null)
     .filter(v => !hiddenIds.has(v.id))
     .filter(v => !(replayShowing && v.id === replayVehicleId))
+  // Never inside a cluster bubble: the selected vehicle and the followed one.
+  const pinnedIds = new Set([focusId, followId].filter(id => id != null))
+
+  const renderMarker = v => (
+    <VehicleMarker
+      key={v.id}
+      position={[v.lat, v.lng]}
+      color={statusColor(v.status)}
+      type={v.master?.vehicleType}
+      heading={v.heading}
+      autoOpenKey={focusId === v.id ? flyTarget?.n ?? null : null}
+      eventHandlers={{
+        click:       () => selectVehicle(v),
+        popupopen:   () => setOpenPopupId(v.id),
+        popupclose:  () => setOpenPopupId(id => (id === v.id ? null : id)),
+      }}
+    >
+      <VehiclePopup
+        v={v}
+        name={vehicleName(v)}
+        open={openPopupId === v.id}
+        onReplay={vv => selectVehicle(vv, { startReplay: true })}
+      />
+    </VehicleMarker>
+  )
 
   // Keyed on the points array only. Rebuilding this inline meant every playback
   // tick produced new positions arrays for every segment, so react-leaflet
@@ -1300,6 +1341,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     <>
       <style>{`
         ${VEHICLE_MARKER_CSS}
+        ${VEHICLE_CLUSTER_CSS}
         ${VEHICLE_POPUP_CSS}
         ${LIST_CARD_CSS}
         ${REPLAY_INFO_CSS}
@@ -1462,6 +1504,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           cursor: pointer;
           box-shadow: 0 2px 12px rgba(0,0,0,0.18);
         }
+        .track-geofence-toggle.is-cluster { top: 128px; }
         .track-geofence-toggle[data-on="true"] {
           background-color: var(--ft-accent);
           border-color: var(--ft-accent);
@@ -1562,6 +1605,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
             onMenuClick={() => setSidebarOpen(s => !s)}
             isConnected={isConnected}
             noVehicles={noVehicles}
+            refreshTag={liveRefreshTag(refreshSec)}
           />
 
           {/* Tracking body */}
@@ -1749,6 +1793,22 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   Geofences
                 </button>
 
+                <button
+                  type="button"
+                  className="track-geofence-toggle is-cluster"
+                  data-on={clusterOn ? 'true' : 'false'}
+                  onClick={toggleCluster}
+                  title={clusterOn ? 'Show every vehicle on its own' : 'Group nearby vehicles when zoomed out'}
+                  aria-pressed={clusterOn}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="8" cy="9" r="3.5" />
+                    <circle cx="16" cy="8" r="2.5" />
+                    <circle cx="14" cy="16" r="3" />
+                  </svg>
+                  Clusters
+                </button>
+
                 {/* Status banner — live connection errors only. Non-blocking:
                     the map stays interactive underneath. */}
                 {statusMessage && (
@@ -1823,28 +1883,14 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     return null
                   })}
 
-                  {mapped.map(v => (
-                    <VehicleMarker
-                      key={v.id}
-                      position={[v.lat, v.lng]}
-                      color={statusColor(v.status)}
-                      type={v.master?.vehicleType}
-                      heading={v.heading}
-                      autoOpenKey={focusId === v.id ? flyTarget?.n ?? null : null}
-                      eventHandlers={{
-                        click:       () => selectVehicle(v),
-                        popupopen:   () => setOpenPopupId(v.id),
-                        popupclose:  () => setOpenPopupId(id => (id === v.id ? null : id)),
-                      }}
-                    >
-                      <VehiclePopup
-                        v={v}
-                        name={vehicleName(v)}
-                        open={openPopupId === v.id}
-                        onReplay={vv => selectVehicle(vv, { startReplay: true })}
-                      />
-                    </VehicleMarker>
-                  ))}
+                  {clusterOn ? (
+                    <>
+                      <VehicleClusterLayer version={vehicles}>
+                        {mapped.filter(v => !pinnedIds.has(v.id)).map(renderMarker)}
+                      </VehicleClusterLayer>
+                      {mapped.filter(v => pinnedIds.has(v.id)).map(renderMarker)}
+                    </>
+                  ) : mapped.map(renderMarker)}
 
                   {/* Live traces. Drawn under the replay track, which is the
                       one the user is actively scrubbing. A single point is not

@@ -28,6 +28,8 @@ const USER_SELECT = {
   // Per-screen permissions (lib/permissions.js): read on every request so a
   // change applies at once, and handed back by /api/auth/me for the menus.
   screenAccess: true,
+  // Display preferences, e.g. the Live Map refresh interval (PUT /api/me/live-refresh).
+  userSetting: true,
   ggbId: true,
   groupId: true,
   bgId: true,
