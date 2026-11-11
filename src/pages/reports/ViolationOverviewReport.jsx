@@ -16,6 +16,7 @@ import { IS_REAL } from '../../data/mode'
 import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
 import { PRESETS, presetRange, dateStr, timeStr } from '../../utils/reportRange'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
+import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import { overview, VIOLATION_TYPES } from '../../utils/violationOverview'
 
 /**
@@ -37,6 +38,8 @@ const ALL_TYPES = [...ALERT_TYPES.map(t => t.value), 'reminder']
 const HIGH_STYLE = { color: '#b91c1c', fontWeight: 700 }
 
 export default function ViolationOverviewReport(props) {
+  const title = useReportTitle('Violation Overview Report') // Oil & Gas opens it as "Violation Overview"
+  const file = fileNameOf(title)
   const { data } = useFlespiData()
   const settingsVehicles = useVehicles()
   const companies = useCompanies()
@@ -215,7 +218,7 @@ export default function ViolationOverviewReport(props) {
   const dataRows = groups.reduce((n, g) => n + g.rows.length, 0)
 
   const exportOpts = () => ({
-    title: 'Violation Overview Report',
+    title,
     subtitle: 'FleetmaxX',
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate: applied?.printDate,
@@ -228,7 +231,7 @@ export default function ViolationOverviewReport(props) {
   })
 
   return (
-    <ReportFrame title="Violation Overview Report" desc="How many violations of each kind every vehicle and driver had in the period." {...props}>
+    <ReportFrame title={title} desc="How many violations of each kind every vehicle and driver had in the period." {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}
@@ -329,14 +332,14 @@ export default function ViolationOverviewReport(props) {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <ColumnPicker columns={columns} hidden={hiddenCols} onChange={setHiddenCols} />
-              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Violation_Overview_Report')} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
-              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Violation_Overview_Report')} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), file)} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), file)} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!dataRows}>Print</ToolbarButton>
             </div>
           </div>
 
           <PaperTable
-            title="Violation Overview Report"
+            title={title}
             company="FleetmaxX"
             filters={filters}
             columns={shownCols}

@@ -14,6 +14,7 @@ import { resolveRowLocations } from '../../utils/reportLocations'
 import { PRESETS, presetRange, dateStr, timeStr } from '../../utils/reportRange'
 import { locationUrl } from '../../utils/mapLink'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
+import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import { IS_REAL } from '../../data/mode'
 import { hms } from '../../utils/usageReports'
 import {
@@ -67,6 +68,8 @@ function vehicleTotal(s) {
 }
 
 export default function PowerFailureReport(props) {
+  const title = useReportTitle(TITLE) // Oil & Gas opens it as "Power Failure"
+  const file = title === TITLE ? FILE : fileNameOf(title)
   const [hiddenCols, setHiddenCols] = useHiddenColumns('power-failure')
   const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
   const { data } = useFlespiData()
@@ -271,7 +274,7 @@ export default function PowerFailureReport(props) {
   const dataRows = groups.reduce((n, g) => n + g.rows.length, 0)
 
   const exportOpts = () => ({
-    title: TITLE,
+    title,
     subtitle: 'FleetmaxX',
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate: applied?.printDate,
@@ -286,7 +289,7 @@ export default function PowerFailureReport(props) {
   const truncated = raw && [...raw.byDevice.values()].some(e => e?.truncated)
 
   return (
-    <ReportFrame title={TITLE} desc={DESC} {...props}>
+    <ReportFrame title={title} desc={DESC} {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}
@@ -381,14 +384,14 @@ export default function PowerFailureReport(props) {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <ColumnPicker columns={COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
-              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), FILE)} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
-              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), FILE)} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), file)} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), file)} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!dataRows}>Print</ToolbarButton>
             </div>
           </div>
 
           <PaperTable
-            title={TITLE}
+            title={title}
             company="FleetmaxX"
             filters={filters}
             columns={shownCols}

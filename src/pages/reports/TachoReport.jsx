@@ -13,6 +13,7 @@ import { formatDateTime, formatDateLabel, formatTime, formatPrintDate } from '..
 import { resolveRowLocations } from '../../utils/reportLocations'
 import { locationUrl } from '../../utils/mapLink'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
+import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import { IS_REAL } from '../../data/mode'
 import { PRESETS, presetRange, dateStr, timeStr, startOfDay } from '../../utils/reportRange'
 import { TACHO_FIELDS, MAX_TACHO_DAYS, buildTacho, summarize, thinReadings, byLocalDay, eventFlags } from '../../utils/tacho'
@@ -115,7 +116,10 @@ export default function TachoReport({ variant, ...props }) {
 }
 
 function TachoPage({ variant, ...props }) {
-  const V = VARIANTS[variant]
+  const base = VARIANTS[variant]
+  // Oil & Gas opens the graph as "Tacho Graph"; the title and file name follow.
+  const title = useReportTitle(base.title)
+  const V = useMemo(() => (title === base.title ? base : { ...base, title, file: fileNameOf(title) }), [base, title])
   const isGraph = variant === 'graph'
   const { data } = useFlespiData()
   // Keyed on what the report uses (ids and names), not on each live poll's new array.
