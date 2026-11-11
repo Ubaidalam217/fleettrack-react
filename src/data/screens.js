@@ -44,8 +44,8 @@ export const SCREEN_MODULES = [
   },
   {
     id: 'reports', label: 'Reports',
-    // Normal and Oil & Gas reports, each page once.
-    screens: ALL_REPORTS.map(r => ({ id: r.path, label: r.label, kind: 'page' })),
+    // Normal and Oil & Gas reports, each page once; a "Coming soon" one has no page to allow.
+    screens: ALL_REPORTS.filter(r => r.ready).map(r => ({ id: r.path, label: r.label, kind: 'page' })),
   },
   {
     id: 'settings', label: 'Settings',

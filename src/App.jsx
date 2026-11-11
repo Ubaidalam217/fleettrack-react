@@ -42,6 +42,7 @@ import VehicleListReport       from './pages/reports/VehicleListReport'
 import DriverListReport        from './pages/reports/DriverListReport'
 import EventOccurrenceReport   from './pages/reports/EventOccurrenceReport'
 import UsageReportPage         from './pages/reports/UsageReportPage'
+import ReportPlaceholder       from './pages/reports/ReportPlaceholder'
 import DriverPerformanceReport from './pages/reports/DriverPerformanceReport'
 import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
@@ -210,6 +211,13 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/reports/usage-summary" element={<Navigate to="/reports/daywise-distance" replace />} />
         <Route path="/reports/summary-usage" element={guard(<UsageReportPage variant="summary" {...themeProps} />)} />
         <Route path="/reports/trip"          element={guard(<UsageReportPage variant="trip" {...themeProps} />)} />
+        {/* Oil & Gas (client, 2026-11-11): the four reports of the client's sample PDFs. */}
+        <Route path="/reports/trip-details"   element={guard(<UsageReportPage variant="tripDetails" {...themeProps} />)} />
+        <Route path="/reports/trip-locations" element={guard(<UsageReportPage variant="tripLocations" {...themeProps} />)} />
+        <Route path="/reports/trip-summary"   element={guard(<UsageReportPage variant="tripSummary" {...themeProps} />)} />
+        <Route path="/reports/distance-driven" element={guard(<UsageReportPage variant="distanceDriven" {...themeProps} />)} />
+        {/* The Oil & Gas reports with no page yet ("Coming soon" on the hub). */}
+        <Route path="/reports/oil-gas/:slug" element={guard(<ReportPlaceholder {...themeProps} />)} />
         <Route path="/reports/event"         element={guard(<EventOccurrenceReport {...themeProps} />)} />
         <Route path="/reports/reminder-status"  element={guard(<ReminderStatusReport  {...themeProps} />)} />
         <Route path="/reports/reminder-history" element={guard(<ReminderHistoryReport {...themeProps} />)} />

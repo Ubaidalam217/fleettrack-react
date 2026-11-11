@@ -30,6 +30,7 @@ const HEADER_MIN_H = 16
 
 const BAND_BLUE = [176, 196, 222]
 const ZEBRA_GRAY = [232, 232, 232]
+const TOTAL_YELLOW = [255, 255, 192]
 const LINK_BLUE = [10, 126, 156]
 
 function clip(doc, text, width) {
@@ -139,7 +140,10 @@ function shownTables({ tables = [], hiddenColumns }) {
  * Render one or more {heading, columns, rows} tables in sequence, with
  * header-band re-stamping and page breaks shared across every sub-report.
  *
- * @param {object} opts  {title, subtitle, filtersText, printDate, systemName, summaryCards, tables, hiddenColumns?}
+ * @param {object} opts  {title, subtitle, filtersText, printDate, systemName, summaryCards, tables, hiddenColumns?, reportSummary?}
+ *   A row with `strong` prints bold on the total yellow (a "Day Summary" line).
+ *   `reportSummary` ([{label, value}]) prints as the "Report Summary" block after
+ *   the last table, the way Ctrack MaXx ends its reports.
  */
 export async function buildGeoZonePdf(opts) {
   const [{ jsPDF }] = await Promise.all([import('jspdf'), loadLogo()])
@@ -212,12 +216,15 @@ export async function buildGeoZonePdf(opts) {
         drawHeader()
         zebra = false
       }
-      if (zebra) {
+      if (row.strong) {
+        doc.setFillColor(...TOTAL_YELLOW)
+        doc.rect(BORDER.x + 3, y, BORDER.w - 6, rowH, 'F')
+      } else if (zebra) {
         doc.setFillColor(...ZEBRA_GRAY)
         doc.rect(BORDER.x + 3, y, BORDER.w - 6, rowH, 'F')
       }
-      zebra = !zebra
-      doc.setFont('helvetica', 'normal')
+      zebra = row.strong ? false : !zebra
+      doc.setFont('helvetica', row.strong ? 'bold' : 'normal')
       doc.setFontSize(FONT_SIZE)
       cols.forEach((c, i) => {
         // A column with `hrefKey` links its cell, e.g. a location to our map.
@@ -230,6 +237,26 @@ export async function buildGeoZonePdf(opts) {
       y += rowH
     }
     y += 10
+  }
+
+  const reportSummary = opts.reportSummary ?? []
+  if (reportSummary.length) {
+    const blockH = 16 + reportSummary.length * 11
+    if (y + blockH > BODY_BOTTOM) startPage()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.5)
+    doc.setTextColor(0, 0, 0)
+    doc.text('Report Summary:', BORDER.x + 6, y + 9)
+    y += 16
+    doc.setFontSize(7.5)
+    for (const { label, value } of reportSummary) {
+      doc.setFont('helvetica', 'bold')
+      doc.text(`${label}:`, BORDER.x + 6, y + 7)
+      doc.setFont('helvetica', 'normal')
+      doc.text(String(value), BORDER.x + 130, y + 7)
+      y += 11
+    }
+    y += 6
   }
 
   if (y + LINE_H > BODY_BOTTOM) startPage()
@@ -291,7 +318,8 @@ export async function exportGeoZoneExcel(opts, filenameBase) {
     header.eachCell(cell => { cell.fill = fill('FFB0C4DE'); cell.font = { bold: true, size: 9 } })
     for (const row of table.rows) {
       const r = ws.addRow(cols.map(c => row[c.key] ?? ''))
-      r.font = { size: 9 }
+      r.font = { size: 9, bold: !!row.strong }
+      if (row.strong) r.eachCell(cell => { cell.fill = fill('FFFFFFC0') })
       cols.forEach((c, i) => {
         const href = c.hrefKey ? row[c.hrefKey] : null
         if (!href) return
@@ -299,6 +327,18 @@ export async function exportGeoZoneExcel(opts, filenameBase) {
         cell.value = { text: String(row[c.key] ?? ''), hyperlink: href }
         cell.font = { size: 9, color: { argb: 'FF0A7E9C' }, underline: true }
       })
+    }
+    ws.addRow([])
+  }
+
+  const reportSummary = opts.reportSummary ?? []
+  if (reportSummary.length) {
+    const h = ws.addRow(['Report Summary:'])
+    h.getCell(1).font = { bold: true, size: 10 }
+    for (const { label, value } of reportSummary) {
+      const r = ws.addRow([`${label}:`, value])
+      r.getCell(1).font = { bold: true, size: 9 }
+      r.getCell(2).font = { size: 9 }
     }
     ws.addRow([])
   }

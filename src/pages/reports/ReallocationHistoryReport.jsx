@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { FileDown, FileSpreadsheet, Printer, Search, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import PaperTable from '../../components/reports/PaperTable'
@@ -10,6 +11,7 @@ import { IS_REAL } from '../../data/mode'
 import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
 import { PRESETS, presetRange, dateStr, timeStr } from '../../utils/reportRange'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
+import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 
 /**
  * Reallocation History Report (client report list, 2026-11-10): each time a
@@ -63,7 +65,11 @@ export default function ReallocationHistoryReport(props) {
   const [fromTime, setFromTime] = useState('00:00')
   const [toTime, setToTime] = useState(() => timeStr(now))
   const [level, setLevel] = useState('all')
-  const [per, setPer] = useState('vehicle') // 'vehicle' | 'device'
+  // Oil & Gas's Device Installation History opens straight on the tracker view.
+  const { state: linkState } = useLocation()
+  // Under its Oil & Gas name ("Device Installation History") when opened from there.
+  const title = useReportTitle('Reallocation History Report')
+  const [per, setPer] = useState(linkState?.per === 'device' ? 'device' : 'vehicle') // 'vehicle' | 'device'
   const [search, setSearch] = useState('')
   const [hiddenCols, setHiddenCols] = useHiddenColumns(`reallocation-history-${per}`)
   const columns = per === 'device' ? DEVICE_COLUMNS : COLUMNS
@@ -176,7 +182,7 @@ export default function ReallocationHistoryReport(props) {
   ] : []
 
   const exportOpts = () => ({
-    title: 'Reallocation History Report',
+    title,
     subtitle: 'FleetmaxX',
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate: applied?.printDate,
@@ -190,7 +196,7 @@ export default function ReallocationHistoryReport(props) {
 
   return (
     <ReportFrame
-      title="Reallocation History Report"
+      title={title}
       desc="Each time a vehicle moved to another Business Group, branch, group or Group Global Admin, and where each tracker has been installed: when, from where to where, and by whom."
       {...props}
     >
@@ -287,14 +293,14 @@ export default function ReallocationHistoryReport(props) {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <ColumnPicker columns={columns} hidden={hiddenCols} onChange={setHiddenCols} />
-              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Reallocation_History_Report')} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
-              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Reallocation_History_Report')} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), fileNameOf(title))} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), fileNameOf(title))} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!dataRows}>Print</ToolbarButton>
             </div>
           </div>
 
           <PaperTable
-            title="Reallocation History Report"
+            title={title}
             company="FleetmaxX"
             filters={filters}
             columns={shownCols}

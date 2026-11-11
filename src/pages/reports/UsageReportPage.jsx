@@ -14,6 +14,8 @@ import { resolveRowLocations } from '../../utils/reportLocations'
 import { locationUrl } from '../../utils/mapLink'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { IS_REAL } from '../../data/mode'
+import { useVehicles as useRegisteredVehicles, branchNameFor, imeiKey } from '../settings/mockData'
+import DistanceDrivenCharts from '../../components/reports/DistanceDrivenCharts'
 import {
   DEFAULT_USAGE_OPTS, tripsByVehicle, byDay, sumTrips, visibleTrips, tripUsage, gyrScore, hms, km,
 } from '../../utils/usageReports'
@@ -91,6 +93,64 @@ function totalsText(s, { idle = true, exceptions = true } = {}) {
   parts.push(`${km(s.distanceKm)} km`, `Max ${round(s.maxSpeed)} km/h`)
   if (exceptions) parts.push(`Over Speed ${s.overSpeedCount}`, `HB ${s.hbCount}`, `HA ${s.haCount}`, `XI ${s.xiCount}`)
   return parts.join('   ·   ')
+}
+
+
+// ── Oil & Gas (client, 2026-11-11): the Ctrack MaXx reports of the client's
+// PDFs — Trip Details, Trip Locations, Trip Summary and Distance Driven. Same
+// trips as the reports above; their columns, grouping and the "Report Summary"
+// block that ends each one follow the client's samples.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const two = n => String(n).padStart(2, '0')
+/** "01 Oct, 2026" */
+const ctrackDate = d => `${two(d.getDate())} ${MONTHS[d.getMonth()]}, ${d.getFullYear()}`
+/** "01 Oct, 2026 00:32:10" */
+const ctrackDateTime = ts => {
+  const d = new Date(ts * 1000)
+  return `${ctrackDate(d)} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`
+}
+const km3 = v => (Number.isFinite(v) ? v.toFixed(3) : '—')
+/** Ctrack's Standing: the part of the trip the vehicle was not moving. */
+const standingSec = t => Math.max(0, (t.durationSec ?? 0) - (t.driveSec ?? 0))
+const maxOrNA = v => (v > 0 ? Math.round(v) : 'N/A')
+
+function ctrackTotals(trips) {
+  const s = sumTrips(trips)
+  const durationSec = trips.reduce((a, t) => a + (t.durationSec ?? 0), 0)
+  const standSec = trips.reduce((a, t) => a + standingSec(t), 0)
+  return { ...s, durationSec, standSec }
+}
+
+function reportSummary(trips) {
+  const s = ctrackTotals(trips)
+  return [
+    { label: 'Total Trips', value: s.trips },
+    { label: 'Total Trip Duration', value: hms(s.durationSec) },
+    { label: 'Total Driving Time', value: hms(s.driveSec) },
+    { label: 'Total Standing Time', value: hms(s.standSec) },
+    { label: 'Max Speed (Kph)', value: maxOrNA(s.maxSpeed) },
+    { label: 'Total Distance (Km)', value: km3(s.distanceKm) },
+  ]
+}
+
+/** One trip as a Trip Details / Trip Locations row. */
+const ctrackTripRow = (t, naSpeed) => ({
+  key: t.startTs, ...endPoint(t), startLat: t.startLat, startLng: t.startLng,
+  driver: t.driver, start: ctrackDateTime(t.startTs), end: t.open ? `${ctrackDateTime(t.endTs)} (on)` : ctrackDateTime(t.endTs),
+  duration: hms(t.durationSec), driving: hms(t.driveSec), standing: hms(standingSec(t)),
+  distance: km(t.distanceKm), speed: naSpeed ? maxOrNA(t.maxSpeed) : (t.maxSpeed > 0 ? Math.round(t.maxSpeed) : 0), map: 'Map',
+})
+
+function ctrackTripGroups(vs, ctx, naSpeed) {
+  let hidden = 0
+  const all = []
+  const groups = vs.map(v => {
+    const vis = visibleTrips(v.trips, ctx.hideZero)
+    hidden += vis.hidden
+    all.push(...vis.trips)
+    return { key: v.deviceId, label: v.vehicleId, rows: vis.trips.map(t => ctrackTripRow(t, naSpeed)), total: false }
+  })
+  return { groups, summary: reportSummary(all), note: hidden ? `${hidden} trip${hidden === 1 ? '' : 's'} of 0 km hidden` : null }
 }
 
 // Each variant: its columns, its settings and how it groups the trips.
@@ -345,16 +405,170 @@ const VARIANTS = {
       }
     },
   },
+
+  tripDetails: {
+    title: 'Trip Details',
+    file: 'Trip_Details_Report',
+    desc: 'Every trip of each vehicle: driver, start and end, duration, driving and standing time, distance and top speed.',
+    settings: ['hideZero'],
+    defaults: { hideZero: false },
+    groupedBy: 'Asset',
+    noAddresses: true,
+    columns: [
+      { key: 'driver',   label: 'Driver',         width: '22%', pdf: 20 },
+      { key: 'start',    label: 'Start',          width: '15%', pdf: 13 },
+      { key: 'end',      label: 'End',            width: '15%', pdf: 13 },
+      { key: 'duration', label: 'Duration',       width: '8%',  pdf: 7 },
+      { key: 'driving',  label: 'Driving',        width: '8%',  pdf: 7 },
+      { key: 'standing', label: 'Standing',       width: '8%',  pdf: 7 },
+      { key: 'distance', label: 'Distance (Km)',  width: '8%',  pdf: 7, align: 'right' },
+      { key: 'speed',    label: 'Speed (Kph)',    width: '8%',  pdf: 7, align: 'right' },
+      { key: 'map',      label: 'Map',            width: '5%',  pdf: 4, locate: true },
+    ],
+    build: (vs, ctx) => ctrackTripGroups(vs, ctx, false),
+  },
+
+  tripLocations: {
+    title: 'Trips Locations',
+    file: 'Trip_Locations_Report',
+    desc: 'Every trip of each vehicle with where it started and ended, its duration, driving and standing time, distance and top speed.',
+    settings: ['hideZero'],
+    defaults: { hideZero: false },
+    groupedBy: 'Asset',
+    columns: [
+      { key: 'driver',        label: 'Driver',          width: '13%', pdf: 12 },
+      { key: 'start',         label: 'Start',           width: '9%',  pdf: 8 },
+      { key: 'startLocation', label: 'Start Location',  width: '19%', pdf: 18 },
+      { key: 'end',           label: 'End',             width: '9%',  pdf: 8 },
+      { key: 'location',      label: 'End Location',    width: '19%', pdf: 18, locate: true },
+      { key: 'duration',      label: 'Duration',        width: '6.5%', pdf: 6 },
+      { key: 'driving',       label: 'Driving',         width: '6.5%', pdf: 6 },
+      { key: 'standing',      label: 'Standing',        width: '6.5%', pdf: 6 },
+      { key: 'distance',      label: 'Distance (Km)',   width: '5.5%', pdf: 5, align: 'right' },
+      { key: 'speed',         label: 'Max Speed (Kph)', width: '6%',  pdf: 5, align: 'right' },
+    ],
+    build: (vs, ctx) => ctrackTripGroups(vs, ctx, true),
+  },
+
+  tripSummary: {
+    title: 'Trip Summary',
+    file: 'Trip_Summary_Report',
+    desc: 'Each day, one line per vehicle and driver: trip duration, driving and standing time, distance, top speed and number of trips.',
+    settings: ['hideZero'],
+    defaults: { hideZero: false },
+    groupedBy: 'Day',
+    noAddresses: true,
+    columns: [
+      { key: 'vehicle',  label: 'Vehicle',         width: '17%', pdf: 15 },
+      { key: 'site',     label: 'Site',            width: '11%', pdf: 10 },
+      { key: 'driver',   label: 'Driver',          width: '21%', pdf: 19 },
+      { key: 'duration', label: 'Duration',        width: '8%',  pdf: 7 },
+      { key: 'driving',  label: 'Driving',         width: '8%',  pdf: 7 },
+      { key: 'standing', label: 'Standing',        width: '8%',  pdf: 7 },
+      { key: 'distance', label: 'Distance (Km)',   width: '9%',  pdf: 8, align: 'right' },
+      { key: 'speed',    label: 'Max Speed (Kph)', width: '9%',  pdf: 8, align: 'right' },
+      { key: 'trips',    label: 'No. of Trips',    width: '9%',  pdf: 8, align: 'right' },
+    ],
+    build(vs, ctx) {
+      let hidden = 0
+      const all = []
+      for (const v of vs) {
+        const vis = visibleTrips(v.trips, ctx.hideZero)
+        hidden += vis.hidden
+        for (const t of vis.trips) all.push({ ...t, _vehicle: v })
+      }
+      all.sort((a, b) => a.startTs - b.startTs)
+      const line = (key, list, head) => {
+        const s = ctrackTotals(list)
+        return {
+          key, ...head, duration: hms(s.durationSec), driving: hms(s.driveSec), standing: hms(s.standSec),
+          distance: km3(s.distanceKm), speed: maxOrNA(s.maxSpeed), trips: s.trips,
+        }
+      }
+      const groups = byDay(all).map(d => {
+        const pairs = new Map()
+        for (const t of d.trips) {
+          const k = `${t._vehicle.vehicleId}\u0000${t.driver}`
+          if (!pairs.has(k)) pairs.set(k, [])
+          pairs.get(k).push(t)
+        }
+        const rows = [...pairs.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([k, list]) => line(k, list, { vehicle: list[0]._vehicle.vehicleId, site: ctx.siteOf(list[0]._vehicle), driver: list[0].driver }))
+        const label = ctrackDate(d.date)
+        rows.push({ ...line(`sum-${d.key}`, d.trips, { vehicle: `${label} Summary`, site: '', driver: '' }), strong: true })
+        return { key: d.key, label: `Day : ${label}`, rows, total: false }
+      })
+      return { groups, summary: reportSummary(all), note: hidden ? `${hidden} trip${hidden === 1 ? '' : 's'} of 0 km hidden` : null }
+    },
+  },
+
+  distanceDriven: {
+    title: 'Distance Driven',
+    file: 'Distance_Driven_Report',
+    desc: 'Distance driven each day, per driver or per vehicle, with the daily totals and the average per vehicle on graphs.',
+    settings: ['entity'],
+    groupedBy: 'Day',
+    noAddresses: true,
+    columns: [
+      { key: 'date',     label: 'Date',           width: '20%', pdf: 18 },
+      { key: 'entity',   label: 'Driver',         width: '60%', pdf: 55 },
+      { key: 'distance', label: 'Distance (km)',  width: '20%', pdf: 18, align: 'right' },
+    ],
+    build(vs, ctx) {
+      const all = []
+      for (const v of vs) for (const t of v.trips) all.push({ ...t, _vehicle: v })
+      all.sort((a, b) => a.startTs - b.startTs)
+      const nameOf = t => (ctx.entity === 'asset' ? t._vehicle.vehicleId : t.driver)
+      const entities = new Set()
+      const rows = []
+      const chart = []
+      let total = 0
+      for (const d of byDay(all)) {
+        const per = new Map()
+        for (const t of d.trips) per.set(nameOf(t), (per.get(nameOf(t)) ?? 0) + (t.distanceKm || 0))
+        const date = ctrackDate(d.date)
+        let dayKm = 0
+        for (const [name, dist] of [...per.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+          if (dist < 0.0005) continue // Ctrack lists only who moved
+          entities.add(name)
+          dayKm += dist
+          rows.push({ key: `${d.key}-${name}`, date, entity: name, distance: km3(dist) })
+        }
+        total += dayKm
+        // The average is over every vehicle that made a trip that day (client's sample).
+        const assets = new Set(d.trips.map(t => t._vehicle.deviceId)).size
+        chart.push({ day: date.slice(0, 6), total: Math.round(dayKm * 10) / 10, avg: assets ? Math.round((dayKm / assets) * 10) / 10 : 0 })
+      }
+      if (rows.length) rows.push({ key: 'total', date: 'Total', entity: `Entity Count: ${entities.size}`, distance: Math.round(total), strong: true })
+      return {
+        groups: [{ key: 'all', label: `Grouped by Day · ${ctx.entity === 'asset' ? 'Asset' : 'Driver'}`, rows, total: false }],
+        summary: rows.length ? [{ label: 'Total Distance (Km)', value: km3(total) }] : [],
+        chart,
+      }
+    },
+  },
 }
 
 const coords = (lat, lng) => (lat != null && lng != null ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : '—')
 
-export default function UsageReportPage({ variant, ...props }) {
+// A new variant starts fresh: the routes share this component, so without the
+// key a switch from one report to another kept the old one's settings.
+export default function UsageReportPage(props) {
+  return <UsageReport key={props.variant} {...props} />
+}
+
+function UsageReport({ variant, ...props }) {
   const V = VARIANTS[variant]
   const title = useReportTitle(V.title)
+  const [entity, setEntity] = useState('driver')
   const file = title === V.title ? V.file : fileNameOf(title)
   const [hiddenCols, setHiddenCols] = useHiddenColumns(`usage-${variant}`)
-  const shownCols = useVisibleColumns(V.columns, hiddenCols)
+  const columns = useMemo(
+    () => V.columns.map(c => (c.key === 'entity' && entity === 'asset' ? { ...c, label: 'Asset' } : c)),
+    [V, entity]
+  )
+  const shownCols = useVisibleColumns(columns, hiddenCols)
   const { data } = useFlespiData()
   // The live feed hands over a new vehicle array on every poll. The report only
   // cares which vehicles there are and what they are called, so it keys on that:
@@ -378,7 +592,8 @@ export default function UsageReportPage({ variant, ...props }) {
 
   const [overSpeedKmh, setOverSpeedKmh] = useState(String(DEFAULT_USAGE_OPTS.overSpeedKmh))
   const [xiMinutes, setXiMinutes] = useState(String(DEFAULT_USAGE_OPTS.xiMinutes))
-  const [hideZero, setHideZero] = useState(true)
+  const [hideZero, setHideZero] = useState(V.defaults?.hideZero ?? true)
+  const registered = useRegisteredVehicles()
   const [workDays, setWorkDays] = useState([1, 2, 3, 4, 5])
   const [workFrom, setWorkFrom] = useState('08:00')
   const [workTo, setWorkTo] = useState('18:00')
@@ -476,13 +691,20 @@ export default function UsageReportPage({ variant, ...props }) {
 
   const built = useMemo(() => {
     if (!vehicleTrips) return null
-    return V.build(vehicleTrips, { hideZero, rule, bands })
+    // Site: the vehicle's branch in Settings, blank without one (as in the client's sample).
+    const regByImei = new Map((registered ?? []).map(r => [imeiKey(r.imei), r]))
+    const siteOf = v => {
+      const reg = regByImei.get(imeiKey(v.vehicle?.ident))
+      return reg?.branchId ? branchNameFor(reg.branchId) : ''
+    }
+    return V.build(vehicleTrips, { hideZero, rule, bands, entity, siteOf })
   // rule / bands are rebuilt each render from their own state, listed below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicleTrips, V, hideZero, workDays, workFrom, workTo, green, red])
+  }, [vehicleTrips, V, hideZero, workDays, workFrom, workTo, green, red, entity, registered])
 
   useEffect(() => {
-    if (!built) return
+    // Trip Details / Summary / Distance Driven show no address: nothing to look up.
+    if (!built || V.noAddresses) return
     const controller = new AbortController()
     resolveRowLocations(built.groups, {
       limit: IS_REAL ? 2000 : 200,
@@ -496,7 +718,7 @@ export default function UsageReportPage({ variant, ...props }) {
       .catch(() => {})
       .finally(() => { if (!controller.signal.aborted) setGeoProgress(null) })
     return () => controller.abort()
-  }, [built])
+  }, [built, V.noAddresses])
 
   const groups = useMemo(() => {
     if (!built) return []
@@ -520,6 +742,8 @@ export default function UsageReportPage({ variant, ...props }) {
   const applied = raw?.applied
   const filters = applied ? [
     ['Selection', applied.selectionLabel],
+    ...(V.groupedBy ? [['Grouped By', V.groupedBy]] : []),
+    ...(V.settings.includes('entity') ? [['Entity Grouping', entity === 'asset' ? 'Asset' : 'Driver']] : []),
     ['From Date', formatDateTime(applied.fromTs)],
     ['To Date', formatDateTime(applied.toTs)],
     ...(V.settings.includes('speed') ? [['Over Speed', `> ${speedNum} km/h`]] : []),
@@ -536,8 +760,9 @@ export default function UsageReportPage({ variant, ...props }) {
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate: applied?.printDate,
     systemName: 'FleetmaxX',
+    reportSummary: built?.summary ?? [],
     tables: groups.map(g => ({
-      heading: `${g.label} — ${g.total}`,
+      heading: g.total === false ? g.label : `${g.label} — ${g.total}`,
       columns: shownCols.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, hrefKey: c.locate ? 'mapUrl' : undefined })),
       // Date and total bands become a row whose first cell carries the text.
       rows: g.rows.map(r => (r.kind === 'band' ? { [shownCols[0].key]: r.label } : r)),
@@ -603,6 +828,15 @@ export default function UsageReportPage({ variant, ...props }) {
                 <input type="time" style={FIELD} value={workTo} onChange={e => setWorkTo(e.target.value)} />
               </div>
             </>
+          )}
+          {V.settings.includes('entity') && (
+            <div>
+              <label style={LABEL}>ENTITY GROUPING</label>
+              <select style={FIELD} value={entity} onChange={e => setEntity(e.target.value)}>
+                <option value="driver">Driver</option>
+                <option value="asset">Asset</option>
+              </select>
+            </div>
           )}
           {V.settings.includes('gyrBands') && (
             <>
@@ -678,7 +912,7 @@ export default function UsageReportPage({ variant, ...props }) {
               {truncated && <span style={{ color: '#f97316' }}> · some days hit the message limit — narrow the range for full detail</span>}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <ColumnPicker columns={V.columns} hidden={hiddenCols} onChange={setHiddenCols} />
+              <ColumnPicker columns={columns} hidden={hiddenCols} onChange={setHiddenCols} />
               <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), file)} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
               <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), file)} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!dataRows}>Print</ToolbarButton>
@@ -694,7 +928,9 @@ export default function UsageReportPage({ variant, ...props }) {
             printDate={applied.printDate}
             onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: title, location: r.location })}
             emptyText="No trips in this period for the selected vehicles."
+            summary={built.summary}
           />
+          {built.chart?.length > 0 && <DistanceDrivenCharts data={built.chart} />}
         </>
       )}
 

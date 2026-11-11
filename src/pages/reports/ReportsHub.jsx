@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Search, Star, X, FilePlus2, Fuel } from 'lucide-react'
+import { Search, Star, X, FilePlus2, Fuel, Clock } from 'lucide-react'
 import PageShell from '../../components/PageShell'
 import {
   REPORT_CATEGORIES, REPORTS_MENU, OIL_GAS_CATEGORIES, OIL_GAS_MENU, REPORTS_HUB_PATH, OIL_GAS_HUB_PATH,
@@ -61,10 +61,16 @@ function ReportRow({ report, hub, titled, fav, onToggleFav }) {
   return (
     <div className="ft-report-row">
       {/* The hub rides along so the report's back link returns here. */}
-      <Link to={report.path} state={titled ? { hub, title: report.label } : { hub }} title={report.desc} className="ft-report-link">
+      {/* A row's own `state` rides along too (Device Installation History opens per tracker). */}
+      <Link to={report.path} state={{ ...report.state, hub, ...(titled ? { title: report.label } : {}) }} title={report.desc} className="ft-report-link">
         <Icon size={15} strokeWidth={2} style={{ flexShrink: 0, color: 'var(--ft-accent)' }} />
         <span style={{ flex: 1, minWidth: 0 }}>{report.label}</span>
-        {!report.ready && <span className="ft-report-soon">Soon</span>}
+        {!report.ready && (
+          <span className="ft-report-soon">
+            <Clock size={11} strokeWidth={2.4} aria-hidden="true" />
+            Coming soon
+          </span>
+        )}
       </Link>
       <button
         type="button"

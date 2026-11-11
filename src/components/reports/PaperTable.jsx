@@ -13,6 +13,10 @@
  * groups:  [{ key, label, rows, total? }]
  *   A row `{ kind: 'band', label }` is a yellow sub-heading (a date, say);
  *   `row.zebra` shades a data row. Groups with no `zebra` set alternate by index.
+ *   `row.strong` is a column-aligned total line: bold, on the total yellow.
+ *   `total: false` leaves out the group's own total line.
+ * summary: [{ label, value }] — the "Report Summary" block after the table,
+ *   the way the client's Ctrack MaXx reports end.
  */
 
 const BAND_BLUE  = '#b0c4de'
@@ -33,14 +37,14 @@ function fillWidths(columns) {
   return columns.map((c, i) => ({ ...c, width: `${((pct[i] / sum) * 100).toFixed(3)}%` }))
 }
 
-export default function PaperTable({ title, company, filters = [], columns: given, groups, printDate, onLocate, onCellClick, emptyText }) {
+export default function PaperTable({ title, company, filters = [], columns: given, groups, printDate, onLocate, onCellClick, emptyText, summary }) {
   const columns = fillWidths(given)
   const total = groups.reduce((s, g) => s + g.rows.filter(r => r.kind !== 'band').length, 0)
   // Zebra restarts under every band, the way the Movement Report shades.
   const shaded = groups.map(g => {
     let z = false
     return { ...g, rows: g.rows.map(r => {
-      if (r.kind === 'band') { z = false; return r }
+      if (r.kind === 'band' || r.strong) { z = false; return r }
       const row = r.zebra === undefined ? { ...r, zebra: z } : r
       z = !z
       return row
@@ -99,9 +103,9 @@ export default function PaperTable({ title, company, filters = [], columns: give
                   <td colSpan={columns.length} style={{ ...cell, fontWeight: 700 }}>{row.label}</td>
                 </tr>
               ) : (
-                <tr key={`r-${g.key}-${row.key ?? i}`} style={{ background: row.zebra ? ZEBRA_GRAY : '#fff' }}>
+                <tr key={`r-${g.key}-${row.key ?? i}`} style={{ background: row.strong ? TOTAL_YEL : row.zebra ? ZEBRA_GRAY : '#fff' }}>
                   {columns.map(c => (
-                    <td key={c.key} style={{ ...cell, textAlign: c.align || 'left', wordBreak: 'break-word', ...(row.cellStyle?.[c.key] ?? {}) }}>
+                    <td key={c.key} style={{ ...cell, textAlign: c.align || 'left', wordBreak: 'break-word', ...(row.strong ? { fontWeight: 700 } : {}), ...(row.cellStyle?.[c.key] ?? {}) }}>
                       {c.locate && onLocate && row.lat != null && row.lng != null ? (
                         <button
                           type="button"
@@ -125,13 +129,27 @@ export default function PaperTable({ title, company, filters = [], columns: give
                   ))}
                 </tr>
               )),
-              <tr key={`t-${g.key}`} style={{ background: TOTAL_YEL }}>
-                <td colSpan={columns.length} style={{ ...cell, fontWeight: 700 }}>{g.total ?? `Total : ${g.rows.length}`}</td>
-              </tr>,
+              g.total !== false && (
+                <tr key={`t-${g.key}`} style={{ background: TOTAL_YEL }}>
+                  <td colSpan={columns.length} style={{ ...cell, fontWeight: 700 }}>{g.total ?? `Total : ${g.rows.length}`}</td>
+                </tr>
+              ),
             ])}
           </tbody>
         </table>
       </div>
+
+      {summary?.length > 0 && total > 0 && (
+        <div style={{ borderTop: `1px solid ${INK}`, padding: '10px 16px 12px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: INK, marginBottom: 6 }}>Report Summary:</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'max-content max-content', gap: '3px 28px', fontSize: 11.5, color: INK }}>
+            {summary.map(({ label, value }) => [
+              <span key={`l-${label}`} style={{ fontWeight: 700 }}>{label}:</span>,
+              <span key={`v-${label}`}>{value}</span>,
+            ])}
+          </div>
+        </div>
+      )}
 
       <div style={{
         borderTop: `1px solid ${RULE}`, padding: '7px 16px', display: 'flex',

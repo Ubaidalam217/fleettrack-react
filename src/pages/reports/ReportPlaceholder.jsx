@@ -23,7 +23,7 @@ export default function ReportPlaceholder(props) {
   return (
     <PageShell title={label || 'Report'} {...props}>
       <p style={{ fontSize: 14, color: 'var(--c-text3)', margin: '12px 0 0' }}>
-        Report structure coming soon.
+        This report is coming soon.
       </p>
       <div style={{ marginTop: 14 }}><ReportsBackLink /></div>
     </PageShell>
