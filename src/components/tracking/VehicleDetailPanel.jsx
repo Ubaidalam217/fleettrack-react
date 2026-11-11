@@ -18,6 +18,7 @@ import { useVisible } from '../../hooks/useVisible'
 import { shortenAddress } from '../../utils/geocode'
 import { useSettingsProfile, useDriverForDevice, useDrivers, driverForIbutton, ibuttonKey, updateDriver, driverDisplayForDevice } from '../../data/settings'
 import UnregisteredDriverDialog from './UnregisteredDriverDialog'
+import VehiclesDrivenToday from './VehiclesDrivenToday'
 import { licenceExpiryState, formatExpiryDate } from '../../utils/licenceExpiry'
 import { BASE_URL, HEADERS } from '../../hooks/flespiConfig'
 
@@ -448,8 +449,10 @@ function DriverInfo({ v }) {
           </Grid>
         </Section>
       )}
-      <Section title="Activity">
-        <Pending note="Vehicles Driven Today requires scanning every device's driver assignment against today's trips — Phase 5." />
+      <Section title="Vehicles Driven Today" caption={driver ? 'from today’s trips' : undefined}>
+        {driver
+          ? <VehiclesDrivenToday driver={driver} />
+          : <Pending note="Add this driver under Settings > Driver to see the vehicles they drove today." />}
       </Section>
     </>
   )
