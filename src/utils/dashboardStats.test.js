@@ -67,6 +67,7 @@ describe('liveUptime / fleetScore', () => {
     const now = 1_000_000
     expect(liveUptime([{ lastTs: now - 60 }, { lastTs: now - 3600 }, { lastTs: null }, { lastTs: now - 899 }], now)).toBe(50)
     expect(liveUptime([], now)).toBeNull()
+    expect(liveUptime([{ lastTs: now - 3600 }, { lastTs: now - 90000 }], now, 86400)).toBe(50)
   })
 
   it('averages only the parts that exist', () => {

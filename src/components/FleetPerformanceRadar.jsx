@@ -1,22 +1,26 @@
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts'
 
 /**
- * The fleet's recorded figures on one chart (hooks/useDashboardStats.js):
+ * The fleet's recorded figures on the original six-axis chart
+ * (hooks/useDashboardStats.js). The client prefers this shape (2026-11-11):
  *   Uptime       vehicles that reported in the last 15 minutes
- *   Utilization  vehicle-days this month on which the vehicle drove
- *   Safety       this month's alerts per 100 km, as a 0-100 score
  *   Efficiency   moving share of today's engine-on time (the rest is idling)
+ *   Safety       this month's alerts per 100 km, as a 0-100 score
+ *   Response     trackers that reported at all in the last 24 hours
+ *   Activity     vehicle-days this month on which the vehicle drove
  *   Maintenance  reminders not due or overdue (only with reminder rules set)
- * An axis with nothing recorded behind it is left out rather than guessed.
+ * An axis with nothing recorded sits at 0 and is named under the chart,
+ * rather than being given an invented value.
  */
 function axesOf(stats) {
   return [
     ['Uptime', stats?.uptime],
-    ['Utilization', stats?.utilization],
-    ['Safety', stats?.safety],
     ['Efficiency', stats?.efficiency],
+    ['Safety', stats?.safety],
+    ['Response', stats?.responded],
+    ['Activity', stats?.utilization],
     ['Maintenance', stats?.maintenance?.compliance],
-  ].filter(([, v]) => Number.isFinite(v)).map(([name, value]) => ({ metric: `${name} ${value}`, value }))
+  ].map(([metric, v]) => ({ metric, value: Number.isFinite(v) ? v : 0, missing: !Number.isFinite(v) }))
 }
 
 // ClyHealth AgePanel dot style: filled highlight for top value, dark-fill ring for rest
@@ -30,8 +34,9 @@ function ClyDot({ cx, cy, payload }) {
 
 export default function FleetPerformanceRadar({ stats, heroMode = false }) {
   const data = axesOf(stats)
-  // A radar needs three corners; with fewer the chart would be a line.
-  const enough = data.length >= 3
+  const missing = data.filter(d => d.missing).map(d => d.metric)
+  // A radar needs three recorded corners; with fewer the chart says nothing.
+  const enough = data.length - missing.length >= 3
 
   // In the hero the radar gets the same glass treatment as the Trips card on
   // the opposite side, so the two flanks of the gauge read as a matched pair.
@@ -61,7 +66,7 @@ export default function FleetPerformanceRadar({ stats, heroMode = false }) {
       </h3>
       <p style={{ fontSize: 10, lineHeight: 1.35, color: 'rgba(255,255,255,0.55)', margin: '0 0 6px' }}>
         {enough
-          ? `Recorded figures across ${data.length} dimensions, 0-100`
+          ? 'Multi-axis health across 6 dimensions'
           : stats?.loading ? 'Loading fleet figures…' : 'Not enough recorded data yet'}
       </p>
 
@@ -111,6 +116,11 @@ export default function FleetPerformanceRadar({ stats, heroMode = false }) {
           </RadarChart>
         </ResponsiveContainer>}
       </div>
+      {enough && missing.length > 0 && (
+        <p style={{ fontSize: 9.5, lineHeight: 1.3, color: 'rgba(255,255,255,0.45)', margin: '4px 0 0' }}>
+          No data yet: {missing.join(', ')}
+        </p>
+      )}
     </div>
   )
 }

@@ -92,10 +92,13 @@ export function violationCounts(events) {
   return out
 }
 
-/** Live uptime: share of vehicles that reported within ONLINE_SEC. null with none. */
-export function liveUptime(vehicles, nowSec = Date.now() / 1000) {
+/**
+ * Live uptime: share of vehicles that reported within `windowSec` (default
+ * ONLINE_SEC). null with none.
+ */
+export function liveUptime(vehicles, nowSec = Date.now() / 1000, windowSec = ONLINE_SEC) {
   if (!vehicles?.length) return null
-  const up = vehicles.filter(v => v.lastTs != null && nowSec - v.lastTs < ONLINE_SEC).length
+  const up = vehicles.filter(v => v.lastTs != null && nowSec - v.lastTs < windowSec).length
   return round((up / vehicles.length) * 100)
 }
 

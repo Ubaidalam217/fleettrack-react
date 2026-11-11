@@ -172,6 +172,8 @@ export function useDashboardStats(allVehicles, selectedVehicles) {
     const util = utilization(cur)
     const utilPrev = utilization(last)
     const uptime = liveUptime(selected)
+    // Trackers that answered at all in the last 24 h (the radar's Response).
+    const responded = liveUptime(selected, Date.now() / 1000, 24 * 3600)
     const maintenance = reminders.value ? maintenanceFigures(reminders.value, imeis) : null
 
     return {
@@ -190,6 +192,7 @@ export function useDashboardStats(allVehicles, selectedVehicles) {
       utilization: util,
       utilizationPrev: utilPrev,
       uptime,
+      responded,
       efficiency: driveEfficiency(todayStats),
       maintenance,
       expenses: expenses.value ? expenseFigures(expenses.value, now, 6, imeis) : null,
