@@ -81,8 +81,8 @@ const byNewest = (a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)
  *
  * The first load only records a baseline: a backlog of yesterday's alerts is
  * not news, and announcing fifty of them on sign-in would be noise. These are
- * what the browser rule engine used to send; in real mode that engine is
- * silent (see hooks/useNotificationEngine.js) and the server is the source.
+ * what the browser rule engine used to send; in real mode that engine does not
+ * run (see hooks/useNotificationEngine.js) and the server is the source.
  */
 function announce(fresh, isFirst) {
   const unseen = fresh.filter(e => !seen.has(e.id))

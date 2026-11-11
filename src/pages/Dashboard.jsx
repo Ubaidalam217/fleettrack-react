@@ -454,7 +454,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               <div className="grid grid-cols-1 gap-4">
                 {W('vehicleStatus',  <VehicleStatus vehicles={filteredData?.vehicles} loading={loading} />)}
                 {W('driverPerf',     <TopDriversPanel />)}
-                {W('alertsOverview', <AlertsOverview />)}
+                {W('alertsOverview', <AlertsOverview stats={stats} />)}
               </div>
 
               {/* Row 4 */}
@@ -547,7 +547,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               <div className="grid grid-cols-12 gap-5 items-stretch">
                 <div className="col-span-4 min-w-0 flex flex-col gap-5">
                   {W('fleetScore',   <FleetScoreCard stats={stats} />)}
-                  {W('alertMarkers', <AlertMarkersCard />)}
+                  {W('alertMarkers', <AlertMarkersCard stats={stats} />)}
                 </div>
                 <div className="col-span-4 min-w-0 flex">
                   {W('fleetComposition', <FleetCompositionCard fleetData={filteredData} loading={loading} />)}
@@ -567,7 +567,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               <div className="grid grid-cols-3 gap-5 items-stretch">
                 {W('vehicleStatus',  <VehicleStatus vehicles={filteredData?.vehicles} loading={loading} />)}
                 {W('aiInsights',     <AIInsights fleetData={filteredData} stats={stats} />)}
-                {W('alertsOverview', <AlertsOverview />)}
+                {W('alertsOverview', <AlertsOverview stats={stats} />)}
               </div>
 
               {/* Trip Analysis | Cost Summary | Fuel & Energy */}

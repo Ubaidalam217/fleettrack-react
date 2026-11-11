@@ -73,6 +73,10 @@ export function useNotificationEngine() {
   const running = useRef(false)
 
   useEffect(() => {
+    // Real mode: the server's alert engine is the only source. The bell, the
+    // Notifications page, Charts and the Dashboard's alert cards all read its
+    // events (data/alertEvents.js), so this browser engine has no reader left.
+    if (IS_REAL) return
     if (!vehicles.length) return
     if (running.current) return
     running.current = true
@@ -92,23 +96,15 @@ export function useNotificationEngine() {
 
       if (newNotifs.length) {
         store.addMany(newNotifs)
-        // Real mode: the server's alert engine raises the alerts users act on —
-        // the bell, the Notifications page and the desktop notifications all
-        // come from it (data/alertEvents.js). This engine keeps running only
-        // because the Dashboard's Alerts Overview, Alert Markers and AI
-        // Insights cards are built on its rule ids and local store; it is not
-        // shown as a notification anywhere in real mode, so it must not pop a
-        // desktop notification either, or every over-speed would arrive twice
-        // (once at this engine's fixed 80 km/h, once at the rule's own limit).
-        if (!IS_REAL) {
-          newNotifs.forEach(notif =>
-            sendPushNotification(notif.title, {
-              body:     notif.message,
-              tag:      `${notif.ruleId}-${notif.vehicleId}`,
-              severity: notif.severity,
-            })
-          )
-        }
+        // Mock mode only (see the top of the effect): the demo's desktop
+        // notifications come from here.
+        newNotifs.forEach(notif =>
+          sendPushNotification(notif.title, {
+            body:     notif.message,
+            tag:      `${notif.ruleId}-${notif.vehicleId}`,
+            severity: notif.severity,
+          })
+        )
       }
 
       devLog(currentSnap, ruleResults ?? [], newNotifs)

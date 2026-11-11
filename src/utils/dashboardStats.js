@@ -236,3 +236,69 @@ export function pctChange(now, before) {
   if (!Number.isFinite(now) || !Number.isFinite(before) || before <= 0) return null
   return Math.round(((now - before) / before) * 1000) / 10
 }
+
+/* ── Alert events (Alerts Overview, Alert Markers, AI Insights) ─────────────
+ * The server alert engine's events (data/alertEvents.js), the same list as the
+ * bell and the Notifications page, so every computer shows the same numbers.
+ */
+
+export const ALERT_DAY_MS = 24 * 3600 * 1000
+export const ALERT_WEEK_MS = 7 * ALERT_DAY_MS
+
+/**
+ * A Geo Zone speeding inside its grace time is only recorded (Low, already
+ * read, title "… · recorded"); it is history for the reports, not an alert.
+ */
+export const isRecordedOnly = e => / · recorded$/.test(e?.title ?? '')
+
+/**
+ * The server's events as the cards read them, newest first, cut to the
+ * Dashboard filter: `deviceIds` is null when the filter narrows nothing, and
+ * then events with no tracker (a driver's document expiry) count too.
+ */
+export function normalizeAlertEvents(rows, deviceIds = null) {
+  return (rows ?? [])
+    .filter(e => !isRecordedOnly(e))
+    .filter(e => !deviceIds || deviceIds.has(Number(e.deviceId)))
+    .map(e => ({
+      id: e.id,
+      ts: Date.parse(e.occurredAt),
+      type: e.type,
+      severity: e.severity,
+      read: !!e.readAt,
+      vehicleName: e.vehicle?.plateNo || e.vehicle?.fleetNo || e.vehicle?.imei || '',
+    }))
+    .filter(e => Number.isFinite(e.ts))
+    .sort((a, b) => b.ts - a.ts)
+}
+
+/**
+ * Alerts Overview: the last 24 h by the rules' own severity (Settings › Alerts:
+ * Low / Medium / High / Critical), and how many of the week's alerts someone
+ * on the team has read. Read is shared by the business group on the server.
+ */
+export function alertOverview(events, nowMs = Date.now()) {
+  const day = (events ?? []).filter(e => nowMs - e.ts < ALERT_DAY_MS)
+  const week = (events ?? []).filter(e => nowMs - e.ts < ALERT_WEEK_MS)
+  return {
+    critical: day.filter(e => e.severity === 'Critical').length,
+    high: day.filter(e => e.severity === 'High').length,
+    routine: day.filter(e => e.severity === 'Medium' || e.severity === 'Low').length,
+    acknowledged: week.filter(e => e.read).length,
+  }
+}
+
+/** Alert Markers: each alert type raised in the last 24 h, most first. */
+export function alertCategories(events, nowMs = Date.now()) {
+  const counts = new Map()
+  for (const e of events ?? []) {
+    if (nowMs - e.ts >= ALERT_DAY_MS) continue
+    counts.set(e.type, (counts.get(e.type) ?? 0) + 1)
+  }
+  return [...counts].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count || a.type.localeCompare(b.type))
+}
+
+/** Events of one type within `windowMs`, newest first. */
+export function recentOfType(events, type, windowMs, nowMs = Date.now()) {
+  return (events ?? []).filter(e => e.type === type && nowMs - e.ts < windowMs)
+}

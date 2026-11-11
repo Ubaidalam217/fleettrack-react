@@ -11,6 +11,7 @@ import { tripsByVehicle } from '../utils/usageReports'
 import {
   SAFETY_WEIGHTS, monthFigures, utilization, safetyScore, violationCounts, liveUptime, fleetScore,
   todayFigures, driveEfficiency, maintenanceFigures, expenseFigures, imeiSet, pctChange,
+  ALERT_WEEK_MS, normalizeAlertEvents,
 } from '../utils/dashboardStats'
 
 /**
@@ -75,6 +76,24 @@ function loadViolations(fromTs) {
   })
 }
 
+/**
+ * The last 7 days of alert events, newest first, for Alerts Overview, Alert
+ * Markers and AI Insights: one request, the same server list as the bell.
+ * The server returns the newest rows up to the cap, so the last 24 h stay
+ * whole even when a busy week is cut. Mock mode has no server: null, and those
+ * cards keep the browser engine's list.
+ */
+const ALERT_EVENT_CAP = 2000
+function loadAlertEvents() {
+  if (!IS_REAL) return Promise.resolve(null)
+  return cached('alertEvents', async () => {
+    const from = new Date(Date.now() - ALERT_WEEK_MS).toISOString()
+    const rows = await request('/api/alert-events', { query: { limit: ALERT_EVENT_CAP, from } })
+    const list = Array.isArray(rows) ? rows : []
+    return { rows: list, truncated: list.length >= ALERT_EVENT_CAP }
+  })
+}
+
 const loadReminders = () => (IS_REAL ? cached('reminders', () => reminderStatus()) : Promise.resolve(null))
 
 function loadExpenses(now) {
@@ -136,6 +155,7 @@ export function useDashboardStats(allVehicles, selectedVehicles) {
   const today = useLoad(() => fetchTodayMessages(allIds), [allKey], tick)
   const violations = useLoad(() => loadViolations(prevStart), [allKey, monthKey], tick)
   const reminders = useLoad(loadReminders, [allKey], tick)
+  const alertEvents = useLoad(loadAlertEvents, [allKey], tick)
   const expenses = useLoad(() => loadExpenses(now), [allKey, monthKey])
 
   // Cutting today into trips is the costly step, so it runs when today's
@@ -175,6 +195,11 @@ export function useDashboardStats(allVehicles, selectedVehicles) {
     // Trackers that answered at all in the last 24 h (the radar's Response).
     const responded = liveUptime(selected, Date.now() / 1000, 24 * 3600)
     const maintenance = reminders.value ? maintenanceFigures(reminders.value, imeis) : null
+    // Narrowed only when the filter narrows anything, like `imeis` above.
+    const alertIds = imeis ? idSet : null
+    const alerts = alertEvents.value
+      ? { events: normalizeAlertEvents(alertEvents.value.rows, alertIds), truncated: alertEvents.value.truncated }
+      : null
 
     return {
       loading: !!allKey && month.value === undefined,
@@ -195,6 +220,10 @@ export function useDashboardStats(allVehicles, selectedVehicles) {
       responded,
       efficiency: driveEfficiency(todayStats),
       maintenance,
+      // Real mode only (mock mode keeps the browser engine's list): undefined
+      // while loading, null when the server could not be read.
+      alerts: alertEvents.value === undefined ? undefined : alerts,
+      alertsError: alertEvents.error,
       expenses: expenses.value ? expenseFigures(expenses.value, now, 6, imeis) : null,
       expensesError: expenses.error,
       // Month figures only, so this month and last month compare like for like
@@ -205,5 +234,5 @@ export function useDashboardStats(allVehicles, selectedVehicles) {
     }
     // now/prev follow monthKey.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, prevMonth, todayTrips, today.error, violations, reminders, expenses, selectedVehicles, allVehicles, allKey, monthKey, watched])
+  }, [month, prevMonth, todayTrips, today.error, violations, reminders, alertEvents, expenses, selectedVehicles, allVehicles, allKey, monthKey, watched])
 }

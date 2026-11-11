@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   monthFigures, utilization, safetyScore, liveUptime, fleetScore, todayFigures,
   driveEfficiency, maintenanceFigures, expenseFigures, imeiSet, pctChange,
+  normalizeAlertEvents, alertOverview, alertCategories, recentOfType, isRecordedOnly,
 } from './dashboardStats.js'
 
 const dayArr = (vals, days = 30) => {
@@ -167,5 +168,45 @@ describe('pctChange', () => {
     expect(pctChange(150, 100)).toBe(50)
     expect(pctChange(50, 0)).toBeNull()
     expect(pctChange(null, 10)).toBeNull()
+  })
+})
+
+describe('alert events (Alerts Overview, Alert Markers, AI Insights)', () => {
+  const NOW = Date.parse('2026-11-11T18:00:00Z')
+  const at = h => new Date(NOW - h * 3600 * 1000).toISOString()
+  const rows = [
+    { id: 'a', occurredAt: at(1), type: 'overspeed', severity: 'Critical', readAt: null, deviceId: 1, vehicle: { plateNo: 'AD 1' }, title: 'Speed' },
+    { id: 'b', occurredAt: at(2), type: 'overspeed', severity: 'High', readAt: at(1), deviceId: 2, vehicle: { plateNo: 'AD 2' }, title: 'Speed' },
+    { id: 'c', occurredAt: at(3), type: 'idle', severity: 'Medium', readAt: null, deviceId: 1, vehicle: null, title: 'Idle' },
+    { id: 'd', occurredAt: at(5), type: 'geofence_speed', severity: 'Low', readAt: at(5), deviceId: 1, title: 'Zone · recorded' },
+    { id: 'e', occurredAt: at(30), type: 'ignition_on', severity: 'Low', readAt: at(29), deviceId: 2, title: 'On' },
+    { id: 'f', occurredAt: at(10), type: 'license_expiry', severity: 'High', readAt: null, deviceId: null, title: 'Licence' },
+  ]
+
+  it('drops recorded-only events and narrows to the filter only when asked', () => {
+    expect(isRecordedOnly(rows[3])).toBe(true)
+    const all = normalizeAlertEvents(rows)
+    expect(all.map(e => e.id)).toEqual(['a', 'b', 'c', 'f', 'e'])
+    expect(all[0]).toMatchObject({ vehicleName: 'AD 1', read: false, severity: 'Critical' })
+    expect(normalizeAlertEvents(rows, new Set([1])).map(e => e.id)).toEqual(['a', 'c'])
+  })
+
+  it('counts the last 24 h by severity and the week read', () => {
+    const o = alertOverview(normalizeAlertEvents(rows), NOW)
+    expect(o).toEqual({ critical: 1, high: 2, routine: 1, acknowledged: 2 })
+    expect(alertOverview([], NOW)).toEqual({ critical: 0, high: 0, routine: 0, acknowledged: 0 })
+  })
+
+  it('groups the last 24 h by type, most first', () => {
+    expect(alertCategories(normalizeAlertEvents(rows), NOW)).toEqual([
+      { type: 'overspeed', count: 2 }, { type: 'idle', count: 1 }, { type: 'license_expiry', count: 1 },
+    ])
+  })
+
+  it('picks one type within a window', () => {
+    const ev = normalizeAlertEvents(rows)
+    expect(recentOfType(ev, 'overspeed', 3600 * 1000 * 1.5, NOW).map(e => e.id)).toEqual(['a'])
+    expect(recentOfType(ev, 'idle', 3600 * 1000, NOW)).toEqual([])
+    expect(recentOfType(undefined, 'idle', 3600 * 1000, NOW)).toEqual([])
   })
 })

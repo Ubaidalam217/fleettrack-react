@@ -1,5 +1,7 @@
 import { useNotifications } from '../hooks/useNotifications'
+import { IS_REAL } from '../data/mode'
 import { computeAtRisk } from '../utils/fleetAnalytics'
+import { recentOfType } from '../utils/dashboardStats'
 
 const LAST_HOUR = 60 * 60 * 1000
 const LAST_24H  = 24 * 60 * 60 * 1000
@@ -51,7 +53,19 @@ const ICONS = {
   ),
 }
 
-// Every insight is read off recorded data: the alert store, the live feed and
+/**
+ * Over-speed and idle events as `{ vehicleName }`, newest first. Real mode:
+ * the server alert engine's events (types `overspeed` and `idle`, at each
+ * rule's own limit), the same list as the bell. Mock mode: the browser
+ * engine's stored alerts (`overspeed`, `high_idle`).
+ */
+function eventsOf(kind, windowMs, alerts, stats, now) {
+  if (IS_REAL) return recentOfType(stats?.alerts?.events, kind, windowMs, now)
+  const ruleId = kind === 'idle' ? 'high_idle' : kind
+  return alerts.filter(n => n.ruleId === ruleId && now - n.timestamp < windowMs)
+}
+
+// Every insight is read off recorded data: the alert events, the live feed and
 // the Dashboard's figures (hooks/useDashboardStats.js). None is a template.
 // Priority: 0 = critical, 1 = warning, 2 = info/success
 function buildInsights(alerts, fleetData, stats) {
@@ -62,7 +76,7 @@ function buildInsights(alerts, fleetData, stats) {
   const pool = []
 
   // ── Critical: overspeed events in the last 24 hours ───────────────────────
-  const overspeedAlerts = alerts.filter(n => n.ruleId === 'overspeed' && now - n.timestamp < LAST_24H)
+  const overspeedAlerts = eventsOf('overspeed', LAST_24H, alerts, stats, now)
   if (overspeedAlerts.length > 0) {
     const first = overspeedAlerts[0]
     const count = overspeedAlerts.length
@@ -70,7 +84,7 @@ function buildInsights(alerts, fleetData, stats) {
       priority: 0,
       type: 'critical',
       title: 'Overspeed Alert',
-      desc: `${count} overspeed event${count > 1 ? 's' : ''} in the last 24 hours. Most recent: ${first.vehicleName}.`,
+      desc: `${count} overspeed event${count > 1 ? 's' : ''} in the last 24 hours.${first.vehicleName ? ` Most recent: ${first.vehicleName}.` : ''}`,
     })
   }
 
@@ -86,7 +100,7 @@ function buildInsights(alerts, fleetData, stats) {
 
   // ── Warning: high idle detected in the last hour ──────────────────────────
   // Only shown when NOT already crowded by critical + at-risk warnings
-  const idleAlerts = alerts.filter(n => n.ruleId === 'high_idle' && now - n.timestamp < LAST_HOUR)
+  const idleAlerts = eventsOf('idle', LAST_HOUR, alerts, stats, now)
   if (idleAlerts.length > 0) {
     const first = idleAlerts[0]
     const count = idleAlerts.length
@@ -94,7 +108,7 @@ function buildInsights(alerts, fleetData, stats) {
       priority: 1,
       type: 'warning',
       title: 'High Idle Time Detected',
-      desc: `${first.vehicleName} engine running without movement (${count} event${count > 1 ? 's' : ''} in the last hour).`,
+      desc: `${first.vehicleName || 'A vehicle'} engine running without movement (${count} event${count > 1 ? 's' : ''} in the last hour).`,
     })
   }
 

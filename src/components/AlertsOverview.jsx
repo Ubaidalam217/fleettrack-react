@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useNotifications } from '../hooks/useNotifications'
+import { IS_REAL } from '../data/mode'
+import { alertOverview } from '../utils/dashboardStats'
 
 const ICON = {
   critical: (
@@ -27,11 +30,22 @@ const ICON = {
   ),
 }
 
-const ALERTS = [
+// Mock mode (the demo): the browser engine's own severities and read state.
+const LOCAL_ROWS = [
   { key: 'critical',    label: 'Critical',    sub: 'Require immediate action', color: '#ef4444', countColor: 'text-red-500',     bg: 'rgba(239,68,68,0.1)'   },
   { key: 'warning',     label: 'Warning',     sub: 'Requires attention',       color: '#f97316', countColor: 'text-orange-500',  bg: 'rgba(249,115,22,0.1)'  },
   { key: 'info',        label: 'Information', sub: 'FYI notifications',        color: 'var(--ft-accent)', countColor: 'text-blue-500',    bg: 'color-mix(in srgb, var(--ft-accent) 10%, transparent)'  },
   { key: 'resolved',    label: 'Resolved',    sub: 'In last 7 days',           color: '#10b981', countColor: 'text-emerald-500', bg: 'rgba(16,185,129,0.1)'  },
+]
+
+// Real mode: the server alert engine's events, by the severity each rule was
+// given under Settings › Alerts (Low / Medium / High / Critical). "Read" on
+// the server is shared by the business group, so it is "acknowledged".
+const SERVER_ROWS = [
+  { ...LOCAL_ROWS[0], sub: 'Critical rules, last 24 hours' },
+  { ...LOCAL_ROWS[1], label: 'High',           sub: 'High rules, last 24 hours' },
+  { ...LOCAL_ROWS[2], label: 'Medium / Low',   sub: 'Routine rules, last 24 hours' },
+  { ...LOCAL_ROWS[3], label: 'Acknowledged',   sub: 'Read by your team, last 7 days' },
 ]
 
 function useCountUp(target, duration = 1200) {
@@ -40,8 +54,9 @@ function useCountUp(target, duration = 1200) {
 
   useEffect(() => {
     const num = Math.round(target)
-    if (num === 0) return
     cancelAnimationFrame(rafRef.current)
+    // The 24 h window rolls, so a count can fall back to 0.
+    if (num === 0) { setCount(0); return }
     const start = performance.now()
     const tick = now => {
       const p    = Math.min((now - start) / duration, 1)
@@ -59,16 +74,37 @@ function useCountUp(target, duration = 1200) {
 const LAST_24H = 24 * 60 * 60 * 1000
 const LAST_7D  = 7  * 24 * 60 * 60 * 1000
 
-export default function AlertsOverview() {
+/** Mock mode: the browser engine's stored alerts. */
+function localCounts(alerts, now) {
+  return [
+    alerts.filter(n => n.severity === 'critical' && now - n.timestamp < LAST_24H).length,
+    alerts.filter(n => n.severity === 'warning'  && now - n.timestamp < LAST_24H).length,
+    alerts.filter(n => n.severity === 'info'     && now - n.timestamp < LAST_24H).length,
+    alerts.filter(n => n.read && now - n.timestamp < LAST_7D).length,
+  ]
+}
+
+/**
+ * @param {object} stats  hooks/useDashboardStats.js; `stats.alerts` holds the
+ *                        server's events in real mode (undefined while loading,
+ *                        null when they could not be read).
+ */
+export default function AlertsOverview({ stats }) {
+  const navigate = useNavigate()
   const { alerts } = useNotifications()
   const now = Date.now()
 
-  // Critical/Warning/Information map to the notification engine's real
-  // severities; Resolved counts alerts the team has acknowledged (read).
-  const criticalCount = alerts.filter(n => n.severity === 'critical' && now - n.timestamp < LAST_24H).length
-  const warningCount  = alerts.filter(n => n.severity === 'warning'  && now - n.timestamp < LAST_24H).length
-  const infoCount     = alerts.filter(n => n.severity === 'info'     && now - n.timestamp < LAST_24H).length
-  const resolvedCount = alerts.filter(n => n.read && now - n.timestamp < LAST_7D).length
+  const server = IS_REAL ? stats?.alerts : null
+  const rows = IS_REAL ? SERVER_ROWS : LOCAL_ROWS
+  let raw
+  if (!IS_REAL) raw = localCounts(alerts, now)
+  else if (server) {
+    const o = alertOverview(server.events, now)
+    raw = [o.critical, o.high, o.routine, o.acknowledged]
+  } else raw = [0, 0, 0, 0]
+  const [criticalCount, warningCount, infoCount, resolvedCount] = raw
+  // Loading, or the server could not be read: a dash, not a zero.
+  const known = !IS_REAL || !!server
 
   const c0 = useCountUp(criticalCount,  900)
   const c1 = useCountUp(warningCount,  1000)
@@ -81,13 +117,13 @@ export default function AlertsOverview() {
       <div className="ft-card-head">
         <div>
           <h3 className="ft-card-title">Alerts Overview</h3>
-          <p className="ft-card-sub">Active system alerts</p>
+          <p className="ft-card-sub">{IS_REAL ? 'Raised by your alert rules' : 'Active system alerts'}</p>
         </div>
-        <a href="#" className="ft-link shrink-0">View all</a>
+        <button onClick={() => navigate('/notifications')} className="ft-link shrink-0">View all</button>
       </div>
 
       <div className="flex flex-col gap-2.5 flex-1 justify-between">
-        {ALERTS.map((a, idx) => (
+        {rows.map((a, idx) => (
           <div
             key={a.label}
             className="flex items-center justify-between p-3"
@@ -111,7 +147,10 @@ export default function AlertsOverview() {
                 <div className="text-[10px]" style={{ color: 'var(--c-text3)' }}>{a.sub}</div>
               </div>
             </div>
-            <span className={`text-lg font-bold ${a.countColor}`}>{counts[idx]}</span>
+            <span className={`text-lg font-bold ${a.countColor}`}>
+              {known ? counts[idx] : '—'}
+              {known && idx === 3 && server?.truncated ? '+' : ''}
+            </span>
           </div>
         ))}
       </div>

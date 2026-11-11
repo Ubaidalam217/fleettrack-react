@@ -1,6 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import { useNotifications } from '../hooks/useNotifications'
+import { IS_REAL } from '../data/mode'
+import { useAlerts, alertTypeLabel } from '../data/settings'
+import { alertCategories } from '../utils/dashboardStats'
 
+// Mock mode (the demo): the browser engine's fixed rules.
 const ALERT_TYPES = [
   { key: 'overspeed',        label: 'Overspeed Events',  sub: '> 80 km/h threshold'  },
   { key: 'gps_lost',         label: 'GPS Signal Loss',   sub: 'No data > 15 min'     },
@@ -12,21 +16,47 @@ const ALERT_TYPES = [
 
 const LAST_24H = 24 * 60 * 60 * 1000
 
-export default function AlertMarkersCard() {
+/** Mock mode: the browser engine's alerts against its fixed rule list. */
+function localMarkers(alerts, now) {
+  // Scope counts to the last 24 hours; fuel_consumption has no rule yet so always 0
+  const recent = alerts.filter(n => now - n.timestamp < LAST_24H)
+  const countByRule = key => (key === 'fuel_consumption' ? 0 : recent.filter(n => n.ruleId === key).length)
+  return ALERT_TYPES.map(t => ({ ...t, cnt: countByRule(t.key) }))
+}
+
+/**
+ * Real mode: every alert type that is either raised in the last 24 h (server
+ * events, by the server's type names) or watched by an active rule under
+ * Settings › Alerts — most raised first, at most six. A type with no rule and
+ * no event is not shown: there is nothing behind it.
+ */
+const MAX_MARKERS = 6
+function serverMarkers(events, rules, now) {
+  const raised = alertCategories(events, now)
+  const byType = new Map(raised.map(r => [r.type, r.count]))
+  for (const r of rules ?? []) {
+    if (r.status === 'Active' && r.type && !byType.has(r.type)) byType.set(r.type, 0)
+  }
+  return [...byType]
+    .map(([type, cnt]) => ({ key: type, label: alertTypeLabel(type), sub: 'Rule active · none in 24h', cnt }))
+    .sort((a, b) => b.cnt - a.cnt || a.label.localeCompare(b.label))
+    .slice(0, MAX_MARKERS)
+}
+
+/** @param {object} stats  hooks/useDashboardStats.js (`stats.alerts`, real mode) */
+export default function AlertMarkersCard({ stats }) {
   const navigate    = useNavigate()
   const { alerts }  = useNotifications()
+  const rules       = useAlerts()
+  const now         = Date.now()
 
-  // Scope counts to the last 24 hours; fuel_consumption has no rule yet so always 0
-  const now    = Date.now()
-  const recent = alerts.filter(n => now - n.timestamp < LAST_24H)
-
-  function countByRule(key) {
-    if (key === 'fuel_consumption') return 0
-    return recent.filter(n => n.ruleId === key).length
-  }
-
-  const counts       = ALERT_TYPES.map(t => ({ ...t, cnt: countByRule(t.key) }))
+  const server  = IS_REAL ? stats?.alerts : null
+  const counts  = !IS_REAL ? localMarkers(alerts, now) : server ? serverMarkers(server.events, rules, now) : []
   const activeCount  = counts.filter(t => t.cnt > 0).length
+  const emptyText = !IS_REAL ? null
+    : stats?.alerts === undefined ? 'Loading alerts…'
+      : !server ? 'Alerts could not be loaded. They will be tried again shortly.'
+        : !counts.length ? 'No alert rules yet. Add them under Settings › Alerts.' : null
 
   return (
     <div className="ft-card">
@@ -45,12 +75,16 @@ export default function AlertMarkersCard() {
 
       <div className="flex items-center gap-2 mb-3">
         <span className="w-4 h-4 rounded-full bg-sky-500 text-white text-[10px] flex items-center justify-center font-semibold">
-          {activeCount > 0 ? activeCount : '6'}
+          {activeCount > 0 ? activeCount : IS_REAL ? 0 : '6'}
         </span>
         <span className="text-[13px] font-medium" style={{ color: 'var(--c-text2)' }}>
           {activeCount > 0 ? `${activeCount} Active Rule Categor${activeCount === 1 ? 'y' : 'ies'}` : 'Active Rule Categories'}
         </span>
       </div>
+
+      {emptyText && (
+        <p className="text-xs" style={{ color: 'var(--c-text3)' }}>{emptyText}</p>
+      )}
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-0">
         {counts.map((t, i) => (
