@@ -377,7 +377,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
         />
 
         <main className="flex-1 overflow-y-auto no-scrollbar" id="reports-main">
-          <div style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 16px 48px' }}>
+          <div style={{ padding: '20px 24px 48px' }}>
 
             {/* ── Page header ── */}
             <div className="report-screen-only" style={{ marginBottom: 16 }}>

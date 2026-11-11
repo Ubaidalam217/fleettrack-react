@@ -29,7 +29,7 @@ export default function ReportFrame({ title, desc, children, isDark, toggleTheme
         />
 
         <main className="flex-1 overflow-y-auto no-scrollbar" id="report-frame-main">
-          <div style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 16px 48px' }}>
+          <div style={{ padding: '20px 24px 48px' }}>
             <div className="report-screen-only" style={{ marginBottom: 16 }}>
               <ReportsBackLink />
               <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>{title}</h1>
