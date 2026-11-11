@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, FileSpreadsheet, Search, Settings2, X } from 'lucide-react'
+import { CheckCircle2, FileDown, FileSpreadsheet, Printer, Search, Settings2, X } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
+import PaperTable from '../../components/reports/PaperTable'
+import { ToolbarButton } from '../../components/reports/controls'
 import { PRIMARY_BTN, SECONDARY_BTN, CARD_SURFACE, inputStyle } from '../settings/formStyles'
 import ToastStack from '../../components/tracking/Toasts'
 import { useToasts } from '../../hooks/useToasts'
@@ -11,11 +13,14 @@ import { useSession } from '../../data/session'
 import { IS_REAL } from '../../data/mode'
 import { REMINDER_STATUS, REMINDER_TYPES, isRenewal, reminderStatus, markReminderDone } from '../../data/reminders'
 import { formatExpiryDate } from '../../utils/licenceExpiry'
-import { download, fileStamp } from '../../utils/reportExport'
+import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
+import { formatPrintDate } from '../../utils/movementReport'
 
 // Reports › Reminder › Reminder Status (client, 2026-11-10, after the reference
 // system): every vehicle on every reminder, worked out now — Overdue, Due,
-// Upcoming or Completed — and where a reminder is marked done.
+// Upcoming or Completed — and where a reminder is marked done. The list is on
+// the Movement Report's paper (client, 2026-11-11: every report in its theme);
+// the status cards and filters stay above it, on screen only.
 
 const CSS = `
 .rs-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
@@ -25,17 +30,10 @@ const CSS = `
 .rs-k{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:750;text-transform:uppercase;letter-spacing:.05em;color:var(--c-text3)}
 .rs-v{font-size:24px;font-weight:800;color:var(--c-text1);margin-top:4px}
 .rs-dot{width:8px;height:8px;border-radius:50%}
-.rs-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:1000px}
-.rs-table th{background:var(--c-thead);text-align:left;padding:10px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
-  color:var(--c-text3);white-space:nowrap;border-bottom:1px solid var(--c-border2)}
-.rs-table td{padding:10px 12px;border-bottom:1px solid var(--c-border2);color:var(--c-text1);vertical-align:middle}
-.rs-table tbody tr:hover{background:var(--c-hover)}
-.rs-sub{font-size:11px;color:var(--c-text3);margin-top:1px}
-.rs-pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:750;padding:3px 9px;border-radius:999px;white-space:nowrap}
-.rs-bar{height:6px;border-radius:99px;background:var(--c-progress);overflow:hidden;margin-top:5px;max-width:160px}
-.rs-bar i{display:block;height:100%;border-radius:99px}
 .rs-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:flex;align-items:center;justify-content:center;padding:16px}
 .rs-modal{width:min(460px,100%);background:var(--c-card);border:1px solid var(--c-border2);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:20px}
+.rs-done{padding:1px 8px;border:1px solid #0a7e9c;border-radius:4px;background:#fff;color:#0a7e9c;font:inherit;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.rs-done:hover{background:#e0f2f7}
 .rs-lbl{display:block;font-size:11.5px;font-weight:650;color:var(--c-text2);margin:12px 0 6px}
 @media (max-width: 800px){.rs-sum{grid-template-columns:repeat(2,minmax(0,1fr))}}
 `
@@ -43,48 +41,38 @@ const CSS = `
 const today = () => new Date().toLocaleDateString('en-CA')
 const n0 = v => Math.round(v).toLocaleString('en-US')
 
-function Pill({ status }) {
-  const s = REMINDER_STATUS[status]
-  return (
-    <span className="rs-pill" style={{ color: s.color, background: `color-mix(in srgb, ${s.color} 13%, transparent)` }}>
-      <span className="rs-dot" style={{ background: s.color }} aria-hidden="true" />{s.label}
-    </span>
-  )
-}
+// Paper columns: width is the on-screen share, pdf the export weight.
+const COLUMNS = [
+  { key: 'status',   label: 'Status',          width: '7%',  pdf: 6 },
+  { key: 'vehicle',  label: 'Vehicle',         width: '9%',  pdf: 8 },
+  { key: 'branch',   label: 'Branch',          width: '10%', pdf: 9 },
+  { key: 'reminder', label: 'Reminder',        width: '13%', pdf: 12 },
+  { key: 'type',     label: 'Type',            width: '11%', pdf: 10 },
+  { key: 'detail',   label: 'Where it stands', width: '17%', pdf: 17 },
+  { key: 'start',    label: 'Start',           width: '7%',  pdf: 7 },
+  { key: 'expiry',   label: 'Expiry',          width: '7%',  pdf: 7 },
+  { key: 'last',     label: 'Last Done',       width: '7%',  pdf: 7 },
+  { key: 'odometer', label: 'Odometer',        width: '8%',  pdf: 8, align: 'right' },
+]
+const ACTION = { key: 'action', label: 'Action', width: '7%', align: 'right' }
 
-/** How far through the cycle: the furthest basis, as a share. */
-function progressOf(row) {
-  let best = 0
-  for (const p of row.parts) {
-    if (p.basis === 'duration') continue
-    if (p.every) best = Math.max(best, p.used / p.every)
+/** One paper row per vehicle on a reminder; `action` is filled in on screen. */
+function paperRow(r) {
+  const hours = r.engineHours != null && r.parts.some(p => p.basis === 'engineHours') ? ` · ${r.engineHours} engine h` : ''
+  return {
+    key: `${r.ruleId}|${r.vehicle.id}`,
+    status: REMINDER_STATUS[r.status].label,
+    vehicle: r.vehicle.plateNo || r.vehicle.fleetNo || r.vehicle.imei,
+    branch: r.vehicle.branch?.name || r.bg?.name || '—',
+    reminder: `${r.ruleName}${r.active ? '' : ' (paused)'}`,
+    type: `${r.type} · ${r.recurring ? 'Recurring' : 'One Time'}`,
+    detail: r.status === 'completed' ? 'Done' : r.detail || '—',
+    start: formatExpiryDate(r.startDate),
+    expiry: r.expiryDate ? formatExpiryDate(r.expiryDate) : '—',
+    last: r.lastDoneAt ? formatExpiryDate(r.lastDoneAt) : '—',
+    odometer: r.odometer != null ? `${n0(r.odometer)} km${hours}` : '—',
+    cellStyle: { status: { color: REMINDER_STATUS[r.status].color, fontWeight: 700 } },
   }
-  return Math.min(1, best)
-}
-
-async function exportXlsx(rows) {
-  const ExcelJS = (await import('exceljs')).default
-  const wb = new ExcelJS.Workbook()
-  const ws = wb.addWorksheet('Reminder Status', { views: [{ state: 'frozen', ySplit: 1 }] })
-  ws.columns = [
-    { header: 'Business Group', key: 'bg', width: 22 }, { header: 'Branch', key: 'branch', width: 18 },
-    { header: 'Vehicle', key: 'vehicle', width: 16 }, { header: 'Reminder', key: 'name', width: 26 },
-    { header: 'Type', key: 'type', width: 16 }, { header: 'Schedule', key: 'schedule', width: 11 },
-    { header: 'Status', key: 'status', width: 11 }, { header: 'Detail', key: 'detail', width: 40 },
-    { header: 'Start Date', key: 'start', width: 12 }, { header: 'Last Done', key: 'last', width: 12 },
-    { header: 'Expiry Date', key: 'expiry', width: 12 }, { header: 'Odometer (km)', key: 'odo', width: 14 },
-    { header: 'Engine Hours', key: 'hours', width: 12 },
-  ]
-  ws.getRow(1).font = { bold: true }
-  for (const r of rows) {
-    ws.addRow({
-      bg: r.bg?.name, branch: r.vehicle.branch?.name || r.bg?.name, vehicle: r.vehicle.plateNo || r.vehicle.fleetNo || r.vehicle.imei,
-      name: r.ruleName, type: r.type, schedule: r.recurring ? 'Recurring' : 'One Time', status: REMINDER_STATUS[r.status].label,
-      detail: r.detail, start: r.startDate, last: r.lastDoneAt ?? '', expiry: r.expiryDate ?? '', odo: r.odometer ?? '', hours: r.engineHours ?? '',
-    })
-  }
-  const buffer = await wb.xlsx.writeBuffer()
-  download(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Reminder_Status_${fileStamp()}.xlsx`)
 }
 
 export default function ReminderStatusReport(props) {
@@ -123,6 +111,32 @@ export default function ReminderStatusReport(props) {
       && (!q || [r.ruleName, r.type, r.vehicle.plateNo, r.vehicle.fleetNo, r.vehicle.branch?.name].some(s => String(s ?? '').toLowerCase().includes(q))))
   }, [rows, filters.status, search])
 
+  const bgName = companies.find(c => String(c.id) === String(filters.bgId))?.name
+  const paperFilters = [
+    ['Business Group', bgName || 'All'],
+    ['Type', filters.type || 'All'],
+    ['Status', filters.status ? REMINDER_STATUS[filters.status].label : 'All'],
+    ...(search.trim() ? [['Search', search.trim()]] : []),
+  ]
+  // Worked out "now", so the stamp moves with each reload of the list.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const printDate = useMemo(() => formatPrintDate(), [rows])
+  const paperRows = useMemo(() => shown.map(paperRow), [shown])
+  const totalText = `Reminders ${shown.length}   ·   ${['overdue', 'due', 'upcoming', 'completed'].map(k => `${REMINDER_STATUS[k].label} ${shown.filter(r => r.status === k).length}`).join('   ·   ')}`
+  const exportOpts = () => ({
+    title: 'Reminder Status',
+    subtitle: 'FleetmaxX',
+    filtersText: paperFilters.map(([k, v]) => `${k}: ${v}`).join('     '),
+    printDate,
+    systemName: 'FleetmaxX',
+    tables: [{
+      heading: `All reminders — ${totalText}`,
+      columns: COLUMNS.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align })),
+      rows: paperRows,
+    }],
+  })
+  const fail = err => push(err.message || String(err), { tone: 'error' })
+
   const openDone = r => {
     setDone(r)
     setForm({ doneAt: today(), odometer: r.odometer != null ? String(Math.round(r.odometer)) : '', note: '', newExpiry: '' })
@@ -154,7 +168,7 @@ export default function ReminderStatusReport(props) {
         <div style={{ ...CARD_SURFACE, padding: 24, fontSize: 13, color: 'var(--c-text2)' }}>Reminders are kept on the server, so they are not available in demo mode.</div>
       ) : (
         <>
-          <div className="rs-sum">
+          <div className="rs-sum report-screen-only">
             {['overdue', 'due', 'upcoming', 'completed'].map(k => (
               <button key={k} type="button" className="rs-card" aria-pressed={filters.status === k}
                 onClick={() => setFilters(f => ({ ...f, status: f.status === k ? '' : k }))}>
@@ -164,7 +178,7 @@ export default function ReminderStatusReport(props) {
             ))}
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 14 }}>
+          <div className="report-screen-only" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 14, marginBottom: 12 }}>
             <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 300 }}>
               <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-text3)', pointerEvents: 'none' }} />
               <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Vehicle, reminder or branch" aria-label="Search"
@@ -187,69 +201,34 @@ export default function ReminderStatusReport(props) {
             </select>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
               <Link to="/settings/reminder-rule" style={{ ...SECONDARY_BTN, height: 38, textDecoration: 'none' }}><Settings2 size={14} /> Reminder rules</Link>
-              <button type="button" onClick={() => exportXlsx(shown).catch(err => push(err.message, { tone: 'error' }))} disabled={!shown.length}
-                style={{ ...SECONDARY_BTN, height: 38, opacity: shown.length ? 1 : 0.55 }}><FileSpreadsheet size={15} /> Excel</button>
+              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Reminder_Status').catch(fail)} icon={FileDown} primary disabled={!shown.length}>Download PDF</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Reminder_Status').catch(fail)} icon={FileSpreadsheet} disabled={!shown.length}>Download Excel</ToolbarButton>
+              <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!shown.length}>Print</ToolbarButton>
             </div>
           </div>
 
-          <div style={{ ...CARD_SURFACE, overflow: 'hidden', marginTop: 12 }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="rs-table">
-                <thead>
-                  <tr>
-                    <th>Status</th><th>Vehicle</th><th>Reminder</th><th>Where it stands</th><th>Start</th><th>Last done</th>
-                    <th style={{ textAlign: 'right' }}>Odometer</th>{canWrite && <th style={{ textAlign: 'right' }}>Action</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows === null ? (
-                    <tr><td colSpan={8} style={{ padding: 36, textAlign: 'center', color: 'var(--c-text3)' }}>Working out reminders…</td></tr>
-                  ) : shown.length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: 36, textAlign: 'center', color: 'var(--c-text3)' }}>
-                      {rows.length ? 'Nothing matches these filters.' : <>No reminders yet. Set one up under <Link to="/settings/reminder-rule">Settings › Master › Reminder Rule</Link>.</>}
-                    </td></tr>
-                  ) : shown.map(r => {
-                    const pct = progressOf(r)
-                    return (
-                      <tr key={`${r.ruleId}|${r.vehicle.id}`}>
-                        <td><Pill status={r.status} /></td>
-                        <td>
-                          <div style={{ fontWeight: 700 }}>{r.vehicle.plateNo || r.vehicle.fleetNo || r.vehicle.imei}</div>
-                          <div className="rs-sub">{r.vehicle.branch?.name || r.bg?.name}</div>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 650 }}>{r.ruleName}</div>
-                          <div className="rs-sub">{r.type} · {r.recurring ? 'Recurring' : 'One Time'}{r.active ? '' : ' · paused'}</div>
-                        </td>
-                        <td>
-                          <div>{r.status === 'completed' ? 'Done' : r.detail || '—'}</div>
-                          {pct > 0 && r.status !== 'completed' && (
-                            <div className="rs-bar" aria-hidden="true"><i style={{ width: `${pct * 100}%`, background: REMINDER_STATUS[r.status].color }} /></div>
-                          )}
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>{formatExpiryDate(r.startDate)}{r.expiryDate && <div className="rs-sub">expires {formatExpiryDate(r.expiryDate)}</div>}</td>
-                        <td style={{ whiteSpace: 'nowrap' }}>{r.lastDoneAt ? formatExpiryDate(r.lastDoneAt) : '—'}</td>
-                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          {r.odometer != null ? `${n0(r.odometer)} km` : '—'}
-                          {r.engineHours != null && r.parts.some(p => p.basis === 'engineHours') && <div className="rs-sub">{r.engineHours} engine h</div>}
-                        </td>
-                        {canWrite && (
-                          <td style={{ textAlign: 'right' }}>
-                            {r.status !== 'completed' && (
-                              <button type="button" onClick={() => openDone(r)} style={{ ...SECONDARY_BTN, height: 32, padding: '0 12px', fontSize: 12 }}>
-                                <CheckCircle2 size={14} /> Mark done
-                              </button>
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--c-text3)' }}>
+          {rows === null ? (
+            <div style={{ ...CARD_SURFACE, padding: 36, textAlign: 'center', fontSize: 13, color: 'var(--c-text3)' }}>Working out reminders…</div>
+          ) : (
+            <PaperTable
+              title="Reminder Status"
+              company="FleetmaxX"
+              filters={paperFilters}
+              columns={canWrite ? [...COLUMNS, ACTION] : COLUMNS}
+              groups={[{
+                key: 'all', label: `All reminders (${shown.length})`, total: totalText,
+                rows: paperRows.map((row, i) => ({
+                  ...row,
+                  action: canWrite && shown[i].status !== 'completed' ? (
+                    <button type="button" className="rs-done" onClick={() => openDone(shown[i])}>Mark done</button>
+                  ) : '',
+                })),
+              }]}
+              printDate={printDate}
+              emptyText={rows.length ? 'Nothing matches these filters.' : <>No reminders yet. Set one up under <Link to="/settings/reminder-rule">Settings › Master › Reminder Rule</Link>.</>}
+            />
+          )}
+          <div className="report-screen-only" style={{ marginTop: 10, fontSize: 11.5, color: 'var(--c-text3)' }}>
             Odometer from the tracker; engine hours counted by FleetmaxX from ignition-on time. History: <Link to="/reports/reminder-history">Acknowledgement History</Link>.
           </div>
         </>

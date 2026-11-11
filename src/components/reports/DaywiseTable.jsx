@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUp, ArrowDown } from 'lucide-react'
+import { BAND_BLUE, TOTAL_YEL, ZEBRA_GRAY, INK, RULE } from './PaperTable'
 
 /**
  * The daywise grid: identity columns, a Total, then one column per day.
@@ -7,27 +8,19 @@ import { ArrowUp, ArrowDown } from 'lucide-react'
  * One component for both reports. Daywise Work Hour and Daywise Distance differ
  * only in their identity columns (Object, vs Company + Vehicle), their cell
  * formatter and their heading — everything that is actually hard here, the
- * sticky-column geometry, the sort, the heat scale and the totals row, is the
+ * sticky-column geometry, the sort and the totals row, is the
  * same table twice. `columns` carries the difference.
  *
- * ── Colour ──────────────────────────────────────────────────────────────────
+ * ── Look ────────────────────────────────────────────────────────────────────
  *
- * The client's reference is solid corporate blue, including a block of solid
- * blue for the days that have not happened yet. Both are replaced by theme
- * tokens so the grid reads correctly in light and dark:
- *
- *   value cells   a wash of --ft-accent whose alpha tracks the value against
- *                 the busiest cell in the table, so a month's shape is legible
- *                 at a glance without reading 31 numbers per row
- *   zero          --c-text3, no wash: present and measured, just nothing to say
- *   future days   --c-card2 with a dimmed label — the day has not happened, so
- *                 the cell is empty by definition rather than a measured zero
- *
- * Alpha tops out well below solid: these are numbers to be read, and a cell dark
- * enough to fight its own text is a worse table than an unshaded one.
+ * The Movement Report's paper (client, 2026-11-11: every report in its theme):
+ * white sheet, blue header row, zebra rows, totals on the total yellow. Days that
+ * have not happened yet are a light grey block — empty by definition, not a
+ * measured zero. The paper's title block, filter band and footer come from
+ * PaperTable's PaperHead / PaperFoot, wrapped round this grid by DaywisePage.
  */
 
-const MAX_WASH = 26 // percent of --ft-accent on the busiest cell
+const GRID = '#d1d5db' // the light cell rules a 31-column grid needs to stay readable
 
 /**
  * Fitting the month on screen. The client asked for no horizontal scroll, so
@@ -47,86 +40,73 @@ const CSS = `
     position: relative;
     overflow: auto;
     scrollbar-width: none;
-    background: var(--c-card);
-    border: 1px solid var(--c-border);
-    border-radius: 12px;
+    background: #fff;
   }
   .dw {
     border-collapse: separate;
     border-spacing: 0;
-    font-size: 11.5px;
+    font-size: 11px;
     white-space: nowrap;
     min-width: 100%;
+    color: ${INK};
   }
   .dw th, .dw td {
-    border-bottom: 1px solid var(--c-border2);
-    border-right: 1px solid var(--c-border2);
-    padding: 7px 9px;
+    border-bottom: 1px solid ${GRID};
+    border-right: 1px solid ${GRID};
+    padding: 3px 6px;
+    background: #fff;
   }
+  .dw tbody tr:nth-child(even) td { background: ${ZEBRA_GRAY}; }
   .dw thead th {
     position: sticky;
     top: 0;
     z-index: 2;
-    background: var(--c-thead);
-    color: var(--c-text2);
+    background: ${BAND_BLUE};
+    color: ${INK};
     font-weight: 700;
-    font-size: 10.5px;
-    letter-spacing: .02em;
+    font-size: 11px;
     text-align: center;
-    border-bottom: 1px solid var(--c-border);
+    border-top: 1px solid ${INK};
+    border-bottom: 1px solid ${INK};
   }
   /* Sticky identity columns. Their left offset is set inline — it depends on
      the widths of the columns before them, which only the variant knows. */
   .dw .dw-fix {
     position: sticky;
     z-index: 1;
-    background: var(--c-card);
-    color: var(--c-text1);
     text-align: left;
-    /* The seam where the frozen columns end. A plain border disappears under
-       the scrolled cells, so the divider is a shadow that paints over them. */
   }
-  .dw thead .dw-fix { z-index: 3; background: var(--c-thead); }
-  .dw .dw-fix-last { box-shadow: 1px 0 0 var(--c-border); }
+  .dw thead .dw-fix { z-index: 3; }
+  /* The seam where the frozen columns end: a plain border disappears under the
+     scrolled cells, so the divider is a shadow that paints over them. */
+  .dw .dw-fix-last { box-shadow: 1px 0 0 ${RULE}; }
 
-  .dw tbody tr:hover td { background: var(--c-hover); }
-  .dw tbody tr:hover td.dw-fix { background: var(--c-hover); }
+  .dw td.dw-day { text-align: right; font-variant-numeric: tabular-nums; }
+  .dw td.dw-zero { color: #6b7280; }
+  .dw tbody td.dw-future, .dw tfoot td.dw-future { background: #f2f2f2; color: transparent; }
+  .dw th.dw-future { color: #4b5563; }
 
-  .dw td.dw-day { text-align: right; font-variant-numeric: tabular-nums; color: var(--c-text1); }
-  .dw td.dw-zero { color: var(--c-text3); }
-  .dw td.dw-future { background: var(--c-card2); color: transparent; }
-  .dw th.dw-future { color: var(--c-text3); opacity: .55; }
-
-  .dw td.dw-total {
-    text-align: right;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    color: var(--c-text1);
-    background: color-mix(in srgb, var(--ft-accent) 7%, var(--c-card));
-  }
-  .dw tbody tr:hover td.dw-total { background: color-mix(in srgb, var(--ft-accent) 12%, var(--c-card)); }
+  .dw tbody td.dw-total { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; background: ${TOTAL_YEL}; }
 
   .dw tfoot td {
     position: sticky;
     bottom: 0;
     z-index: 2;
-    background: var(--c-thead);
+    background: ${TOTAL_YEL};
     font-weight: 700;
-    color: var(--c-text1);
-    border-top: 1px solid var(--c-border);
+    border-top: 1px solid ${INK};
     font-variant-numeric: tabular-nums;
   }
-  .dw tfoot td.dw-fix { z-index: 4; background: var(--c-thead); }
+  .dw tfoot td.dw-fix { z-index: 4; }
 
   .dw-sort {
     display: inline-flex; align-items: center; gap: 4px;
     background: none; border: none; padding: 0; margin: 0;
     font: inherit; color: inherit; cursor: pointer;
   }
-  .dw-sort:hover { color: var(--ft-accent); }
-  .dw-sort[data-on="true"] { color: var(--ft-accent); }
+  .dw-sort:hover, .dw-sort[data-on="true"] { color: #0a7e9c; }
 
-  .dw-sub { display: block; font-size: 10px; color: var(--c-text3); font-weight: 500; }
+  .dw-sub { display: block; font-size: 10px; color: #4b5563; font-weight: 500; }
 
   /* Fit mode: a fixed layout sharing the width, day cells sized by the inline
      font, identity cells cut with an ellipsis rather than pushing days out. */
@@ -143,11 +123,10 @@ const CSS = `
   /* Print: the app chrome is dropped by the page, and the grid loses its
      scroller so every day column lands on paper. */
   @media print {
-    .dw-wrap { overflow: visible; border: none; }
+    .dw-wrap { overflow: visible; }
     .dw { font-size: 7.5px; }
     .dw th, .dw td { padding: 2px 3px; }
     .dw .dw-fix, .dw thead th, .dw tfoot td { position: static; box-shadow: none; }
-    .dw td.dw-future { background: #f2f2f2; }
   }
 `
 
@@ -194,20 +173,6 @@ export default function DaywiseTable({
     return out
   }, [columns])
 
-  // One scale for the whole table, not per row: the point of the wash is to
-  // compare days across vehicles, and a per-row scale would make every vehicle's
-  // best day look identical regardless of size.
-  const peak = useMemo(() => {
-    let max = 0
-    for (const r of rows) {
-      for (let d = 1; d <= days; d++) {
-        const v = valueOf(r, d)
-        if (v > max) max = v
-      }
-    }
-    return max
-  }, [rows, days, valueOf])
-
   const dayTotals = useMemo(() => {
     const out = new Array(days + 1).fill(0)
     for (const r of rows) for (let d = 1; d <= days; d++) out[d] += valueOf(r, d)
@@ -243,14 +208,6 @@ export default function DaywiseTable({
     if (dayFont < MIN_FONT) return null
     return { dayFont, footFont: Math.max(7, fontFor(footChars)) }
   }, [wrapW, rows, days, lastElapsed, format, valueOf, dayTotals, columns])
-
-  const wash = v => {
-    if (!peak || v <= 0) return undefined
-    // sqrt, not linear: most days cluster low, and a linear ramp leaves all of
-    // them indistinguishable from zero.
-    const pct = Math.max(2, Math.round(MAX_WASH * Math.sqrt(v / peak)))
-    return `color-mix(in srgb, var(--ft-accent) ${pct}%, var(--c-card))`
-  }
 
   return (
     <div className="dw-wrap" ref={wrapRef}>
@@ -305,7 +262,6 @@ export default function DaywiseTable({
                   <td
                     key={d}
                     className={`dw-day${future ? ' dw-future' : v > 0 ? '' : ' dw-zero'}`}
-                    style={!future && v > 0 ? { background: wash(v) } : undefined}
                   >
                     {future ? '' : format(v)}
                   </td>
@@ -316,7 +272,7 @@ export default function DaywiseTable({
 
           {rows.length === 0 && (
             <tr>
-              <td colSpan={columns.length + days} style={{ padding: 36, textAlign: 'center', color: 'var(--c-text3)' }}>
+              <td colSpan={columns.length + days} style={{ padding: 28, textAlign: 'center', color: '#6b7280' }}>
                 No vehicles match the current filter.
               </td>
             </tr>

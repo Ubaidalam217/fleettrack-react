@@ -19,27 +19,29 @@ import { formatPrintDate } from './movementReport'
 
 // ── geometry (A4 landscape, points) ────────────────────────────────────────
 
-const PAGE = { w: 841.89, h: 595.28 }
-const MARGIN = 14
-const BORDER = { x: MARGIN, y: MARGIN, w: PAGE.w - MARGIN * 2, h: PAGE.h - MARGIN * 2 }
+// The Movement Report PDF's page, title block, filter band and footer
+// (reportExport.js), so a downloaded daywise sheet is in the same theme
+// (client, 2026-11-11).
+const BORDER = { x: 13.15, y: 12.65, w: 815.75, h: 545.95 }
 
-const TITLE_Y = 34
-const SUB_Y = 47
-const BAND_Y = 55
-const BAND_H = 17
-const HEAD_Y = 78
+const BAND_Y = 55.4
+const BAND_H = 17.55
+const HEAD_Y = BAND_Y + BAND_H + 1
 const HEAD_H = 16
-const BODY_TOP = 94
-const ROW_H = 13
-const BODY_BOTTOM = PAGE.h - MARGIN - 20
-const FOOTER_Y = PAGE.h - MARGIN - 7
+const BODY_TOP = HEAD_Y + HEAD_H
+const ROW_H = 11
+const BODY_BOTTOM = 556
+const FOOTER_Y = 568.8
 
 const DAY_FONT = 6
 
 const BAND_BLUE = [176, 196, 222]
-const ZEBRA_GRAY = [238, 240, 243]
+const ZEBRA_GRAY = [230, 230, 230]
 const FUTURE_GRAY = [226, 228, 232]
-const TOTAL_TINT = [222, 236, 220]
+const TOTAL_TINT = [255, 255, 192] // the Movement paper's total yellow
+
+/** The filter band, in the order the paper shows it. */
+const BAND_FILTERS = meta => [['Month', meta.monthLabel], ['Selection', meta.selection], ['Company', meta.bgLabel]]
 
 /** Identity columns get the left of the page; days share what is left. */
 function layout(columns, days) {
@@ -61,7 +63,7 @@ function layout(columns, days) {
 
 export async function buildDaywisePdf(model, meta) {
   const [{ jsPDF }] = await Promise.all([import('jspdf'), loadLogo()])
-  const { rows, days, lastElapsed, columns, format, valueOf } = model
+  const { rows, days, lastElapsed, columns, format, valueOf, totalOf } = model
   const printDate = meta.printDate ?? formatPrintDate()
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
@@ -78,6 +80,12 @@ export async function buildDaywisePdf(model, meta) {
       widest = Math.max(widest, doc.getTextWidth(format(valueOf(row, d))))
     }
   }
+  // The Total line's day sums are the widest numbers on the sheet.
+  if (totalOf) {
+    for (let d = 1; d <= lastElapsed && d <= days; d++) {
+      widest = Math.max(widest, doc.getTextWidth(format(rows.reduce((a, r) => a + (valueOf(r, d) || 0), 0))))
+    }
+  }
   const room = dayW - 3
   const dayFont = widest > room ? DAY_FONT * (room / widest) : DAY_FONT
 
@@ -89,23 +97,24 @@ export async function buildDaywisePdf(model, meta) {
     doc.setDrawColor(0, 0, 0)
 
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(15)
-    doc.text(meta.title, BORDER.x + 9, TITLE_Y)
+    doc.setFontSize(16.1)
+    doc.text(meta.title, 23.15, 34.85)
 
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7.2)
-    doc.text(meta.monthLabel, BORDER.x + 9, SUB_Y)
+    doc.setFontSize(7.15)
+    doc.text('FleetmaxX', 23.15, 48.6)
 
     drawLogo(doc)
 
-    // Filter band.
+    // Filter band — the Movement band's "Key  :  Value" cells, three across.
     doc.setFillColor(...BAND_BLUE)
     doc.setLineWidth(1)
     doc.rect(BORDER.x, BAND_Y, BORDER.w, BAND_H, 'FD')
     doc.setFontSize(7)
-    doc.text(`Selection :  ${meta.selection}`, BORDER.x + 9, BAND_Y + 11)
-    doc.text(`Company :  ${meta.bgLabel}`, BORDER.x + 300, BAND_Y + 11)
-    doc.text(`Month :  ${meta.monthLabel}`, BORDER.x + 620, BAND_Y + 11)
+    const cellW = (BORDER.w - 20) / 3
+    BAND_FILTERS(meta).forEach(([k, v], i) => {
+      doc.text(doc.splitTextToSize(`${k}  :  ${v ?? ''}`, cellW - 12)[0] ?? '', 23.15 + i * cellW, BAND_Y + 10.7)
+    })
 
     // Header band.
     doc.setFillColor(...BAND_BLUE)
@@ -113,10 +122,10 @@ export async function buildDaywisePdf(model, meta) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(6.6)
     for (const c of idCols) {
-      doc.text(c.label, c.x + 4, HEAD_Y + 11, { maxWidth: c.w - 6 })
+      doc.text(c.label, c.x + 4, HEAD_Y + 10.5, { maxWidth: c.w - 6 })
     }
     for (let d = 1; d <= days; d++) {
-      doc.text(String(d), dayX + dayW * (d - 0.5), HEAD_Y + 11, { align: 'center' })
+      doc.text(String(d), dayX + dayW * (d - 0.5), HEAD_Y + 10.5, { align: 'center' })
     }
 
     doc.setLineWidth(1)
@@ -124,9 +133,10 @@ export async function buildDaywisePdf(model, meta) {
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7)
-    doc.text(`Print Date : ${printDate}`, BORDER.x + 6, FOOTER_Y)
-    doc.text('FleetmaxX', PAGE.w / 2, FOOTER_Y, { align: 'center' })
-    doc.text(String(pageNo), BORDER.x + BORDER.w - 6, FOOTER_Y, { align: 'right' })
+    doc.text('Print Date : ', 19.4, FOOTER_Y)
+    doc.text(String(printDate), 67.4, FOOTER_Y)
+    doc.text('FleetmaxX', 407.1, FOOTER_Y)
+    doc.text(String(pageNo), 825.5, FOOTER_Y, { align: 'right' })
   }
 
   const startPage = () => {
@@ -162,8 +172,8 @@ export async function buildDaywisePdf(model, meta) {
       }
       doc.setFont('helvetica', isTotal ? 'bold' : 'normal')
       const text = String(c.get(row) ?? '')
-      if (c.align === 'right') doc.text(text, c.x + c.w - 4, y + 9, { align: 'right', maxWidth: c.w - 6 })
-      else doc.text(text, c.x + 4, y + 9, { maxWidth: c.w - 6 })
+      if (c.align === 'right') doc.text(text, c.x + c.w - 4, y + 7.9, { align: 'right', maxWidth: c.w - 6 })
+      else doc.text(text, c.x + 4, y + 7.9, { maxWidth: c.w - 6 })
     })
 
     doc.setFont('helvetica', 'normal')
@@ -171,11 +181,39 @@ export async function buildDaywisePdf(model, meta) {
     for (let d = 1; d <= lastElapsed && d <= days; d++) {
       const v = valueOf(row, d)
       doc.setTextColor(...(v > 0 ? [0, 0, 0] : [150, 150, 150]))
-      doc.text(format(v), dayX + dayW * d - 2, y + 9, { align: 'right' })
+      doc.text(format(v), dayX + dayW * d - 2, y + 7.9, { align: 'right' })
     }
 
     y += ROW_H
   })
+
+  // The Total line the screen ends on, on the total yellow, then END OF REPORT.
+  if (totalOf && rows.length) {
+    if (y + ROW_H + 12 > BODY_BOTTOM) startPage()
+    doc.setFillColor(...TOTAL_TINT)
+    doc.setDrawColor(0, 0, 0)
+    doc.setLineWidth(1)
+    doc.rect(BORDER.x, y, BORDER.w, ROW_H, 'FD')
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.6)
+    idCols.forEach((c, i) => {
+      const text = c.key === 'total' ? format(rows.reduce((a, r) => a + (totalOf(r) || 0), 0)) : i === 0 ? `Total (${rows.length})` : ''
+      if (c.align === 'right') doc.text(text, c.x + c.w - 4, y + 7.9, { align: 'right', maxWidth: c.w - 6 })
+      else doc.text(text, c.x + 4, y + 7.9, { maxWidth: c.w - 6 })
+    })
+    doc.setFontSize(dayFont)
+    for (let d = 1; d <= lastElapsed && d <= days; d++) {
+      doc.text(format(rows.reduce((a, r) => a + (valueOf(r, d) || 0), 0)), dayX + dayW * d - 2, y + 7.9, { align: 'right' })
+    }
+    y += ROW_H
+  }
+  y += 4
+  if (y + 9.25 > BODY_BOTTOM) startPage()
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7)
+  doc.setTextColor(0, 0, 0)
+  doc.text('END OF REPORT', BORDER.x + BORDER.w / 2, y + 7.7, { align: 'center' })
 
   return doc
 }
@@ -197,7 +235,7 @@ function fill(argb) {
 
 export async function exportDaywiseExcel(model, meta) {
   const ExcelJS = (await import('exceljs')).default
-  const { rows, days, lastElapsed, columns, format, valueOf } = model
+  const { rows, days, lastElapsed, columns, format, valueOf, totalOf } = model
   const printDate = meta.printDate ?? formatPrintDate()
 
   const wb = new ExcelJS.Workbook()
@@ -224,14 +262,17 @@ export async function exportDaywiseExcel(model, meta) {
   const mergeRow = r => ws.mergeCells(`A${r}:${colLetter(lastCol)}${r}`)
 
   const title = ws.addRow([meta.title])
-  title.getCell(1).font = { bold: true, size: 15 }
+  title.getCell(1).font = { bold: true, size: 16 }
   mergeRow(title.number)
 
-  const sub = ws.addRow([meta.monthLabel])
+  const sub = ws.addRow(['FleetmaxX'])
   sub.getCell(1).font = { size: 9 }
   mergeRow(sub.number)
 
-  const band = ws.addRow([`Selection :  ${meta.selection}`, '', `Company :  ${meta.bgLabel}`])
+  const third = Math.max(1, Math.floor(lastCol / 3))
+  const bandCells = Array(lastCol).fill('')
+  BAND_FILTERS(meta).forEach(([k, v], i) => { bandCells[i * third] = `${k} :  ${v ?? ''}` })
+  const band = ws.addRow(bandCells)
   for (let c = 1; c <= lastCol; c++) {
     band.getCell(c).fill = fill('FFB0C4DE')
     band.getCell(c).font = { size: 9 }
@@ -270,13 +311,34 @@ export async function exportDaywiseExcel(model, meta) {
     for (let c = 1; c <= columns.length; c++) {
       if (columns[c - 1].key === 'total') {
         r.getCell(c).font = { size: 9, bold: true }
-        r.getCell(c).fill = fill('FFDEECDE')
+        r.getCell(c).fill = fill('FFFFFFC0')
         r.getCell(c).alignment = { horizontal: 'right' }
       }
     }
   }
 
+  if (totalOf && rows.length) {
+    const sum = f => rows.reduce((a, r) => a + (f(r) || 0), 0)
+    const cells = [
+      ...columns.map((c, i) => (c.key === 'total' ? format(sum(totalOf)) : i === 0 ? `Total (${rows.length})` : '')),
+      ...Array.from({ length: days }, (_, i) => {
+        const d = i + 1
+        if (d > lastElapsed) return ''
+        const v = sum(r => valueOf(r, d))
+        return meta.numeric ? Number(v.toFixed(2)) : format(v)
+      }),
+    ]
+    const r = ws.addRow(cells)
+    for (let c = 1; c <= lastCol; c++) {
+      r.getCell(c).fill = fill('FFFFFFC0')
+      r.getCell(c).font = { size: 9, bold: true }
+      if (c > 1) r.getCell(c).alignment = { horizontal: 'right' }
+    }
+  }
+
   ws.addRow([])
+  const end = ws.addRow(['END OF REPORT'])
+  end.getCell(1).font = { bold: true, size: 9 }
   const stamp = ws.addRow([`Print Date : ${printDate}`, '', 'FleetmaxX'])
   stamp.font = { size: 8 }
 

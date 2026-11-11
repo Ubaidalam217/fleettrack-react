@@ -3,6 +3,8 @@ import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle, Search } from 'lu
 import Sidebar from '../../components/Sidebar'
 import Header from '../../components/Header'
 import DaywiseTable from '../../components/reports/DaywiseTable'
+import { PaperHead, PaperFoot, PaperSheet } from '../../components/reports/PaperTable'
+import { formatPrintDate } from '../../utils/movementReport'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, visibleColumns } from '../../utils/reportColumns'
 import {
@@ -248,7 +250,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
         onProgress: p => setProgress(p),
       })
       const selected = vehicles.filter(v => effectiveIds.includes(v.id))
-      setReport({ ...rowsFromDerived(derived, selected, year, monthNo), capped })
+      setReport({ ...rowsFromDerived(derived, selected, year, monthNo), capped, printDate: formatPrintDate() })
     } catch (err) {
       if (!isAbortError(err)) setError(err.message || String(err))
     } finally {
@@ -309,7 +311,6 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
   const columns = useMemo(() => visibleColumns(allColumns, hiddenCols), [allColumns, hiddenCols])
 
   const reportTitle = useReportTitle(V.title)
-  const title = `${reportTitle} — ${monthLabel(year, monthNo)}`
   const lastElapsed = lastElapsedDay(year, monthNo)
   const days = daysInMonth(year, monthNo)
 
@@ -319,8 +320,9 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
     exportName: reportTitle === V.title ? V.exportName : fileNameOf(reportTitle),
     selection: selectionLabel,
     bgLabel,
+    printDate: report?.printDate,
   }
-  const exportModel = { rows: visibleRows, days, lastElapsed, columns, format: V.format, valueOf: V.valueOf }
+  const exportModel = { rows: visibleRows, days, lastElapsed, columns, format: V.format, valueOf: V.valueOf, totalOf: V.totalOf }
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ backgroundColor: 'var(--c-page)' }}>
@@ -466,7 +468,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
             )}
 
             {report && (
-              <div id="daywise-paper">
+              <div>
                 <div className="report-screen-only" style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   gap: 12, flexWrap: 'wrap', marginBottom: 12,
@@ -493,22 +495,28 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
                   </div>
                 </div>
 
-                {/* Print-only title, so the sheet says which report and month it
-                    is once the app chrome is hidden. */}
-                <h2 className="daywise-print-title" style={{ display: 'none' }}>{title}</h2>
-
-                <DaywiseTable
-                  columns={columns}
-                  rows={visibleRows}
-                  days={days}
-                  lastElapsed={lastElapsed}
-                  valueOf={V.valueOf}
-                  totalOf={V.totalOf}
-                  format={V.format}
-                  dayLabel={V.dayLabel}
-                  sort={sort}
-                  onSort={onSort}
-                />
+                {/* The Movement Report's paper (client, 2026-11-11): title block,
+                    blue filter band, the grid, END OF REPORT. */}
+                <PaperSheet id="daywise-paper">
+                  <PaperHead
+                    title={reportTitle}
+                    company="FleetmaxX"
+                    filters={[['Month', monthLabel(year, monthNo)], ['Selection', selectionLabel], ['Company', bgLabel]]}
+                  />
+                  <DaywiseTable
+                    columns={columns}
+                    rows={visibleRows}
+                    days={days}
+                    lastElapsed={lastElapsed}
+                    valueOf={V.valueOf}
+                    totalOf={V.totalOf}
+                    format={V.format}
+                    dayLabel={V.dayLabel}
+                    sort={sort}
+                    onSort={onSort}
+                  />
+                  <PaperFoot printDate={report.printDate} />
+                </PaperSheet>
               </div>
             )}
 
@@ -538,7 +546,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
           #daywise-paper { position: absolute !important; left: 0; top: 0; width: 100%; }
           #daywise-main { overflow: visible !important; }
           .report-screen-only { display: none !important; }
-          .daywise-print-title { display: block !important; font-size: 13px; font-weight: 700; margin: 0 0 6px; }
+          #daywise-paper { border: 0 !important; }
           aside, header { display: none !important; }
           thead { display: table-header-group; }
           tr { break-inside: avoid; }

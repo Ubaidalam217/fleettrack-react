@@ -19,12 +19,63 @@
  *   the way the client's Ctrack MaXx reports end.
  */
 
-const BAND_BLUE  = '#b0c4de'
-const GROUP_GRAY = '#c0c0c0'
-const TOTAL_YEL  = '#ffffc0'
-const ZEBRA_GRAY = '#e6e6e6'
-const INK        = '#111827'
-const RULE       = '#9ca3af'
+export const BAND_BLUE  = '#b0c4de'
+export const GROUP_GRAY = '#c0c0c0'
+export const TOTAL_YEL  = '#ffffc0'
+export const ZEBRA_GRAY = '#e6e6e6'
+export const INK        = '#111827'
+export const RULE       = '#9ca3af'
+
+/**
+ * The paper's title block and blue filter band — exported so a report whose
+ * table is not a PaperTable (the daywise grid) still opens the same way.
+ */
+export function PaperHead({ title, company, filters = [] }) {
+  return (
+    <>
+      <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 19, fontWeight: 700, color: INK, lineHeight: 1.2 }}>{title}</div>
+          {company && <div style={{ fontSize: 11, color: INK, marginTop: 3 }}>{company}</div>}
+        </div>
+        <img src="/logo/fleetmax-logo-sea.png" alt="FleetmaxX" style={{ height: 26, width: 'auto' }} />
+      </div>
+
+      {filters.length > 0 && (
+        <div style={{
+          background: BAND_BLUE, borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`,
+          padding: '6px 16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '2px 16px',
+          fontSize: 11, color: INK,
+        }}>
+          {filters.map(([k, v]) => (
+            <div key={k} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${k} : ${v}`}>
+              {k}&nbsp;&nbsp;:&nbsp;&nbsp;{v}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+/** The paper's footer: print date, system name, END OF REPORT. */
+export function PaperFoot({ printDate }) {
+  return (
+    <div style={{
+      borderTop: `1px solid ${RULE}`, padding: '7px 16px', display: 'flex',
+      justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: INK,
+    }}>
+      <span>Print Date : {printDate}</span>
+      <span>FleetmaxX</span>
+      <span style={{ fontWeight: 700 }}>END OF REPORT</span>
+    </div>
+  )
+}
+
+/** The white sheet itself; `#report-paper` is what ReportFrame prints. */
+export function PaperSheet({ id = 'report-paper', children }) {
+  return <div id={id} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--c-border)', overflow: 'hidden' }}>{children}</div>
+}
 
 const cell = { padding: '3px 6px', fontSize: 11, color: INK, verticalAlign: 'top', lineHeight: 1.35 }
 
@@ -52,28 +103,8 @@ export default function PaperTable({ title, company, filters = [], columns: give
   })
 
   return (
-    <div id="report-paper" style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--c-border)', overflow: 'hidden' }}>
-      <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 19, fontWeight: 700, color: INK, lineHeight: 1.2 }}>{title}</div>
-          {company && <div style={{ fontSize: 11, color: INK, marginTop: 3 }}>{company}</div>}
-        </div>
-        <img src="/logo/fleetmax-logo-sea.png" alt="FleetmaxX" style={{ height: 26, width: 'auto' }} />
-      </div>
-
-      {filters.length > 0 && (
-        <div style={{
-          background: BAND_BLUE, borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`,
-          padding: '6px 16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '2px 16px',
-          fontSize: 11, color: INK,
-        }}>
-          {filters.map(([k, v]) => (
-            <div key={k} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${k} : ${v}`}>
-              {k}&nbsp;&nbsp;:&nbsp;&nbsp;{v}
-            </div>
-          ))}
-        </div>
-      )}
+    <PaperSheet>
+      <PaperHead title={title} company={company} filters={filters} />
 
       <div className="no-scrollbar" style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 980 }}>
@@ -151,14 +182,7 @@ export default function PaperTable({ title, company, filters = [], columns: give
         </div>
       )}
 
-      <div style={{
-        borderTop: `1px solid ${RULE}`, padding: '7px 16px', display: 'flex',
-        justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: INK,
-      }}>
-        <span>Print Date : {printDate}</span>
-        <span>FleetmaxX</span>
-        <span style={{ fontWeight: 700 }}>END OF REPORT</span>
-      </div>
-    </div>
+      <PaperFoot printDate={printDate} />
+    </PaperSheet>
   )
 }

@@ -27,6 +27,7 @@ import {
 } from '../../utils/geoZoneExport'
 import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
 import ReportsBackLink from '../../components/reports/ReportsBackLink'
+import { PaperHead, PaperFoot, PaperSheet, BAND_BLUE, GROUP_GRAY, ZEBRA_GRAY, INK, RULE } from '../../components/reports/PaperTable'
 import { useReportTitle } from '../../components/reports/useReportTitle'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, columnChoices } from '../../utils/reportColumns'
@@ -90,26 +91,23 @@ function presetRange(key, now = new Date()) {
 
 // ── on-screen table ──────────────────────────────────────────────────────────
 
-function GeoZoneTable({ columns: all, hidden, rows, emptyText }) {
+// The Movement Report's paper look (client, 2026-11-11): blue header row,
+// silver heading bar, zebra rows, dark ink.
+const GZ_CELL = { padding: '3px 6px', fontSize: 11, color: INK, lineHeight: 1.35 }
+
+function GeoZoneTable({ columns: all, hidden, rows, emptyText, heading }) {
   const columns = hidden?.size ? all.filter(c => !hidden.has(c.key)) : all
   if (!columns.length) return null
-  if (!rows || rows.length === 0) {
-    return (
-      <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12.5, color: 'var(--c-text3)' }}>
-        {emptyText || 'No rows for this selection.'}
-      </div>
-    )
-  }
   return (
-    <div style={{ overflowX: 'auto', border: '1px solid var(--c-border)', borderRadius: 10 }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 11.5, whiteSpace: 'nowrap' }}>
+    <div className="no-scrollbar" style={{ overflowX: 'auto' }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', whiteSpace: 'nowrap' }}>
         <thead>
-          <tr style={{ background: 'var(--c-card2, var(--c-card))' }}>
+          <tr>
             {columns.map(c => (
               <th key={c.key} style={{
-                position: 'sticky', top: 0, background: 'var(--c-card2, var(--c-card))',
-                textAlign: c.align === 'right' ? 'right' : 'left', padding: '8px 10px',
-                borderBottom: '1px solid var(--c-border)', color: 'var(--c-text2)', fontWeight: 700,
+                ...GZ_CELL, position: 'sticky', top: 0, zIndex: 1, background: BAND_BLUE, fontWeight: 700,
+                textAlign: c.align === 'right' ? 'right' : 'left',
+                borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`,
               }}>
                 {c.label}
               </th>
@@ -117,13 +115,19 @@ function GeoZoneTable({ columns: all, hidden, rows, emptyText }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} style={{ background: i % 2 ? 'var(--c-hover)' : 'transparent' }}>
+          {heading && (
+            <tr style={{ background: GROUP_GRAY }}>
+              <td colSpan={columns.length} style={{ ...GZ_CELL, fontWeight: 700, borderTop: `1px solid ${RULE}` }}>{heading}</td>
+            </tr>
+          )}
+          {!rows || rows.length === 0 ? (
+            <tr><td colSpan={columns.length} style={{ ...GZ_CELL, padding: '28px 16px', textAlign: 'center', color: '#6b7280', whiteSpace: 'normal' }}>
+              {emptyText || 'No rows for this selection.'}
+            </td></tr>
+          ) : rows.map((row, i) => (
+            <tr key={i} style={{ background: i % 2 ? ZEBRA_GRAY : '#fff' }}>
               {columns.map(c => (
-                <td key={c.key} style={{
-                  padding: '7px 10px', textAlign: c.align === 'right' ? 'right' : 'left',
-                  color: 'var(--c-text1)', borderBottom: '1px solid var(--c-border)',
-                }}>
+                <td key={c.key} style={{ ...GZ_CELL, textAlign: c.align === 'right' ? 'right' : 'left' }}>
                   {row[c.key]}
                 </td>
               ))}
@@ -323,6 +327,11 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
     rangeLabel: applied
       ? `${formatDateTime(applied.fromTs)} – ${formatDateTime(applied.toTs)} · ${applied.vehicleSelectionLabel} · dwell ${dwellSec}s / merge ${mergeGapSec}s`
       : '',
+    // The PDF's blue filter band, cell by cell — the same as the paper's.
+    pairs: applied ? [
+      ['From', formatDateTime(applied.fromTs)], ['To', formatDateTime(applied.toTs)],
+      ['Vehicles', applied.vehicleSelectionLabel], ['Dwell / merge', `${dwellSec}s / ${mergeGapSec}s`],
+    ] : [],
   }), [applied, dwellSec, mergeGapSec])
 
   const EXPORTERS = {
@@ -576,52 +585,63 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                   </div>
                 </div>
 
-                <div id="geozone-report-paper" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <PaperSheet id="geozone-report-paper">
+                  <PaperHead
+                    title={SUB_REPORTS.find(r => r.key === activeTab)?.label}
+                    company="FleetmaxX"
+                    filters={[
+                      ['From', applied ? formatDateTime(applied.fromTs) : '—'],
+                      ['To', applied ? formatDateTime(applied.toTs) : '—'],
+                      ['Vehicles', applied?.vehicleSelectionLabel ?? '—'],
+                      ['Dwell / merge', `${dwellSec}s / ${mergeGapSec}s`],
+                    ]}
+                  />
                   {activeTab === 'trip' && (
                     <>
+                      <GeoZoneTable hidden={hiddenCols} columns={TRIP_COLUMNS} rows={tripRows} />
                       <SummaryCards cards={[
                         ['Distance (km)', tripReport.summary.distanceKm], ['Running', tripReport.summary.runningSec],
                         ['Idle', tripReport.summary.idleSec], ['Stop', tripReport.summary.stopSec],
                         ['Inactive', tripReport.summary.inactiveSec], ['Fuel Consumed', tripReport.summary.fuelConsumed],
                       ]} />
-                      <GeoZoneTable hidden={hiddenCols} columns={TRIP_COLUMNS} rows={tripRows} />
                     </>
                   )}
                   {activeTab === 'visited' && (
                     <>
+                      <GeoZoneTable hidden={hiddenCols} heading="Overview" columns={VISITED_OVERVIEW_COLUMNS} rows={visitedReport.vehicleRows} emptyText="No visited geofences for this selection." />
+                      <GeoZoneTable hidden={hiddenCols} heading="Details" columns={[{ key: 'vehicle', label: 'Vehicle', width: 1 }, ...VISITED_DETAIL_COLUMNS]} rows={visitedDetailRows} />
                       <SummaryCards cards={[
                         ['No of Visits', visitedReport.summary.noOfVisits],
                         ['Geofence Duration', visitedReport.summary.geofenceDuration],
                         ['Geofence Outside Duration', visitedReport.summary.geofenceOutsideDuration],
                       ]} />
-                      <GeoZoneTable hidden={hiddenCols} columns={VISITED_OVERVIEW_COLUMNS} rows={visitedReport.vehicleRows} emptyText="No visited geofences for this selection." />
-                      <GeoZoneTable hidden={hiddenCols} columns={[{ key: 'vehicle', label: 'Vehicle', width: 1 }, ...VISITED_DETAIL_COLUMNS]} rows={visitedDetailRows} />
                     </>
                   )}
                   {activeTab === 'address' && (
                     <>
-                      <SummaryCards cards={[['Total Visits', addressReport.rows.length]]} />
                       <GeoZoneTable hidden={hiddenCols} columns={ADDRESS_VISITS_COLUMNS} rows={addressReport.rows} emptyText="No address visits for this selection." />
+                      <SummaryCards cards={[['Total Visits', addressReport.rows.length]]} />
                     </>
                   )}
                   {activeTab === 'history' && (
                     <>
+                      <GeoZoneTable hidden={hiddenCols} heading="Summary" columns={HISTORY_SUMMARY_COLUMNS} rows={historyReport.groups} emptyText="No geofence history for this selection." />
+                      <GeoZoneTable hidden={hiddenCols} heading="Details" columns={HISTORY_DETAIL_COLUMNS} rows={historyDetailRows} />
                       <SummaryCards cards={[['Geofence×Vehicle Pairs', historyReport.groups.length]]} />
-                      <GeoZoneTable hidden={hiddenCols} columns={HISTORY_SUMMARY_COLUMNS} rows={historyReport.groups} emptyText="No geofence history for this selection." />
-                      <GeoZoneTable hidden={hiddenCols} columns={HISTORY_DETAIL_COLUMNS} rows={historyDetailRows} />
                     </>
                   )}
                   {activeTab === 'g2g' && (
                     <>
+                      <GeoZoneTable hidden={hiddenCols} heading="Overview" columns={G2G_OVERVIEW_COLUMNS} rows={g2gReport.vehicleRows} emptyText="No geofence-to-geofence trips for this selection." />
+                      <GeoZoneTable hidden={hiddenCols} heading="Details" columns={G2G_DETAIL_COLUMNS} rows={g2gReport.perVehiclePages.flatMap(p => p.rows)} />
                       <SummaryCards cards={[
                         ['No of Trips', g2gReport.summary.noOfTrips], ['Distance (km)', g2gReport.summary.distanceKm],
                         ['Running', g2gReport.summary.running], ['Stop', g2gReport.summary.stop], ['Inactive', g2gReport.summary.inactive],
                       ]} />
-                      <GeoZoneTable hidden={hiddenCols} columns={G2G_OVERVIEW_COLUMNS} rows={g2gReport.vehicleRows} emptyText="No geofence-to-geofence trips for this selection." />
-                      <GeoZoneTable hidden={hiddenCols} columns={G2G_DETAIL_COLUMNS} rows={g2gReport.perVehiclePages.flatMap(p => p.rows)} />
                     </>
                   )}
-                </div>
+                  <PaperFoot printDate={exportMeta.printDate} />
+                </PaperSheet>
               </>
             )}
 
@@ -650,6 +670,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
           #geozone-report-paper, #geozone-report-paper * { visibility: visible !important; }
           #geozone-report-paper { position: absolute !important; left: 0; top: 0; width: 100%; }
           #geozone-report-main { overflow: visible !important; }
+          #geozone-report-paper { border: 0 !important; }
           .report-screen-only { display: none !important; }
           aside, header { display: none !important; }
           thead { display: table-header-group; }
@@ -662,15 +683,10 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
 
 function SummaryCards({ cards }) {
   return (
-    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+    <div style={{ borderTop: `1px solid ${INK}`, padding: '8px 16px 10px', display: 'flex', flexWrap: 'wrap', gap: '4px 28px', fontSize: 11.5, color: INK }}>
+      <span style={{ fontWeight: 700 }}>Report Summary:</span>
       {cards.map(([label, value]) => (
-        <div key={label} style={{
-          background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 10,
-          padding: '10px 14px', minWidth: 120,
-        }}>
-          <div style={{ fontSize: 10.5, color: 'var(--c-text3)', fontWeight: 600 }}>{label}</div>
-          <div style={{ fontSize: 15, color: 'var(--c-text1)', fontWeight: 700, marginTop: 3 }}>{value}</div>
-        </div>
+        <span key={label}><b>{label}:</b> {value}</span>
       ))}
     </div>
   )

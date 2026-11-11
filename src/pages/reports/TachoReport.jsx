@@ -491,7 +491,7 @@ function TachoData({ raw, vehicles, intervalSec, addressMode, V }) {
       heading: `${g.label} — ${g.total}`,
       columns: shownCols.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, hrefKey: c.locate ? 'mapUrl' : undefined })),
       // Day bands become a row whose first cell carries the text.
-      rows: g.rows.map(r => (r.kind === 'band' ? { [shownCols[0].key]: r.label } : r)),
+      rows: g.rows, // date/total bands print as the Movement PDF's yellow bands
     })),
   })
 
