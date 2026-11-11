@@ -1,28 +1,28 @@
-import { computeUptime } from '../../../utils/fleetAnalytics'
 import { ShieldIcon, PulseIcon, WrenchIcon, DropIcon, RocketIcon } from './icons'
 
 /**
- * Vehicle Uptime comes straight from live telemetry (% of fleet that sent
- * data in the last 15 min). Scheduled maintenance, fuel burn, safety events
- * and trip completion have no Flespi data source on this plan, so they are
- * flagged `estimated` — the gauge renders an asterisk and FOOTNOTE explains it.
+ * The five readings along the gauge, all recorded (hooks/useDashboardStats.js):
+ *   Safety Score     this month's speeding / harsh-driving / idle alerts per 100 km
+ *   Vehicle Uptime   share of vehicles that reported in the last 15 minutes
+ *   Maintenance Due  vehicles with a due or overdue reminder (Reminders module)
+ *   Fuel Efficiency  no tracker reports fuel yet (probe 2026-11-09) — "-"
+ *   Trips Today      trips driven today, cut as the Trip reports cut them
+ * A reading with nothing behind it shows "-", never a stand-in number.
  *
- * Order is left-to-right along the arc, matching the previous gauge's fixed
- * angles (safety 158deg, uptime 130, maintenance 90, fuel 50, trips 22).
+ * Order is left-to-right along the arc.
  */
-export function buildFleetMetrics(fleetData) {
-  const vehicles = fleetData?.vehicles ?? []
-  const uptime = vehicles.length > 0 ? String(computeUptime(vehicles)) : '-'
-
+export function buildFleetMetrics(stats) {
+  const show = v => (Number.isFinite(v) ? String(v) : '-')
+  // With no reminder rules there is nothing to be due — "-", not a reassuring 0.
+  const due = stats?.maintenance?.rules ? stats.maintenance.dueVehicles : null
   return [
-    { label: 'Safety Score',    value: '96.5', unit: '%',    icon: <ShieldIcon />, estimated: true  },
-    { label: 'Vehicle Uptime',  value: uptime, unit: '%',    icon: <PulseIcon />,  estimated: false },
-    { label: 'Maintenance Due', value: '2',    unit: 'veh',  icon: <WrenchIcon />, estimated: true  },
-    // No tracker reports fuel yet (probe 2026-11-09), so no number rather than a made-up one.
-    { label: 'Fuel Efficiency', value: '-',    unit: 'km/L', icon: <DropIcon />,   estimated: false },
-    { label: 'Trips On-time',   value: '83',   unit: '%',    icon: <RocketIcon />, estimated: true  },
+    { label: 'Safety Score',    value: show(stats?.safety),                   unit: '/100',  icon: <ShieldIcon /> },
+    { label: 'Vehicle Uptime',  value: show(stats?.uptime),                   unit: '%',     icon: <PulseIcon />  },
+    { label: 'Maintenance Due', value: show(due), unit: 'veh',   icon: <WrenchIcon /> },
+    { label: 'Fuel Efficiency', value: '-',                                   unit: 'km/L',  icon: <DropIcon />   },
+    { label: 'Trips Today',     value: show(stats?.today?.trips),             unit: 'trips', icon: <RocketIcon /> },
   ]
 }
 
 export const FLEET_GAUGE_FOOTNOTE =
-  '* Estimated: fuel, safety and trip telemetry require Phase 2 backend integration'
+  'Fleet score: this month’s safety score and vehicle use, averaged'

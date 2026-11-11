@@ -1,7 +1,23 @@
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts'
-import { computeFleetMetrics } from '../utils/fleetMetrics'
 
-const AXES = ['Uptime', 'Efficiency', 'Safety', 'Response', 'Activity', 'Maintenance']
+/**
+ * The fleet's recorded figures on one chart (hooks/useDashboardStats.js):
+ *   Uptime       vehicles that reported in the last 15 minutes
+ *   Utilization  vehicle-days this month on which the vehicle drove
+ *   Safety       this month's alerts per 100 km, as a 0-100 score
+ *   Efficiency   moving share of today's engine-on time (the rest is idling)
+ *   Maintenance  reminders not due or overdue (only with reminder rules set)
+ * An axis with nothing recorded behind it is left out rather than guessed.
+ */
+function axesOf(stats) {
+  return [
+    ['Uptime', stats?.uptime],
+    ['Utilization', stats?.utilization],
+    ['Safety', stats?.safety],
+    ['Efficiency', stats?.efficiency],
+    ['Maintenance', stats?.maintenance?.compliance],
+  ].filter(([, v]) => Number.isFinite(v)).map(([name, value]) => ({ metric: `${name} ${value}`, value }))
+}
 
 // ClyHealth AgePanel dot style: filled highlight for top value, dark-fill ring for rest
 function ClyDot({ cx, cy, payload }) {
@@ -12,12 +28,10 @@ function ClyDot({ cx, cy, payload }) {
   return <circle key={payload.metric} cx={cx} cy={cy} r={3} fill="#0b1f44" stroke="#5eb8ff" strokeWidth={2} />
 }
 
-export default function FleetPerformanceRadar({ fleetData, heroMode = false }) {
-  const metrics = computeFleetMetrics(fleetData)
-  const data = AXES.map(metric => ({
-    metric,
-    value: metrics[metric.toLowerCase()] ?? 60,
-  }))
+export default function FleetPerformanceRadar({ stats, heroMode = false }) {
+  const data = axesOf(stats)
+  // A radar needs three corners; with fewer the chart would be a line.
+  const enough = data.length >= 3
 
   // In the hero the radar gets the same glass treatment as the Trips card on
   // the opposite side, so the two flanks of the gauge read as a matched pair.
@@ -46,14 +60,16 @@ export default function FleetPerformanceRadar({ fleetData, heroMode = false }) {
         Fleet Performance
       </h3>
       <p style={{ fontSize: 10, lineHeight: 1.35, color: 'rgba(255,255,255,0.55)', margin: '0 0 6px' }}>
-        Multi-axis health across 6 dimensions
+        {enough
+          ? `Recorded figures across ${data.length} dimensions, 0-100`
+          : stats?.loading ? 'Loading fleet figures…' : 'Not enough recorded data yet'}
       </p>
 
       {/* In the hero the chart grows to fill the row, so the title lines up
           with the top of the cards either side and the block has no dead
           space under it. Standalone it keeps its fixed height. */}
       <div style={heroMode ? { flex: '1 1 auto', minHeight: 170 } : { height: 220 }}>
-        <ResponsiveContainer width="100%" height="100%">
+        {enough && <ResponsiveContainer width="100%" height="100%">
           <RadarChart
             data={data}
             outerRadius="84%"
@@ -93,7 +109,7 @@ export default function FleetPerformanceRadar({ fleetData, heroMode = false }) {
               dot={<ClyDot />}
             />
           </RadarChart>
-        </ResponsiveContainer>
+        </ResponsiveContainer>}
       </div>
     </div>
   )

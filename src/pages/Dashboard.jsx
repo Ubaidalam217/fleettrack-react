@@ -15,13 +15,12 @@ import VehicleActivity       from '../components/VehicleActivity'
 import LiveMap               from '../components/LiveMap'
 import AIInsights            from '../components/AIInsights'
 import VehicleStatus         from '../components/VehicleStatus'
-import DriverPerformance     from '../components/DriverPerformance'
 import AlertsOverview        from '../components/AlertsOverview'
 import FuelEnergy            from '../components/FuelEnergy'
 import TripAnalysis          from '../components/TripAnalysis'
 import CostSummary           from '../components/CostSummary'
 import { useFlespiData }     from '../hooks/useFlespiData'
-import { computeHealthScore } from '../utils/healthScore'
+import { useDashboardStats } from '../hooks/useDashboardStats'
 
 // ── Widget registry ────────────────────────────────────────────────────────
 const WIDGET_LIST = [
@@ -65,11 +64,7 @@ function recomputeData(data, vehicleIds) {
   const inactive    = vehicles.filter(v => v.status === 'Inactive').length
   const noData      = vehicles.filter(v => v.status === 'NoData').length
   const active      = running + idle
-  const partial     = { total, active, running, idle, stopped, inactive, noData, vehicles,
-    totalTrips: running * 3 + stopped,
-    totalDistance: running * 85 + stopped * 12,
-  }
-  return { ...partial, healthScore: computeHealthScore(partial) }
+  return { total, active, running, idle, stopped, inactive, noData, vehicles }
 }
 
 // ── Inline SVGs ────────────────────────────────────────────────────────────
@@ -253,6 +248,9 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, appliedIds ? appliedIds.join(',') : null]
   )
+
+  // Distance, trips, safety, reminders and costs — every card's recorded figures.
+  const stats = useDashboardStats(data?.vehicles, filteredData?.vehicles)
 
   const panelVehicles = useMemo(() => {
     if (!data?.vehicles) return []
@@ -446,24 +444,24 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
 
               {/* Row 2 */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 items-stretch">
-                {W('fleetHealth',     <FleetHealthScore isDark={isDark} fleetData={filteredData} loading={loading} />)}
-                {W('vehicleActivity', <VehicleActivity  isDark={isDark} vehicleCount={filteredData?.total ?? 0} />)}
+                {W('fleetHealth',     <FleetHealthScore isDark={isDark} fleetData={filteredData} loading={loading} score={stats.score} />)}
+                {W('vehicleActivity', <VehicleActivity  isDark={isDark} stats={stats} />)}
                 {W('liveMap',         <LiveMap fleetData={filteredData} loading={loading} />)}
-                {W('aiInsights',      <AIInsights fleetData={filteredData} />)}
+                {W('aiInsights',      <AIInsights fleetData={filteredData} stats={stats} />)}
               </div>
 
               {/* Row 3 */}
               <div className="grid grid-cols-1 gap-4">
                 {W('vehicleStatus',  <VehicleStatus vehicles={filteredData?.vehicles} loading={loading} />)}
-                {W('driverPerf',     <DriverPerformance />)}
+                {W('driverPerf',     <TopDriversPanel />)}
                 {W('alertsOverview', <AlertsOverview />)}
               </div>
 
               {/* Row 4 */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3 items-stretch">
                 {W('fuelEnergy',   <FuelEnergy   isDark={isDark} />)}
-                {W('tripAnalysis', <TripAnalysis isDark={isDark} />)}
-                {W('costSummary',  <CostSummary  isDark={isDark} />)}
+                {W('tripAnalysis', <TripAnalysis isDark={isDark} stats={stats} />)}
+                {W('costSummary',  <CostSummary  isDark={isDark} stats={stats} />)}
               </div>
             </div>
 
@@ -510,7 +508,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                     (radar centred, gauge bottom-anchored, Trips card filling). */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.42fr) minmax(0, 1fr)', alignItems: 'stretch', gap: 24, position: 'relative', zIndex: 1 }}>
                   <div className="min-w-0 flex">
-                    {W('fleetRadar', <FleetPerformanceRadar fleetData={filteredData} heroMode />, 'w-full min-w-0', true)}
+                    {W('fleetRadar', <FleetPerformanceRadar stats={stats} heroMode />, 'w-full min-w-0', true)}
                   </div>
                   {/* alignItems:flex-end drops the gauge onto the row's bottom
                       edge, so the flat base of the semicircle lines up with the
@@ -524,15 +522,18 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                   >
                     {W('fleetHealth', (
                       <FleetGauge
-                        percentile={(loading && !filteredData) ? 0 : computeHealthScore(filteredData)}
-                        title="Your fleet performance"
-                        metrics={buildFleetMetrics(filteredData)}
+                        percentile={stats.score ?? 0}
+                        empty={!Number.isFinite(stats.score)}
+                        valueLabel="Fleet score"
+                        ordinal={false}
+                        title="This month, out of 100"
+                        metrics={buildFleetMetrics(stats)}
                         footnote={FLEET_GAUGE_FOOTNOTE}
                       />
                     ), 'w-full min-w-0', true)}
                   </div>
                   <div className="min-w-0 flex">
-                    {W('fleetTrend', <FleetTripsCard fleetData={filteredData} />, 'w-full min-w-0', true)}
+                    {W('fleetTrend', <FleetTripsCard fleetData={filteredData} stats={stats} />, 'w-full min-w-0', true)}
                   </div>
                 </div>
 
@@ -545,14 +546,14 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               {/* Score+Alerts (4) | Composition (4) | Maintenance (4) */}
               <div className="grid grid-cols-12 gap-5 items-stretch">
                 <div className="col-span-4 min-w-0 flex flex-col gap-5">
-                  {W('fleetScore',   <FleetScoreCard fleetData={filteredData} loading={loading} />)}
+                  {W('fleetScore',   <FleetScoreCard stats={stats} />)}
                   {W('alertMarkers', <AlertMarkersCard />)}
                 </div>
                 <div className="col-span-4 min-w-0 flex">
                   {W('fleetComposition', <FleetCompositionCard fleetData={filteredData} loading={loading} />)}
                 </div>
                 <div className="col-span-4 min-w-0 flex">
-                  {W('maintenanceScore', <MaintenanceScoreCard fleetData={filteredData} loading={loading} />)}
+                  {W('maintenanceScore', <MaintenanceScoreCard fleetData={filteredData} loading={loading} stats={stats} />)}
                 </div>
               </div>
 
@@ -565,14 +566,14 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
               {/* Vehicle Status | AI Insights | Alerts Overview */}
               <div className="grid grid-cols-3 gap-5 items-stretch">
                 {W('vehicleStatus',  <VehicleStatus vehicles={filteredData?.vehicles} loading={loading} />)}
-                {W('aiInsights',     <AIInsights fleetData={filteredData} />)}
+                {W('aiInsights',     <AIInsights fleetData={filteredData} stats={stats} />)}
                 {W('alertsOverview', <AlertsOverview />)}
               </div>
 
               {/* Trip Analysis | Cost Summary | Fuel & Energy */}
               <div className="grid grid-cols-3 gap-5 items-stretch">
-                {W('tripAnalysis', <TripAnalysis isDark={isDark} />)}
-                {W('costSummary',  <CostSummary  isDark={isDark} />)}
+                {W('tripAnalysis', <TripAnalysis isDark={isDark} stats={stats} />)}
+                {W('costSummary',  <CostSummary  isDark={isDark} stats={stats} />)}
                 {W('fuelEnergy',   <FuelEnergy   isDark={isDark} />)}
               </div>
             </div>

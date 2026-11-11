@@ -142,12 +142,18 @@ function useSweep(target, duration) {
  *                    left-to-right along the arc. `estimated` appends the
  *                    "*" marker explained by `footnote`.
  * @param footnote    Small italic line under the gauge. Omit to hide it.
+ * @param valueLabel  Word under the number ("Percentile" by default).
+ * @param ordinal     Whether the number reads as a rank (62nd) or a plain score.
+ * @param empty       Show "—" instead of a number (nothing to score yet).
  */
 export default function FleetGauge({
   percentile = 0,
   title = 'Your fleet performance',
   metrics = [],
   footnote = '',
+  valueLabel = 'Percentile',
+  ordinal = true,
+  empty = false,
   className = '',
   animate = true,
 }) {
@@ -287,10 +293,10 @@ export default function FleetGauge({
         {/* ---- Center readout ---- */}
         <div className="fg-center-info">
           <div className="fg-percentile-val">
-            {displayed}
-            <sup>{ordinalSuffix(displayed)}</sup>
+            {empty ? '—' : displayed}
+            {ordinal && !empty ? <sup>{ordinalSuffix(displayed)}</sup> : null}
           </div>
-          <div className="fg-percentile-lbl">Percentile</div>
+          <div className="fg-percentile-lbl">{valueLabel}</div>
           <div className="fg-title">{title}</div>
         </div>
 

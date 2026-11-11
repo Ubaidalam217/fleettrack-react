@@ -43,11 +43,17 @@ function useCountUp(target, duration = 1400) {
   return count
 }
 
-export default function FleetHealthScore({ isDark, fleetData, loading }) {
+/**
+ * Mobile Dashboard: the fleet score (this month's safety and vehicle use —
+ * hooks/useDashboardStats.js, the same number as the desktop gauge) over the
+ * live status mix. Before anything has loaded it shows skeletons, not a sample.
+ */
+export default function FleetHealthScore({ isDark, fleetData, loading, score: fleetScore }) {
   const gaugeBg = isDark ? '#1a2d4a' : '#e2e8f0'
 
-  const score = fleetData ? fleetData.healthScore : 92
-  const total = fleetData ? fleetData.total : 48
+  const hasScore = Number.isFinite(fleetScore)
+  const score = hasScore ? fleetScore : 0
+  const total = fleetData ? fleetData.total : 0
   const pct   = n => total > 0 ? `${Math.round((n / total) * 100)}%` : '0%'
 
   const rows = fleetData
@@ -58,14 +64,14 @@ export default function FleetHealthScore({ isDark, fleetData, loading }) {
         { label: 'Offline', color: '#9ca3af', pct: pct(fleetData.inactive + fleetData.noData), count: fleetData.inactive + fleetData.noData },
       ]
     : [
-        { label: 'Healthy',   color: '#22c55e', pct: '71%', count: 34 },
-        { label: 'Attention', color: '#f59e0b', pct: '17%', count: 8  },
-        { label: 'Critical',  color: '#ef4444', pct: '6%',  count: 3  },
-        { label: 'Offline',   color: '#9ca3af', pct: '6%',  count: 3  },
+        { label: 'Moving',  color: '#22c55e', pct: '0%', count: 0 },
+        { label: 'Idle',    color: '#f59e0b', pct: '0%', count: 0 },
+        { label: 'Stopped', color: '#ef4444', pct: '0%', count: 0 },
+        { label: 'Offline', color: '#9ca3af', pct: '0%', count: 0 },
       ]
 
-  const arcColor    = fleetData ? scoreColor(score) : '#22c55e'
-  const label       = fleetData ? scoreLabel(score)  : 'Excellent'
+  const arcColor    = hasScore ? scoreColor(score) : gaugeBg
+  const label       = hasScore ? scoreLabel(score) : 'Not enough data yet'
   const displayScore = useCountUp(score, 1400)
 
   const [barsReady, setBarsReady] = useState(false)
@@ -79,8 +85,8 @@ export default function FleetHealthScore({ isDark, fleetData, loading }) {
       <style>{`@keyframes skel-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }`}</style>
 
       <div style={{ marginBottom: 14 }}>
-        <h3 className="ft-card-title">Fleet Health Score</h3>
-        <p className="ft-card-sub">Overall fleet condition</p>
+        <h3 className="ft-card-title">Fleet Score</h3>
+        <p className="ft-card-sub">Safety and vehicle use this month</p>
       </div>
 
       <div style={{ position: 'relative', height: 140, overflow: 'hidden' }}>
@@ -115,9 +121,9 @@ export default function FleetHealthScore({ isDark, fleetData, loading }) {
             </div>
           ) : (
             <>
-              <div className="text-3xl md:text-4xl font-bold leading-none" style={{ color: 'var(--c-text1)' }}>{displayScore}</div>
+              <div className="text-3xl md:text-4xl font-bold leading-none" style={{ color: 'var(--c-text1)' }}>{hasScore ? displayScore : '—'}</div>
               <div className="text-xs md:text-sm mt-0.5 text-gray-400">/ 100</div>
-              <div className="text-xs md:text-sm font-semibold mt-0.5" style={{ color: arcColor }}>{label}</div>
+              <div className="text-xs md:text-sm font-semibold mt-0.5" style={{ color: hasScore ? arcColor : 'var(--c-text3)' }}>{label}</div>
             </>
           )}
         </div>

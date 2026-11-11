@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { computeHealthScore } from '../utils/healthScore'
 import { useFlespiMQTT } from './useFlespiMQTT'
 
 // Re-exported for useNotificationEngine.js, which still does its own one-off REST snapshot fetch.
@@ -36,16 +35,9 @@ export function useFlespiData() {
     // Active = Running + Idle only (Stopped vehicles are not considered active)
     const active   = running + idle
 
-    const healthScore = computeHealthScore({ total, running, idle, stopped, inactive, noData, active })
-
-    // Trips API not available on free plan — estimate from live status counts
-    const totalTrips    = running * 3 + stopped * 1
-    const totalDistance = running * 85 + stopped * 12
-
-    return {
-      total, active, running, idle, stopped, inactive, noData,
-      healthScore, vehicles, totalTrips, totalDistance,
-    }
+    // Distance, trips and scores are recorded figures, loaded by
+    // hooks/useDashboardStats.js — nothing here estimates them.
+    return { total, active, running, idle, stopped, inactive, noData, vehicles }
   }, [vehicles, hasLoaded])
 
   return {

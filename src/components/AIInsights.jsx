@@ -51,8 +51,10 @@ const ICONS = {
   ),
 }
 
+// Every insight is read off recorded data: the alert store, the live feed and
+// the Dashboard's figures (hooks/useDashboardStats.js). None is a template.
 // Priority: 0 = critical, 1 = warning, 2 = info/success
-function buildInsights(alerts, fleetData) {
+function buildInsights(alerts, fleetData, stats) {
   const now      = Date.now()
   const vehicles = fleetData?.vehicles ?? []
   const atRisk   = computeAtRisk(vehicles)
@@ -78,7 +80,7 @@ function buildInsights(alerts, fleetData) {
       priority: 1,
       type: 'warning',
       title: 'Vehicles At Risk',
-      desc: `${atRisk} vehicle${atRisk > 1 ? 's are' : ' is'} offline or unreachable. Check GPS connectivity and schedule preventive maintenance.`,
+      desc: `${atRisk} vehicle${atRisk > 1 ? 's have' : ' has'} not reported for over 30 minutes. Check ${atRisk > 1 ? 'their' : 'its'} power and GPS connection.`,
     })
   }
 
@@ -92,7 +94,30 @@ function buildInsights(alerts, fleetData) {
       priority: 1,
       type: 'warning',
       title: 'High Idle Time Detected',
-      desc: `${first.vehicleName} engine running without movement (${count} event${count > 1 ? 's' : ''} in last hour). Estimated fuel waste.`,
+      desc: `${first.vehicleName} engine running without movement (${count} event${count > 1 ? 's' : ''} in the last hour).`,
+    })
+  }
+
+  // ── Warning: reminders past their due point (Reminders module) ───────────
+  const overdue = stats?.maintenance?.overdueVehicles ?? 0
+  if (overdue > 0) {
+    pool.push({
+      priority: 1,
+      type: 'warning',
+      title: 'Service Overdue',
+      desc: `${overdue} vehicle${overdue > 1 ? 's have' : ' has'} an overdue reminder. See Reports › Reminder Status.`,
+    })
+  }
+
+  // ── Warning: much of today's engine time spent standing ─────────────────
+  const eff = stats?.efficiency
+  const idleH = (stats?.today?.idleSec ?? 0) / 3600
+  if (eff != null && eff < 75 && idleH >= 1) {
+    pool.push({
+      priority: 1,
+      type: 'warning',
+      title: 'Idling Today',
+      desc: `${100 - eff}% of today's engine-on time (${idleH.toFixed(1)} h) was spent standing still.`,
     })
   }
 
@@ -105,25 +130,40 @@ function buildInsights(alerts, fleetData) {
       priority: 2,
       type: 'success',
       title: 'All Systems Normal',
-      desc: 'No overspeed, idle, or connectivity alerts. Fleet is operating within normal parameters.',
+      desc: 'No overspeed, idle, overdue-service or connectivity issues right now.',
     })
   }
 
-  // ── Route Optimization (static placeholder, always fills the last slot) ───
-  const ROUTE_OPT = {
-    priority: 2,
-    type: 'info',
-    title: 'Route Optimization',
-    desc: 'Alternate route saves 23 km for TRK-028 today.',
+  // ── Info: how the month compares with last month (same days) ─────────────
+  const change = stats?.distanceChange
+  if (pool.length < 3 && change != null && stats?.month) {
+    pool.push({
+      priority: 2,
+      type: 'info',
+      title: 'Distance This Month',
+      desc: `${Math.round(stats.month.totalKm).toLocaleString()} km so far, ${Math.abs(change)}% ${change >= 0 ? 'more' : 'less'} than the same days last month.`,
+    })
   }
-  if (pool.length < 3) pool.push(ROUTE_OPT)
+
+  // ── Info: today's driving so far ──────────────────────────────────────────
+  const today = stats?.today
+  if (pool.length < 3 && today) {
+    pool.push({
+      priority: 2,
+      type: 'info',
+      title: 'Today So Far',
+      desc: today.trips
+        ? `${today.vehiclesMoved} vehicle${today.vehiclesMoved === 1 ? '' : 's'} drove ${today.km.toFixed(1)} km in ${today.trips} trip${today.trips === 1 ? '' : 's'}${today.inProgress ? `; ${today.inProgress} still on the road` : ''}.`
+        : 'No vehicle has driven yet today.',
+    })
+  }
 
   return pool.slice(0, 3)
 }
 
-export default function AIInsights({ heroMode = false, fleetData }) {
+export default function AIInsights({ heroMode = false, fleetData, stats }) {
   const { alerts } = useNotifications()
-  const insights   = buildInsights(alerts, fleetData)
+  const insights   = buildInsights(alerts, fleetData, stats)
 
   const actionable = insights.filter(i => i.type === 'critical' || i.type === 'warning').length
 
@@ -153,7 +193,7 @@ export default function AIInsights({ heroMode = false, fleetData }) {
             className="ft-card-sub"
             style={heroMode ? { color: 'rgba(255,255,255,0.6)' } : undefined}
           >
-            Smart recommendations
+            From your fleet's own data
           </p>
         </div>
         <span className="rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0" style={badgeColor}>

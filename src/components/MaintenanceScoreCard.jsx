@@ -1,46 +1,56 @@
-import { computeHealthScore } from '../utils/healthScore'
-import { computeUptime, computeAtRisk, computePercentile } from '../utils/fleetAnalytics'
-import { getLastMonthScore } from '../utils/historyStore'
+import { computeAtRisk } from '../utils/fleetAnalytics'
 
-const INSIGHTS = [
-  'Vehicles with no data signal may require GPS inspection or reconnection.',
-  'High idle rates suggest potential fuel wastage and unnecessary engine wear.',
-  'Regular preventive maintenance reduces unexpected downtime by up to 40%.',
-]
+/**
+ * Fleet Reliability, from recorded data only: live uptime and the vehicles
+ * that went quiet (live feed), reminders that are due (Reminders module), and
+ * this month's distance against the same days of last month (Daywise figures).
+ * The list under it names the actual vehicles behind those numbers.
+ */
 
-export default function MaintenanceScoreCard({ fleetData, loading }) {
-  const score    = computeHealthScore(fleetData)
+const AT_RISK_SEC = 30 * 60
+
+function ago(sec) {
+  if (sec < 3600) return `${Math.round(sec / 60)} min`
+  if (sec < 86400) return `${Math.round(sec / 3600)} h`
+  return `${Math.round(sec / 86400)} days`
+}
+
+function findings(vehicles, stats) {
+  const nowSec = Date.now() / 1000
+  const out = []
+  const quiet = vehicles
+    .filter(v => v.status === 'Inactive' || v.lastTs == null || nowSec - v.lastTs > AT_RISK_SEC)
+    .sort((a, b) => (a.lastTs ?? 0) - (b.lastTs ?? 0))
+  for (const v of quiet.slice(0, 2)) {
+    out.push(v.lastTs == null
+      ? `${v.name} has never reported — check its tracker.`
+      : `${v.name} has not reported for ${ago(nowSec - v.lastTs)} — check its power and GPS connection.`)
+  }
+  if (quiet.length > 2) out.push(`${quiet.length - 2} more vehicle${quiet.length - 2 > 1 ? 's are' : ' is'} not reporting.`)
+  for (const r of stats?.maintenance?.overdue?.slice(0, 2) ?? []) {
+    out.push(`${r.ruleName} is overdue on ${r.vehicle?.plateNo || r.vehicle?.fleetNo || 'a vehicle'}.`)
+  }
+  if (!out.length && vehicles.length) out.push('Every vehicle reported in the last 30 minutes and no reminder is overdue.')
+  return out.slice(0, 3)
+}
+
+export default function MaintenanceScoreCard({ fleetData, loading, stats }) {
   const vehicles = fleetData?.vehicles ?? []
-
-  // Derive uptime and at-risk from the vehicles array so both metrics use
-  // consistent definitions: a vehicle is "up" if it sent telemetry within
-  // the last 15 min; "at risk" if it has been silent 30+ min or is Inactive.
-  const uptimePct  = vehicles.length > 0
-    ? computeUptime(vehicles)
-    : (fleetData?.total > 0
-        ? Math.round(((fleetData.total - (fleetData.noData ?? 0) - (fleetData.inactive ?? 0)) / fleetData.total) * 100)
-        : 75)
-
-  const atRisk     = vehicles.length > 0
-    ? computeAtRisk(vehicles)
-    : (fleetData ? (fleetData.noData ?? 0) + (fleetData.inactive ?? 0) : 0)
-
-  const percentile = computePercentile(score)
-
-  // Change Over Time: compare current health score against last month's persisted score
-  const lastMonthScore = getLastMonthScore()
-  const hasHistory     = lastMonthScore != null
-  const rawChange      = hasHistory && lastMonthScore > 0
-    ? (((score - lastMonthScore) / lastMonthScore) * 100).toFixed(1)
-    : null
-  const isUp = rawChange != null ? parseFloat(rawChange) >= 0 : true
+  const uptimePct = stats?.uptime
+  const reporting = Number.isFinite(uptimePct) ? Math.round((uptimePct / 100) * vehicles.length) : null
+  const atRisk = computeAtRisk(vehicles)
+  const change = stats?.distanceChange
+  const hasChange = change != null
+  const isUp = hasChange && change >= 0
+  const due = stats?.maintenance?.rules ? stats.maintenance.dueVehicles : null
+  const list = findings(vehicles, stats)
 
   return (
     <div className="ft-card">
       <div className="ft-card-head">
         <div>
           <h3 className="ft-card-title">Fleet Reliability</h3>
-          <p className="ft-card-sub">Uptime &amp; Maintenance Index</p>
+          <p className="ft-card-sub">Uptime &amp; Maintenance</p>
         </div>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-text3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
           <circle cx="12" cy="12" r="10"/>
@@ -57,53 +67,55 @@ export default function MaintenanceScoreCard({ fleetData, loading }) {
       <>
       {/* Metrics row */}
       <div className="ft-inset p-4 mb-4">
-        <div className="flex items-center gap-10 mb-3">
+        <div className="flex items-center gap-8 mb-3">
           <div>
             <div className="text-[11px] mb-1" style={{ color: 'var(--c-text3)' }}>Uptime</div>
             <div className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>
-              {loading && !fleetData ? '—' : uptimePct + '%'}
+              {Number.isFinite(uptimePct) ? uptimePct + '%' : '—'}
             </div>
           </div>
           <div>
-            <div className="text-[11px] mb-1" style={{ color: 'var(--c-text3)' }}>Percentile</div>
+            <div className="text-[11px] mb-1" style={{ color: 'var(--c-text3)' }}>Reporting</div>
             <div className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>
-              {percentile.label.replace('th', '')}
-              <span className="text-xs font-normal align-top">th</span>
+              {reporting != null ? `${reporting} / ${vehicles.length}` : '—'}
             </div>
           </div>
           {atRisk > 0 && (
             <div>
               <div className="text-[11px] mb-1" style={{ color: 'var(--c-text3)' }}>At Risk</div>
-              <div className="text-rose-500 text-sm font-semibold">{atRisk} vehicles</div>
+              <div className="text-rose-500 text-sm font-semibold">{atRisk} vehicle{atRisk > 1 ? 's' : ''}</div>
+            </div>
+          )}
+          {Number.isFinite(due) && (
+            <div>
+              <div className="text-[11px] mb-1" style={{ color: 'var(--c-text3)' }}>Service Due</div>
+              <div className="text-sm font-semibold" style={{ color: due > 0 ? '#f59e0b' : 'var(--c-text1)' }}>{due} vehicle{due === 1 ? '' : 's'}</div>
             </div>
           )}
         </div>
 
-        {/* Percentile bar */}
-        <div className="relative h-1.5 rounded-full bg-gradient-to-r from-emerald-400 via-amber-300 to-rose-500">
+        {/* Uptime bar: where the fleet sits between 0 and 100 % reporting */}
+        <div className="relative h-1.5 rounded-full bg-gradient-to-r from-rose-500 via-amber-300 to-emerald-400">
           <div
             className="absolute -top-1 h-3.5 w-[2px] transition-all duration-700"
-            style={{ left: percentile.pos, background: 'var(--c-text1)' }}
+            style={{ left: `${Number.isFinite(uptimePct) ? uptimePct : 0}%`, background: 'var(--c-text1)' }}
           />
         </div>
         <div className="flex justify-between text-[10px] mt-1" style={{ color: 'var(--c-text3)' }}>
-          {[20, 40, 60, 80, 100].map(n => <span key={n}>{n}</span>)}
+          {[0, 25, 50, 75, 100].map(n => <span key={n}>{n}%</span>)}
         </div>
       </div>
 
       {/* Summary text */}
       <div className="ft-inset p-4 mb-4">
         <p className="text-xs leading-relaxed" style={{ color: 'var(--c-text2)' }}>
-          Fleet uptime is{' '}
-          <span className="font-semibold" style={{ color: 'var(--c-text1)' }}>
-            {loading && !fleetData ? '...' : uptimePct + '%'}
-          </span>
-          {' '}
-          {uptimePct > 80
-            ? '— excellent reliability across the fleet.'
-            : uptimePct >= 60
-              ? '— good but some vehicles need attention.'
-              : '— below target. Investigate flagged vehicles.'}
+          {Number.isFinite(uptimePct) ? (
+            <>
+              <span className="font-semibold" style={{ color: 'var(--c-text1)' }}>{reporting} of {vehicles.length}</span>
+              {' '}vehicles reported in the last 15 minutes
+              {uptimePct > 80 ? '.' : uptimePct >= 60 ? ' — some need attention.' : ' — check the vehicles listed below.'}
+            </>
+          ) : 'Waiting for the live feed…'}
         </p>
       </div>
       </>
@@ -111,13 +123,13 @@ export default function MaintenanceScoreCard({ fleetData, loading }) {
 
       <div className="my-3" style={{ borderTop: '1px solid var(--c-border)' }} />
 
-      {/* Change Over Time */}
+      {/* Distance against the same days of last month */}
       <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="text-[13px] font-semibold" style={{ color: 'var(--c-text1)' }}>Change Over Time</span>
+        <span className="text-[13px] font-semibold" style={{ color: 'var(--c-text1)' }}>Distance vs Last Month</span>
         <span className="text-[13px] font-semibold ml-auto" style={{ color: 'var(--c-text1)' }}>
-          {hasHistory ? lastMonthScore : '—'}
+          {stats?.month ? `${Math.round(stats.month.totalKm).toLocaleString()} km` : '—'}
         </span>
-        {rawChange != null ? (
+        {hasChange ? (
           <span className={`flex items-center gap-0.5 text-xs font-medium px-2 py-0.5 rounded-full ${isUp ? 'text-emerald-600 bg-emerald-500/10' : 'text-rose-600 bg-rose-500/10'}`}>
             <svg
               width="11" height="11" viewBox="0 0 24 24"
@@ -127,15 +139,15 @@ export default function MaintenanceScoreCard({ fleetData, loading }) {
               <line x1="12" y1="19" x2="12" y2="5"/>
               <polyline points="5 12 12 5 19 12"/>
             </svg>
-            {Math.abs(rawChange)}%
+            {Math.abs(change)}%
           </span>
         ) : (
-          <span className="text-[10px] italic" style={{ color: 'var(--c-text3)' }}>history pending</span>
+          <span className="text-[10px] italic" style={{ color: 'var(--c-text3)' }}>no last-month figures</span>
         )}
       </div>
 
       <ul className="space-y-2 mt-1">
-        {INSIGHTS.map((b, i) => (
+        {list.map((b, i) => (
           <li key={i} className="flex items-start gap-1.5 text-xs leading-snug" style={{ color: 'var(--c-text2)' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--c-text3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0">
               <polyline points="9 18 15 12 9 6"/>
