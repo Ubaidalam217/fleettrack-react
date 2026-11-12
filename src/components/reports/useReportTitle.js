@@ -15,7 +15,7 @@ export function useReportTitle(own) {
  * Every report heading ends in "Report" (client, 2026-11-12: "Trip Details
  * Report"), whichever menu opened it.
  */
-export const withReport = title => (/report$/i.test(title.trim()) ? title : `${title} Report`)
+export const withReport = title => (/\breport$/i.test(title.trim()) ? title : `${title} Report`)
 
 /** "Road Safety RAG Report" → "Road_Safety_RAG_Report", for export file names. */
 export const fileNameOf = title => title.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
