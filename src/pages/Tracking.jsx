@@ -35,6 +35,7 @@ import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, useGr
 import { useSession } from '../data/session'
 import { IS_REAL } from '../data/mode'
 import FleetTreeHeader, { GroupsToggle } from '../components/tracking/FleetTreeHeader'
+import LiveHeatLayer from '../components/tracking/LiveHeatLayer'
 import { buildFleetTree, levelsForRole, placeVehicle, vehicleIdsOf } from '../utils/fleetTree'
 import { FilterToggle, FilterPanel } from '../components/tracking/LiveMapFilters'
 import { EMPTY_FILTERS, vehicleAttributes, matchesAttributes, filterOptions } from '../utils/liveMapFilters'
@@ -448,6 +449,18 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   })
   const toggleCluster = () => setClusterOn(on => {
     try { localStorage.setItem(clusterKey, on ? '0' : '1') } catch { /* private window */ }
+    return !on
+  })
+  // Heat map of where the listed vehicles have been today (client, 2026-11-12):
+  // off unless this user turned it on in this browser.
+  const heatKey = `fm.liveMap.heat.${me?.id ?? 'demo'}`
+  const [heatOn, setHeatOn] = useState(() => {
+    try { return localStorage.getItem(heatKey) === '1' } catch { return false }
+  })
+  const [heatStatus, setHeatStatus] = useState(null)
+  const toggleHeat = () => setHeatOn(on => {
+    try { localStorage.setItem(heatKey, on ? '0' : '1') } catch { /* private window */ }
+    if (on) setHeatStatus(null)
     return !on
   })
 
@@ -1505,6 +1518,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           box-shadow: 0 2px 12px rgba(0,0,0,0.18);
         }
         .track-geofence-toggle.is-cluster { top: 128px; }
+        .track-geofence-toggle.is-heat { top: 164px; }
         .track-geofence-toggle[data-on="true"] {
           background-color: var(--ft-accent);
           border-color: var(--ft-accent);
@@ -1809,6 +1823,20 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   Clusters
                 </button>
 
+                <button
+                  type="button"
+                  className="track-geofence-toggle is-heat"
+                  data-on={heatOn ? 'true' : 'false'}
+                  onClick={toggleHeat}
+                  title={heatOn ? 'Hide the heat map' : 'Show where the listed vehicles have been today'}
+                  aria-pressed={heatOn}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+                  </svg>
+                  {heatOn && heatStatus === 'loading' ? 'Heat map…' : heatOn && heatStatus === 'error' ? 'Heat map ⚠' : 'Heat map'}
+                </button>
+
                 {/* Status banner — live connection errors only. Non-blocking:
                     the map stays interactive underneath. */}
                 {statusMessage && (
@@ -1882,6 +1910,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     }
                     return null
                   })}
+
+                  {heatOn && <LiveHeatLayer ids={filtered.map(v => v.id)} onStatus={setHeatStatus} />}
 
                   {clusterOn ? (
                     <>
