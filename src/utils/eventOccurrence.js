@@ -13,6 +13,7 @@
 // row with lat/lng/location — so its geocoding helpers work on it unchanged.
 
 import { deriveMovementReport, AVAILABLE_STATUS_KEYS, formatTime, formatDateLabel, flattenRows } from './movementReport'
+import { driverIdentity, driverPasses, NO_DRIVER } from './driverAtTime.js'
 
 /** How far from the alert a message may be and still describe that moment. */
 export const TRACK_WINDOW_SEC = 15 * 60
@@ -53,10 +54,21 @@ export function trackAt(rows, t, windowSec = TRACK_WINDOW_SEC) {
  * @param {(vehicle) => string} opts.driverNameFor
  * @param {string[]|null} opts.types       alert types to keep (null = all)
  * @param {string[]|null} opts.severities  severities to keep (null = all)
+ * @param {(vehicle, messages) => (ts) => {key,label}} [opts.driverAt]  driver at a moment (utils/driverAtTime.js)
+ * @param {Set|null} [opts.driverFilter]  driver keys to keep (null = all)
+ * @param {'vehicle'|'driver'} [opts.groupBy]  'driver' heads groups "Driver — Vehicle"
+ * An event's driver is the one the alert engine recorded with it; else the
+ * driver at that moment from the tracks; else the vehicle's driver.
  * @returns {{ vehicles: object[], totalRows: number, untracked: number }}
  */
 export function buildEventReport(events, byDevice, opts = {}) {
-  const { vehicles = [], typeLabel = t => t, driverNameFor, types = null, severities = null } = opts
+  const { vehicles = [], typeLabel = t => t, driverNameFor, types = null, severities = null, driverAt = null, driverFilter = null, groupBy = 'vehicle' } = opts
+  const timelines = new Map()
+  const timelineOf = (deviceId, meta) => {
+    if (!driverAt) return null
+    if (!timelines.has(deviceId)) timelines.set(deviceId, driverAt(meta, byDevice?.get(deviceId)?.messages ?? []))
+    return timelines.get(deviceId)
+  }
 
   // Tracking rows per device, exactly as the Movement Report derives them.
   const trackByDevice = new Map()
@@ -86,6 +98,9 @@ export function buildEventReport(events, byDevice, opts = {}) {
     if (!track) untracked += 1
     const meta = metaById.get(e.deviceId)
     const vehicleId = meta?.master?.plateNo || e.vehicle?.plateNo || e.vehicle?.fleetNo || meta?.name || `Device ${e.deviceId}`
+    const who = driverIdentity(e.driver) ?? timelineOf(e.deviceId, meta)?.(ts)
+      ?? driverIdentity((meta && driverNameFor ? driverNameFor(meta) : '') || null) ?? NO_DRIVER
+    if (!driverPasses(who, driverFilter)) continue
 
     const row = {
       key: e.id,
@@ -100,15 +115,21 @@ export function buildEventReport(events, byDevice, opts = {}) {
       status: track?.status ?? '—',
       speed: e.type === 'overspeed' && Number.isFinite(e.value) ? Math.round(e.value) : (track ? track.speed : '—'),
       odoKm: track?.odoKm ?? null,
-      driverId: e.driver?.name || (meta && driverNameFor ? driverNameFor(meta) : '') || '',
+      driverId: who === NO_DRIVER ? '' : who.label,
+      driverKey: who.key,
       // Where the alert says it happened; the message's position otherwise.
       lat: e.lat ?? track?.lat ?? null,
       lng: e.lng ?? track?.lng ?? null,
       location: track && e.lat == null ? track.location : null,
     }
 
-    if (!byVehicle.has(e.deviceId)) byVehicle.set(e.deviceId, { deviceId: e.deviceId, vehicleId, rows: [] })
-    byVehicle.get(e.deviceId).rows.push(row)
+    const gk = groupBy === 'driver' ? `${who.key}\u0000${e.deviceId}` : e.deviceId
+    if (!byVehicle.has(gk)) {
+      byVehicle.set(gk, groupBy === 'driver'
+        ? { deviceId: e.deviceId, vehicleId: `${who.label} — ${vehicleId}`, sortKey: `${who.label}\u0000${vehicleId}`, rows: [] }
+        : { deviceId: e.deviceId, vehicleId, rows: [] })
+    }
+    byVehicle.get(gk).rows.push(row)
   }
 
   const out = []
@@ -126,8 +147,8 @@ export function buildEventReport(events, byDevice, opts = {}) {
       current.rows.push(r)
     }
     totalRows += v.rows.length
-    out.push({ deviceId: v.deviceId, vehicleId: v.vehicleId, rowCount: v.rows.length, dates })
+    out.push({ deviceId: v.deviceId, vehicleId: v.vehicleId, sortKey: v.sortKey, rowCount: v.rows.length, dates })
   }
-  out.sort((a, b) => a.vehicleId.localeCompare(b.vehicleId))
-  return { vehicles: out, totalRows, untracked }
+  out.sort((a, b) => (a.sortKey ?? a.vehicleId).localeCompare(b.sortKey ?? b.vehicleId))
+  return { vehicles: out, totalRows, untracked, groupBy }
 }

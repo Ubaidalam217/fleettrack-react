@@ -20,6 +20,9 @@ import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { presenceCells, eventCells, hotspots, HEAT_STOPS } from '../../utils/heatmap'
 import { VIOLATION_TYPES } from '../../utils/violationOverview'
 import { hhmm } from '../../utils/utilization'
+import { DriverFilter } from '../../components/reports/DriverControls'
+import { useDriverDimension } from '../../hooks/useDriverDimension'
+import { driverFilterLabel, driverIdentity, driverPasses, runsForDrivers, NO_DRIVER } from '../../utils/driverAtTime'
 
 /**
  * Heat Map (client, 2026-11-10: "can we show the heatmap of vehicles presence
@@ -36,7 +39,8 @@ import { hhmm } from '../../utils/utilization'
 
 const MAX_RANGE_DAYS = 31
 const NOT_ASSIGNED = 'Not assigned'
-const FIELDS = 'timestamp,position.latitude,position.longitude,position.speed,engine.ignition.status'
+// ibutton.code: the driver at each moment, for the Driver filter (utils/driverAtTime.js).
+const FIELDS = 'timestamp,position.latitude,position.longitude,position.speed,engine.ignition.status,ibutton.code'
 const UAE_CENTER = [24.45, 54.38]
 const MODES = [
   { key: 'moving', label: 'Moving' },
@@ -79,6 +83,9 @@ function FitTo({ points, mapRef }) {
 export default function HeatMapReport(props) {
   const title = useReportTitle('Heat Map')
   const { data } = useFlespiData()
+  // Driver filter (client, 2026-11-12): only the time / events of the chosen drivers.
+  const driverDim = useDriverDimension()
+  const [driverFilter, setDriverFilter] = useState(null)
   const settingsVehicles = useVehicles()
   const companies = useCompanies()
   const liveVehicles = data?.vehicles ?? []
@@ -184,14 +191,23 @@ export default function HeatMapReport(props) {
   const heat = useMemo(() => {
     if (!raw) return null
     const label = new Map(vehicles.map(v => [v.id, v.label]))
+    const liveById = new Map((data?.vehicles ?? []).map(v => [v.id, v]))
     if (raw.view === 'events') {
-      const kept = raw.events.filter(e => types.includes(e.type))
+      // An event's driver: the one the alert engine recorded, else the vehicle's.
+      const whoOf = e => driverIdentity(e.driver) ?? driverDim.assignedFor(liveById.get(Number(e.deviceId))) ?? NO_DRIVER
+      const kept = raw.events.filter(e => types.includes(e.type) && driverPasses(whoOf(e), driverFilter))
       const r = eventCells(kept, { labelOf: e => label.get(Number(e.deviceId)) ?? `Device ${e.deviceId}` })
       return { ...r, amountOf: w => `${w}`, totalText: `${r.total} event${r.total === 1 ? '' : 's'}`, totalWeight: r.total }
     }
-    const r = presenceCells(raw.byVehicle, { mode, labelOf: id => label.get(id) ?? `Device ${id}` })
+    // With a driver filter each vehicle's track is cut into that driver's runs.
+    const byRun = new Map()
+    for (const [id, messages] of raw.byVehicle) {
+      const at = driverDim.timelineFor(liveById.get(id), messages)
+      runsForDrivers(messages, at, driverFilter).forEach((run, i) => byRun.set(`${id}#${i}`, run))
+    }
+    const r = presenceCells(byRun, { mode, labelOf: key => { const id = Number(String(key).split('#')[0]); return label.get(id) ?? `Device ${id}` } })
     return { ...r, amountOf: w => hhmm(w), totalText: `${hhmm(r.totalSec)} h`, totalWeight: r.totalSec }
-  }, [raw, vehicles, mode, types])
+  }, [raw, vehicles, mode, types, driverFilter, driverDim, data])
 
   const spots = useMemo(() => (heat ? hotspots(heat.cells, { limit: 10 }) : []), [heat])
 
@@ -236,6 +252,7 @@ export default function HeatMapReport(props) {
     ['From Date', formatDateTime(applied.fromTs)],
     ['To Date', formatDateTime(applied.toTs)],
     ['Showing', raw.view === 'events' ? `Events: ${typesLabel}` : `Presence: ${MODES.find(m => m.key === mode)?.label}`],
+    ...(driverFilter ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : []),
   ] : []
   const stale = raw && raw.view !== view
 
@@ -269,6 +286,7 @@ export default function HeatMapReport(props) {
               </CheckRow>
             ))}
           </MultiSelect>
+          <DriverFilter options={driverDim.options} value={driverFilter} onChange={setDriverFilter} />
           {view === 'events' && (
             <MultiSelect label="EVENTS" summary={typesLabel}>
               <CheckRow checked={types.length === VIOLATION_TYPES.length && VIOLATION_TYPES.every(t => types.includes(t))} onChange={() => setTypes(VIOLATION_TYPES)}>

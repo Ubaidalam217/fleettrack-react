@@ -18,6 +18,9 @@ import { buildEventReport } from '../../utils/eventOccurrence'
 import { locationUrl } from '../../utils/mapLink'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { ReportSkeleton } from '../../components/Skeleton'
+import { DriverFilter, GroupBySelect } from '../../components/reports/DriverControls'
+import { useDriverDimension } from '../../hooks/useDriverDimension'
+import { driverFilterLabel } from '../../utils/driverAtTime'
 
 /**
  * Event Occurrence Report — client, 2026-11-02: "the same as Movement report
@@ -102,6 +105,10 @@ export default function EventOccurrenceReport(props) {
   const [toTime, setToTime] = useState(() => timeStr(now))
   const [types, setTypes] = useState(null)          // null = all
   const [severities, setSeverities] = useState(null) // null = all
+  // Driver dimension (client, 2026-11-12): filter and Vehicle / Driver grouping.
+  const driverDim = useDriverDimension()
+  const [driverFilter, setDriverFilter] = useState(null) // null = all
+  const [groupBy, setGroupBy] = useState('vehicle')
 
   const [raw, setRaw] = useState(null)        // { events, byDevice, truncated, applied }
   const [progress, setProgress] = useState(null)
@@ -182,7 +189,8 @@ export default function EventOccurrenceReport(props) {
   // Type and severity are filters over what was fetched: no new request.
   const report = useMemo(() => raw && buildEventReport(raw.events, raw.byDevice, {
     vehicles, typeLabel: alertTypeLabel, driverNameFor: driverNameForDevice, types, severities,
-  }), [raw, vehicles, types, severities])
+    driverAt: driverDim.timelineFor, driverFilter, groupBy,
+  }), [raw, vehicles, types, severities, driverDim, driverFilter, groupBy])
 
   // Addresses fill in behind the table; the report is usable before they land.
   useEffect(() => {
@@ -197,7 +205,7 @@ export default function EventOccurrenceReport(props) {
   const groups = useMemo(() => {
     if (!report) return []
     return report.vehicles.map(v => ({
-      key: v.deviceId,
+      key: v.sortKey ? `${v.deviceId}-${v.sortKey}` : v.deviceId,
       label: v.vehicleId,
       total: `Total Alerts : ${v.rowCount}`,
       rows: v.dates.flatMap(d => [
@@ -228,6 +236,8 @@ export default function EventOccurrenceReport(props) {
     ['To Date', formatDateTime(applied.toTs)],
     ['Alerts', typesLabel],
     ['Severity', sevLabel],
+    ...(driverFilter ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : []),
+    ...(groupBy === 'driver' ? [['Grouped By', 'Driver']] : []),
   ] : []
 
   const exportOpts = () => ({
@@ -288,6 +298,9 @@ export default function EventOccurrenceReport(props) {
             <label style={LABEL}>TO TIME</label>
             <input type="time" style={FIELD} value={toTime} onChange={e => { setToTime(e.target.value); setPreset('custom') }} />
           </div>
+
+          <DriverFilter options={driverDim.options} value={driverFilter} onChange={setDriverFilter} />
+          <GroupBySelect id="event-group-by" value={groupBy} onChange={setGroupBy} />
 
           <MultiSelect label="ALERTS" summary={typesLabel}>
             <CheckRow checked={!types} onChange={() => setTypes(types ? null : [])}><strong>All alerts</strong></CheckRow>

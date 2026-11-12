@@ -22,6 +22,9 @@ import {
 import { exportDaywiseExcel, exportDaywisePdf, printDaywiseReport } from '../../utils/daywiseExport'
 import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import ReportsBackLink from '../../components/reports/ReportsBackLink'
+import { DriverFilter } from '../../components/reports/DriverControls'
+import { useDriverDimension } from '../../hooks/useDriverDimension'
+import { driverFilterLabel, driverPasses, NO_DRIVER } from '../../utils/driverAtTime'
 
 /**
  * Daywise Work Hour and Daywise Distance.
@@ -183,6 +186,12 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
   const today = useRef(currentUaeMonth()).current
   const [month, setMonth] = useState(() => `${today.year}-${String(today.month).padStart(2, '0')}`)
   const [search, setSearch] = useState('')
+  // Driver filter (client, 2026-11-12). Daywise figures are per vehicle and day
+  // (the server's DailyUsage), with no split by who drove, so a driver here is
+  // the vehicle's assigned driver today — no Vehicle / Driver grouping, which
+  // would need every message of the month re-read and attributed.
+  const driverDim = useDriverDimension()
+  const [driverFilter, setDriverFilter] = useState(null)
   // null = all. Starts empty on every report: the client wants the vehicles
   // picked on purpose, not the whole fleet selected by default.
   const [selectedIds, setSelectedIds] = useState([])
@@ -287,6 +296,10 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
       )
     }
     if (!allBgs) rows = rows.filter(r => selectedBgs.includes(r.company))
+    if (driverFilter) {
+      const byId = new Map((data?.vehicles ?? []).map(v => [v.id, v]))
+      rows = rows.filter(r => driverPasses(driverDim.assignedFor(byId.get(r.deviceId)) ?? NO_DRIVER, driverFilter))
+    }
 
     const dir = sort.dir === 'asc' ? 1 : -1
     const key = sort.key
@@ -294,7 +307,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
       if (key === 'total') return (V.totalOf(a) - V.totalOf(b)) * dir
       return String(a[key] ?? '').localeCompare(String(b[key] ?? '')) * dir
     })
-  }, [report, search, allBgs, selectedBgs, sort, V])
+  }, [report, search, allBgs, selectedBgs, sort, V, driverFilter, driverDim, data])
 
   const onSort = key => {
     setSort(s => (s.key === key
@@ -318,7 +331,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
     title: reportTitle,
     monthLabel: monthLabel(year, monthNo),
     exportName: reportTitle === V.title ? V.exportName : fileNameOf(reportTitle),
-    selection: selectionLabel,
+    selection: driverFilter ? `${selectionLabel} · Drivers: ${driverFilterLabel(driverFilter, driverDim.options)}` : selectionLabel,
     bgLabel,
     printDate: report?.printDate,
   }
@@ -379,6 +392,8 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
                     </CheckRow>
                   ))}
                 </MultiSelect>
+
+                <DriverFilter options={driverDim.options} value={driverFilter} onChange={setDriverFilter} />
 
                 <MultiSelect label="BUSINESS GROUP" summary={bgLabel} disabled={bgOptions.length === 0}>
                   <CheckRow checked={allBgs} onChange={() => setSelectedBgs(allBgs ? [] : null)}>
@@ -501,7 +516,8 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
                   <PaperHead
                     title={reportTitle}
                     company="FleetmaxX"
-                    filters={[['Month', monthLabel(year, monthNo)], ['Selection', selectionLabel], ['Company', bgLabel]]}
+                    filters={[['Month', monthLabel(year, monthNo)], ['Selection', selectionLabel], ['Company', bgLabel],
+                      ...(driverFilter ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : [])]}
                   />
                   <DaywiseTable
                     columns={columns}

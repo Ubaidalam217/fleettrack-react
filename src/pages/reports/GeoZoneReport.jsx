@@ -31,6 +31,10 @@ import { PaperHead, PaperFoot, PaperSheet, BAND_BLUE, GROUP_GRAY, ZEBRA_GRAY, IN
 import { useReportTitle } from '../../components/reports/useReportTitle'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, columnChoices } from '../../utils/reportColumns'
+import { DriverFilter, GroupBySelect } from '../../components/reports/DriverControls'
+import { useDriverDimension } from '../../hooks/useDriverDimension'
+import { driverFilterLabel } from '../../utils/driverAtTime'
+import { applyGeoZoneDrivers } from '../../utils/geoZoneDriver'
 
 // Hard cap the user explicitly asked for: a long range across many vehicles
 // can hammer Flespi (each day of range is one request per vehicle), so the
@@ -181,6 +185,10 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
   const [toTime,           setToTime]           = useState(() => timeStr(now))
   const [dwellSec,          setDwellSec]        = useState(60)
   const [mergeGapSec,       setMergeGapSec]     = useState(120)
+  // Driver dimension (client, 2026-11-12): filter and Vehicle / Driver grouping.
+  const driverDim = useDriverDimension()
+  const [driverFilter, setDriverFilter] = useState(null)
+  const [groupBy, setGroupBy] = useState('vehicle')
 
   // ── report state ──
   const [byDeviceMessages, setByDeviceMessages] = useState(null)
@@ -279,13 +287,23 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
     [byDeviceMessages, vehicles]
   )
 
-  const analysis = useMemo(() => {
+  const vehicleAnalysis = useMemo(() => {
     if (!byDeviceMessages) return null
     return buildGeoZoneAnalysis(byDeviceMessages, fetchedVehicles, geofenceZones, addressZones, {
       dwellSec, mergeGapSec, isMockMode: !IS_REAL,
       selectedGeofenceIds: selectedGeoIds, selectedAddressIds: selectedAddrIds,
     })
   }, [byDeviceMessages, fetchedVehicles, geofenceZones, addressZones, dwellSec, mergeGapSec, selectedGeoIds, selectedAddrIds])
+
+  // Every trip, visit and entry stamped with its driver, then filtered / split by driver.
+  const analysis = useMemo(() => {
+    if (!vehicleAnalysis) return null
+    const byId = new Map(fetchedVehicles.map(v => [v.id, v]))
+    return applyGeoZoneDrivers(vehicleAnalysis, {
+      timelineFor: (id, messages) => driverDim.timelineFor(byId.get(id), messages),
+      driverFilter, groupBy,
+    })
+  }, [vehicleAnalysis, fetchedVehicles, driverDim, driverFilter, groupBy])
 
   const tripReport    = useMemo(() => (analysis ? buildTripReport(analysis)      : null), [analysis])
   const visitedReport = useMemo(() => (analysis ? buildVisitedSummary(analysis)  : null), [analysis])
@@ -331,8 +349,10 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
     pairs: applied ? [
       ['From', formatDateTime(applied.fromTs)], ['To', formatDateTime(applied.toTs)],
       ['Vehicles', applied.vehicleSelectionLabel], ['Dwell / merge', `${dwellSec}s / ${mergeGapSec}s`],
+      ...(driverFilter ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : []),
+      ...(groupBy === 'driver' ? [['Grouped By', 'Driver']] : []),
     ] : [],
-  }), [applied, dwellSec, mergeGapSec])
+  }), [applied, dwellSec, mergeGapSec, driverFilter, groupBy, driverDim])
 
   const EXPORTERS = {
     trip:    { pdf: exportTripReportPdf,         excel: exportTripReportExcel,         report: tripReport,    filename: 'Geofence Trip Report' },
@@ -472,6 +492,9 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                     </CheckRow>
                   ))}
                 </MultiSelect>
+
+                <DriverFilter options={driverDim.options} value={driverFilter} onChange={setDriverFilter} />
+                <GroupBySelect id="geozone-group-by" value={groupBy} onChange={setGroupBy} />
 
                 <MultiSelect label="ADDRESSES" summary={addrSelectionLabel} disabled={addressZones.length === 0}>
                   <CheckRow checked={selectedAddrIds === null} onChange={() => setSelectedAddrIds(selectedAddrIds === null ? new Set() : null)}>

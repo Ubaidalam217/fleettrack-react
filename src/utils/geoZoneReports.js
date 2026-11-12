@@ -201,7 +201,7 @@ export function buildTripReport(analysis) {
   for (const { meta, geo, messages } of analysis.values()) {
     const rows = geo.trips.map(t => {
       const row = {
-        company: meta.company, branch: meta.branch, vehicle: meta.vehicleId, driver: '--',
+        company: meta.company, branch: meta.branch, vehicle: meta.vehicleId, driver: t.driver || '--',
         startFence: t.startFence?.name ?? '--',
         startLat: t.start.lat, startLng: t.start.lng, startLocation: null,
         startPosition: coordText(t.start),
@@ -321,7 +321,7 @@ export function buildAddressVisits(analysis) {
       entries.push({
         ts: v.reach.ts ?? 0,
         row: {
-          company: meta.company, branch: meta.branch, object: meta.vehicleId, driver: '--',
+          company: meta.company, branch: meta.branch, object: meta.vehicleId, driver: v.driver || '--',
           name: v.fence?.name ?? '--',
           type: v.fence?.category || '--',
           arrivalTime: formatGZDateTime(v.reach.ts),
@@ -356,7 +356,7 @@ export function buildGeofenceHistory(analysis) {
       const detailRows = rows.map(r => {
         const dr = {
           company: meta.company, branch: meta.branch, vehicle: meta.vehicleId,
-          driver: '--', employeeNo: '--', geofenceName: fence.name,
+          driver: r.driver || '--', employeeNo: '--', geofenceName: fence.name,
           entryTime: formatGZDateTime(r.entry.ts),
           entryLat: r.entry.lat, entryLng: r.entry.lng, entryPosition: null,
           durationInFence: formatHMS(r.durationSec),
@@ -371,7 +371,7 @@ export function buildGeofenceHistory(analysis) {
 
       groups.push({
         company: meta.company, branch: meta.branch, object: meta.vehicleId,
-        driver: '--', employeeNo: '--',
+        driver: meta.driverLabel || [...new Set(rows.map(r => r.driver).filter(Boolean))].join(', ') || '--', employeeNo: '--',
         geofenceName: fence.name, geofenceType: fence.category || '--',
         noOfVisits: rows.length,
         detailRows,
@@ -402,7 +402,7 @@ export function buildG2GTripSummary(analysis) {
       const runningHours = t.runningSec / 3600
       const avg = runningHours > 0 ? Math.round(t.distanceKm / runningHours) : 0
       return {
-        tripNo: i + 1, driver: '--', employeeNo: '--',
+        tripNo: i + 1, driver: t.driver || '--', employeeNo: '--',
         startFence: t.startFence?.name ?? '--', startDate: formatGZDateTime(t.start.ts, { seconds: true }),
         endFence: t.endFence?.name ?? '--', endDate: formatGZDateTime(t.end.ts, { seconds: true }),
         distanceKm: t.distanceKm.toFixed(2),
@@ -420,7 +420,7 @@ export function buildG2GTripSummary(analysis) {
     totalInactive += vInactive
 
     vehicleRows.push({
-      company: meta.company, branch: meta.branch, vehicle: meta.vehicleId, driver: '--', employeeNo: '--',
+      company: meta.company, branch: meta.branch, vehicle: meta.vehicleId, driver: meta.driverLabel || [...new Set(trips.map(t => t.driver).filter(Boolean))].join(', ') || '--', employeeNo: '--',
       startFence: trips[0]?.startFence?.name ?? '--',
       endFence: trips[trips.length - 1]?.endFence?.name ?? '--',
       noOfTrips: trips.length, distanceKm: vDist.toFixed(2),

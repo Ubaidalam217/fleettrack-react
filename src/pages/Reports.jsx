@@ -28,6 +28,9 @@ import { exportMovementPdf, exportMovementExcel, printMovementReport } from '../
 import ReportsBackLink from '../components/reports/ReportsBackLink'
 import ColumnPicker from '../components/reports/ColumnPicker'
 import { useHiddenColumns } from '../utils/reportColumns'
+import { DriverFilter, GroupBySelect } from '../components/reports/DriverControls'
+import { useDriverDimension } from '../hooks/useDriverDimension'
+import { driverFilterLabel } from '../utils/driverAtTime'
 
 // How many rows the on-screen table renders before asking. Exports and Print
 // always emit everything; this only keeps the DOM from carrying five thousand
@@ -106,6 +109,10 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   )
   const [hiddenCols, setHiddenCols] = useHiddenColumns('movement')
+  // Driver dimension (client, 2026-11-12): who drove each row, filter and grouping.
+  const driverDim = useDriverDimension()
+  const [driverFilter, setDriverFilter] = useState(null)
+  const [groupBy, setGroupBy] = useState('vehicle')
   const { data } = useFlespiData()
   const vehicles = useMemo(
     () => (data?.vehicles ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
@@ -176,8 +183,8 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   // already in memory — no network, which is what makes the generated report
   // usable offline.
   const deriveSig = useMemo(
-    () => JSON.stringify([[...statuses].sort(), applyTolerance, toleranceMeters, intervalSec]),
-    [statuses, applyTolerance, toleranceMeters, intervalSec]
+    () => JSON.stringify([[...statuses].sort(), applyTolerance, toleranceMeters, intervalSec, driverFilter ? [...driverFilter].sort() : null, groupBy, driverDim.options.length]),
+    [statuses, applyTolerance, toleranceMeters, intervalSec, driverFilter, groupBy, driverDim]
   )
 
   const applyPreset = key => {
@@ -229,6 +236,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
       const built = deriveMovementReport(messages, {
         vehicles, statuses, applyTolerance, toleranceMeters, intervalSec,
         driverNameFor: driverNameForDevice,
+        driverAt: driverDim.timelineFor, driverFilter, groupBy,
       })
       built.deriveSig = deriveSig
       // `skipped` is what the "N locations unresolved" line reads, so seed it
@@ -263,7 +271,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
       abortRef.current = null
       setProgress(null)
     }
-  }, [rangeValid, effectiveIds, fromTs, toTs, selectionLabel, vehicles, statuses, applyTolerance, toleranceMeters, intervalSec, deriveSig, resolveAddr, geocodeLimit])
+  }, [rangeValid, effectiveIds, fromTs, toTs, selectionLabel, vehicles, statuses, applyTolerance, toleranceMeters, intervalSec, deriveSig, resolveAddr, geocodeLimit, driverDim, driverFilter, groupBy])
 
   const cancel = () => abortRef.current?.abort()
 
@@ -277,6 +285,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
     const rebuilt = deriveMovementReport(byDevice, {
       vehicles, statuses, applyTolerance, toleranceMeters, intervalSec,
       driverNameFor: driverNameForDevice,
+      driverAt: driverDim.timelineFor, driverFilter, groupBy,
     })
     rebuilt.deriveSig = deriveSig
     resolveReportLocations(rebuilt, { limit: 0 }).then(result => {
@@ -284,7 +293,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
       setReport(rebuilt)
       setVisible(PAGE_ROWS)
     })
-  }, [byDevice, busy, report, deriveSig, vehicles, statuses, applyTolerance, toleranceMeters, intervalSec])
+  }, [byDevice, busy, report, deriveSig, vehicles, statuses, applyTolerance, toleranceMeters, intervalSec, driverDim, driverFilter, groupBy])
 
   // Resolve the addresses a capped run left behind.
   const resolveMore = async () => {
@@ -317,7 +326,10 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   // Memoised so MovementTable's memo() is not defeated by a fresh object on
   // every live-telemetry re-render.
   const reportFilters = useMemo(() => applied && {
-    selection:       applied.selectionLabel,
+    // The driver choice rides on the Selection line (the Ctrack header has no slot for it).
+    selection:       [applied.selectionLabel,
+      driverFilter ? `Drivers: ${driverFilterLabel(driverFilter, driverDim.options)}` : null,
+      groupBy === 'driver' ? 'Grouped By: Driver' : null].filter(Boolean).join(' · '),
     fromLabel:       formatDateTime(applied.fromTs),
     toLabel:         formatDateTime(applied.toTs),
     applyTolerance,
@@ -327,7 +339,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
     statusesLabel,
     printDate:       applied.printDate,
     company:         applied.company,
-  }, [applied, applyTolerance, toleranceMeters, intervalSec, statusesLabel])
+  }, [applied, applyTolerance, toleranceMeters, intervalSec, statusesLabel, driverFilter, groupBy, driverDim])
 
   const exportMeta = { subtitle: applied?.company || 'FleetmaxX', systemName: 'FleetmaxX', printDate: applied?.printDate, hiddenColumns: hiddenCols }
 
@@ -445,6 +457,9 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                   <input type="time" style={FIELD} value={toTime}
                     onChange={e => { setToTime(e.target.value); setPreset('custom') }} />
                 </div>
+
+                <DriverFilter options={driverDim.options} value={driverFilter} onChange={setDriverFilter} />
+                <GroupBySelect id="movement-group-by" value={groupBy} onChange={setGroupBy} />
 
                 <MultiSelect label="STATUSES" summary={statusesLabel}>
                   <CheckRow

@@ -24,6 +24,7 @@
 // the reported range (its first row is 0.000 and its last equals the vehicle
 // group row's total), NOT the absolute odometer — so that is what is computed.
 
+import { driverPasses } from './driverAtTime.js'
 import { fetchFleetMessages, isAbortError } from './replay'
 import { reverseGeocodeMany, geocodeKey, shortenAddress, countUncached } from './geocode'
 import { haversineMeters, createDistanceStepper } from './distance'
@@ -341,6 +342,12 @@ export function deriveMovementReport(byDevice, opts = {}) {
     toleranceMeters = 0,
     intervalSec = 0,
     driverNameFor = v => v?.master?.driver?.name || '',
+    // Driver dimension (client, 2026-11-12; utils/driverAtTime.js). `driverAt`
+    // gives one vehicle's "driver at ts" lookup; without it every row carries
+    // the vehicle's driver as before.
+    driverAt = null,
+    driverFilter = null,
+    groupBy = 'vehicle',
   } = opts
 
   const metaById = new Map(vehicles.map(v => [v.id, v]))
@@ -360,51 +367,79 @@ export function deriveMovementReport(byDevice, opts = {}) {
     const allRows = deriveRows(messages, { applyTolerance, toleranceMeters, intervalSec })
     if (allRows.length === 0) continue
 
-    // Vehicle and date totals are computed over ALL derived rows, before the
-    // status filter. The group row summarises the vehicle over the reported
-    // date range; narrowing the status list is a view of that range, not a
-    // redefinition of it, so filtering to "Ignition off" must not make the
-    // day's distance read 0.000.
-    const statsByDate = new Map()
-    let maxSpeed = 0
+    // Every row carries its driver: the one at that moment with `driverAt`,
+    // the vehicle's otherwise. deriveRows builds fresh rows on each call, so
+    // stamping them here never leaks into another derivation.
+    const at = driverAt ? driverAt(meta, messages) : null
+    const vehicleWho = { key: 'vehicle', label: driverId }
     for (const r of allRows) {
-      if (r.speed > maxSpeed) maxSpeed = r.speed
-      const k = dateKeyOf(r.ts)
-      const s = statsByDate.get(k)
-      if (s) { if (r.speed > s.maxSpeed) s.maxSpeed = r.speed }
-      else statsByDate.set(k, { maxSpeed: r.speed })
+      const who = at ? at(r.ts) : vehicleWho
+      r.driverId = who.label
+      r.driverKey = who.key
     }
-    const totalDistanceKm = allRows[allRows.length - 1].odoKm
+    const passes = r => !driverFilter || driverPasses({ key: r.driverKey }, driverFilter)
 
-    const rows = allRows.filter(r => keep.has(r.statusKey))
-    if (rows.length === 0) continue
-    // The Driver ID column is printed per row (screen, PDF, Excel), so every row
-    // carries the vehicle's driver. deriveRows builds fresh rows on each call,
-    // so stamping them here never leaks into another derivation.
-    for (const r of rows) r.driverId = driverId
+    // A group's distance is what was driven while its rows' driver drove:
+    // each interval between two rows goes to the driver of the earlier one.
+    // The whole vehicle with no driver filter, as before.
+    const distanceOf = (keep) => {
+      let km = 0
+      for (let i = 1; i < allRows.length; i++) if (keep(allRows[i - 1])) km += allRows[i].odoKm - allRows[i - 1].odoKm
+      return km
+    }
 
-    const dates = []
-    let current = null
-    for (const r of rows) {
-      const k = dateKeyOf(r.ts)
-      if (!current || current.dateKey !== k) {
-        current = {
-          dateKey:  k,
-          label:    formatDateLabel(new Date(r.ts * 1000)),
-          maxSpeed: statsByDate.get(k)?.maxSpeed ?? 0,
-          rows:     [],
-        }
-        dates.push(current)
+    const buildGroup = (rowsOfGroup, label, groupDriver, distanceKm) => {
+      // Totals are over ALL derived rows of the group, before the status
+      // filter: narrowing the statuses is a view of the range, not a
+      // redefinition of it, so "Ignition off" must not make the distance 0.
+      const statsByDate = new Map()
+      let maxSpeed = 0
+      for (const r of rowsOfGroup) {
+        if (r.speed > maxSpeed) maxSpeed = r.speed
+        const k = dateKeyOf(r.ts)
+        const st = statsByDate.get(k)
+        if (st) { if (r.speed > st.maxSpeed) st.maxSpeed = r.speed }
+        else statsByDate.set(k, { maxSpeed: r.speed })
       }
-      current.rows.push(r)
+      const rows = rowsOfGroup.filter(r => keep.has(r.statusKey))
+      if (rows.length === 0) return null
+      const dates = []
+      let current = null
+      for (const r of rows) {
+        const k = dateKeyOf(r.ts)
+        if (!current || current.dateKey !== k) {
+          current = { dateKey: k, label: formatDateLabel(new Date(r.ts * 1000)), maxSpeed: statsByDate.get(k)?.maxSpeed ?? 0, rows: [] }
+          dates.push(current)
+        }
+        current.rows.push(r)
+      }
+      totalRows += rows.length
+      return { deviceId, vehicleId: label, plate: vehicleId, driverId: groupDriver, maxSpeed, totalDistanceKm: distanceKm, rowCount: rows.length, dates }
     }
 
-    totalRows += rows.length
-    out.push({ deviceId, vehicleId, driverId, maxSpeed, totalDistanceKm, rowCount: rows.length, dates })
+    if (groupBy === 'driver') {
+      // One group per driver of this vehicle, headed "Driver — Vehicle".
+      const byDriver = new Map()
+      for (const r of allRows) {
+        if (!passes(r)) continue
+        if (!byDriver.has(r.driverKey)) byDriver.set(r.driverKey, { label: r.driverId || 'No driver', rows: [] })
+        byDriver.get(r.driverKey).rows.push(r)
+      }
+      for (const [key, g] of byDriver) {
+        const group = buildGroup(g.rows, `${g.label} — ${vehicleId}`, g.label, distanceOf(r => r.driverKey === key))
+        if (group) out.push({ ...group, sortKey: `${g.label}\u0000${vehicleId}` })
+      }
+      continue
+    }
+
+    const mine = allRows.filter(passes)
+    const distance = driverFilter ? distanceOf(passes) : allRows[allRows.length - 1].odoKm
+    const group = buildGroup(mine, vehicleId, at ? [...new Set(mine.map(r => r.driverId).filter(Boolean))].join(', ') : driverId, distance)
+    if (group) out.push(group)
   }
 
-  out.sort((a, b) => a.vehicleId.localeCompare(b.vehicleId))
-  return { vehicles: out, totalRows, truncated }
+  out.sort((a, b) => (a.sortKey ?? a.vehicleId).localeCompare(b.sortKey ?? b.vehicleId))
+  return { vehicles: out, totalRows, truncated, groupBy }
 }
 
 /** Every row in the report, in render order. */

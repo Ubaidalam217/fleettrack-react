@@ -32,6 +32,8 @@ export const GEO_ZONE_FIELDS = [
   // Its companions: a 0 °C with 0 % humidity and a 0 V battery is no probe (sensorReadings.js).
   'ble.sensor.humidity.1',
   'ble.sensor.battery.voltage.1',
+  // The driver at each moment (utils/driverAtTime.js, client 2026-11-12).
+  'ibutton.code',
 ].join(',')
 
 /**
