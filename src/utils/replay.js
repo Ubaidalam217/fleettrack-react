@@ -21,7 +21,7 @@ const TRACK_FIELDS = [
   'position.direction',
   'engine.ignition.status',
   'timestamp',
-  // The trip list's engine-off check (usageReports.js parkedEngineOff).
+  // The trip list's restart-glitch check (usageReports.js ignitionGlitches).
   'external.powersource.voltage',
 ].join(',')
 

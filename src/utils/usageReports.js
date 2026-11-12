@@ -78,32 +78,16 @@ function posOf(m) {
   return { lat, lng }
 }
 
-// ── engine off behind an "ignition on" ───────────────────────────────────
+// ── tracker glitches (supply voltage) ───────────────────────────────────
 
-/**
+/*
  * A running engine charges: the supply reads ~13.8-14.4 V (12 V vehicles) or
- * ~27-28 V (24 V) while driving, and drops by 1.5 V or more once the engine
- * stops. Some installs report the ignition as on with the engine off (the
- * iTriangle, client 2026-11-12: parked for an hour at 11.8-12.1 V while
- * "ignition on", which showed as a 0 km trip full of idling). So a stationary
- * run that sits ENGINE_OFF_DROP_V below this vehicle's own driving voltage for
- * at least ENGINE_OFF_MIN_SEC is read as ignition off. Each vehicle is measured
- * against itself, so 12 V and 24 V vehicles both work; a vehicle without
- * enough voltage readings while driving is left to its ignition alone.
+ * ~27-28 V (24 V) while driving. An engine off behind an "ignition on" (the
+ * iTriangle's wiring) is NOT corrected here: the client will have the device
+ * fixed rather than manage it in software (2026-11-12), so a trip stays
+ * ignition on to ignition off.
  */
-export const ENGINE_OFF_DROP_V = 1.5
-export const ENGINE_OFF_MIN_SEC = 5 * 60
 const VOLT = 'external.powersource.voltage'
-
-/**
- * The supply voltage under which this vehicle's engine is taken to be off: its
- * median voltage while driving, less ENGINE_OFF_DROP_V. null without at least
- * 20 driving readings.
- */
-export function engineOffVoltage(msgs) {
-  const median = drivingVoltage(msgs)
-  return median === null ? null : median - ENGINE_OFF_DROP_V
-}
 
 /** Median supply voltage while driving; null with fewer than 20 readings. */
 function drivingVoltage(msgs) {
@@ -122,28 +106,6 @@ export const CHARGING_MARGIN_V = 0.5
 export function chargingVoltage(msgs) {
   const median = drivingVoltage(msgs)
   return median === null || median < 13.2 ? null : median - CHARGING_MARGIN_V
-}
-
-/** The messages (by identity) at which the engine was off although the ignition read on. */
-export function parkedEngineOff(msgs, limit = engineOffVoltage(msgs)) {
-  if (limit === null) return null
-  const off = new Set()
-  let run = []
-  let ign = false
-  const flush = () => {
-    if (run.length && run.at(-1).timestamp - run[0].timestamp >= ENGINE_OFF_MIN_SEC) for (const m of run) off.add(m)
-    run = []
-  }
-  for (const m of msgs) {
-    const v = m['engine.ignition.status']
-    if (typeof v === 'boolean') ign = v
-    const volt = num(m[VOLT])
-    // A reading without a voltage carries on a run already under way.
-    if (ign && speedOf(m) === 0 && (volt === null ? run.length > 0 : volt <= limit)) run.push(m)
-    else flush()
-  }
-  flush()
-  return off.size ? off : null
 }
 
 /**
@@ -203,8 +165,6 @@ export function deriveTrips(messages, opts = {}) {
   const msgs = hasIgnition
     ? timed.filter(m => typeof m['engine.ignition.status'] === 'boolean' || num(m['position.speed']) !== null)
     : timed
-  const offVolt = hasIgnition ? engineOffVoltage(msgs) : null
-  const engineOff = hasIgnition ? parkedEngineOff(msgs, offVolt) : null
   const glitches = hasIgnition ? ignitionGlitches(msgs) : null
   let ignNow = false
   const isOn = m => {
@@ -212,7 +172,7 @@ export function deriveTrips(messages, opts = {}) {
     const v = m['engine.ignition.status']
     if (typeof v === 'boolean') ignNow = v
     if (glitches?.has(m)) return true
-    return ignNow && !engineOff?.has(m)
+    return ignNow
   }
 
   const trips = []

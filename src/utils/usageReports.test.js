@@ -52,23 +52,6 @@ describe('deriveTrips', () => {
     expect(trips[0].driveSec).toBe(180) // 120→180→240→300
   })
 
-  it('ends a trip when the engine is off behind an "ignition on" (supply voltage drops)', () => {
-    const V = v => ({ 'external.powersource.voltage': v })
-    const drive = Array.from({ length: 25 }, (_, i) => msg(60 + i * 10, { 'position.speed': 40, ...V(14) }))
-    const trips = deriveTrips([
-      msg(0, { 'engine.ignition.status': false, ...V(12.4) }),
-      ...drive,                                     // 60..300 driving at 14 V
-      msg(310, V(13.9)),                            // short stop, engine running
-      msg(400, V(12.1)),                            // engine off, ignition still "on"
-      msg(500, V(12.0)),
-      msg(800, V(12.0)),                            // 400 s → 800 s: over 5 min
-      msg(900, { 'position.speed': 30, ...V(14.1) }), // engine back on, drives
-      ...Array.from({ length: 5 }, (_, i) => msg(910 + i * 10, { 'position.speed': 30, ...V(14) })),
-      msg(1000, { 'engine.ignition.status': false, ...V(12.4) }),
-    ])
-    expect(trips.map(t => [t.startTs - T0, t.endTs - T0])).toEqual([[60, 400], [900, 1000]])
-  })
-
   it('ignores a few seconds of "ignition off" while driving (tracker restart)', () => {
     const trips = deriveTrips([
       msg(0, { 'engine.ignition.status': false }),
@@ -100,15 +83,15 @@ describe('deriveTrips', () => {
     expect(trips.map(t => [t.startTs - T0, t.endTs - T0])).toEqual([[60, 600]])
   })
 
-  it('leaves a short engine-running stop and a 24 V vehicle alone', () => {
+  it('keeps a parked ignition-on spell in the trip, whatever the voltage (no software correction)', () => {
     const V = v => ({ 'external.powersource.voltage': v })
-    const drive = Array.from({ length: 25 }, (_, i) => msg(60 + i * 10, { 'position.speed': 40, ...V(28) }))
+    const drive = Array.from({ length: 25 }, (_, i) => msg(60 + i * 10, { 'position.speed': 40, ...V(14) }))
     const trips = deriveTrips([
       ...drive,
-      msg(400, V(27.1)), msg(700, V(26.9)), msg(1000, V(27)), // idling, alternator still charging
-      msg(1100, { 'engine.ignition.status': false, ...V(25.5) }),
+      msg(400, V(12.1)), msg(700, V(12.0)), msg(1000, V(12.0)), // engine off, ignition still "on"
+      msg(1100, { 'engine.ignition.status': false, ...V(12.0) }),
     ])
-    expect(trips).toHaveLength(1)
+    expect(trips.map(t => [t.startTs - T0, t.endTs - T0])).toEqual([[60, 1100]])
   })
 
   it('counts over speed episodes, excess idle and harsh braking', () => {
