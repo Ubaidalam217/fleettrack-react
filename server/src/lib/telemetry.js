@@ -57,6 +57,10 @@ export const EXTRA_FIELDS = Object.freeze([
   // probe at all (src/utils/sensorReadings.js).
   'ble.sensor.humidity.1',
   'ble.sensor.battery.voltage.1',
+  // The trip reports' engine-off check reads the supply voltage (src/utils/
+  // usageReports.js parkedEngineOff / ignitionGlitches, 2026-11-12). Without it
+  // here the reports, answered from this copy, never saw a voltage.
+  'external.powersource.voltage',
 ])
 
 /**
