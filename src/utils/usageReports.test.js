@@ -69,6 +69,37 @@ describe('deriveTrips', () => {
     expect(trips.map(t => [t.startTs - T0, t.endTs - T0])).toEqual([[60, 400], [900, 1000]])
   })
 
+  it('ignores a few seconds of "ignition off" while driving (tracker restart)', () => {
+    const trips = deriveTrips([
+      msg(0, { 'engine.ignition.status': false }),
+      msg(60, { 'position.speed': 50 }),
+      msg(120, { 'position.speed': 60 }),
+      msg(125, { 'engine.ignition.status': false, 'position.speed': 0 }), // restart
+      msg(128, { 'engine.ignition.status': false, 'position.speed': 63 }),
+      msg(133, { 'position.speed': 65 }),                                 // "Ignition ON"
+      msg(400, { 'position.speed': 40 }),
+      msg(460, { 'engine.ignition.status': false }),
+      msg(600, { 'engine.ignition.status': true }),                        // a real stop, 140 s
+      msg(660, { 'position.speed': 30 }),
+      msg(720, { 'engine.ignition.status': false }),
+    ])
+    expect(trips.map(t => [t.startTs - T0, t.endTs - T0])).toEqual([[60, 460], [600, 720]])
+  })
+
+  it('ignores a restart that reports 0 km/h while the supply stays at charging voltage', () => {
+    const V = v => ({ 'external.powersource.voltage': v })
+    const drive = Array.from({ length: 25 }, (_, i) => msg(60 + i * 10, { 'position.speed': 80, ...V(13.8) }))
+    const trips = deriveTrips([
+      msg(0, { 'engine.ignition.status': false, ...V(12.4) }),
+      ...drive,                                                            // 60..300
+      msg(305, { 'engine.ignition.status': false, ...V(13.9) }),           // restart: 0 km/h, off
+      msg(311, { 'engine.ignition.status': false, ...V(13.9) }),
+      msg(313, { 'position.speed': 89, ...V(13.8) }),                      // "Ignition ON"
+      msg(600, { 'engine.ignition.status': false, ...V(12.5) }),
+    ])
+    expect(trips.map(t => [t.startTs - T0, t.endTs - T0])).toEqual([[60, 600]])
+  })
+
   it('leaves a short engine-running stop and a 24 V vehicle alone', () => {
     const V = v => ({ 'external.powersource.voltage': v })
     const drive = Array.from({ length: 25 }, (_, i) => msg(60 + i * 10, { 'position.speed': 40, ...V(28) }))

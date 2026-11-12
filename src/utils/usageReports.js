@@ -95,11 +95,38 @@ export const ENGINE_OFF_DROP_V = 1.5
 export const ENGINE_OFF_MIN_SEC = 5 * 60
 const VOLT = 'external.powersource.voltage'
 
-/** The messages (by identity) at which the engine was off although the ignition read on. */
-export function parkedEngineOff(msgs) {
+/**
+ * The supply voltage under which this vehicle's engine is taken to be off: its
+ * median voltage while driving, less ENGINE_OFF_DROP_V. null without at least
+ * 20 driving readings.
+ */
+export function engineOffVoltage(msgs) {
+  const median = drivingVoltage(msgs)
+  return median === null ? null : median - ENGINE_OFF_DROP_V
+}
+
+/** Median supply voltage while driving; null with fewer than 20 readings. */
+function drivingVoltage(msgs) {
   const driving = msgs.filter(m => speedOf(m) > 0 && num(m[VOLT]) !== null).map(m => m[VOLT]).sort((a, b) => a - b)
-  if (driving.length < 20) return null
-  const limit = driving[Math.floor(driving.length / 2)] - ENGINE_OFF_DROP_V
+  return driving.length < 20 ? null : driving[Math.floor(driving.length / 2)]
+}
+
+/**
+ * The voltage at or above which this vehicle's engine is surely still running:
+ * within CHARGING_MARGIN_V of its driving median. Right after a real key-off
+ * the supply reads 12.7-13.3 V for a minute or two (measured 2026-11-12), so
+ * only a reading this close to the driving voltage counts. null when the
+ * driving voltage itself is not a charging one (a bench supply, ~12 V).
+ */
+export const CHARGING_MARGIN_V = 0.5
+export function chargingVoltage(msgs) {
+  const median = drivingVoltage(msgs)
+  return median === null || median < 13.2 ? null : median - CHARGING_MARGIN_V
+}
+
+/** The messages (by identity) at which the engine was off although the ignition read on. */
+export function parkedEngineOff(msgs, limit = engineOffVoltage(msgs)) {
+  if (limit === null) return null
   const off = new Set()
   let run = []
   let ign = false
@@ -119,6 +146,46 @@ export function parkedEngineOff(msgs) {
   return off.size ? off : null
 }
 
+/**
+ * A tracker that restarts while driving reports the ignition off for a few
+ * seconds (the iTriangle restarts daily around 13:27 UAE, 2026-11-12: "ignition
+ * off" at 63 km/h for 8 s, then "Ignition ON"), which cut a drive into two
+ * trips and a 4-second one. An ignition-off spell shorter than
+ * IGNITION_GLITCH_SEC is not a real one if the vehicle moved during it, or the
+ * supply stayed at charging voltage throughout, the "on" reading included (the
+ * engine kept running: on 2026-11-11 the restart reported 0 km/h at 86 km/h,
+ * but 13.9 V). A real short key-off drops below that within seconds.
+ */
+export const IGNITION_GLITCH_SEC = 2 * 60
+
+/** The messages (by identity) inside an ignition-off spell that is a tracker glitch. */
+export function ignitionGlitches(msgs, charge = chargingVoltage(msgs)) {
+  const out = new Set()
+  let spell = []
+  // The spell and the "on" reading that ends it all at charging voltage.
+  const charging = on => {
+    const volts = [...spell, on].map(m => num(m[VOLT])).filter(v => v !== null)
+    return charge !== null && volts.length > 1 && volts.every(v => v >= charge)
+  }
+  const settle = on => {
+    if (spell.length && on.timestamp - spell[0].timestamp < IGNITION_GLITCH_SEC && (spell.some(m => speedOf(m) > 0) || charging(on))) {
+      for (const m of spell) out.add(m)
+    }
+    spell = []
+  }
+  let ign = null
+  for (const m of msgs) {
+    const v = m['engine.ignition.status']
+    if (typeof v !== 'boolean') { if (spell.length) spell.push(m); continue }
+    // Only a spell between two "on" readings: one that ends the data is left alone.
+    if (v === false && ign === true && !spell.length) spell.push(m)
+    else if (v === false && spell.length) spell.push(m)
+    else if (v === true && spell.length) settle(m)
+    ign = v
+  }
+  return out.size ? out : null
+}
+
 // ── trips ────────────────────────────────────────────────────────────────
 
 /**
@@ -136,12 +203,15 @@ export function deriveTrips(messages, opts = {}) {
   const msgs = hasIgnition
     ? timed.filter(m => typeof m['engine.ignition.status'] === 'boolean' || num(m['position.speed']) !== null)
     : timed
-  const engineOff = hasIgnition ? parkedEngineOff(msgs) : null
+  const offVolt = hasIgnition ? engineOffVoltage(msgs) : null
+  const engineOff = hasIgnition ? parkedEngineOff(msgs, offVolt) : null
+  const glitches = hasIgnition ? ignitionGlitches(msgs) : null
   let ignNow = false
   const isOn = m => {
     if (!hasIgnition) return speedOf(m) > 0
     const v = m['engine.ignition.status']
     if (typeof v === 'boolean') ignNow = v
+    if (glitches?.has(m)) return true
     return ignNow && !engineOff?.has(m)
   }
 
