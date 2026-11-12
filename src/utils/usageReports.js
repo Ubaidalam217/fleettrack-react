@@ -395,6 +395,52 @@ export function gyrScore(totals, bands = { green: 80, red: 60 }) {
   return { score, rating, rates }
 }
 
+// ── vehicle wise / driver wise ───────────────────────────────────────────
+//
+// Client, 2026-11-12: "All the reports can be generated Vehicle wise or Driver
+// wise". The trip reports are built from per-vehicle entries
+// ({ deviceId, vehicleId, vehicle, driver, trips }); driver wise hands the same
+// builders one entry per driver instead. Each trip then carries its vehicle's
+// name in `driver` (the column the rows show — relabelled "Vehicle"), its own
+// driver in `_driver` and its vehicle entry in `_src`.
+
+export const NO_DRIVER = 'No driver'
+/** A trip's driver label; a trip nobody is known for is "No driver". */
+export const driverLabel = d => (!d || d === '—' ? NO_DRIVER : d)
+/** The name part of "Name · ID 01A2…" (an iButton-read label). */
+export const driverBase = d => driverLabel(d).split(' · ID ')[0]
+
+/** Only the trips of the chosen drivers (null = everyone); vehicles left with none are dropped. */
+export function filterTripsByDriver(entries, selected) {
+  if (!selected) return entries
+  const set = new Set(selected)
+  const wanted = t => set.has(driverLabel(t.driver)) || set.has(driverBase(t.driver))
+  return entries.map(v => ({ ...v, trips: v.trips.filter(wanted) })).filter(v => v.trips.length > 0)
+}
+
+/**
+ * The per-vehicle entries regrouped per driver, "No driver" last.
+ * `heading(name)` names a group (e.g. with the employee number).
+ */
+export function regroupByDriver(entries, { heading = name => name } = {}) {
+  const map = new Map()
+  for (const v of entries ?? []) {
+    for (const t of v.trips) {
+      const name = driverLabel(t.driver)
+      if (!map.has(name)) map.set(name, [])
+      map.get(name).push({ ...t, driver: v.vehicleId, _driver: name, _src: v })
+    }
+  }
+  const names = [...map.keys()].sort((a, b) => (a === NO_DRIVER) - (b === NO_DRIVER) || a.localeCompare(b))
+  return names.map(name => {
+    const trips = map.get(name).sort((a, b) => a.startTs - b.startTs)
+    return {
+      deviceId: `driver:${name}`, vehicleId: heading(name), vehicle: null, byDriver: true,
+      driver: [...new Set(trips.map(t => t.driver))].join(', '), trips,
+    }
+  })
+}
+
 // ── formatting ───────────────────────────────────────────────────────────
 
 export function hms(sec) {

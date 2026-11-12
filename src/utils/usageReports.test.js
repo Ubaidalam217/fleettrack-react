@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { deriveTrips, sumTrips, byDay, visibleTrips, tripUsage, gyrScore, hms } from './usageReports'
+import {
+  deriveTrips, sumTrips, byDay, visibleTrips, tripUsage, gyrScore, hms,
+  regroupByDriver, filterTripsByDriver, NO_DRIVER,
+} from './usageReports'
 
 // 2026-11-06 08:00 local
 const T0 = Math.floor(new Date(2026, 10, 6, 8, 0, 0).getTime() / 1000)
@@ -209,5 +212,33 @@ describe('grouping and rules', () => {
   it('formats durations', () => {
     expect(hms(3725)).toBe('01:02:05')
     expect(hms(null)).toBe('—')
+  })
+})
+
+describe('vehicle wise / driver wise', () => {
+  const trip = (startTs, driver, km = 1) => ({ startTs, endTs: startTs + 600, driver, distanceKm: km })
+  const entries = [
+    { deviceId: 1, vehicleId: 'PLATE-1', trips: [trip(100, 'Ali'), trip(300, '—'), trip(500, 'Sara · ID 01AB')] },
+    { deviceId: 2, vehicleId: 'PLATE-2', trips: [trip(200, 'Ali', 4)] },
+  ]
+
+  it('regroups the same trips per driver, with the vehicle in the row and "No driver" last', () => {
+    const g = regroupByDriver(entries, { heading: n => (n === 'Ali' ? 'Ali (E-7)' : n) })
+    expect(g.map(x => x.vehicleId)).toEqual(['Ali (E-7)', 'Sara · ID 01AB', NO_DRIVER])
+    const ali = g[0]
+    expect(ali.trips.map(t => [t.startTs, t.driver, t._driver])).toEqual([[100, 'PLATE-1', 'Ali'], [200, 'PLATE-2', 'Ali']])
+    expect(ali.driver).toBe('PLATE-1, PLATE-2')
+    expect(ali.trips[1]._src.deviceId).toBe(2)
+    expect(sumTrips(ali.trips).distanceKm).toBe(5)
+    // Nothing lost or doubled.
+    expect(g.reduce((n, x) => n + x.trips.length, 0)).toBe(4)
+  })
+
+  it('filters by driver label, by the name of an iButton label, and "No driver"; drops empty vehicles', () => {
+    expect(filterTripsByDriver(entries, null)).toBe(entries)
+    const f = filterTripsByDriver(entries, ['Sara', NO_DRIVER])
+    expect(f.map(v => v.vehicleId)).toEqual(['PLATE-1'])
+    expect(f[0].trips.map(t => t.startTs)).toEqual([300, 500])
+    expect(filterTripsByDriver(entries, ['Ali']).map(v => v.trips.length)).toEqual([1, 1])
   })
 })

@@ -189,3 +189,44 @@ export function HelpTip({ title, children }) {
     </span>
   )
 }
+
+/**
+ * "Grouped By: Vehicle / Driver" (client, 2026-11-12: every report Vehicle wise
+ * or Driver wise). A select so it lines up with the other filter fields.
+ */
+export function GroupByToggle({ value, onChange, options = [['vehicle', 'Vehicle'], ['driver', 'Driver']] }) {
+  return (
+    <div>
+      <label style={LABEL}>GROUPED BY</label>
+      <select style={FIELD} value={value} onChange={e => onChange(e.target.value)}>
+        {options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+      </select>
+    </div>
+  )
+}
+
+/**
+ * Which drivers a report covers. `drivers` are the labels to offer, `selected`
+ * null for all of them. Emits null again once every driver is ticked.
+ */
+export function DriverMultiSelect({ drivers, selected, onChange, label = 'DRIVERS' }) {
+  const all = selected === null
+  const chosen = selected ?? drivers
+  const summary = all ? `All (${drivers.length})`
+    : chosen.length === 0 ? 'Select drivers'
+      : chosen.length === 1 ? chosen[0]
+        : `${chosen.length} drivers`
+  const toggle = name => {
+    const next = chosen.includes(name) ? chosen.filter(x => x !== name) : [...chosen, name]
+    onChange(next.length === drivers.length && drivers.every(d => next.includes(d)) ? null : next)
+  }
+  return (
+    <MultiSelect label={label} summary={summary} disabled={drivers.length === 0}>
+      <CheckRow checked={all} onChange={() => onChange(all ? [] : null)}><strong>All drivers</strong></CheckRow>
+      <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
+      {drivers.map(name => (
+        <CheckRow key={name} checked={chosen.includes(name)} onChange={() => toggle(name)}>{name}</CheckRow>
+      ))}
+    </MultiSelect>
+  )
+}

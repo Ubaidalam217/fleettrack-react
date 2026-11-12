@@ -7,9 +7,9 @@ import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import LocationMapModal from '../../components/reports/LocationMapModal'
 import TripRouteModal from '../../components/reports/TripRouteModal'
-import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../../components/reports/controls'
+import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, GroupByToggle, DriverMultiSelect } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
-import { driverNameForDevice, driverForIbutton, ibuttonKey } from '../../data/settings'
+import { driverNameForDevice, driverForIbutton, ibuttonKey, useDrivers } from '../../data/settings'
 import { fetchMovementMessages, formatDateTime, formatDateLabel, formatTime, formatPrintDate, isAbortError } from '../../utils/movementReport'
 import { resolveRowLocations } from '../../utils/reportLocations'
 import { locationUrl } from '../../utils/mapLink'
@@ -20,6 +20,7 @@ import DistanceDrivenCharts from '../../components/reports/DistanceDrivenCharts'
 import { ReportSkeleton } from '../../components/Skeleton'
 import {
   DEFAULT_USAGE_OPTS, tripsByVehicle, byDay, sumTrips, visibleTrips, tripUsage, gyrScore, hms, km,
+  regroupByDriver, filterTripsByDriver, driverLabel, driverBase, NO_DRIVER,
 } from '../../utils/usageReports'
 
 /**
@@ -86,6 +87,8 @@ const USAGE_STYLE = {
 }
 
 const round = v => (Number.isFinite(v) ? Math.round(v) : '—')
+/** A trip row's key; driver wise a group mixes vehicles, so the vehicle goes in it. */
+const rowKey = t => (t._src ? `${t._src.deviceId}-${t.startTs}` : t.startTs)
 const band = (key, label) => ({ kind: 'band', key, label })
 const endPoint = t => ({ lat: t.endLat, lng: t.endLng })
 
@@ -148,13 +151,17 @@ const joinNotes = (...notes) => notes.filter(Boolean).join(' · ') || null
  * One trip as a Trip Details / Trip Locations row. `route` lets the Map link
  * draw the whole trip (TripRouteModal) instead of one point.
  */
-const ctrackTripRow = (t, naSpeed, v) => ({
-  key: t.startTs, ...endPoint(t), startLat: t.startLat, startLng: t.startLng,
+const ctrackTripRow = (t, naSpeed, entry) => {
+  // Driver wise the entry is the driver; the route still belongs to the trip's vehicle.
+  const v = t._src ?? entry
+  return {
+  key: rowKey(t), ...endPoint(t), startLat: t.startLat, startLng: t.startLng,
   route: { deviceId: v.deviceId, vehicle: v.vehicleId, startTs: t.startTs, endTs: t.endTs, distanceKm: t.distanceKm, startLat: t.startLat, startLng: t.startLng, endLat: t.endLat, endLng: t.endLng },
-  driver: t.driver, start: ctrackDateTime(t.startTs), end: ctrackDateTime(t.endTs),
+  driver: t.driver, driverName: t._driver ?? t.driver, start: ctrackDateTime(t.startTs), end: ctrackDateTime(t.endTs),
   duration: hms(t.durationSec), driving: hms(t.driveSec), standing: hms(standingSec(t)),
   distance: km(t.distanceKm), speed: naSpeed ? maxOrNA(t.maxSpeed) : (t.maxSpeed > 0 ? Math.round(t.maxSpeed) : 0), map: 'Map',
-})
+  }
+}
 
 function ctrackTripGroups(vs, ctx, naSpeed) {
   let hidden = 0
@@ -205,7 +212,7 @@ const VARIANTS = {
         const rows = byDay(vis.trips).flatMap(d => [
           band(`d-${d.key}`, formatDateLabel(d.date)),
           ...d.trips.map(t => ({
-            key: t.startTs, ...endPoint(t), endLat: t.endLat, endLng: t.endLng,
+            key: rowKey(t), ...endPoint(t), endLat: t.endLat, endLng: t.endLng,
             start: formatTime(t.startTs), stop: t.open ? `${formatTime(t.endTs)} (on)` : formatTime(t.endTs),
             drive: hms(t.driveSec), idle: hms(t.idleSec), stopTime: hms(t.stopSec), distance: km(t.distanceKm),
             max: round(t.maxSpeed), os: t.overSpeedCount, osDur: hms(t.overSpeedSec), hb: t.hbCount, ha: t.haCount,
@@ -243,7 +250,7 @@ const VARIANTS = {
         const rows = byDay(vis.trips).flatMap(d => [
           band(`d-${d.key}`, formatDateLabel(d.date)),
           ...d.trips.map(t => ({
-            key: t.startTs, ...endPoint(t), startLat: t.startLat, startLng: t.startLng,
+            key: rowKey(t), ...endPoint(t), startLat: t.startLat, startLng: t.startLng,
             start: formatTime(t.startTs), stop: t.open ? `${formatTime(t.endTs)} (on)` : formatTime(t.endTs),
             duration: hms(t.durationSec), distance: km(t.distanceKm), max: round(t.maxSpeed),
             avg: t.driveSec > 0 ? round((t.distanceKm / t.driveSec) * 3600) : '—', driver: t.driver,
@@ -364,7 +371,7 @@ const VARIANTS = {
           ...d.trips.map(t => {
             const usage = tripUsage(t, ctx.rule)
             return {
-              key: t.startTs, ...endPoint(t), startLat: t.startLat, startLng: t.startLng,
+              key: rowKey(t), ...endPoint(t), startLat: t.startLat, startLng: t.startLng,
               start: formatTime(t.startTs), stop: t.open ? `${formatTime(t.endTs)} (on)` : formatTime(t.endTs),
               drive: hms(t.driveSec), distance: km(t.distanceKm), usage, driver: t.driver,
               cellStyle: { usage: USAGE_STYLE[usage] },
@@ -514,9 +521,11 @@ const VARIANTS = {
           if (!pairs.has(k)) pairs.set(k, [])
           pairs.get(k).push(t)
         }
+        // Driver wise the key starts with the driver: "No driver" goes last.
+        const noDriver = k => k.startsWith(`${NO_DRIVER} `)
         const rows = [...pairs.entries()]
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([k, list]) => line(k, list, { vehicle: list[0]._vehicle.vehicleId, site: ctx.siteOf(list[0]._vehicle), driver: list[0].driver }))
+          .sort(([a], [b]) => noDriver(a) - noDriver(b) || a.localeCompare(b))
+          .map(([k, list]) => line(k, list, { vehicle: list[0]._vehicle.vehicleId, site: ctx.siteOf(list[0]._src ?? list[0]._vehicle), driver: list[0].driver }))
         const label = ctrackDate(d.date)
         rows.push({ ...line(`sum-${d.key}`, d.trips, { vehicle: `${label} Summary`, site: '', driver: '' }), strong: true })
         return { key: d.key, label: `Day : ${label}`, rows, total: false }
@@ -606,11 +615,24 @@ function UsageReport({ variant, ...props }) {
   const V = VARIANTS[variant]
   const title = useReportTitle(V.title)
   const [entity, setEntity] = useState('driver')
+  // Vehicle wise or Driver wise (client, 2026-11-12). Distance Driven has its
+  // own Entity Grouping, which already is that choice.
+  const supportsGroupBy = !V.settings.includes('entity')
+  const [groupBy, setGroupBy] = useState('vehicle')
+  const byDriver = supportsGroupBy && groupBy === 'driver'
+  const [driverSel, setDriverSel] = useState(null) // null = every driver
+  const registeredDrivers = useDrivers()
   const file = title === V.title ? V.file : fileNameOf(title)
   const [hiddenCols, setHiddenCols] = useHiddenColumns(`usage-${variant}`)
   const columns = useMemo(
-    () => V.columns.map(c => (c.key === 'entity' && entity === 'asset' ? { ...c, label: 'Asset' } : c)),
-    [V, entity]
+    () => V.columns.map(c => {
+      if (c.key === 'entity' && entity === 'asset') return { ...c, label: 'Asset' }
+      // Driver wise the rows name the vehicle where they named the driver, and the reverse.
+      if (byDriver && c.key === 'driver') return { ...c, label: 'Vehicle' }
+      if (byDriver && c.key === 'vehicle') return { ...c, label: 'Driver' }
+      return c
+    }),
+    [V, entity, byDriver]
   )
   const shownCols = useVisibleColumns(columns, hiddenCols)
   const { data } = useFlespiData()
@@ -735,18 +757,46 @@ function UsageReport({ variant, ...props }) {
       })
   }, [raw, vehicles, speedNum, idleNum])
 
-  const built = useMemo(() => {
+  // Drivers to offer: Settings › Driver, plus whoever the trips name that is not
+  // one of them (an unregistered tag), and "No driver".
+  const driverOptions = useMemo(() => {
+    const names = new Set((registeredDrivers ?? []).map(d => d.name).filter(Boolean))
+    const extra = new Set()
+    for (const v of vehicleTrips ?? []) {
+      for (const t of v.trips) {
+        const label = driverLabel(t.driver)
+        if (label !== NO_DRIVER && !names.has(driverBase(label))) extra.add(label)
+      }
+    }
+    return [...[...names, ...extra].sort((a, b) => a.localeCompare(b)), NO_DRIVER]
+  }, [registeredDrivers, vehicleTrips])
+
+  // The entries the variant builds from: per vehicle, or per driver.
+  const entries = useMemo(() => {
     if (!vehicleTrips) return null
+    const filtered = filterTripsByDriver(vehicleTrips, driverSel)
+    if (!byDriver) return filtered
+    const byName = new Map((registeredDrivers ?? []).filter(d => d.name).map(d => [d.name, d]))
+    const heading = name => {
+      const d = byName.get(name)
+      const no = d?.employeeId || (d?.driverNo ? `DRV-${String(d.driverNo).padStart(4, '0')}` : '')
+      return no ? `${name} (${no})` : name
+    }
+    return regroupByDriver(filtered, { heading })
+  }, [vehicleTrips, driverSel, byDriver, registeredDrivers])
+
+  const built = useMemo(() => {
+    if (!entries) return null
     // Site: the vehicle's branch in Settings, blank without one (as in the client's sample).
     const regByImei = new Map((registered ?? []).map(r => [imeiKey(r.imei), r]))
     const siteOf = v => {
       const reg = regByImei.get(imeiKey(v.vehicle?.ident))
       return reg?.branchId ? branchNameFor(reg.branchId) : ''
     }
-    return V.build(vehicleTrips, { hideZero, rule, bands, entity, siteOf })
+    return V.build(entries, { hideZero, rule, bands, entity, siteOf })
   // rule / bands are rebuilt each render from their own state, listed below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicleTrips, V, hideZero, workDays, workFrom, workTo, green, red, entity, registered])
+  }, [entries, V, hideZero, workDays, workFrom, workTo, green, red, entity, registered])
 
   useEffect(() => {
     // Trip Details / Summary / Distance Driven show no address: nothing to look up.
@@ -770,6 +820,8 @@ function UsageReport({ variant, ...props }) {
     if (!built) return []
     return built.groups.map(g => ({
       ...g,
+      label: byDriver ? g.label.replace(/^All vehicles/, 'All drivers') : g.label,
+      total: byDriver && typeof g.total === 'string' ? g.total.replace(/^Vehicle Total/, 'Driver Total') : g.total,
       rows: g.rows.map(r => {
         if (r.kind === 'band') return r
         const location = r.locationText || coords(r.lat, r.lng)
@@ -777,18 +829,21 @@ function UsageReport({ variant, ...props }) {
           ...r,
           location,
           startLocation: r.startLocationText || coords(r.startLat, r.startLng),
-          mapUrl: r.lat != null ? locationUrl({ lat: r.lat, lng: r.lng, vehicle: g.label, address: location }) : undefined,
+          mapUrl: r.lat != null ? locationUrl({ lat: r.lat, lng: r.lng, vehicle: byDriver ? (r.driver || g.label) : g.label, address: location }) : undefined,
         }
       }),
     }))
   // geoTick: resolveRowLocations fills the address text in place.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [built, geoTick])
+  }, [built, geoTick, byDriver])
 
   const applied = raw?.applied
   const filters = applied ? [
     ['Selection', applied.selectionLabel],
-    ...(V.groupedBy ? [['Grouped By', V.groupedBy]] : []),
+    ...(V.groupedBy || supportsGroupBy
+      ? [['Grouped By', byDriver ? (V.groupedBy === 'Day' ? 'Day · Driver' : 'Driver') : (V.groupedBy ?? 'Vehicle')]]
+      : []),
+    ...(driverSel ? [['Drivers', driverSel.length ? driverSel.join(', ') : 'None']] : []),
     ...(V.settings.includes('entity') ? [['Entity Grouping', entity === 'asset' ? 'Asset' : 'Driver']] : []),
     ['From Date', formatDateTime(applied.fromTs)],
     ['To Date', formatDateTime(applied.toTs)],
@@ -834,6 +889,8 @@ function UsageReport({ variant, ...props }) {
               </CheckRow>
             ))}
           </MultiSelect>
+          {supportsGroupBy && <GroupByToggle value={groupBy} onChange={setGroupBy} />}
+          <DriverMultiSelect drivers={driverOptions} selected={driverSel} onChange={setDriverSel} />
           <div>
             <label style={LABEL}>FROM DATE</label>
             <input type="date" style={FIELD} value={fromDate} onChange={e => { setFromDate(e.target.value); setPreset('custom') }} />
@@ -953,7 +1010,7 @@ function UsageReport({ variant, ...props }) {
           <div className="report-screen-only" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
             <div style={{ fontSize: 12.5, color: 'var(--c-text2)' }}>
               <strong style={{ color: 'var(--c-text1)' }}>{dataRows.toLocaleString()}</strong> row{dataRows === 1 ? '' : 's'}
-              {' · '}{vehicleTrips.length} vehicle{vehicleTrips.length === 1 ? '' : 's'}
+              {' · '}{entries.length} {byDriver ? 'driver' : 'vehicle'}{entries.length === 1 ? '' : 's'}
               {built.note && <span style={{ color: 'var(--c-text3)' }}> · {built.note}</span>}
               {geoProgress && <span style={{ color: 'var(--ft-accent)' }}> · Resolving addresses {geoProgress.done}/{geoProgress.total}…</span>}
               {truncated && <span style={{ color: '#f97316' }}> · some days hit the message limit — narrow the range for full detail</span>}
@@ -974,7 +1031,7 @@ function UsageReport({ variant, ...props }) {
             groups={groups}
             printDate={applied.printDate}
             onLocate={r => (r.route
-              ? setTripRoute({ ...r.route, driver: r.driver, distance: km(r.route.distanceKm), points: routePoints(raw?.byDevice, r.route) })
+              ? setTripRoute({ ...r.route, driver: r.driverName ?? r.driver, distance: km(r.route.distanceKm), points: routePoints(raw?.byDevice, r.route) })
               : setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: title, location: r.location }))}
             emptyText="No trips in this period for the selected vehicles."
             summary={built.summary}
