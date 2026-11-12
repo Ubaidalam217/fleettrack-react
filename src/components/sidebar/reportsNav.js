@@ -3,7 +3,7 @@ import {
   Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma, ShieldCheck, Wrench, History,
   Activity, TrendingUp, TrendingDown, CircleParking, ListOrdered, PlugZap, ChartLine, Table2, Shuffle,
   MapPin, Trophy, Flame, ListChecks, Timer, BarChart3, Award, Moon, LayoutDashboard,
-  Hourglass, UserRoundX, Users, GanttChartSquare, LineChart, ScrollText, HardDrive,
+  Hourglass, UserRoundX, Users, GanttChartSquare, LineChart, ScrollText, HardDrive, Receipt,
 } from 'lucide-react'
 import { labelForPathIn } from './navTree'
 
@@ -106,6 +106,16 @@ export const REPORT_CATEGORIES = [
         desc: 'Every vehicle on every reminder: Overdue, Due, Upcoming or Completed, and Mark done.' },
       { id: 'reminder-history', label: 'Acknowledgement History',  icon: History, path: '/reports/reminder-history', ready: true,
         desc: 'Each reminder marked done, with the date, odometer, note and who did it.' },
+    ],
+  },
+  {
+    // Client, 2026-11-12, after the reference system's Reports › Expense.
+    id: 'expense',
+    title: 'Expense',
+    desc: 'What each vehicle costs: every expense, cost per km, per day and per engine hour.',
+    reports: [
+      { id: 'expense-report', label: 'Expense Report', icon: Receipt, path: '/reports/expense', ready: true,
+        desc: 'Every expense per vehicle in a period, the Vehicle Cost and the totals per category.' },
     ],
   },
   {

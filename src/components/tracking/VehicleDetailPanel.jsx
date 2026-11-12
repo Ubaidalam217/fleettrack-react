@@ -20,6 +20,7 @@ import { shortenAddress } from '../../utils/geocode'
 import { useSettingsProfile, useDriverForDevice, useDrivers, driverForIbutton, ibuttonKey, updateDriver, driverDisplayForDevice } from '../../data/settings'
 import UnregisteredDriverDialog from './UnregisteredDriverDialog'
 import VehiclesDrivenToday from './VehiclesDrivenToday'
+import VehicleExpenses from './VehicleExpenses'
 import { licenceExpiryState, formatExpiryDate } from '../../utils/licenceExpiry'
 import { BASE_URL, HEADERS } from '../../hooks/flespiConfig'
 
@@ -323,6 +324,8 @@ function VehicleInfo({ v, onOpenInfo, onOpenConsole }) {
             </div>
           )}
         </InfoCard>
+
+        <VehicleExpenses imei={v.ident} />
       </div>
       </div>
     </>
