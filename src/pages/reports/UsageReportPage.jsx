@@ -3,6 +3,7 @@ import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-rea
 import ReportFrame from '../../components/reports/ReportFrame'
 import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import PaperTable from '../../components/reports/PaperTable'
+import CtrackPaper from '../../components/reports/CtrackPaper'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import LocationMapModal from '../../components/reports/LocationMapModal'
@@ -14,6 +15,7 @@ import { fetchMovementMessages, formatDateTime, formatDateLabel, formatTime, for
 import { resolveRowLocations } from '../../utils/reportLocations'
 import { locationUrl } from '../../utils/mapLink'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
+import { exportCtrackPdf, exportCtrackExcel } from '../../utils/ctrackExport'
 import { IS_REAL } from '../../data/mode'
 import { useVehicles as useRegisteredVehicles, branchNameFor, imeiKey } from '../settings/mockData'
 import DistanceDrivenCharts from '../../components/reports/DistanceDrivenCharts'
@@ -126,16 +128,23 @@ function ctrackTotals(trips) {
   return { ...s, durationSec, standSec }
 }
 
-function reportSummary(trips) {
+/**
+ * The closing Report Summary, worded and ordered as on each sample's last page
+ * (labels carry their own colons, as the samples do — or don't).
+ */
+function reportSummary(trips, style = 'details') {
   const s = ctrackTotals(trips)
-  return [
-    { label: 'Total Trips', value: s.trips },
-    { label: 'Total Trip Duration', value: hms(s.durationSec) },
-    { label: 'Total Driving Time', value: hms(s.driveSec) },
-    { label: 'Total Standing Time', value: hms(s.standSec) },
-    { label: 'Max Speed (Kph)', value: maxOrNA(s.maxSpeed) },
-    { label: 'Total Distance (Km)', value: km3(s.distanceKm) },
-  ]
+  const trip = { label: 'Total Trips:', value: s.trips }
+  const dur = { label: 'Total Trip Duration:', value: hms(s.durationSec) }
+  const drv = { label: 'Total Driving Time:', value: hms(s.driveSec) }
+  const std = { label: 'Total Standing Time:', value: hms(s.standSec) }
+  if (style === 'summary') {
+    return [dur, drv, std, { label: 'Total Distance (Km)', value: km3(s.distanceKm) }, { label: 'Max Speed (Kph)', value: maxOrNA(s.maxSpeed) }, trip]
+  }
+  const colon = style === 'locations' ? ':' : ''
+  return [trip, dur, drv, std,
+    { label: `Max Speed${colon} (Kph)`, value: maxOrNA(s.maxSpeed) },
+    { label: `Total Distance${colon} (Km)`, value: Number.isFinite(s.distanceKm) ? s.distanceKm.toFixed(2) : '—' }]
 }
 
 /**
@@ -163,7 +172,7 @@ const ctrackTripRow = (t, naSpeed, entry) => {
   }
 }
 
-function ctrackTripGroups(vs, ctx, naSpeed) {
+function ctrackTripGroups(vs, ctx, naSpeed, style = 'details') {
   let hidden = 0
   let running = 0
   const all = []
@@ -176,7 +185,7 @@ function ctrackTripGroups(vs, ctx, naSpeed) {
     return { key: v.deviceId, label: v.vehicleId, rows: vis.trips.map(t => ctrackTripRow(t, naSpeed, v)), total: false }
   })
   const zeroNote = hidden ? `${hidden} trip${hidden === 1 ? '' : 's'} of 0 km hidden` : null
-  return { groups, summary: reportSummary(all), note: joinNotes(zeroNote, inProgressNote(running)) }
+  return { groups, summary: reportSummary(all, style), note: joinNotes(zeroNote, inProgressNote(running)) }
 }
 
 // Each variant: its columns, its settings and how it groups the trips.
@@ -440,18 +449,20 @@ const VARIANTS = {
     defaults: { hideZero: false },
     groupedBy: 'Asset',
     noAddresses: true,
+    // The client's Ctrack sample (2026-11-12: "match exactly"): its PDF layout.
+    ctrack: { orientation: 'landscape', groupedLabel: 'Grouped by', summaryTitle: 'Report Summary' },
     columns: [
-      { key: 'driver',   label: 'Driver',         width: '22%', pdf: 20 },
-      { key: 'start',    label: 'Start',          width: '15%', pdf: 13 },
-      { key: 'end',      label: 'End',            width: '15%', pdf: 13 },
-      { key: 'duration', label: 'Duration',       width: '8%',  pdf: 7 },
-      { key: 'driving',  label: 'Driving',        width: '8%',  pdf: 7 },
-      { key: 'standing', label: 'Standing',       width: '8%',  pdf: 7 },
-      { key: 'distance', label: 'Distance (Km)',  width: '8%',  pdf: 7, align: 'right' },
-      { key: 'speed',    label: 'Speed (Kph)',    width: '8%',  pdf: 7, align: 'right' },
-      { key: 'map',      label: 'Map',            width: '5%',  pdf: 4, locate: true },
+      { key: 'driver',   label: 'Driver',         width: '18%', pdf: 19 },
+      { key: 'start',    label: 'Start',          width: '17%', pdf: 18 },
+      { key: 'end',      label: 'End',            width: '17%', pdf: 18 },
+      { key: 'duration', label: 'Duration',       width: '8%',  pdf: 9, align: 'right' },
+      { key: 'driving',  label: 'Driving',        width: '8%',  pdf: 9, align: 'right' },
+      { key: 'standing', label: 'Standing',       width: '8%',  pdf: 9, align: 'right' },
+      { key: 'distance', label: 'Distance (Km)',  width: '9%',  pdf: 9, align: 'right' },
+      { key: 'speed',    label: 'Speed (Kph)',    width: '9%',  pdf: 9, align: 'right' },
+      { key: 'map',      label: '',               width: '6%',  pdf: 5, locate: true, icon: 'map' },
     ],
-    build: (vs, ctx) => ctrackTripGroups(vs, ctx, false),
+    build: (vs, ctx) => ctrackTripGroups(vs, ctx, false, 'details'),
   },
 
   tripLocations: {
@@ -461,19 +472,21 @@ const VARIANTS = {
     settings: ['hideZero'],
     defaults: { hideZero: false },
     groupedBy: 'Asset',
+    ctrack: { orientation: 'landscape', groupedLabel: 'Grouped By', summaryTitle: 'Report Summary:' },
     columns: [
-      { key: 'driver',        label: 'Driver',          width: '13%', pdf: 12 },
-      { key: 'start',         label: 'Start',           width: '9%',  pdf: 8 },
-      { key: 'startLocation', label: 'Start Location',  width: '19%', pdf: 18 },
-      { key: 'end',           label: 'End',             width: '9%',  pdf: 8 },
-      { key: 'location',      label: 'End Location',    width: '19%', pdf: 18, locate: true },
-      { key: 'duration',      label: 'Duration',        width: '6.5%', pdf: 6 },
-      { key: 'driving',       label: 'Driving',         width: '6.5%', pdf: 6 },
-      { key: 'standing',      label: 'Standing',        width: '6.5%', pdf: 6 },
-      { key: 'distance',      label: 'Distance (Km)',   width: '5.5%', pdf: 5, align: 'right' },
-      { key: 'speed',         label: 'Max Speed (Kph)', width: '6%',  pdf: 5, align: 'right' },
+      { key: 'driver',        label: 'Driver',            width: '13%', pdf: 13 },
+      { key: 'start',         label: 'Start',             width: '8%',  pdf: 7.5 },
+      { key: 'startLocation', label: 'Start Location',    width: '15%', pdf: 15 },
+      { key: 'end',           label: 'End',               width: '8%',  pdf: 7.5 },
+      { key: 'location',      label: 'End Location',      width: '15%', pdf: 15 },
+      { key: 'duration',      label: 'Duration',          width: '6.5%', pdf: 6.5, align: 'right' },
+      { key: 'driving',       label: 'Driving',           width: '6.5%', pdf: 6.5, align: 'right' },
+      { key: 'standing',      label: 'Standing',          width: '6.5%', pdf: 6.5, align: 'right' },
+      { key: 'distance',      label: 'Distance: (Km)',    width: '6.5%', pdf: 6.5, align: 'right' },
+      { key: 'speed',         label: 'Max Speed: (Kph)',  width: '9%',  pdf: 9, align: 'right' },
+      { key: 'map',           label: '',                  width: '6%',  pdf: 5, locate: true, icon: 'map' },
     ],
-    build: (vs, ctx) => ctrackTripGroups(vs, ctx, true),
+    build: (vs, ctx) => ctrackTripGroups(vs, ctx, true, 'locations'),
   },
 
   tripSummary: {
@@ -484,16 +497,21 @@ const VARIANTS = {
     defaults: { hideZero: false },
     groupedBy: 'Day',
     noAddresses: true,
+    ctrack: { orientation: 'portrait', groupedLabel: 'Grouped By', summaryTitle: 'Report Summary:', zebraStart: false },
+    // Excess Idle is not in the client's sample but was asked for in the voice
+    // note (2026-11-12): offered in Columns, off until switched on.
+    defaultHidden: ['xi'],
     columns: [
-      { key: 'vehicle',  label: 'Vehicle',         width: '17%', pdf: 15 },
-      { key: 'site',     label: 'Site',            width: '11%', pdf: 10 },
-      { key: 'driver',   label: 'Driver',          width: '21%', pdf: 19 },
-      { key: 'duration', label: 'Duration',        width: '8%',  pdf: 7 },
-      { key: 'driving',  label: 'Driving',         width: '8%',  pdf: 7 },
-      { key: 'standing', label: 'Standing',        width: '8%',  pdf: 7 },
-      { key: 'distance', label: 'Distance (Km)',   width: '9%',  pdf: 8, align: 'right' },
-      { key: 'speed',    label: 'Max Speed (Kph)', width: '9%',  pdf: 8, align: 'right' },
-      { key: 'trips',    label: 'No. of Trips',    width: '9%',  pdf: 8, align: 'right' },
+      { key: 'vehicle',  label: 'Vehicle',         width: '17%', pdf: 19 },
+      { key: 'site',     label: 'Site',            width: '11%', pdf: 13 },
+      { key: 'driver',   label: 'Driver',          width: '20%', pdf: 22 },
+      { key: 'duration', label: 'Duration',        width: '8%',  pdf: 8.5, align: 'right' },
+      { key: 'driving',  label: 'Driving',         width: '8%',  pdf: 8.5, align: 'right' },
+      { key: 'standing', label: 'Standing',        width: '8%',  pdf: 8.5, align: 'right' },
+      { key: 'xi',       label: 'Excess Idle',     width: '8%',  pdf: 8.5, align: 'right' },
+      { key: 'distance', label: 'Distance (Km)',   width: '8%',  pdf: 8, align: 'right' },
+      { key: 'speed',    label: 'Max Speed (Kph)', width: '8%',  pdf: 8, align: 'right' },
+      { key: 'trips',    label: 'No. of Trips',    width: '7%',  pdf: 8, align: 'right' },
     ],
     build(vs, ctx) {
       let hidden = 0
@@ -511,7 +529,7 @@ const VARIANTS = {
         const s = ctrackTotals(list)
         return {
           key, ...head, duration: hms(s.durationSec), driving: hms(s.driveSec), standing: hms(s.standSec),
-          distance: km3(s.distanceKm), speed: maxOrNA(s.maxSpeed), trips: s.trips,
+          xi: hms(s.xiSec ?? 0), distance: km3(s.distanceKm), speed: maxOrNA(s.maxSpeed), trips: s.trips,
         }
       }
       const groups = byDay(all).map(d => {
@@ -522,7 +540,7 @@ const VARIANTS = {
           pairs.get(k).push(t)
         }
         // Driver wise the key starts with the driver: "No driver" goes last.
-        const noDriver = k => k.startsWith(`${NO_DRIVER} `)
+        const noDriver = k => k.startsWith(`${NO_DRIVER}\u0000`)
         const rows = [...pairs.entries()]
           .sort(([a], [b]) => noDriver(a) - noDriver(b) || a.localeCompare(b))
           .map(([k, list]) => line(k, list, { vehicle: list[0]._vehicle.vehicleId, site: ctx.siteOf(list[0]._src ?? list[0]._vehicle), driver: list[0].driver }))
@@ -531,7 +549,7 @@ const VARIANTS = {
         return { key: d.key, label: `Day : ${label}`, rows, total: false }
       })
       const zeroNote = hidden ? `${hidden} trip${hidden === 1 ? '' : 's'} of 0 km hidden` : null
-      return { groups, summary: reportSummary(all), note: joinNotes(zeroNote, inProgressNote(running)) }
+      return { groups, summary: reportSummary(all, 'summary'), note: joinNotes(zeroNote, inProgressNote(running)) }
     },
   },
 
@@ -542,6 +560,9 @@ const VARIANTS = {
     settings: ['entity'],
     groupedBy: 'Day',
     noAddresses: true,
+    // The sample has no group heading and no Report Summary: its Total row and
+    // the two graphs on the last page close it.
+    ctrack: { orientation: 'portrait', groupedLabel: 'Grouped by', noHeading: true, zebraStart: false },
     columns: [
       { key: 'date',     label: 'Date',           width: '20%', pdf: 18 },
       { key: 'entity',   label: 'Driver',         width: '60%', pdf: 55 },
@@ -551,7 +572,7 @@ const VARIANTS = {
       const all = []
       for (const v of vs) for (const t of v.trips) all.push({ ...t, _vehicle: v })
       all.sort((a, b) => a.startTs - b.startTs)
-      const nameOf = t => (ctx.entity === 'asset' ? t._vehicle.vehicleId : t.driver)
+      const nameOf = t => (ctx.entity === 'asset' ? t._vehicle.vehicleId : driverLabel(t.driver))
       const entities = new Set()
       const rows = []
       const chart = []
@@ -575,7 +596,7 @@ const VARIANTS = {
       if (rows.length) rows.push({ key: 'total', date: 'Total', entity: `Entity Count: ${entities.size}`, distance: Math.round(total), strong: true })
       return {
         groups: [{ key: 'all', label: `Grouped by Day · ${ctx.entity === 'asset' ? 'Asset' : 'Driver'}`, rows, total: false }],
-        summary: rows.length ? [{ label: 'Total Distance (Km)', value: km3(total) }] : [],
+        summary: [],
         chart,
       }
     },
@@ -626,7 +647,7 @@ function UsageReport({ variant, ...props }) {
   const [driverSel, setDriverSel] = useState(null) // null = every driver; Driver mode only
   const registeredDrivers = useDrivers()
   const file = title === V.title ? V.file : fileNameOf(title)
-  const [hiddenCols, setHiddenCols] = useHiddenColumns(`usage-${variant}`)
+  const [hiddenCols, setHiddenCols] = useHiddenColumns(`usage-${variant}`, V.defaultHidden)
   const columns = useMemo(
     () => V.columns.map(c => {
       if (c.key === 'entity' && entity === 'asset') return { ...c, label: 'Asset' }
@@ -724,7 +745,7 @@ function UsageReport({ variant, ...props }) {
         onProgress: p => setProgress({ text: p.text }),
       })
       if (controller.signal.aborted) return
-      setRaw({ byDevice, applied: { fromTs, toTs, selectionLabel, reportBy, printDate: formatPrintDate() } })
+      setRaw({ byDevice, applied: { fromTs, toTs, selectionLabel, reportBy, printDate: formatPrintDate(), ctrackPrint: ctrackDateTime(Math.floor(Date.now() / 1000)) } })
     } catch (err) {
       if (!isAbortError(err)) setError(err.message || String(err))
     } finally {
@@ -860,6 +881,39 @@ function UsageReport({ variant, ...props }) {
 
   const dataRows = groups.reduce((n, g) => n + g.rows.filter(r => r.kind !== 'band').length, 0)
 
+  // The four Ctrack-sample reports: their own header block, sheet and PDF/Excel.
+  const C = V.ctrack
+  const ctrackPairs = applied && C ? (() => {
+    const grouped = V.groupedBy === 'Day' ? 'Day' : byDriver ? 'Driver' : 'Asset'
+    const extra = hasEntity
+      ? [['Entity Grouping', entity === 'asset' ? 'Asset' : 'Driver']]
+      : []
+    if (driverMode && driverSel) extra.push(['Drivers', driverSel.length ? driverSel.join(', ') : 'None'])
+    else if (!driverMode && !/^All\b/.test(applied.selectionLabel ?? '')) extra.push(['Assets', applied.selectionLabel])
+    const pairs = [['From', ctrackDateTime(applied.fromTs)], [C.groupedLabel, grouped], ['To', ctrackDateTime(applied.toTs)]]
+    return [...pairs, ...extra]
+  })() : []
+  const ctrackTables = C ? groups.map(g => ({
+    key: g.key,
+    heading: C.noHeading ? null : g.label,
+    columns: shownCols,
+    rows: g.rows,
+  })) : []
+  const ctrackOpts = () => ({
+    title,
+    orientation: C.orientation,
+    printDate: applied?.ctrackPrint,
+    pairs: ctrackPairs,
+    tables: ctrackTables.map(t => ({
+      ...t,
+      columns: t.columns.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, icon: c.icon, hrefKey: c.locate ? 'mapUrl' : undefined })),
+    })),
+    summaryTitle: C.summaryTitle,
+    zebraStart: C.zebraStart,
+    summary: built?.summary ?? [],
+    chart: built?.chart,
+  })
+
   const exportOpts = () => ({
     title,
     subtitle: 'FleetmaxX',
@@ -875,6 +929,9 @@ function UsageReport({ variant, ...props }) {
   })
 
   const truncated = raw && [...raw.byDevice.values()].some(e => e?.truncated)
+  const onLocateRow = r => (r.route
+    ? setTripRoute({ ...r.route, driver: r.driverName ?? r.driver, distance: km(r.route.distanceKm), points: routePoints(raw?.byDevice, r.route) })
+    : setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: title, location: r.location }))
 
   return (
     <ReportFrame title={title} desc={V.desc} {...props}>
@@ -1020,25 +1077,37 @@ function UsageReport({ variant, ...props }) {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <ColumnPicker columns={columns} hidden={hiddenCols} onChange={setHiddenCols} />
-              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), file)} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
-              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), file)} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
+              <ToolbarButton onClick={() => (C ? exportCtrackPdf(ctrackOpts(), file) : exportGeoZonePdf(exportOpts(), file))} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
+              <ToolbarButton onClick={() => (C ? exportCtrackExcel(ctrackOpts(), file) : exportGeoZoneExcel(exportOpts(), file))} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!dataRows}>Print</ToolbarButton>
             </div>
           </div>
 
-          <PaperTable
-            title={title}
-            company="FleetmaxX"
-            filters={filters}
-            columns={shownCols}
-            groups={groups}
-            printDate={applied.printDate}
-            onLocate={r => (r.route
-              ? setTripRoute({ ...r.route, driver: r.driverName ?? r.driver, distance: km(r.route.distanceKm), points: routePoints(raw?.byDevice, r.route) })
-              : setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: title, location: r.location }))}
-            emptyText="No trips in this period for the selected vehicles."
-            summary={built.summary}
-          />
+          {C ? (
+            <CtrackPaper
+              title={title}
+              pairs={ctrackPairs}
+              tables={ctrackTables}
+              summaryTitle={C.summaryTitle}
+              zebraStart={C.zebraStart ?? true}
+              summary={built.summary}
+              printDate={applied.ctrackPrint}
+              onLocate={onLocateRow}
+              emptyText="No trips in this period for the selected vehicles."
+            />
+          ) : (
+            <PaperTable
+              title={title}
+              company="FleetmaxX"
+              filters={filters}
+              columns={shownCols}
+              groups={groups}
+              printDate={applied.printDate}
+              onLocate={onLocateRow}
+              emptyText="No trips in this period for the selected vehicles."
+              summary={built.summary}
+            />
+          )}
           {built.chart?.length > 0 && <DistanceDrivenCharts data={built.chart} />}
         </>
       )}

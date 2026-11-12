@@ -11,40 +11,46 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 const STORE = 'fm.reportColumns.'
 
-function read(reportId) {
+function read(reportId, defaults = []) {
   try {
     const raw = window.localStorage.getItem(STORE + reportId)
-    const keys = raw ? JSON.parse(raw) : []
+    // Never set: the report's own default (an optional column starts hidden).
+    if (raw === null) return new Set(defaults)
+    const keys = JSON.parse(raw)
     return new Set(Array.isArray(keys) ? keys.filter(k => typeof k === 'string') : [])
   } catch {
     return new Set()
   }
 }
 
-function write(reportId, hidden) {
+function write(reportId, hidden, defaults = []) {
   try {
-    if (hidden.size) window.localStorage.setItem(STORE + reportId, JSON.stringify([...hidden]))
+    // With defaults, "everything shown" must be stored too, or the default comes back.
+    if (hidden.size || defaults.length) window.localStorage.setItem(STORE + reportId, JSON.stringify([...hidden]))
     else window.localStorage.removeItem(STORE + reportId)
   } catch {
     // Storage blocked (private window): the choice still holds for this visit.
   }
 }
 
+const NONE = []
+
 /**
- * The hidden column keys of one report.
+ * The hidden column keys of one report. `defaultHidden`: keys hidden until the
+ * user first changes the columns (an optional column, e.g. Trip Summary's Excess Idle).
  * @returns {[Set<string>, (next: Set<string>) => void]}
  */
-export function useHiddenColumns(reportId) {
-  const [state, setState] = useState(() => ({ reportId, hidden: read(reportId) }))
+export function useHiddenColumns(reportId, defaultHidden = NONE) {
+  const [state, setState] = useState(() => ({ reportId, hidden: read(reportId, defaultHidden) }))
   // One page serves several reports (the Usage variants): follow the id.
   useEffect(() => {
-    if (state.reportId !== reportId) setState({ reportId, hidden: read(reportId) })
-  }, [reportId, state.reportId])
-  const hidden = state.reportId === reportId ? state.hidden : read(reportId)
+    if (state.reportId !== reportId) setState({ reportId, hidden: read(reportId, defaultHidden) })
+  }, [reportId, state.reportId, defaultHidden])
+  const hidden = state.reportId === reportId ? state.hidden : read(reportId, defaultHidden)
   const setHidden = useCallback(next => {
-    write(reportId, next)
+    write(reportId, next, defaultHidden)
     setState({ reportId, hidden: next })
-  }, [reportId])
+  }, [reportId, defaultHidden])
   return [hidden, setHidden]
 }
 
