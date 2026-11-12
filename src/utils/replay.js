@@ -21,6 +21,8 @@ const TRACK_FIELDS = [
   'position.direction',
   'engine.ignition.status',
   'timestamp',
+  // The trip list's engine-off check (usageReports.js parkedEngineOff).
+  'external.powersource.voltage',
 ].join(',')
 
 // Flespi's REST rate limit is per-account/per-minute, not per-endpoint, so a
@@ -247,8 +249,9 @@ export async function fetchDeviceTrack(deviceId, fromTs, toTs, onStatus) {
       // Only read by the trip list's distance; absent on devices without them.
       const mileage  = m['vehicle.mileage'] ?? null
       const valid    = m['position.valid']
+      const volt     = m['external.powersource.voltage'] ?? null
 
-      return { lat, lng, speed, heading, ignition, ts, mileage, valid, status: pointStatus(ignition, speed) }
+      return { lat, lng, speed, heading, ignition, ts, mileage, valid, volt, status: pointStatus(ignition, speed) }
     })
     .filter(Boolean)
     .sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0))

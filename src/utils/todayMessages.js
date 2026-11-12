@@ -11,7 +11,7 @@ import { fetchFleetMessages } from './replay'
 
 export const TODAY_FIELDS = [
   'timestamp', 'position.latitude', 'position.longitude', 'position.speed', 'position.valid',
-  'engine.ignition.status', 'vehicle.mileage', 'ibutton.code',
+  'engine.ignition.status', 'vehicle.mileage', 'ibutton.code', 'external.powersource.voltage',
 ].join(',')
 
 const TTL_MS = 5 * 60 * 1000

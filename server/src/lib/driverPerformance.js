@@ -21,7 +21,7 @@ import { deriveTrips, sumTrips } from '../../../src/utils/usageReports.js'
 
 const UAE_OFFSET_SEC = 4 * 3600
 const DAY = 86_400
-const FIELDS = 'timestamp,position.latitude,position.longitude,position.speed,position.direction,position.valid,engine.ignition.status,vehicle.mileage,ibutton.code'
+const FIELDS = 'timestamp,position.latitude,position.longitude,position.speed,position.direction,position.valid,engine.ignition.status,vehicle.mileage,ibutton.code,external.powersource.voltage'
 
 // ── settings ─────────────────────────────────────────────────────────────
 

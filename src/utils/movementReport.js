@@ -44,6 +44,8 @@ export const MOVEMENT_FIELDS = [
   'vehicle.mileage',
   'ibutton.code',
   'position.direction',
+  // Read by the trip derivation to tell an engine off behind an "ignition on" (usageReports.js).
+  'external.powersource.voltage',
 ].join(',')
 
 // Status values, in the order the filter list shows them. `unavailable` marks

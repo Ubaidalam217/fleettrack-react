@@ -38,6 +38,7 @@ export function pointToMessage(p) {
   if (typeof p.ignition === 'boolean') m['engine.ignition.status'] = p.ignition
   if (num(p.mileage) !== null) m['vehicle.mileage'] = p.mileage
   if (typeof p.valid === 'boolean') m['position.valid'] = p.valid
+  if (num(p.volt) !== null) m['external.powersource.voltage'] = p.volt
   return m
 }
 

@@ -78,6 +78,47 @@ function posOf(m) {
   return { lat, lng }
 }
 
+// ── engine off behind an "ignition on" ───────────────────────────────────
+
+/**
+ * A running engine charges: the supply reads ~13.8-14.4 V (12 V vehicles) or
+ * ~27-28 V (24 V) while driving, and drops by 1.5 V or more once the engine
+ * stops. Some installs report the ignition as on with the engine off (the
+ * iTriangle, client 2026-11-12: parked for an hour at 11.8-12.1 V while
+ * "ignition on", which showed as a 0 km trip full of idling). So a stationary
+ * run that sits ENGINE_OFF_DROP_V below this vehicle's own driving voltage for
+ * at least ENGINE_OFF_MIN_SEC is read as ignition off. Each vehicle is measured
+ * against itself, so 12 V and 24 V vehicles both work; a vehicle without
+ * enough voltage readings while driving is left to its ignition alone.
+ */
+export const ENGINE_OFF_DROP_V = 1.5
+export const ENGINE_OFF_MIN_SEC = 5 * 60
+const VOLT = 'external.powersource.voltage'
+
+/** The messages (by identity) at which the engine was off although the ignition read on. */
+export function parkedEngineOff(msgs) {
+  const driving = msgs.filter(m => speedOf(m) > 0 && num(m[VOLT]) !== null).map(m => m[VOLT]).sort((a, b) => a - b)
+  if (driving.length < 20) return null
+  const limit = driving[Math.floor(driving.length / 2)] - ENGINE_OFF_DROP_V
+  const off = new Set()
+  let run = []
+  let ign = false
+  const flush = () => {
+    if (run.length && run.at(-1).timestamp - run[0].timestamp >= ENGINE_OFF_MIN_SEC) for (const m of run) off.add(m)
+    run = []
+  }
+  for (const m of msgs) {
+    const v = m['engine.ignition.status']
+    if (typeof v === 'boolean') ign = v
+    const volt = num(m[VOLT])
+    // A reading without a voltage carries on a run already under way.
+    if (ign && speedOf(m) === 0 && (volt === null ? run.length > 0 : volt <= limit)) run.push(m)
+    else flush()
+  }
+  flush()
+  return off.size ? off : null
+}
+
 // ── trips ────────────────────────────────────────────────────────────────
 
 /**
@@ -95,12 +136,13 @@ export function deriveTrips(messages, opts = {}) {
   const msgs = hasIgnition
     ? timed.filter(m => typeof m['engine.ignition.status'] === 'boolean' || num(m['position.speed']) !== null)
     : timed
+  const engineOff = hasIgnition ? parkedEngineOff(msgs) : null
   let ignNow = false
   const isOn = m => {
     if (!hasIgnition) return speedOf(m) > 0
     const v = m['engine.ignition.status']
     if (typeof v === 'boolean') ignNow = v
-    return ignNow
+    return ignNow && !engineOff?.has(m)
   }
 
   const trips = []
