@@ -307,6 +307,7 @@ export default function NotificationDropdown() {
       {open && createPortal(
         <div
           ref={panelRef}
+          className="ft-pop"
           style={{
             ...panelStyle,
             background: 'var(--c-card)',

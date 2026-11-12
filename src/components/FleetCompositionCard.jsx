@@ -1,3 +1,5 @@
+import { useCountUpOnce } from '../hooks/useCountUpOnce'
+
 const STATUS_ROWS = [
   { key: 'running',  label: 'Running',  color: '#22c55e' },
   { key: 'idle',     label: 'Idle',     color: '#f59e0b' },
@@ -8,6 +10,7 @@ const STATUS_ROWS = [
 
 export default function FleetCompositionCard({ fleetData, loading }) {
   const total    = fleetData?.total    ?? 0
+  const shownTotal = useCountUpOnce(fleetData ? total : null)
   const running  = fleetData?.running  ?? 0
   const idle     = fleetData?.idle     ?? 0
   const stopped  = fleetData?.stopped  ?? 0
@@ -45,7 +48,7 @@ export default function FleetCompositionCard({ fleetData, loading }) {
 
       <div className="flex items-baseline gap-2 mb-3">
         <span className="text-3xl font-bold" style={{ color: 'var(--c-text1)', letterSpacing: '-0.02em' }}>
-          {loading && !fleetData ? '—' : total}
+          {loading && !fleetData ? '—' : shownTotal}
         </span>
         <span className="text-xs" style={{ color: 'var(--c-text3)' }}>Total vehicles</span>
       </div>

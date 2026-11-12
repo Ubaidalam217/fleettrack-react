@@ -74,7 +74,7 @@ export function MultiSelect({ label, summary, children, disabled }) {
         // Tall enough for a ten-vehicle fleet without scrolling, and the bar is
         // hidden when a longer list does scroll — the client asked for no
         // visible scrollbar on the report pages (2026-10-31).
-        <div className="no-scrollbar" style={{
+        <div className="no-scrollbar ft-pop" style={{
           position: 'absolute', zIndex: 30, top: 'calc(100% + 4px)', left: 0, right: 0,
           background: 'var(--c-card)', border: '1px solid var(--c-border2)', borderRadius: 10,
           boxShadow: '0 12px 32px rgba(0,0,0,0.18)', padding: 6,
@@ -172,6 +172,7 @@ export function HelpTip({ title, children }) {
       {open && (
         <div
           role="tooltip"
+          className="ft-pop"
           style={{
             position: 'absolute', zIndex: 40, top: 'calc(100% + 6px)', right: 0,
             width: 320, padding: '12px 14px',

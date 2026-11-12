@@ -9,6 +9,7 @@ import { hasDriver } from '../../services/vehicleMaster'
 import VehicleDocumentsTab from './VehicleDocumentsTab'
 import { useVehicleDocuments } from '../../data/vehicleDocuments'
 import { useVehicleUsage } from '../../hooks/useVehicleUsage'
+import Skeleton from '../Skeleton'
 import { odometerLabel } from '../../utils/odometer'
 import { computeSensors } from '../../utils/sensorsData'
 import {
@@ -470,10 +471,12 @@ function Usage({ v }) {
   const profile = useSettingsProfile(v.ident)
 
   if (loading) {
+    // A rate-limit countdown (or any status) stays as text; otherwise a shimmer.
+    if (!status) return <Skeleton lines={4} label={"Loading today's usage…"} style={{ padding: '22px 4px' }} />
     return (
       <div style={{ padding: '28px 4px', textAlign: 'center', fontSize: 12.5, fontWeight: 600 }}>
         <span style={{ color: status?.startsWith('Rate limit') ? '#eab308' : 'var(--c-text3)' }}>
-          {status || "Loading today's usage…"}
+          {status}
         </span>
       </div>
     )
@@ -516,10 +519,12 @@ function Sensors({ v }) {
   const data = useMemo(() => computeSensors(messages, v), [messages, v])
 
   if (loading) {
+    // A rate-limit countdown (or any status) stays as text; otherwise a shimmer.
+    if (!status) return <Skeleton lines={4} label={'Loading sensor data…'} style={{ padding: '22px 4px' }} />
     return (
       <div style={{ padding: '28px 4px', textAlign: 'center', fontSize: 12.5, fontWeight: 600 }}>
         <span style={{ color: status?.startsWith('Rate limit') ? '#eab308' : 'var(--c-text3)' }}>
-          {status || 'Loading sensor data…'}
+          {status}
         </span>
       </div>
     )
@@ -732,10 +737,12 @@ function Alerts({ v }) {
   )
 
   if (loading) {
+    // A rate-limit countdown (or any status) stays as text; otherwise a shimmer.
+    if (!status) return <Skeleton lines={4} label={"Loading today's alerts…"} style={{ padding: '22px 4px' }} />
     return (
       <div style={{ padding: '28px 4px', textAlign: 'center', fontSize: 12.5, fontWeight: 600 }}>
         <span style={{ color: status?.startsWith('Rate limit') ? '#eab308' : 'var(--c-text3)' }}>
-          {status || "Loading today's alerts…"}
+          {status}
         </span>
       </div>
     )

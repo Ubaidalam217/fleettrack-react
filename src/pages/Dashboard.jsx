@@ -326,7 +326,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
           noVehicles={noVehicles}
         />
 
-        <main className="flex-1 overflow-y-auto no-scrollbar" style={{ overflowX: 'hidden' }}>
+        <main className="ft-dash flex-1 overflow-y-auto no-scrollbar" style={{ overflowX: 'hidden' }}>
           <div className="p-4 md:p-5 xl:p-6 space-y-5">
 
             {/* ── Greeting + action bar ─────────────────────────────────

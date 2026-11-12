@@ -17,6 +17,7 @@ import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { IS_REAL } from '../../data/mode'
 import { useVehicles as useRegisteredVehicles, branchNameFor, imeiKey } from '../settings/mockData'
 import DistanceDrivenCharts from '../../components/reports/DistanceDrivenCharts'
+import { ReportSkeleton } from '../../components/Skeleton'
 import {
   DEFAULT_USAGE_OPTS, tripsByVehicle, byDay, sumTrips, visibleTrips, tripUsage, gyrScore, hms, km,
 } from '../../utils/usageReports'
@@ -944,6 +945,8 @@ function UsageReport({ variant, ...props }) {
           <span>{error}</span>
         </div>
       )}
+
+      {busy && !built && <ReportSkeleton />}
 
       {built && (
         <>

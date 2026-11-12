@@ -515,3 +515,76 @@ html[data-embed="1"] .ft-topbar { display: none !important; }
   .ft-hub-tabs > button { padding: 10px 8px !important; font-size: 11px !important; letter-spacing: 0.3px !important; gap: 5px !important; }
   .ft-hub-tabs > button > svg { display: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Motion (2026-11-12, the user asked for simple animations)
+
+   Subtle and short: opacity plus the individual `translate` / `scale`
+   properties (they compose with any inline `transform`, so a dialog centred
+   with translate(-50%,-50%) is not moved). `backwards` fill only, so nothing
+   is left transformed once an entrance ends. Off under reduced motion and in
+   print; report paper and PDFs are never animated.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes ft-page-in { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
+@keyframes ft-card-in { from { opacity: 0; translate: 0 10px; } to { opacity: 1; translate: 0 0; } }
+@keyframes ft-pop-in  { from { opacity: 0; scale: .96; } to { opacity: 1; scale: 1; } }
+@keyframes ft-drop-in { from { opacity: 0; translate: 0 -4px; } to { opacity: 1; translate: 0 0; } }
+@keyframes ft-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ft-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* A route's content eases in when the page mounts. */
+main { animation: ft-page-in .22s cubic-bezier(.2, .7, .3, 1) backwards; }
+
+/* Dashboard: the top-level cards arrive with a short stagger, once — a live
+   update re-renders them but does not remount them, so it never replays. */
+.ft-dash .grid:not(.ft-card .grid) > * { animation: ft-card-in .32s cubic-bezier(.2, .7, .3, 1) backwards; }
+.ft-dash .grid:not(.ft-card .grid) > *:nth-child(2) { animation-delay: 50ms; }
+.ft-dash .grid:not(.ft-card .grid) > *:nth-child(3) { animation-delay: 100ms; }
+.ft-dash .grid:not(.ft-card .grid) > *:nth-child(4) { animation-delay: 150ms; }
+.ft-dash .grid:not(.ft-card .grid) > *:nth-child(5) { animation-delay: 200ms; }
+.ft-dash .grid:not(.ft-card .grid) > *:nth-child(n+6) { animation-delay: 240ms; }
+
+/* Buttons: a small press. Hover colours stay with each button's own styles. */
+button { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled):active { scale: .97; }
+
+/* Report hub and settings tiles lift a little like the dashboard cards. */
+.ft-report-row { transition: background .12s, border-color .12s, translate .18s ease-out; }
+.ft-report-row:hover { translate: 2px 0; }
+
+/* Dialogs pop in over a fading backdrop; menus, list boxes and dropdowns drop in. */
+[role="dialog"][aria-modal="true"] { animation: ft-pop-in .18s cubic-bezier(.2, .8, .3, 1) backwards; }
+div:has(> [role="dialog"][aria-modal="true"]) { animation: ft-fade-in .16s ease-out backwards; }
+[role="menu"], [role="listbox"], .ft-pop { animation: ft-drop-in .14s ease-out backwards; transform-origin: top; }
+
+/* Live Map list: hover and the selected row's accent edge ease in. */
+.track-vrow:hover { background-color: var(--c-hover) !important; }
+.track-vrow[data-sel="true"] { box-shadow: inset 3px 0 0 var(--ft-accent); }
+
+/* Shimmer skeletons (components/Skeleton.jsx) in place of "Loading…" text. */
+.ft-skel-wrap { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.ft-skel {
+  height: 10px;
+  border-radius: 6px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--c-text3) 12%, transparent) 30%,
+    color-mix(in srgb, var(--c-text3) 26%, transparent) 50%,
+    color-mix(in srgb, var(--c-text3) 12%, transparent) 70%);
+  background-size: 200% 100%;
+  animation: ft-shimmer 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main,
+  .ft-dash .grid > *,
+  [role="dialog"], div:has(> [role="dialog"]),
+  [role="menu"], [role="listbox"], .ft-pop,
+  .track-vrow { animation: none !important; }
+  .ft-skel { animation: none; }
+  button:not(:disabled):active { scale: none; }
+  .ft-report-row:hover { translate: none; }
+}
+@media print {
+  main, .ft-dash .grid > * { animation: none !important; }
+}

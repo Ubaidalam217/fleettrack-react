@@ -1,4 +1,6 @@
 import { PieChart, Pie, Cell, Tooltip } from 'recharts'
+import Skeleton from './Skeleton'
+import { useCountUpOnce } from '../hooks/useCountUpOnce'
 
 /**
  * Trip Analysis: today's trips, cut from today's messages exactly as the Trip
@@ -30,6 +32,7 @@ export default function TripAnalysis({ isDark, stats }) {
   const today = stats?.today
   const month = stats?.month
   const total = today?.trips ?? 0
+  const shownTotal = useCountUpOnce(today ? total : null)
   const pct = n => (total ? `${Math.round((n / total) * 100)}%` : '0%')
 
   const segments = today
@@ -59,7 +62,9 @@ export default function TripAnalysis({ isDark, stats }) {
 
       {!today ? (
         <div className="ft-inset flex-1 flex items-center justify-center py-10 mb-4">
-          <span className="text-xs" style={{ color: 'var(--c-text3)' }}>{empty}</span>
+          {stats?.todayError
+            ? <span className="text-xs" style={{ color: 'var(--c-text3)' }}>{empty}</span>
+            : <Skeleton lines={4} label={empty} style={{ padding: '0 18px' }} />}
         </div>
       ) : (
         <div className="flex items-center justify-center mb-4">
@@ -81,7 +86,7 @@ export default function TripAnalysis({ isDark, stats }) {
               {total ? <Tooltip content={<CustomTooltip isDark={isDark} />} /> : null}
             </PieChart>
             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-              <div className="text-xl font-bold leading-none" style={{ color: 'var(--c-text1)' }}>{total}</div>
+              <div className="text-xl font-bold leading-none" style={{ color: 'var(--c-text1)' }}>{shownTotal}</div>
               <div className="text-[10px] mt-0.5" style={{ color: 'var(--c-text3)' }}>Trips Today</div>
             </div>
           </div>

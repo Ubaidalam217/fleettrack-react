@@ -13,6 +13,7 @@ import { reminderHistory } from '../../data/reminders'
 import { formatExpiryDate } from '../../utils/licenceExpiry'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { formatPrintDate } from '../../utils/movementReport'
+import { ReportSkeleton } from '../../components/Skeleton'
 
 // Reports › Reminder › Acknowledgement History (client, 2026-11-10): every
 // reminder marked done — when, at what odometer, with what note, and by whom.
@@ -121,7 +122,7 @@ export default function ReminderHistoryReport(props) {
             </div>
           </div>
           {rows === null ? (
-            <div style={{ ...CARD_SURFACE, padding: 36, textAlign: 'center', fontSize: 13, color: 'var(--c-text3)' }}>Loading…</div>
+            <ReportSkeleton label="Loading…" />
           ) : (
             <PaperTable
               title="Acknowledgement History Report"

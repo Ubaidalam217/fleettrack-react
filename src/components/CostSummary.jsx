@@ -1,4 +1,5 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import Skeleton from './Skeleton'
 
 /**
  * Cost Summary: what Settings › Master › Expense holds for the last six months,
@@ -62,7 +63,9 @@ export default function CostSummary({ isDark, stats }) {
 
       {empty ? (
         <div className="ft-inset flex-1 flex items-center justify-center py-10 px-4 text-center">
-          <span className="text-xs" style={{ color: 'var(--c-text3)', lineHeight: 1.6 }}>{empty}</span>
+          {stats?.isReal && !stats?.expensesError && !ex
+            ? <Skeleton lines={4} label={empty} />
+            : <span className="text-xs" style={{ color: 'var(--c-text3)', lineHeight: 1.6 }}>{empty}</span>}
         </div>
       ) : (
         <>

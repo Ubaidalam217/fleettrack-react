@@ -3,6 +3,7 @@ import { useNotifications } from '../hooks/useNotifications'
 import { IS_REAL } from '../data/mode'
 import { useAlerts, alertTypeLabel } from '../data/settings'
 import { alertCategories } from '../utils/dashboardStats'
+import Skeleton from './Skeleton'
 
 // Mock mode (the demo): the browser engine's fixed rules.
 const ALERT_TYPES = [
@@ -82,9 +83,9 @@ export default function AlertMarkersCard({ stats }) {
         </span>
       </div>
 
-      {emptyText && (
-        <p className="text-xs" style={{ color: 'var(--c-text3)' }}>{emptyText}</p>
-      )}
+      {emptyText && (IS_REAL && stats?.alerts === undefined
+        ? <Skeleton lines={3} label={emptyText} style={{ marginBottom: 8 }} />
+        : <p className="text-xs" style={{ color: 'var(--c-text3)' }}>{emptyText}</p>)}
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-0">
         {counts.map((t, i) => (

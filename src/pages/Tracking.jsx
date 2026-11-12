@@ -1186,10 +1186,12 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           if (el) rowRefs.current.set(v.id, el)
           else rowRefs.current.delete(v.id)
         }}
+        className="track-vrow"
+        data-sel={sel ? 'true' : 'false'}
         style={{
           borderBottom: '1px solid var(--c-border)',
           backgroundColor: sel ? 'var(--c-hover)' : 'transparent',
-          transition: 'background 0.15s',
+          transition: 'background 0.15s, box-shadow 0.2s ease-out',
           animation: 'fadeInUp 0.35s ease both',
           animationDelay: `${Math.min(idx * 35, 400)}ms`,
         }}

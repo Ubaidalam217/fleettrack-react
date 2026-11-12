@@ -17,6 +17,7 @@ import {
 import { buildEventReport } from '../../utils/eventOccurrence'
 import { locationUrl } from '../../utils/mapLink'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
+import { ReportSkeleton } from '../../components/Skeleton'
 
 /**
  * Event Occurrence Report — client, 2026-11-02: "the same as Movement report
@@ -345,6 +346,8 @@ export default function EventOccurrenceReport(props) {
           <span>{error}</span>
         </div>
       )}
+
+      {busy && !report && <ReportSkeleton />}
 
       {report && (
         <>

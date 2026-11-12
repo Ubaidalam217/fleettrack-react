@@ -1,5 +1,6 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { UAE_OFFSET_SEC } from '../utils/daywise'
+import { ChartSkeleton } from './Skeleton'
 
 /**
  * Vehicle Activity (mobile Dashboard): the last seven days' distance and
@@ -79,9 +80,11 @@ export default function VehicleActivity({ isDark, stats }) {
 
       <div className="h-[110px] md:h-[140px] xl:h-[155px]">
         {!chartData ? (
-          <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--c-text3)' }}>
-            {stats?.monthError ? 'Activity could not be loaded' : 'Loading activity data...'}
-          </div>
+          stats?.monthError ? (
+            <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--c-text3)' }}>
+              Activity could not be loaded
+            </div>
+          ) : <ChartSkeleton label="Loading activity data…" />
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>

@@ -21,6 +21,7 @@ import {
   aed, byCategory, daysBetween, expenseRows, groupByVehicle, monthsBetween, num, usageInRange, vehicleCost,
 } from '../../utils/expenseReport'
 import { loadUsageMonths } from '../../utils/expenseUsage'
+import { ReportSkeleton } from '../../components/Skeleton'
 
 /**
  * Reports › Expense › Expense Report (client, 2026-11-12: "a report of all the
@@ -348,7 +349,7 @@ export default function ExpenseReport(props) {
           </div>
 
           {expenses === null ? (
-            <div style={{ ...CARD_SURFACE, padding: 36, textAlign: 'center', fontSize: 13, color: 'var(--c-text3)' }}>Loading…</div>
+            <ReportSkeleton label="Loading…" />
           ) : (
             <>
               <PaperTable

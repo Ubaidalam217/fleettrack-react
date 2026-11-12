@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, ReferenceDot, ResponsiveContainer, Tooltip } from 'recharts'
+import { useCountUpOnce } from '../hooks/useCountUpOnce'
 
 /**
  * Kilometres the fleet drove this month, day by day — the Daywise Distance
@@ -38,6 +39,7 @@ export default function FleetTripsCard({ fleetData, stats }) {
   const month = stats?.month
   const chart = month ? month.dailyKm.map((km, i) => ({ day: i + 1, km })) : []
   const totalKm = month ? Math.round(month.totalKm) : null
+  const shownKm = useCountUpOnce(totalKm)
   const lastTotal = stats?.lastMonth ? Math.round(stats.lastMonth.totalKm) : null
   const level = activityLevel(fleetData)
   const lastPoint = chart[chart.length - 1]
@@ -72,7 +74,7 @@ export default function FleetTripsCard({ fleetData, stats }) {
       {/* Big number + activity pill */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 7 }}>
         <div style={{ fontSize: 21, fontWeight: 700, color: '#ffffff', lineHeight: 1, letterSpacing: '-0.02em' }}>
-          {totalKm != null ? totalKm.toLocaleString() : '—'}
+          {shownKm != null ? shownKm.toLocaleString() : '—'}
           <span style={{ fontSize: 11.5, fontWeight: 500, color: 'rgba(255,255,255,0.6)', marginLeft: 4 }}>km</span>
         </div>
         {level && <span style={{
