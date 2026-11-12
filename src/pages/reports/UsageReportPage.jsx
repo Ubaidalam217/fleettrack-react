@@ -6,6 +6,7 @@ import PaperTable from '../../components/reports/PaperTable'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import LocationMapModal from '../../components/reports/LocationMapModal'
+import TripRouteModal from '../../components/reports/TripRouteModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { driverNameForDevice, driverForIbutton, ibuttonKey } from '../../data/settings'
@@ -133,24 +134,41 @@ function reportSummary(trips) {
   ]
 }
 
-/** One trip as a Trip Details / Trip Locations row. */
-const ctrackTripRow = (t, naSpeed) => ({
+/**
+ * Trip Details, Trip Locations and Trip Summary list finished trips only — an
+ * ignition-on run that has not ended yet is left out (client, 2026-11-12), so
+ * the rows and the Report Summary count the same trips.
+ */
+const finishedTrips = trips => trips.filter(t => !t.open)
+const inProgressNote = n => (n ? `${n} trip${n === 1 ? '' : 's'} still in progress not shown` : null)
+const joinNotes = (...notes) => notes.filter(Boolean).join(' · ') || null
+
+/**
+ * One trip as a Trip Details / Trip Locations row. `route` lets the Map link
+ * draw the whole trip (TripRouteModal) instead of one point.
+ */
+const ctrackTripRow = (t, naSpeed, v) => ({
   key: t.startTs, ...endPoint(t), startLat: t.startLat, startLng: t.startLng,
-  driver: t.driver, start: ctrackDateTime(t.startTs), end: t.open ? `${ctrackDateTime(t.endTs)} (on)` : ctrackDateTime(t.endTs),
+  route: { deviceId: v.deviceId, vehicle: v.vehicleId, startTs: t.startTs, endTs: t.endTs, distanceKm: t.distanceKm, startLat: t.startLat, startLng: t.startLng, endLat: t.endLat, endLng: t.endLng },
+  driver: t.driver, start: ctrackDateTime(t.startTs), end: ctrackDateTime(t.endTs),
   duration: hms(t.durationSec), driving: hms(t.driveSec), standing: hms(standingSec(t)),
   distance: km(t.distanceKm), speed: naSpeed ? maxOrNA(t.maxSpeed) : (t.maxSpeed > 0 ? Math.round(t.maxSpeed) : 0), map: 'Map',
 })
 
 function ctrackTripGroups(vs, ctx, naSpeed) {
   let hidden = 0
+  let running = 0
   const all = []
   const groups = vs.map(v => {
-    const vis = visibleTrips(v.trips, ctx.hideZero)
+    const done = finishedTrips(v.trips)
+    running += v.trips.length - done.length
+    const vis = visibleTrips(done, ctx.hideZero)
     hidden += vis.hidden
     all.push(...vis.trips)
-    return { key: v.deviceId, label: v.vehicleId, rows: vis.trips.map(t => ctrackTripRow(t, naSpeed)), total: false }
+    return { key: v.deviceId, label: v.vehicleId, rows: vis.trips.map(t => ctrackTripRow(t, naSpeed, v)), total: false }
   })
-  return { groups, summary: reportSummary(all), note: hidden ? `${hidden} trip${hidden === 1 ? '' : 's'} of 0 km hidden` : null }
+  const zeroNote = hidden ? `${hidden} trip${hidden === 1 ? '' : 's'} of 0 km hidden` : null
+  return { groups, summary: reportSummary(all), note: joinNotes(zeroNote, inProgressNote(running)) }
 }
 
 // Each variant: its columns, its settings and how it groups the trips.
@@ -471,9 +489,12 @@ const VARIANTS = {
     ],
     build(vs, ctx) {
       let hidden = 0
+      let running = 0
       const all = []
       for (const v of vs) {
-        const vis = visibleTrips(v.trips, ctx.hideZero)
+        const done = finishedTrips(v.trips)
+        running += v.trips.length - done.length
+        const vis = visibleTrips(done, ctx.hideZero)
         hidden += vis.hidden
         for (const t of vis.trips) all.push({ ...t, _vehicle: v })
       }
@@ -499,7 +520,8 @@ const VARIANTS = {
         rows.push({ ...line(`sum-${d.key}`, d.trips, { vehicle: `${label} Summary`, site: '', driver: '' }), strong: true })
         return { key: d.key, label: `Day : ${label}`, rows, total: false }
       })
-      return { groups, summary: reportSummary(all), note: hidden ? `${hidden} trip${hidden === 1 ? '' : 's'} of 0 km hidden` : null }
+      const zeroNote = hidden ? `${hidden} trip${hidden === 1 ? '' : 's'} of 0 km hidden` : null
+      return { groups, summary: reportSummary(all), note: joinNotes(zeroNote, inProgressNote(running)) }
     },
   },
 
@@ -548,6 +570,27 @@ const VARIANTS = {
       }
     },
   },
+}
+
+/**
+ * A trip's track from the messages the report already loaded: every valid fix
+ * from its start to its end, with the trip's own start and end points at the
+ * two ends so the pins sit where the table says.
+ */
+function routePoints(byDevice, route) {
+  const msgs = byDevice?.get?.(route.deviceId)?.messages ?? []
+  const pts = []
+  for (const m of msgs) {
+    if (m.timestamp < route.startTs || m.timestamp > route.endTs) continue
+    const lat = m['position.latitude'], lng = m['position.longitude']
+    if (typeof lat !== 'number' || typeof lng !== 'number' || (lat === 0 && lng === 0) || m['position.valid'] === false) continue
+    const last = pts[pts.length - 1]
+    if (!last || last[0] !== lat || last[1] !== lng) pts.push([lat, lng])
+  }
+  const same = (a, lat, lng) => a && a[0] === lat && a[1] === lng
+  if (route.startLat != null && route.startLng != null && !same(pts[0], route.startLat, route.startLng)) pts.unshift([route.startLat, route.startLng])
+  if (route.endLat != null && route.endLng != null && !same(pts[pts.length - 1], route.endLat, route.endLng)) pts.push([route.endLat, route.endLng])
+  return pts
 }
 
 const coords = (lat, lng) => (lat != null && lng != null ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : '—')
@@ -607,6 +650,8 @@ function UsageReport({ variant, ...props }) {
   const [geoProgress, setGeoProgress] = useState(null) // { done, total } while addresses load
   const [located, setLocated] = useState(null)
   const closeLocated = useCallback(() => setLocated(null), [])
+  const [tripRoute, setTripRoute] = useState(null)
+  const closeTripRoute = useCallback(() => setTripRoute(null), [])
   const abortRef = useRef(null)
   const busy = progress !== null
 
@@ -925,7 +970,9 @@ function UsageReport({ variant, ...props }) {
             columns={shownCols}
             groups={groups}
             printDate={applied.printDate}
-            onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: title, location: r.location })}
+            onLocate={r => (r.route
+              ? setTripRoute({ ...r.route, driver: r.driver, distance: km(r.route.distanceKm), points: routePoints(raw?.byDevice, r.route) })
+              : setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: title, location: r.location }))}
             emptyText="No trips in this period for the selected vehicles."
             summary={built.summary}
           />
@@ -934,6 +981,7 @@ function UsageReport({ variant, ...props }) {
       )}
 
       <LocationMapModal point={located} onClose={closeLocated} />
+      <TripRouteModal trip={tripRoute} onClose={closeTripRoute} />
     </ReportFrame>
   )
 }
