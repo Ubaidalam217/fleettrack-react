@@ -34,6 +34,24 @@ describe('deriveTrips', () => {
     expect(t.open).toBe(false)
   })
 
+  it('keeps one trip through status packets that carry no ignition (iTriangle)', () => {
+    const status = dt => ({ timestamp: T0 + dt }) // no ignition, no speed, no position
+    const trips = deriveTrips([
+      msg(0, { 'engine.ignition.status': false }),
+      msg(60),
+      status(65),
+      msg(120, { 'position.speed': 40 }),
+      status(125),
+      { ...msg(180, { 'position.speed': 30 }), 'engine.ignition.status': undefined }, // position, no ignition
+      msg(240, { 'position.speed': 20 }),
+      msg(300, { 'engine.ignition.status': false }),
+    ])
+    expect(trips).toHaveLength(1)
+    expect(trips[0].startTs).toBe(T0 + 60)
+    expect(trips[0].endTs).toBe(T0 + 300)
+    expect(trips[0].driveSec).toBe(180) // 120→180→240→300
+  })
+
   it('counts over speed episodes, excess idle and harsh braking', () => {
     const trips = deriveTrips([
       msg(0),                                   // idle from 0

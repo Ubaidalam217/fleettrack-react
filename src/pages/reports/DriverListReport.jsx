@@ -98,7 +98,7 @@ export default function DriverListReport(props) {
   ]
 
   const exportOpts = () => ({
-    title: 'List of Drivers',
+    title: 'List of Drivers Report',
     subtitle: company,
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate,
@@ -112,7 +112,7 @@ export default function DriverListReport(props) {
 
   return (
     <ReportFrame
-      title="List of Drivers"
+      title="List of Drivers Report"
       desc="Every driver with contact, licence details and expiry, assigned vehicle and status."
       {...props}
     >
@@ -154,14 +154,14 @@ export default function DriverListReport(props) {
         <div style={{ fontSize: 12.5, color: 'var(--c-text2)' }}>{rows.length} driver{rows.length === 1 ? '' : 's'}</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <ColumnPicker columns={COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
-          <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'List_of_Drivers')} icon={FileDown} primary disabled={!rows.length}>Download PDF</ToolbarButton>
-          <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'List_of_Drivers')} icon={FileSpreadsheet} disabled={!rows.length}>Download Excel</ToolbarButton>
+          <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'List_of_Drivers_Report')} icon={FileDown} primary disabled={!rows.length}>Download PDF</ToolbarButton>
+          <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'List_of_Drivers_Report')} icon={FileSpreadsheet} disabled={!rows.length}>Download Excel</ToolbarButton>
           <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!rows.length}>Print</ToolbarButton>
         </div>
       </div>
 
       <PaperTable
-        title="List of Drivers"
+        title="List of Drivers Report"
         company={company}
         filters={filters}
         columns={shownCols}

@@ -124,7 +124,7 @@ export default function ReminderStatusReport(props) {
   const paperRows = useMemo(() => shown.map(paperRow), [shown])
   const totalText = `Reminders ${shown.length}   ·   ${['overdue', 'due', 'upcoming', 'completed'].map(k => `${REMINDER_STATUS[k].label} ${shown.filter(r => r.status === k).length}`).join('   ·   ')}`
   const exportOpts = () => ({
-    title: 'Reminder Status',
+    title: 'Reminder Status Report',
     subtitle: 'FleetmaxX',
     filtersText: paperFilters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate,
@@ -162,7 +162,7 @@ export default function ReminderStatusReport(props) {
   const sel = { ...inputStyle(false), height: 38, width: 'auto' }
 
   return (
-    <ReportFrame title="Reminder Status" desc="Where every vehicle stands on its maintenance and renewal reminders, worked out now." {...props}>
+    <ReportFrame title="Reminder Status Report" desc="Where every vehicle stands on its maintenance and renewal reminders, worked out now." {...props}>
       <style>{CSS}</style>
       {!IS_REAL ? (
         <div style={{ ...CARD_SURFACE, padding: 24, fontSize: 13, color: 'var(--c-text2)' }}>Reminders are kept on the server, so they are not available in demo mode.</div>
@@ -201,8 +201,8 @@ export default function ReminderStatusReport(props) {
             </select>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
               <Link to="/settings/reminder-rule" style={{ ...SECONDARY_BTN, height: 38, textDecoration: 'none' }}><Settings2 size={14} /> Reminder rules</Link>
-              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Reminder_Status').catch(fail)} icon={FileDown} primary disabled={!shown.length}>Download PDF</ToolbarButton>
-              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Reminder_Status').catch(fail)} icon={FileSpreadsheet} disabled={!shown.length}>Download Excel</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Reminder_Status_Report').catch(fail)} icon={FileDown} primary disabled={!shown.length}>Download PDF</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Reminder_Status_Report').catch(fail)} icon={FileSpreadsheet} disabled={!shown.length}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!shown.length}>Print</ToolbarButton>
             </div>
           </div>
@@ -211,7 +211,7 @@ export default function ReminderStatusReport(props) {
             <div style={{ ...CARD_SURFACE, padding: 36, textAlign: 'center', fontSize: 13, color: 'var(--c-text3)' }}>Working out reminders…</div>
           ) : (
             <PaperTable
-              title="Reminder Status"
+              title="Reminder Status Report"
               company="FleetmaxX"
               filters={paperFilters}
               columns={canWrite ? [...COLUMNS, ACTION] : COLUMNS}

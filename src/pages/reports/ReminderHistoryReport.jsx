@@ -79,7 +79,7 @@ export default function ReminderHistoryReport(props) {
   const printDate = useMemo(() => formatPrintDate(), [rows])
   const paperRows = useMemo(() => shown.map(paperRow), [shown])
   const exportOpts = () => ({
-    title: 'Acknowledgement History',
+    title: 'Acknowledgement History Report',
     subtitle: 'FleetmaxX',
     filtersText: paperFilters.map(([k, v]) => `${k}: ${v}`).join('     '),
     printDate,
@@ -94,7 +94,7 @@ export default function ReminderHistoryReport(props) {
 
   const box = { ...inputStyle(false), height: 38, width: 'auto' }
   return (
-    <ReportFrame title="Acknowledgement History" desc="Every reminder marked done: when, at what odometer, and by whom." {...props}>
+    <ReportFrame title="Acknowledgement History Report" desc="Every reminder marked done: when, at what odometer, and by whom." {...props}>
       {!IS_REAL ? (
         <div style={{ ...CARD_SURFACE, padding: 24, fontSize: 13, color: 'var(--c-text2)' }}>Reminders are kept on the server, so they are not available in demo mode.</div>
       ) : (
@@ -115,8 +115,8 @@ export default function ReminderHistoryReport(props) {
             <span style={{ fontSize: 12, color: 'var(--c-text3)' }}>to</span>
             <input type="date" value={filters.to} min={filters.from || undefined} onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} aria-label="To" style={box} />
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Acknowledgement_History').catch(fail)} icon={FileDown} primary disabled={!shown.length}>Download PDF</ToolbarButton>
-              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Acknowledgement_History').catch(fail)} icon={FileSpreadsheet} disabled={!shown.length}>Download Excel</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), 'Acknowledgement_History_Report').catch(fail)} icon={FileDown} primary disabled={!shown.length}>Download PDF</ToolbarButton>
+              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), 'Acknowledgement_History_Report').catch(fail)} icon={FileSpreadsheet} disabled={!shown.length}>Download Excel</ToolbarButton>
               <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!shown.length}>Print</ToolbarButton>
             </div>
           </div>
@@ -124,7 +124,7 @@ export default function ReminderHistoryReport(props) {
             <div style={{ ...CARD_SURFACE, padding: 36, textAlign: 'center', fontSize: 13, color: 'var(--c-text3)' }}>Loading…</div>
           ) : (
             <PaperTable
-              title="Acknowledgement History"
+              title="Acknowledgement History Report"
               company="FleetmaxX"
               filters={paperFilters}
               columns={COLUMNS}

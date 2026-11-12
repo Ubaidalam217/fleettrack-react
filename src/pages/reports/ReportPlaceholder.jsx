@@ -2,6 +2,7 @@ import { useLocation } from 'react-router-dom'
 import PageShell from '../../components/PageShell'
 import { labelForPath } from '../../components/sidebar/reportsNav'
 import ReportsBackLink from '../../components/reports/ReportsBackLink'
+import { withReport } from '../../components/reports/useReportTitle'
 
 /**
  * Shared stand-in for the reports that have no page yet.
@@ -21,7 +22,7 @@ export default function ReportPlaceholder(props) {
   const label = labelForPath(pathname)
 
   return (
-    <PageShell title={label || 'Report'} {...props}>
+    <PageShell title={label ? withReport(label) : 'Report'} {...props}>
       <p style={{ fontSize: 14, color: 'var(--c-text3)', margin: '12px 0 0' }}>
         This report is coming soon.
       </p>

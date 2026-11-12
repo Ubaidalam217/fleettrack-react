@@ -86,9 +86,22 @@ function posOf(m) {
  */
 export function deriveTrips(messages, opts = {}) {
   const o = { ...DEFAULT_USAGE_OPTS, ...opts }
-  const msgs = (messages ?? []).filter(m => num(m.timestamp) !== null)
-  const hasIgnition = msgs.some(m => typeof m['engine.ignition.status'] === 'boolean')
-  const isOn = m => (hasIgnition ? m['engine.ignition.status'] === true : speedOf(m) > 0)
+  const timed = (messages ?? []).filter(m => num(m.timestamp) !== null)
+  const hasIgnition = timed.some(m => typeof m['engine.ignition.status'] === 'boolean')
+  // Some trackers (the iTriangle, 2026-11-12) send status packets between their
+  // position reports with neither ignition nor speed. Read as "ignition off"
+  // they cut one drive into hundreds of 5-second trips, so with ignition known
+  // they are skipped, and a message without the field keeps the last state.
+  const msgs = hasIgnition
+    ? timed.filter(m => typeof m['engine.ignition.status'] === 'boolean' || num(m['position.speed']) !== null)
+    : timed
+  let ignNow = false
+  const isOn = m => {
+    if (!hasIgnition) return speedOf(m) > 0
+    const v = m['engine.ignition.status']
+    if (typeof v === 'boolean') ignNow = v
+    return ignNow
+  }
 
   const trips = []
   const step = createDistanceStepper()
