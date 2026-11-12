@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { VEHICLE_TYPES, saveMaster } from '../../services/vehicleMaster'
-import { useVehicleUsage, fmtOdometer } from '../../hooks/useVehicleUsage'
+import { useVehicleUsage } from '../../hooks/useVehicleUsage'
+import { odometerLabel } from '../../utils/odometer'
 import {
   emptyVehicle, addVehicle, updateVehicle,
   settingsProfileForImei, vehicleByImei, imeiKey,
@@ -486,12 +487,12 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
               <ReadOnlyField
                 label="ODO Reading"
                 name="odoReading"
-                value={odoLoading ? '…' : (fmtOdometer(usage?.odometerKm) ?? '—')}
-                hint="Live from the tracker"
+                value={odoLoading ? '…' : (odometerLabel(usage?.odometerKm, profile.linked ? profile.vehicle?.odometerOffsetKm : null) ?? '—')}
+                hint="The tracker's reading, corrected in Settings › Bulk Action"
               />
             </div>
 
-            <LockNote>IMEI AND ODO READING ARE REPORTED BY THE DEVICE — READ-ONLY</LockNote>
+            <LockNote>IMEI AND ODO READING COME FROM THE DEVICE — READ-ONLY HERE</LockNote>
           </Block>
 
           {/* ── Settings record ── */}

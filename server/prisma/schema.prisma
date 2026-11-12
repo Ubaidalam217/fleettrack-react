@@ -201,6 +201,16 @@ model Vehicle {
   odometer String?
   groupId  String?
 
+  /// Odometer correction (client, 2026-11-12: "Update the ODO meter reading").
+  /// The operator types the vehicle's real odometer; this is that reading minus
+  /// the tracker's own (vehicle.mileage) at that moment, so everywhere the app
+  /// shows the vehicle's odometer it is the tracker's reading plus this. Null =
+  /// never set: the tracker's reading as it is. Nothing is written to Flespi.
+  odometerOffsetKm Float?
+  odometerSetAt    DateTime?
+  /// Who set it, as a name to show.
+  odometerSetBy    String?
+
   /// Validity — the date the vehicle's tracking service is valid until (client,
   /// 2026-11-06: "Validity against vehicle", filterable on the Live Map).
   /// Stored as UTC midnight of that day; the API speaks "YYYY-MM-DD".

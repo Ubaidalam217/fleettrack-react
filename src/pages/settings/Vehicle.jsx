@@ -10,7 +10,7 @@ import ToastStack from '../../components/tracking/Toasts'
 import { useToasts } from '../../hooks/useToasts'
 import {
   useVehicles, useCompanies, useBranches, useGroups,
-  addVehicle, updateVehicle, removeVehicle,
+  addVehicle, updateVehicle, removeVehicle, listVehicleOdometers, setVehicleOdometer,
   companyNameFor, branchTreeForCompany, branchOptionLabel,
   groupsForCompany, groupIdForCompany,
   groupNameFor, vehicleLabel, emptyVehicle, isImeiTaken,
@@ -149,6 +149,7 @@ export default function Vehicle(props) {
 
   const editing = draft !== null
   const deviceTypes = useDeviceTypes(editing)
+  const odo = useVehicleOdometer(draft?.id)
   const navigate = useNavigate()
   const unregistered = useUnregistered(!editing && !access.loading && access.canAdd, vehicles.length)
   const openAddTracker = r => {
@@ -220,6 +221,9 @@ export default function Vehicle(props) {
     // One device, one vehicle: a duplicate IMEI means telemetry that cannot be
     // attributed to either row once Flespi is wired up.
     else if (isImeiTaken(draft.imei, draft.id)) next.imei = 'This IMEI is already registered to another vehicle.'
+    if (odo.changed(draft.odoReading) && !(Number(draft.odoReading) >= 0 && Number(draft.odoReading) < 10_000_000)) {
+      next.odoReading = 'A reading from 0 to 9,999,999 km'
+    }
 
     if (Object.keys(next).length) {
       setErrors(next)
@@ -243,6 +247,9 @@ export default function Vehicle(props) {
     try {
       if (draft.id) {
         await updateVehicle(draft.id, clean)
+        // A new odometer reading corrects the vehicle's odometer (utils/odometer.js);
+        // it never reaches the tracker.
+        if (odo.changed(draft.odoReading)) await setVehicleOdometer(draft.id, Number(draft.odoReading))
         push(`${clean.vehicleNumber} updated`, { tone: 'success' })
       } else {
         await addVehicle(clean)
@@ -459,19 +466,47 @@ export default function Vehicle(props) {
                 })()}
               </Field>
 
-              <Field label="Odometer Reading">
-                <input
-                  name="odometer"
-                  type="number"
-                  min="0"
-                  step="any"
-                  inputMode="numeric"
-                  value={draft.odometer}
-                  onChange={e => set('odometer', e.target.value)}
-                  placeholder="184320"
-                  style={inputStyle(false)}
-                />
-              </Field>
+              {IS_REAL ? (
+                /* "Update the ODO meter reading" (client, 2026-11-12): the vehicle's
+                   real odometer; the server keeps the difference from the tracker's,
+                   so it keeps counting from here. Needs a tracker reading first. */
+                <Field
+                  label="Odometer Reading (km)"
+                  error={errors.odoReading}
+                  hint={!draft.id
+                    ? 'Set it once the tracker has reported, here or in Settings › Bulk Action.'
+                    : odo.loading ? 'Reading the tracker…'
+                      : odo.deviceKm == null ? 'The tracker has not sent an odometer reading yet.'
+                        : `The tracker reads ${odo.deviceKm.toLocaleString('en-US', { maximumFractionDigits: 1 })} km. Type the vehicle’s own reading to correct it.`}
+                >
+                  <input
+                    name="odoReading"
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="decimal"
+                    value={draft.odoReading ?? odo.value}
+                    onChange={e => set('odoReading', e.target.value)}
+                    disabled={!draft.id || odo.loading || odo.deviceKm == null}
+                    placeholder={draft.id ? '150000' : '—'}
+                    style={{ ...inputStyle(!!errors.odoReading), opacity: !draft.id || odo.deviceKm == null ? 0.6 : 1 }}
+                  />
+                </Field>
+              ) : (
+                <Field label="Odometer Reading">
+                  <input
+                    name="odometer"
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="numeric"
+                    value={draft.odometer}
+                    onChange={e => set('odometer', e.target.value)}
+                    placeholder="184320"
+                    style={inputStyle(false)}
+                  />
+                </Field>
+              )}
 
               <Field label="Make">
                 <input
@@ -600,4 +635,28 @@ export default function Vehicle(props) {
       <ToastStack toasts={toasts} onDismiss={dismiss} />
     </SettingsLayout>
   )
+}
+
+/**
+ * The vehicle's odometer for the form: the tracker's reading and the vehicle's
+ * (GET /api/vehicles/odometers). `changed(v)` says whether the box now holds a
+ * new reading worth saving.
+ */
+function useVehicleOdometer(vehicleId) {
+  const [state, setState] = useState({ loading: false, deviceKm: null, vehicleKm: null })
+  useEffect(() => {
+    if (!IS_REAL || !vehicleId) { setState({ loading: false, deviceKm: null, vehicleKm: null }); return }
+    let live = true
+    setState({ loading: true, deviceKm: null, vehicleKm: null })
+    listVehicleOdometers()
+      .then(rows => {
+        const r = (rows ?? []).find(x => x.vehicleId === vehicleId)
+        if (live) setState({ loading: false, deviceKm: r?.deviceKm ?? null, vehicleKm: r?.vehicleKm ?? null })
+      })
+      .catch(() => { if (live) setState({ loading: false, deviceKm: null, vehicleKm: null }) })
+    return () => { live = false }
+  }, [vehicleId])
+  const value = state.vehicleKm != null ? String(Math.round(state.vehicleKm * 10) / 10) : ''
+  const changed = v => v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== value
+  return { ...state, value, changed }
 }

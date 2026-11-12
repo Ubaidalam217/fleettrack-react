@@ -8,7 +8,8 @@ import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { hasDriver } from '../../services/vehicleMaster'
 import VehicleDocumentsTab from './VehicleDocumentsTab'
 import { useVehicleDocuments } from '../../data/vehicleDocuments'
-import { useVehicleUsage, fmtOdometer } from '../../hooks/useVehicleUsage'
+import { useVehicleUsage } from '../../hooks/useVehicleUsage'
+import { odometerLabel } from '../../utils/odometer'
 import { computeSensors } from '../../utils/sensorsData'
 import {
   computeAlerts, ALERT_TYPES, SEVERITY, SEVERITY_FILTERS, UNAVAILABLE_NOTES,
@@ -249,7 +250,9 @@ function VehicleInfo({ v, onOpenInfo, onOpenConsole }) {
             <InfoField label="Unique ID (IMEI)" value={v.ident} mono after={v.ident && <CopyMini text={v.ident} label="IMEI" />} />
             <InfoField label="Device Type" value={profile.deviceType} />
             <InfoField label="SIM / Mobile No" value={profile.mobileNo} />
-            <InfoField label="ODO Reading" value={usageLoading ? '…' : fmtOdometer(usage?.odometerKm)} />
+            {/* The vehicle's odometer: the tracker's plus the correction set in
+                Settings › Bulk Action (utils/odometer.js), the tracker's beside it. */}
+            <InfoField label="ODO Reading" value={usageLoading ? '…' : odometerLabel(usage?.odometerKm, row?.odometerOffsetKm)} />
           </div>
         </InfoCard>
 
@@ -464,6 +467,7 @@ function DriverInfo({ v }) {
 
 function Usage({ v }) {
   const { loading, error, status, usage } = useVehicleUsage(v.id)
+  const profile = useSettingsProfile(v.ident)
 
   if (loading) {
     return (
@@ -492,7 +496,7 @@ function Usage({ v }) {
         <Field label="Trip Count"   value={usage.tripCount} />
         <Field
           label="Total Odometer"
-          value={usage.odometerKm != null ? `${usage.odometerKm.toFixed(1)} km` : null}
+          value={odometerLabel(usage.odometerKm, profile.linked ? profile.vehicle?.odometerOffsetKm : null)}
         />
       </Grid>
     </Section>

@@ -367,6 +367,43 @@ export function transferVehicle(id, { companyId, branchId }) {
   return write(() => post(`/api/vehicles/${id}/transfer`, { bgId: companyId, branchId: branchId || null }))
 }
 
+/**
+ * Every visible vehicle's odometer: the tracker's reading, the correction and
+ * the vehicle's reading (GET /api/vehicles/odometers). Empty in the demo.
+ */
+export async function listVehicleOdometers() {
+  if (!IS_REAL) return []
+  return get('/api/vehicles/odometers')
+}
+
+/**
+ * "Update the ODO meter reading": `reading` is the vehicle's real odometer now;
+ * the server keeps the difference from the tracker's (PUT /api/vehicles/:id/odometer).
+ * Never touches the tracker. `refresh: false` lets a bulk save refresh once.
+ */
+export async function setVehicleOdometer(id, reading, { refresh = true } = {}) {
+  if (!IS_REAL) throw new Error('Setting the odometer needs the server: the demo has no tracker readings')
+  const row = await put(`/api/vehicles/${id}/odometer`, { reading: Number(reading) })
+  if (refresh) await refreshAll()
+  return row
+}
+
+/**
+ * Bulk Object Update: only the fields given, and only ones that do not touch
+ * the Flespi device (PATCH /api/vehicles/:id/details). `patch` uses the form's
+ * names (branchId, subGroup, make, model, vehicleType, mobileNo, validUntil).
+ */
+export async function updateVehicleDetails(id, patch, { refresh = true } = {}) {
+  if (!IS_REAL) return done(mock.updateVehicle(id, patch))
+  const body = {}
+  for (const k of ['branchId', 'subGroup', 'make', 'model', 'vehicleType', 'mobileNo', 'validUntil']) {
+    if (k in patch) body[k] = patch[k] === '' ? null : patch[k]
+  }
+  const row = A.vehicle.toFe(await request(`/api/vehicles/${id}/details`, { method: 'PATCH', body }))
+  if (refresh) await refreshAll()
+  return row
+}
+
 export function updateVehicle(id, patch) {
   if (!IS_REAL) return done(mock.updateVehicle(id, patch))
   return write(async () =>

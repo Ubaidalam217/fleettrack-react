@@ -30,7 +30,7 @@ import PowerFailureReport     from './pages/reports/PowerFailureReport'
 import TachoReport            from './pages/reports/TachoReport'
 import ReallocationHistoryReport from './pages/reports/ReallocationHistoryReport'
 import HeatMapReport          from './pages/reports/HeatMapReport'
-import SettingsComingSoon     from './pages/settings/ComingSoon'
+import SettingsBulkAction     from './pages/settings/BulkAction'
 // Reports module — Movement Report, plus the two Daywise sheets (step 2)
 import WorkingHourReport       from './pages/reports/WorkingHourReport'
 import SummaryUsageReport      from './pages/reports/SummaryUsageReport'
@@ -198,7 +198,7 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         {/* …and the branches that share one placeholder until they get built. */}
         {/* Technician was removed from Settings (client, 2026-11-02); old links land on Settings. */}
         <Route path="/settings/technician"      element={<Navigate to="/settings" replace />} />
-        <Route path="/settings/bulk-action"     element={guard(<SettingsComingSoon     {...themeProps} />)} />
+        <Route path="/settings/bulk-action"     element={guard(<SettingsBulkAction     {...themeProps} />)} />
 
         {/* Reports module — Movement Report is the page that already existed… */}
         <Route path="/reports/movement"      element={guard(<Reports            {...themeProps} />)} />

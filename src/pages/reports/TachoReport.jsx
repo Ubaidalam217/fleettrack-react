@@ -18,6 +18,8 @@ import { IS_REAL } from '../../data/mode'
 import { PRESETS, presetRange, dateStr, timeStr, startOfDay } from '../../utils/reportRange'
 import { TACHO_FIELDS, MAX_TACHO_DAYS, buildTacho, summarize, thinReadings, byLocalDay, eventFlags } from '../../utils/tacho'
 import { hms, km } from '../../utils/usageReports'
+import { imeiKey, useVehicles } from '../../data/settings'
+import { vehicleKm } from '../../utils/odometer'
 
 /**
  * Tacho Graph and Tacho Data (client list 2026-11-10, after Ctrack MaXx's
@@ -386,6 +388,8 @@ function TachoPage({ variant, ...props }) {
 
 /** The Tacho Data paper: vehicles → a band per day → one row per reading. */
 function TachoData({ raw, vehicles, intervalSec, addressMode, V }) {
+  // The register, for each vehicle's odometer correction (utils/odometer.js).
+  const register = useVehicles()
   const [hiddenCols, setHiddenCols] = useHiddenColumns('tacho-data')
   const shownCols = useVisibleColumns(DATA_COLUMNS, hiddenCols)
   const [geoTick, setGeoTick] = useState(0)
@@ -397,13 +401,16 @@ function TachoData({ raw, vehicles, intervalSec, addressMode, V }) {
   // Building the series is the heavy part; the reading interval only thins it.
   const series = useMemo(() => applied.ids.map(id => {
     const vehicle = vehicles.find(v => v.id === id)
-    return { deviceId: id, name: vehicle?.master?.plateNo || vehicle?.name || String(id), tacho: buildTacho(raw.byDevice.get(id)?.messages ?? []) }
-  }).sort((a, b) => a.name.localeCompare(b.name)), [raw, applied, vehicles])
+    return {
+      deviceId: id, name: vehicle?.master?.plateNo || vehicle?.name || String(id), tacho: buildTacho(raw.byDevice.get(id)?.messages ?? []),
+      odoOffset: register.find(r => imeiKey(r.imei) === imeiKey(vehicle?.ident))?.odometerOffsetKm ?? null,
+    }
+  }).sort((a, b) => a.name.localeCompare(b.name)), [raw, applied, vehicles, register])
 
   const built = useMemo(() => {
     let shown = 0
     let total = 0
-    const groups = series.map(({ deviceId, name, tacho }) => {
+    const groups = series.map(({ deviceId, name, tacho, odoOffset }) => {
       const kept = thinReadings(tacho.points, intervalSec)
       total += kept.length
       const rows = []
@@ -424,9 +431,10 @@ function TachoData({ raw, vehicles, intervalSec, addressMode, V }) {
             time: formatTime(p.ts),
             speed: round(p.speed),
             rpm: tacho.hasRpm && p.rpm !== null ? round(p.rpm) : '—',
-            // The tracker's own odometer where it sends one; otherwise the
-            // distance since the start of the period (said in the group bar).
-            odo: tacho.hasOdometer ? (p.odo !== null ? km(p.odo) : '—') : km(p.km),
+            // The vehicle's odometer (the tracker's plus its correction) where the
+            // tracker sends one; otherwise the distance since the start of the
+            // period (said in the group bar).
+            odo: tacho.hasOdometer ? (p.odo !== null ? km(vehicleKm(p.odo, odoOffset)) : '—') : km(p.km),
             ignition: ignText(p.ign),
             sats: p.sats ?? '—',
             cellStyle: switched ? { ignition: { fontWeight: 700 } } : undefined,

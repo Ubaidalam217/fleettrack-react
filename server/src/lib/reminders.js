@@ -17,6 +17,7 @@
 import prisma from '../prisma.js'
 import { sendAlertEmail } from './mailer.js'
 import { pushEvents } from './push.js'
+import { vehicleKm } from './odometer.js'
 
 /** The reference's grouped Reminder Type list; any other text is accepted. */
 export const REMINDER_TYPES = Object.freeze({
@@ -116,7 +117,8 @@ export function describe(result) {
 }
 
 /**
- * Odometer (vehicle.mileage) and counted engine hours now, per vehicle id.
+ * Odometer (vehicle.mileage plus the vehicle's correction) and counted engine
+ * hours now, per vehicle id.
  * `telemetry` is the engine's deviceId → reading map, `deviceByImei` IMEI → deviceId.
  */
 export async function metersFor(vehicles, telemetry, deviceByImei) {
@@ -127,7 +129,9 @@ export async function metersFor(vehicles, telemetry, deviceByImei) {
     const dev = deviceByImei?.get(digits(v.imei))
     const t = dev !== undefined ? telemetry?.get(dev) : undefined
     out.set(v.id, {
-      odometer: typeof t?.mileage === 'number' && Number.isFinite(t.mileage) ? t.mileage : null,
+      // The vehicle's odometer: the tracker's plus the operator's correction
+      // (lib/odometer.js), so a reminder reads the number on the dashboard.
+      odometer: vehicleKm(t?.mileage, v.odometerOffsetKm),
       engineHours: hoursById.has(v.id) ? hoursById.get(v.id) : null,
       ts: t?.ts ?? null,
     })
@@ -163,7 +167,7 @@ const vehicleName = v => v.plateNo || v.fleetNo || v.imei
  * the Due / Overdue notifications. Returns the events it created.
  */
 export async function runReminderPass(telemetry, deviceByImei, now = Math.floor(Date.now() / 1000)) {
-  const vehicles = await prisma.vehicle.findMany({ select: { id: true, imei: true, plateNo: true, fleetNo: true, bgId: true } })
+  const vehicles = await prisma.vehicle.findMany({ select: { id: true, imei: true, plateNo: true, fleetNo: true, bgId: true, odometerOffsetKm: true } })
   await countEngineHours(vehicles, telemetry, deviceByImei, now)
 
   const rules = await prisma.reminderRule.findMany({ where: { active: true }, include: { vehicles: true } })

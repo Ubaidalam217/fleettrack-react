@@ -20,6 +20,7 @@ import { revokeGrantsForBg } from '../lib/flespiGrant.js'
 import { actorOf, bgMoveRow, deviceRow, editMoves } from '../lib/vehicleMoves.js'
 import * as flespi from '../lib/flespi.js'
 import { channelAddresses, deviceName, deviceTypes, syncVehicleDevice, unregisteredDevices } from '../lib/flespiDevices.js'
+import { deviceOdometers, odometerRow } from '../lib/odometer.js'
 
 const router = Router()
 
@@ -213,6 +214,21 @@ router.get(
   })
 )
 
+const ODOMETER_SELECT = { id: true, imei: true, odometerOffsetKm: true, odometerSetAt: true, odometerSetBy: true }
+
+/**
+ * Every visible vehicle's odometer: the tracker's reading, the correction and
+ * the vehicle's reading (lib/odometer.js). One fleet telemetry read.
+ */
+router.get(
+  '/odometers',
+  asyncHandler(async (req, res) => {
+    const vehicles = await prisma.vehicle.findMany({ where: scopedWhere('vehicle', req.scope), select: ODOMETER_SELECT })
+    const readings = await deviceOdometers(vehicles)
+    res.json({ data: vehicles.map(v => odometerRow(v, readings.get(v.id))) })
+  })
+)
+
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
@@ -390,6 +406,91 @@ router.put(
       },
       include: VEHICLE_INCLUDE,
     })
+    res.json({ data: row })
+  })
+)
+
+/**
+ * Set the vehicle's odometer (client, 2026-11-12: "Update the ODO meter
+ * reading"): `reading` is the vehicle's real odometer now; the correction kept
+ * is that minus the tracker's own reading, so the vehicle's odometer keeps
+ * counting from it. Nothing is written to Flespi. Reminder cycles that started
+ * on the old reading move with it, so "km since the last service" does not jump.
+ */
+router.put(
+  '/:id/odometer',
+  validate(z.object({
+    reading: z.union([z.number(), z.string()])
+      .transform(v => (typeof v === 'number' ? v : Number(String(v).trim() || NaN)))
+      .refine(v => Number.isFinite(v) && v >= 0 && v < 10_000_000, 'A reading from 0 to 9,999,999 km'),
+  })),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const reading = (await deviceOdometers([existing])).get(existing.id)
+    if (reading?.deviceKm == null) {
+      throw badRequest('The tracker has not sent an odometer reading yet, so there is nothing to correct', {
+        reading: 'No reading from the tracker yet',
+      })
+    }
+    const offset = req.body.reading - reading.deviceKm
+    const delta = offset - (existing.odometerOffsetKm ?? 0)
+    const [row] = await prisma.$transaction([
+      prisma.vehicle.update({
+        where: { id: existing.id },
+        data: {
+          odometerOffsetKm: offset,
+          odometerSetAt: new Date(),
+          odometerSetBy: req.user?.shortName || req.user?.email || null,
+        },
+        select: ODOMETER_SELECT,
+      }),
+      prisma.reminderVehicle.updateMany({
+        where: { vehicleId: existing.id, startOdometer: { not: null } },
+        data: { startOdometer: { increment: delta } },
+      }),
+    ])
+    res.json({ data: odometerRow(row, reading) })
+  })
+)
+
+/**
+ * Bulk Object Update (Settings › Bulk Action): the fields that do not touch the
+ * Flespi device, each only when sent — PUT /:id renames the tracker and needs
+ * the whole record, so plate, fleet no, IMEI and device type stay with it.
+ */
+const detailsSchema = z.object({
+  branchId: optionalId(),
+  subGroup: optionalText(120),
+  make: optionalText(80),
+  model: optionalText(80),
+  vehicleType: optionalText(60),
+  mobileNo: optionalText(40),
+  validUntil: optionalDate(),
+})
+// The schema fills a missing field with null, so the keys actually sent are
+// noted first and only those are written.
+const noteSentKeys = (req, _res, next) => { req.sentKeys = new Set(Object.keys(req.body ?? {})); next() }
+
+router.patch(
+  '/:id/details',
+  noteSentKeys,
+  validate(detailsSchema),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const data = Object.fromEntries(Object.entries(req.body).filter(([k]) => req.sentKeys.has(k)))
+    let history = []
+    if ('branchId' in data) {
+      data.branchId = await resolveBranch(data.branchId, existing.bgId)
+      history = await editMoves(existing, {}, { branchId: data.branchId, groupId: existing.groupId }, actorOf(req))
+    }
+    const [row] = await prisma.$transaction([
+      prisma.vehicle.update({ where: { id: existing.id }, data, include: VEHICLE_INCLUDE }),
+      prisma.vehicleMove.createMany({ data: history }),
+    ])
+    // A branch's sub-users gain or lose the vehicle, as with PUT /:id/branch.
+    if (history.length) await revokeGrantsForBg(existing.bgId)
     res.json({ data: row })
   })
 )

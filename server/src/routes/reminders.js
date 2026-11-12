@@ -75,7 +75,7 @@ const RULE_FIELDS = b => ({
   notifyInApp: b.notifyInApp, notifyEmail: b.notifyEmail, emails: b.notifyEmail ? b.emails : [], active: b.active,
 })
 
-const VEHICLE_SELECT = { id: true, imei: true, plateNo: true, fleetNo: true, bgId: true, branchId: true }
+const VEHICLE_SELECT = { id: true, imei: true, plateNo: true, fleetNo: true, bgId: true, branchId: true, odometerOffsetKm: true }
 
 /** Odometer and engine hours now, for these vehicles. A Flespi outage leaves them unknown. */
 async function readMeters(vehicles) {

@@ -176,6 +176,11 @@ export const vehicle = {
       : [],
     customFieldsUpdatedAt: r.customFieldsUpdatedAt ?? null,
     customFieldsUpdatedBy: r.customFieldsUpdatedBy ?? '',
+    // The odometer correction (utils/odometer.js): set through its own
+    // endpoint (setVehicleOdometer), never with the vehicle form.
+    odometerOffsetKm: typeof r.odometerOffsetKm === 'number' ? r.odometerOffsetKm : null,
+    odometerSetAt: r.odometerSetAt ?? null,
+    odometerSetBy: r.odometerSetBy ?? '',
   }),
   toApiCreate: r => ({
     bgId: r.companyId,
