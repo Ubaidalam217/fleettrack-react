@@ -191,41 +191,60 @@ export function HelpTip({ title, children }) {
 }
 
 /**
- * "Grouped By: Vehicle / Driver" (client, 2026-11-12: every report Vehicle wise
- * or Driver wise). A select so it lines up with the other filter fields.
+ * "Report By: Vehicle | Driver" (client, 2026-11-12: every report Vehicle wise
+ * or Driver wise). The one switch the driver-aware reports share: Vehicle picks
+ * vehicles and groups by vehicle; Driver covers every vehicle the user can see,
+ * picks drivers and groups by driver.
  */
-export function GroupByToggle({ value, onChange, options = [['vehicle', 'Vehicle'], ['driver', 'Driver']] }) {
+export function ReportByToggle({ value, onChange, id = 'report-by' }) {
+  const opts = [['vehicle', 'Vehicle'], ['driver', 'Driver']]
   return (
     <div>
-      <label style={LABEL}>GROUPED BY</label>
-      <select style={FIELD} value={value} onChange={e => onChange(e.target.value)}>
-        {options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-      </select>
+      <label style={LABEL} id={`${id}-label`}>REPORT BY</label>
+      <div role="radiogroup" aria-labelledby={`${id}-label`}
+        style={{ ...FIELD, display: 'flex', padding: 3, gap: 3 }}>
+        {opts.map(([v, label]) => {
+          const on = value === v
+          return (
+            <button key={v} type="button" role="radio" aria-checked={on} onClick={() => onChange(v)}
+              style={{
+                flex: 1, border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                padding: '4px 0', fontFamily: 'inherit',
+                background: on ? 'var(--ft-accent)' : 'transparent',
+                color: on ? '#fff' : 'var(--c-text2)',
+              }}>
+              {label}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
 
 /**
- * Which drivers a report covers. `drivers` are the labels to offer, `selected`
- * null for all of them. Emits null again once every driver is ticked.
+ * Which drivers a Driver-wise report covers. `options` are { key, label };
+ * `value` is a Set of keys, or null for every driver (emitted again once every
+ * driver is ticked).
  */
-export function DriverMultiSelect({ drivers, selected, onChange, label = 'DRIVERS' }) {
-  const all = selected === null
-  const chosen = selected ?? drivers
-  const summary = all ? `All (${drivers.length})`
-    : chosen.length === 0 ? 'Select drivers'
-      : chosen.length === 1 ? chosen[0]
-        : `${chosen.length} drivers`
-  const toggle = name => {
-    const next = chosen.includes(name) ? chosen.filter(x => x !== name) : [...chosen, name]
-    onChange(next.length === drivers.length && drivers.every(d => next.includes(d)) ? null : next)
+export function DriverMultiSelect({ options, value, onChange, disabled, label = 'DRIVERS' }) {
+  const all = value == null
+  const toggle = key => {
+    const cur = value ?? new Set(options.map(o => o.key))
+    const next = new Set(cur)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    onChange(next.size === options.length ? null : next)
   }
+  const summary = all ? `All drivers (${options.length})`
+    : value.size === 0 ? 'Select drivers'
+      : value.size === 1 ? (options.find(o => value.has(o.key))?.label ?? '1 driver')
+        : `${value.size} drivers`
   return (
-    <MultiSelect label={label} summary={summary} disabled={drivers.length === 0}>
-      <CheckRow checked={all} onChange={() => onChange(all ? [] : null)}><strong>All drivers</strong></CheckRow>
+    <MultiSelect label={label} summary={summary} disabled={disabled || options.length === 0}>
+      <CheckRow checked={all} onChange={() => onChange(all ? new Set() : null)}><strong>All drivers</strong></CheckRow>
       <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
-      {drivers.map(name => (
-        <CheckRow key={name} checked={chosen.includes(name)} onChange={() => toggle(name)}>{name}</CheckRow>
+      {options.map(o => (
+        <CheckRow key={o.key} checked={all || value.has(o.key)} onChange={() => toggle(o.key)}>{o.label}</CheckRow>
       ))}
     </MultiSelect>
   )

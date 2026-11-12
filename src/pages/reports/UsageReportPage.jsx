@@ -7,7 +7,7 @@ import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import LocationMapModal from '../../components/reports/LocationMapModal'
 import TripRouteModal from '../../components/reports/TripRouteModal'
-import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, GroupByToggle, DriverMultiSelect } from '../../components/reports/controls'
+import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, ReportByToggle, DriverMultiSelect } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { driverNameForDevice, driverForIbutton, ibuttonKey, useDrivers } from '../../data/settings'
 import { fetchMovementMessages, formatDateTime, formatDateLabel, formatTime, formatPrintDate, isAbortError } from '../../utils/movementReport'
@@ -614,13 +614,16 @@ export default function UsageReportPage(props) {
 function UsageReport({ variant, ...props }) {
   const V = VARIANTS[variant]
   const title = useReportTitle(V.title)
-  const [entity, setEntity] = useState('driver')
-  // Vehicle wise or Driver wise (client, 2026-11-12). Distance Driven has its
-  // own Entity Grouping, which already is that choice.
-  const supportsGroupBy = !V.settings.includes('entity')
-  const [groupBy, setGroupBy] = useState('vehicle')
-  const byDriver = supportsGroupBy && groupBy === 'driver'
-  const [driverSel, setDriverSel] = useState(null) // null = every driver
+  // Report By: Vehicle or Driver (client, 2026-11-12: every report Vehicle wise
+  // or Driver wise). Driver covers every vehicle the user can see and groups by
+  // driver. Distance Driven's Entity Grouping (Asset / Driver) is the same choice;
+  // it keeps its Driver default, as in the client's sample.
+  const hasEntity = V.settings.includes('entity')
+  const [reportBy, setReportBy] = useState(hasEntity ? 'driver' : 'vehicle')
+  const driverMode = reportBy === 'driver'
+  const entity = driverMode ? 'driver' : 'asset'
+  const byDriver = !hasEntity && driverMode
+  const [driverSel, setDriverSel] = useState(null) // null = every driver; Driver mode only
   const registeredDrivers = useDrivers()
   const file = title === V.title ? V.file : fileNameOf(title)
   const [hiddenCols, setHiddenCols] = useHiddenColumns(`usage-${variant}`)
@@ -678,8 +681,9 @@ function UsageReport({ variant, ...props }) {
   const abortRef = useRef(null)
   const busy = progress !== null
 
-  const effectiveIds = selectedIds ?? vehicles.map(v => v.id)
-  const allSelected = selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
+  // Driver wise covers every vehicle; the drivers chosen narrow it after the fetch.
+  const effectiveIds = driverMode ? vehicles.map(v => v.id) : (selectedIds ?? vehicles.map(v => v.id))
+  const allSelected = driverMode || selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
   const fromTs = useMemo(() => Math.floor(new Date(`${fromDate}T${fromTime}:00`).getTime() / 1000), [fromDate, fromTime])
   const toTs = useMemo(() => Math.floor(new Date(`${toDate}T${toTime}:59`).getTime() / 1000), [toDate, toTime])
   const rangeValid = Number.isFinite(fromTs) && Number.isFinite(toTs) && fromTs < toTs
@@ -720,14 +724,14 @@ function UsageReport({ variant, ...props }) {
         onProgress: p => setProgress({ text: p.text }),
       })
       if (controller.signal.aborted) return
-      setRaw({ byDevice, applied: { fromTs, toTs, selectionLabel, printDate: formatPrintDate() } })
+      setRaw({ byDevice, applied: { fromTs, toTs, selectionLabel, reportBy, printDate: formatPrintDate() } })
     } catch (err) {
       if (!isAbortError(err)) setError(err.message || String(err))
     } finally {
       abortRef.current = null
       setProgress(null)
     }
-  }, [rangeValid, rangeTooLong, effectiveIds, fromTs, toTs, selectionLabel])
+  }, [rangeValid, rangeTooLong, effectiveIds, fromTs, toTs, selectionLabel, reportBy])
 
   const cancel = () => abortRef.current?.abort()
 
@@ -774,7 +778,7 @@ function UsageReport({ variant, ...props }) {
   // The entries the variant builds from: per vehicle, or per driver.
   const entries = useMemo(() => {
     if (!vehicleTrips) return null
-    const filtered = filterTripsByDriver(vehicleTrips, driverSel)
+    const filtered = filterTripsByDriver(vehicleTrips, driverMode ? driverSel : null)
     if (!byDriver) return filtered
     const byName = new Map((registeredDrivers ?? []).filter(d => d.name).map(d => [d.name, d]))
     const heading = name => {
@@ -783,7 +787,7 @@ function UsageReport({ variant, ...props }) {
       return no ? `${name} (${no})` : name
     }
     return regroupByDriver(filtered, { heading })
-  }, [vehicleTrips, driverSel, byDriver, registeredDrivers])
+  }, [vehicleTrips, driverSel, driverMode, byDriver, registeredDrivers])
 
   const built = useMemo(() => {
     if (!entries) return null
@@ -840,11 +844,12 @@ function UsageReport({ variant, ...props }) {
   const applied = raw?.applied
   const filters = applied ? [
     ['Selection', applied.selectionLabel],
-    ...(V.groupedBy || supportsGroupBy
-      ? [['Grouped By', byDriver ? (V.groupedBy === 'Day' ? 'Day · Driver' : 'Driver') : (V.groupedBy ?? 'Vehicle')]]
+    ['Report By', applied.reportBy === 'driver' ? 'Driver' : 'Vehicle'],
+    ...(applied.reportBy === 'driver' ? [['Drivers', driverSel ? (driverSel.length ? driverSel.join(', ') : 'None') : 'All']] : []),
+    ...(V.groupedBy
+      ? [['Grouped By', byDriver ? (V.groupedBy === 'Day' ? 'Day · Driver' : 'Driver') : V.groupedBy]]
       : []),
-    ...(driverSel ? [['Drivers', driverSel.length ? driverSel.join(', ') : 'None']] : []),
-    ...(V.settings.includes('entity') ? [['Entity Grouping', entity === 'asset' ? 'Asset' : 'Driver']] : []),
+    ...(hasEntity ? [['Entity Grouping', entity === 'asset' ? 'Asset' : 'Driver']] : []),
     ['From Date', formatDateTime(applied.fromTs)],
     ['To Date', formatDateTime(applied.toTs)],
     ...(V.settings.includes('speed') ? [['Over Speed', `> ${speedNum} km/h`]] : []),
@@ -879,18 +884,25 @@ function UsageReport({ variant, ...props }) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14 }}>
-          <MultiSelect label="VEHICLES" summary={selectionLabel} disabled={vehicles.length === 0}>
-            <CheckRow checked={allSelected} onChange={() => setSelectedIds(allSelected ? [] : null)}><strong>All vehicles</strong></CheckRow>
-            <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
-            {vehicles.map(v => (
-              <CheckRow key={v.id} checked={effectiveIds.includes(v.id)} onChange={() => toggleVehicle(v.id)}
-                note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}>
-                {vehicleName(v)}
-              </CheckRow>
-            ))}
-          </MultiSelect>
-          {supportsGroupBy && <GroupByToggle value={groupBy} onChange={setGroupBy} />}
-          <DriverMultiSelect drivers={driverOptions} selected={driverSel} onChange={setDriverSel} />
+          <ReportByToggle id={`usage-${variant}-report-by`} value={reportBy} onChange={v => { setReportBy(v); setRaw(null) }} />
+          {driverMode ? (
+            <DriverMultiSelect
+              options={driverOptions.map(n => ({ key: n, label: n }))}
+              value={driverSel ? new Set(driverSel) : null}
+              onChange={s => setDriverSel(s ? [...s] : null)}
+            />
+          ) : (
+            <MultiSelect label="VEHICLES" summary={selectionLabel} disabled={vehicles.length === 0}>
+              <CheckRow checked={allSelected} onChange={() => setSelectedIds(allSelected ? [] : null)}><strong>All vehicles</strong></CheckRow>
+              <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
+              {vehicles.map(v => (
+                <CheckRow key={v.id} checked={effectiveIds.includes(v.id)} onChange={() => toggleVehicle(v.id)}
+                  note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}>
+                  {vehicleName(v)}
+                </CheckRow>
+              ))}
+            </MultiSelect>
+          )}
           <div>
             <label style={LABEL}>FROM DATE</label>
             <input type="date" style={FIELD} value={fromDate} onChange={e => { setFromDate(e.target.value); setPreset('custom') }} />
@@ -930,15 +942,6 @@ function UsageReport({ variant, ...props }) {
                 <input type="time" style={FIELD} value={workTo} onChange={e => setWorkTo(e.target.value)} />
               </div>
             </>
-          )}
-          {V.settings.includes('entity') && (
-            <div>
-              <label style={LABEL}>ENTITY GROUPING</label>
-              <select style={FIELD} value={entity} onChange={e => setEntity(e.target.value)}>
-                <option value="driver">Driver</option>
-                <option value="asset">Asset</option>
-              </select>
-            </div>
           )}
           {V.settings.includes('gyrBands') && (
             <>

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle, MapPin } from 'lucide-react'
 import Sidebar from '../../components/Sidebar'
 import Header  from '../../components/Header'
-import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, HelpTip } from '../../components/reports/controls'
+import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, HelpTip, ReportByToggle, DriverMultiSelect } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { useGeofences } from '../../data/settings'
 import { IS_REAL } from '../../data/mode'
@@ -31,7 +31,6 @@ import { PaperHead, PaperFoot, PaperSheet, BAND_BLUE, GROUP_GRAY, ZEBRA_GRAY, IN
 import { useReportTitle } from '../../components/reports/useReportTitle'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, columnChoices } from '../../utils/reportColumns'
-import { DriverFilter, GroupBySelect } from '../../components/reports/DriverControls'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { driverFilterLabel } from '../../utils/driverAtTime'
 import { applyGeoZoneDrivers } from '../../utils/geoZoneDriver'
@@ -187,8 +186,11 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
   const [mergeGapSec,       setMergeGapSec]     = useState(120)
   // Driver dimension (client, 2026-11-12): filter and Vehicle / Driver grouping.
   const driverDim = useDriverDimension()
-  const [driverFilter, setDriverFilter] = useState(null)
-  const [groupBy, setGroupBy] = useState('vehicle')
+  // Report By: Vehicle or Driver. Driver covers every vehicle and groups by driver.
+  const [reportBy, setReportBy] = useState('vehicle')
+  const [driverPick, setDriverPick] = useState(null) // null = every driver
+  const groupBy = reportBy
+  const driverFilter = reportBy === 'driver' ? driverPick : null
 
   // ── report state ──
   const [byDeviceMessages, setByDeviceMessages] = useState(null)
@@ -201,8 +203,8 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
 
   const busy = progress !== null
 
-  const effectiveVehicleIds = selectedVehicleIds ?? vehicles.map(v => v.id)
-  const allVehiclesSelected = selectedVehicleIds === null || (vehicles.length > 0 && selectedVehicleIds.length === vehicles.length)
+  const effectiveVehicleIds = reportBy === 'driver' ? vehicles.map(v => v.id) : (selectedVehicleIds ?? vehicles.map(v => v.id))
+  const allVehiclesSelected = reportBy === 'driver' || selectedVehicleIds === null || (vehicles.length > 0 && selectedVehicleIds.length === vehicles.length)
 
   const fromTs = useMemo(() => Math.floor(new Date(`${fromDate}T${fromTime}:00`).getTime() / 1000), [fromDate, fromTime])
   const toTs   = useMemo(() => Math.floor(new Date(`${toDate}T${toTime}:59`).getTime() / 1000),   [toDate, toTime])
@@ -349,8 +351,8 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
     pairs: applied ? [
       ['From', formatDateTime(applied.fromTs)], ['To', formatDateTime(applied.toTs)],
       ['Vehicles', applied.vehicleSelectionLabel], ['Dwell / merge', `${dwellSec}s / ${mergeGapSec}s`],
-      ...(driverFilter ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : []),
-      ...(groupBy === 'driver' ? [['Grouped By', 'Driver']] : []),
+      ['Report By', groupBy === 'driver' ? 'Driver' : 'Vehicle'],
+      ...(groupBy === 'driver' ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : []),
     ] : [],
   }), [applied, dwellSec, mergeGapSec, driverFilter, groupBy, driverDim])
 
@@ -451,18 +453,24 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
-                <MultiSelect label="VEHICLES" summary={vehicleSelectionLabel} disabled={vehicles.length === 0}>
-                  <CheckRow checked={allVehiclesSelected} onChange={() => setSelectedVehicleIds(allVehiclesSelected ? [] : null)}>
-                    <strong>All vehicles</strong>
-                  </CheckRow>
-                  <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
-                  {vehicles.map(v => (
-                    <CheckRow key={v.id} checked={effectiveVehicleIds.includes(v.id)} onChange={() => toggleVehicle(v.id)}
-                      note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}>
-                      {v.master?.plateNo || v.name}
+                <ReportByToggle id="geozone-report-by" value={reportBy}
+                  onChange={v => { setReportBy(v); setByDeviceMessages(null); setApplied(null) }} />
+                {reportBy === 'driver' ? (
+                  <DriverMultiSelect options={driverDim.options} value={driverPick} onChange={setDriverPick} />
+                ) : (
+                  <MultiSelect label="VEHICLES" summary={vehicleSelectionLabel} disabled={vehicles.length === 0}>
+                    <CheckRow checked={allVehiclesSelected} onChange={() => setSelectedVehicleIds(allVehiclesSelected ? [] : null)}>
+                      <strong>All vehicles</strong>
                     </CheckRow>
-                  ))}
-                </MultiSelect>
+                    <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
+                    {vehicles.map(v => (
+                      <CheckRow key={v.id} checked={effectiveVehicleIds.includes(v.id)} onChange={() => toggleVehicle(v.id)}
+                        note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}>
+                        {v.master?.plateNo || v.name}
+                      </CheckRow>
+                    ))}
+                  </MultiSelect>
+                )}
 
                 <div>
                   <label style={LABEL}>FROM DATE</label>
@@ -493,8 +501,6 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                   ))}
                 </MultiSelect>
 
-                <DriverFilter options={driverDim.options} value={driverFilter} onChange={setDriverFilter} />
-                <GroupBySelect id="geozone-group-by" value={groupBy} onChange={setGroupBy} />
 
                 <MultiSelect label="ADDRESSES" summary={addrSelectionLabel} disabled={addressZones.length === 0}>
                   <CheckRow checked={selectedAddrIds === null} onChange={() => setSelectedAddrIds(selectedAddrIds === null ? new Set() : null)}>

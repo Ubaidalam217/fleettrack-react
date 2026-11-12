@@ -8,7 +8,7 @@ import { formatPrintDate } from '../../utils/movementReport'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, visibleColumns } from '../../utils/reportColumns'
 import {
-  LABEL, FIELD, MultiSelect, CheckRow, ToolbarButton, HelpTip,
+  LABEL, FIELD, MultiSelect, CheckRow, ToolbarButton, HelpTip, ReportByToggle, DriverMultiSelect,
 } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
 import {
@@ -22,7 +22,6 @@ import {
 import { exportDaywiseExcel, exportDaywisePdf, printDaywiseReport } from '../../utils/daywiseExport'
 import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import ReportsBackLink from '../../components/reports/ReportsBackLink'
-import { DriverFilter } from '../../components/reports/DriverControls'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { driverFilterLabel, driverPasses, NO_DRIVER } from '../../utils/driverAtTime'
 
@@ -191,7 +190,11 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
   // the vehicle's assigned driver today — no Vehicle / Driver grouping, which
   // would need every message of the month re-read and attributed.
   const driverDim = useDriverDimension()
-  const [driverFilter, setDriverFilter] = useState(null)
+  // Report By: Vehicle or Driver. Driver covers every vehicle and keeps the
+  // drivers chosen (by assigned driver, see above) — a filter, not a regrouping.
+  const [reportBy, setReportBy] = useState('vehicle')
+  const [driverPick, setDriverPick] = useState(null) // null = every driver
+  const driverFilter = reportBy === 'driver' ? driverPick : null
   // null = all. Starts empty on every report: the client wants the vehicles
   // picked on purpose, not the whole fleet selected by default.
   const [selectedIds, setSelectedIds] = useState([])
@@ -203,8 +206,8 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
     return [y, m]
   }, [month])
 
-  const effectiveIds = selectedIds ?? vehicles.map(v => v.id)
-  const allSelected = selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
+  const effectiveIds = reportBy === 'driver' ? vehicles.map(v => v.id) : (selectedIds ?? vehicles.map(v => v.id))
+  const allSelected = reportBy === 'driver' || selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
   const allBgs = selectedBgs === null || selectedBgs.length === bgOptions.length
 
   const selectionLabel = allSelected
@@ -331,7 +334,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
     title: reportTitle,
     monthLabel: monthLabel(year, monthNo),
     exportName: reportTitle === V.title ? V.exportName : fileNameOf(reportTitle),
-    selection: driverFilter ? `${selectionLabel} · Drivers: ${driverFilterLabel(driverFilter, driverDim.options)}` : selectionLabel,
+    selection: reportBy === 'driver' ? `${selectionLabel} · Report By: Driver · Drivers: ${driverFilterLabel(driverFilter, driverDim.options)}` : selectionLabel,
     bgLabel,
     printDate: report?.printDate,
   }
@@ -376,24 +379,27 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
                   />
                 </div>
 
-                <MultiSelect label="VEHICLES" summary={selectionLabel} disabled={vehicles.length === 0}>
-                  <CheckRow checked={allSelected} onChange={() => setSelectedIds(allSelected ? [] : null)}>
-                    <strong>All vehicles</strong>
-                  </CheckRow>
-                  <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
-                  {vehicles.map(v => (
-                    <CheckRow
-                      key={v.id}
-                      checked={effectiveIds.includes(v.id)}
-                      onChange={() => toggleVehicle(v.id)}
-                      note={v.company}
-                    >
-                      {v.label}
+                <ReportByToggle id="daywise-report-by" value={reportBy} onChange={v => { setReportBy(v); setReport(null) }} />
+                {reportBy === 'driver' ? (
+                  <DriverMultiSelect options={driverDim.options} value={driverPick} onChange={setDriverPick} />
+                ) : (
+                  <MultiSelect label="VEHICLES" summary={selectionLabel} disabled={vehicles.length === 0}>
+                    <CheckRow checked={allSelected} onChange={() => setSelectedIds(allSelected ? [] : null)}>
+                      <strong>All vehicles</strong>
                     </CheckRow>
-                  ))}
-                </MultiSelect>
-
-                <DriverFilter options={driverDim.options} value={driverFilter} onChange={setDriverFilter} />
+                    <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
+                    {vehicles.map(v => (
+                      <CheckRow
+                        key={v.id}
+                        checked={effectiveIds.includes(v.id)}
+                        onChange={() => toggleVehicle(v.id)}
+                        note={v.company}
+                      >
+                        {v.label}
+                      </CheckRow>
+                    ))}
+                  </MultiSelect>
+                )}
 
                 <MultiSelect label="BUSINESS GROUP" summary={bgLabel} disabled={bgOptions.length === 0}>
                   <CheckRow checked={allBgs} onChange={() => setSelectedBgs(allBgs ? [] : null)}>
@@ -517,7 +523,8 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
                     title={reportTitle}
                     company="FleetmaxX"
                     filters={[['Month', monthLabel(year, monthNo)], ['Selection', selectionLabel], ['Company', bgLabel],
-                      ...(driverFilter ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : [])]}
+                      ['Report By', reportBy === 'driver' ? 'Driver' : 'Vehicle'],
+                      ...(reportBy === 'driver' ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : [])]}
                   />
                   <DaywiseTable
                     columns={columns}

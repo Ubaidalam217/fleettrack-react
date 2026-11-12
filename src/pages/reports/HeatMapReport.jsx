@@ -7,7 +7,7 @@ import ReportFrame from '../../components/reports/ReportFrame'
 import PaperTable from '../../components/reports/PaperTable'
 import HeatLayer from '../../components/reports/HeatLayer'
 import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
-import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, HelpTip } from '../../components/reports/controls'
+import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, HelpTip, ReportByToggle, DriverMultiSelect } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { ALERT_TYPES, alertTypeLabel, settingsProfileForImei, useVehicles, useCompanies } from '../../data/settings'
 import { fetchAlertEventsInRange } from '../../data/alertEvents'
@@ -20,7 +20,6 @@ import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { presenceCells, eventCells, hotspots, HEAT_STOPS } from '../../utils/heatmap'
 import { VIOLATION_TYPES } from '../../utils/violationOverview'
 import { hhmm } from '../../utils/utilization'
-import { DriverFilter } from '../../components/reports/DriverControls'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { driverFilterLabel, driverIdentity, driverPasses, runsForDrivers, NO_DRIVER } from '../../utils/driverAtTime'
 
@@ -85,7 +84,11 @@ export default function HeatMapReport(props) {
   const { data } = useFlespiData()
   // Driver filter (client, 2026-11-12): only the time / events of the chosen drivers.
   const driverDim = useDriverDimension()
-  const [driverFilter, setDriverFilter] = useState(null)
+  // Report By: Vehicle or Driver. Driver covers every vehicle and keeps only the
+  // chosen drivers' time / events (one map, so no regrouping).
+  const [reportBy, setReportBy] = useState('vehicle')
+  const [driverPick, setDriverPick] = useState(null) // null = every driver
+  const driverFilter = reportBy === 'driver' ? driverPick : null
   const settingsVehicles = useVehicles()
   const companies = useCompanies()
   const liveVehicles = data?.vehicles ?? []
@@ -121,8 +124,8 @@ export default function HeatMapReport(props) {
   const mapRef = useRef(null)
   const busy = progress !== null
 
-  const effectiveIds = selectedIds ?? vehicles.map(v => v.id)
-  const allSelected = selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
+  const effectiveIds = reportBy === 'driver' ? vehicles.map(v => v.id) : (selectedIds ?? vehicles.map(v => v.id))
+  const allSelected = reportBy === 'driver' || selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
   const fromTs = useMemo(() => Math.floor(new Date(`${fromDate}T${fromTime}:00`).getTime() / 1000), [fromDate, fromTime])
   const toTs = useMemo(() => Math.floor(new Date(`${toDate}T${toTime}:59`).getTime() / 1000), [toDate, toTime])
   const rangeValid = Number.isFinite(fromTs) && Number.isFinite(toTs) && fromTs < toTs
@@ -252,7 +255,8 @@ export default function HeatMapReport(props) {
     ['From Date', formatDateTime(applied.fromTs)],
     ['To Date', formatDateTime(applied.toTs)],
     ['Showing', raw.view === 'events' ? `Events: ${typesLabel}` : `Presence: ${MODES.find(m => m.key === mode)?.label}`],
-    ...(driverFilter ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : []),
+    ['Report By', reportBy === 'driver' ? 'Driver' : 'Vehicle'],
+    ...(reportBy === 'driver' ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : []),
   ] : []
   const stale = raw && raw.view !== view
 
@@ -277,16 +281,20 @@ export default function HeatMapReport(props) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14 }}>
-          <MultiSelect label="VEHICLES" summary={selectionLabel} disabled={vehicles.length === 0}>
-            <CheckRow checked={allSelected} onChange={() => setSelectedIds(allSelected ? [] : null)}><strong>All vehicles</strong></CheckRow>
-            <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
-            {vehicles.map(v => (
-              <CheckRow key={v.id} checked={effectiveIds.includes(v.id)} onChange={() => toggleVehicle(v.id)} note={v.company !== NOT_ASSIGNED ? v.company : null}>
-                {v.label}
-              </CheckRow>
-            ))}
-          </MultiSelect>
-          <DriverFilter options={driverDim.options} value={driverFilter} onChange={setDriverFilter} />
+          <ReportByToggle id="heatmap-report-by" value={reportBy} onChange={v => { setReportBy(v); setRaw(null) }} />
+          {reportBy === 'driver' ? (
+            <DriverMultiSelect options={driverDim.options} value={driverPick} onChange={setDriverPick} />
+          ) : (
+            <MultiSelect label="VEHICLES" summary={selectionLabel} disabled={vehicles.length === 0}>
+              <CheckRow checked={allSelected} onChange={() => setSelectedIds(allSelected ? [] : null)}><strong>All vehicles</strong></CheckRow>
+              <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
+              {vehicles.map(v => (
+                <CheckRow key={v.id} checked={effectiveIds.includes(v.id)} onChange={() => toggleVehicle(v.id)} note={v.company !== NOT_ASSIGNED ? v.company : null}>
+                  {v.label}
+                </CheckRow>
+              ))}
+            </MultiSelect>
+          )}
           {view === 'events' && (
             <MultiSelect label="EVENTS" summary={typesLabel}>
               <CheckRow checked={types.length === VIOLATION_TYPES.length && VIOLATION_TYPES.every(t => types.includes(t))} onChange={() => setTypes(VIOLATION_TYPES)}>

@@ -6,7 +6,7 @@ import PaperTable from '../../components/reports/PaperTable'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import EventTrackModal from '../../components/reports/EventTrackModal'
-import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../../components/reports/controls'
+import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, ReportByToggle, DriverMultiSelect } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { ALERT_TYPES, ALERT_SEVERITIES, alertTypeLabel, driverNameForDevice } from '../../data/settings'
 import { fetchAlertEventsInRange } from '../../data/alertEvents'
@@ -18,7 +18,6 @@ import { buildEventReport } from '../../utils/eventOccurrence'
 import { locationUrl } from '../../utils/mapLink'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { ReportSkeleton } from '../../components/Skeleton'
-import { DriverFilter, GroupBySelect } from '../../components/reports/DriverControls'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { driverFilterLabel } from '../../utils/driverAtTime'
 
@@ -107,8 +106,11 @@ export default function EventOccurrenceReport(props) {
   const [severities, setSeverities] = useState(null) // null = all
   // Driver dimension (client, 2026-11-12): filter and Vehicle / Driver grouping.
   const driverDim = useDriverDimension()
-  const [driverFilter, setDriverFilter] = useState(null) // null = all
-  const [groupBy, setGroupBy] = useState('vehicle')
+  // Report By: Vehicle or Driver. Driver covers every vehicle and groups by driver.
+  const [reportBy, setReportBy] = useState('vehicle')
+  const [driverPick, setDriverPick] = useState(null) // null = every driver
+  const groupBy = reportBy
+  const driverFilter = reportBy === 'driver' ? driverPick : null
 
   const [raw, setRaw] = useState(null)        // { events, byDevice, truncated, applied }
   const [progress, setProgress] = useState(null)
@@ -119,8 +121,8 @@ export default function EventOccurrenceReport(props) {
   const abortRef = useRef(null)
   const busy = progress !== null
 
-  const effectiveIds = selectedIds ?? vehicles.map(v => v.id)
-  const allSelected = selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
+  const effectiveIds = reportBy === 'driver' ? vehicles.map(v => v.id) : (selectedIds ?? vehicles.map(v => v.id))
+  const allSelected = reportBy === 'driver' || selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
   const fromTs = useMemo(() => Math.floor(new Date(`${fromDate}T${fromTime}:00`).getTime() / 1000), [fromDate, fromTime])
   const toTs = useMemo(() => Math.floor(new Date(`${toDate}T${toTime}:59`).getTime() / 1000), [toDate, toTime])
   const rangeDays = (toTs - fromTs) / 86400
@@ -236,8 +238,8 @@ export default function EventOccurrenceReport(props) {
     ['To Date', formatDateTime(applied.toTs)],
     ['Alerts', typesLabel],
     ['Severity', sevLabel],
-    ...(driverFilter ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : []),
-    ...(groupBy === 'driver' ? [['Grouped By', 'Driver']] : []),
+    ['Report By', groupBy === 'driver' ? 'Driver' : 'Vehicle'],
+    ...(groupBy === 'driver' ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : []),
   ] : []
 
   const exportOpts = () => ({
@@ -271,16 +273,21 @@ export default function EventOccurrenceReport(props) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
-          <MultiSelect label="VEHICLES" summary={selectionLabel} disabled={vehicles.length === 0}>
-            <CheckRow checked={allSelected} onChange={() => setSelectedIds(allSelected ? [] : null)}><strong>All vehicles</strong></CheckRow>
-            <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
-            {vehicles.map(v => (
-              <CheckRow key={v.id} checked={effectiveIds.includes(v.id)} onChange={() => toggleVehicle(v.id)}
-                note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}>
-                {vehicleName(v)}
-              </CheckRow>
-            ))}
-          </MultiSelect>
+          <ReportByToggle id="event-report-by" value={reportBy} onChange={v => { setReportBy(v); setRaw(null) }} />
+          {reportBy === 'driver' ? (
+            <DriverMultiSelect options={driverDim.options} value={driverPick} onChange={setDriverPick} />
+          ) : (
+            <MultiSelect label="VEHICLES" summary={selectionLabel} disabled={vehicles.length === 0}>
+              <CheckRow checked={allSelected} onChange={() => setSelectedIds(allSelected ? [] : null)}><strong>All vehicles</strong></CheckRow>
+              <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
+              {vehicles.map(v => (
+                <CheckRow key={v.id} checked={effectiveIds.includes(v.id)} onChange={() => toggleVehicle(v.id)}
+                  note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}>
+                  {vehicleName(v)}
+                </CheckRow>
+              ))}
+            </MultiSelect>
+          )}
 
           <div>
             <label style={LABEL}>FROM DATE</label>
@@ -299,8 +306,6 @@ export default function EventOccurrenceReport(props) {
             <input type="time" style={FIELD} value={toTime} onChange={e => { setToTime(e.target.value); setPreset('custom') }} />
           </div>
 
-          <DriverFilter options={driverDim.options} value={driverFilter} onChange={setDriverFilter} />
-          <GroupBySelect id="event-group-by" value={groupBy} onChange={setGroupBy} />
 
           <MultiSelect label="ALERTS" summary={typesLabel}>
             <CheckRow checked={!types} onChange={() => setTypes(types ? null : [])}><strong>All alerts</strong></CheckRow>

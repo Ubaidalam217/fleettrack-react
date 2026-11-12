@@ -6,7 +6,7 @@ import MovementTable from '../components/reports/MovementTable'
 import LocationMapModal from '../components/reports/LocationMapModal'
 // Shared with the Daywise reports — one copy of the chips, dropdowns and
 // toolbar buttons rather than one per report page.
-import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton } from '../components/reports/controls'
+import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, ReportByToggle, DriverMultiSelect } from '../components/reports/controls'
 import { useFlespiData } from '../hooks/useFlespiData'
 import { IS_REAL } from '../data/mode'
 import { driverNameForDevice, settingsProfileForImei } from '../data/settings'
@@ -28,7 +28,6 @@ import { exportMovementPdf, exportMovementExcel, printMovementReport } from '../
 import ReportsBackLink from '../components/reports/ReportsBackLink'
 import ColumnPicker from '../components/reports/ColumnPicker'
 import { useHiddenColumns } from '../utils/reportColumns'
-import { DriverFilter, GroupBySelect } from '../components/reports/DriverControls'
 import { useDriverDimension } from '../hooks/useDriverDimension'
 import { driverFilterLabel } from '../utils/driverAtTime'
 
@@ -111,8 +110,11 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   const [hiddenCols, setHiddenCols] = useHiddenColumns('movement')
   // Driver dimension (client, 2026-11-12): who drove each row, filter and grouping.
   const driverDim = useDriverDimension()
-  const [driverFilter, setDriverFilter] = useState(null)
-  const [groupBy, setGroupBy] = useState('vehicle')
+  // Report By: Vehicle or Driver. Driver covers every vehicle and groups by driver.
+  const [reportBy, setReportBy] = useState('vehicle')
+  const [driverPick, setDriverPick] = useState(null) // null = every driver
+  const groupBy = reportBy
+  const driverFilter = reportBy === 'driver' ? driverPick : null
   const { data } = useFlespiData()
   const vehicles = useMemo(
     () => (data?.vehicles ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
@@ -155,8 +157,8 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   // coordinates, exactly as the table shows them at that moment.
   const fetching = busy && progress.phase !== 'geocode'
 
-  const effectiveIds = selectedIds ?? vehicles.map(v => v.id)
-  const allSelected  = selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
+  const effectiveIds = reportBy === 'driver' ? vehicles.map(v => v.id) : (selectedIds ?? vehicles.map(v => v.id))
+  const allSelected  = reportBy === 'driver' || selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)
 
   const fromTs = useMemo(() => Math.floor(new Date(`${fromDate}T${fromTime}:00`).getTime() / 1000), [fromDate, fromTime])
   const toTs   = useMemo(() => Math.floor(new Date(`${toDate}T${toTime}:59`).getTime() / 1000),   [toDate, toTime])
@@ -328,8 +330,8 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   const reportFilters = useMemo(() => applied && {
     // The driver choice rides on the Selection line (the Ctrack header has no slot for it).
     selection:       [applied.selectionLabel,
-      driverFilter ? `Drivers: ${driverFilterLabel(driverFilter, driverDim.options)}` : null,
-      groupBy === 'driver' ? 'Grouped By: Driver' : null].filter(Boolean).join(' · '),
+      `Report By: ${groupBy === 'driver' ? 'Driver' : 'Vehicle'}`,
+      groupBy === 'driver' ? `Drivers: ${driverFilterLabel(driverFilter, driverDim.options)}` : null].filter(Boolean).join(' · '),
     fromLabel:       formatDateTime(applied.fromTs),
     toLabel:         formatDateTime(applied.toTs),
     applyTolerance,
@@ -414,25 +416,32 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
 
-                <MultiSelect label="VEHICLES" summary={selectionLabel} disabled={vehicles.length === 0}>
-                  <CheckRow
-                    checked={allSelected}
-                    onChange={() => setSelectedIds(allSelected ? [] : null)}
-                  >
-                    <strong>All vehicles</strong>
-                  </CheckRow>
-                  <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
-                  {vehicles.map(v => (
+                <ReportByToggle id="movement-report-by" value={reportBy}
+                  onChange={v => { setReportBy(v); setReport(null); setByDevice(null); setApplied(null) }} />
+
+                {reportBy === 'driver' ? (
+                  <DriverMultiSelect options={driverDim.options} value={driverPick} onChange={setDriverPick} />
+                ) : (
+                  <MultiSelect label="VEHICLES" summary={selectionLabel} disabled={vehicles.length === 0}>
                     <CheckRow
-                      key={v.id}
-                      checked={effectiveIds.includes(v.id)}
-                      onChange={() => toggleVehicle(v.id)}
-                      note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}
+                      checked={allSelected}
+                      onChange={() => setSelectedIds(allSelected ? [] : null)}
                     >
-                      {v.master?.plateNo || v.name}
+                      <strong>All vehicles</strong>
                     </CheckRow>
-                  ))}
-                </MultiSelect>
+                    <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
+                    {vehicles.map(v => (
+                      <CheckRow
+                        key={v.id}
+                        checked={effectiveIds.includes(v.id)}
+                        onChange={() => toggleVehicle(v.id)}
+                        note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}
+                      >
+                        {v.master?.plateNo || v.name}
+                      </CheckRow>
+                    ))}
+                  </MultiSelect>
+                )}
 
                 <div>
                   <label style={LABEL}>FROM DATE</label>
@@ -458,8 +467,6 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                     onChange={e => { setToTime(e.target.value); setPreset('custom') }} />
                 </div>
 
-                <DriverFilter options={driverDim.options} value={driverFilter} onChange={setDriverFilter} />
-                <GroupBySelect id="movement-group-by" value={groupBy} onChange={setGroupBy} />
 
                 <MultiSelect label="STATUSES" summary={statusesLabel}>
                   <CheckRow
