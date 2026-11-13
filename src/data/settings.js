@@ -335,9 +335,10 @@ export function listUnregisteredDriverIds(days) {
 
 /**
  * A vehicle's custom fields ([{ name, value }]) — on their own endpoint, which
- * leaves the Flespi device alone (server: routes/vehicles.js).
+ * leaves the Flespi device alone (server: routes/vehicles.js). `refresh: false`
+ * lets a bulk save refresh once.
  */
-export function updateVehicleCustomFields(id, fields) {
+export function updateVehicleCustomFields(id, fields, { refresh = true } = {}) {
   if (!IS_REAL) {
     return done(mock.updateVehicle(id, {
       customFields: fields.filter(f => f.name.trim() || f.value.trim()).map(f => ({ name: f.name.trim(), value: f.value.trim() })),
@@ -345,7 +346,8 @@ export function updateVehicleCustomFields(id, fields) {
       customFieldsUpdatedBy: 'Demo user',
     }))
   }
-  return write(async () => A.vehicle.toFe(await put(`/api/vehicles/${id}/custom-fields`, { fields })))
+  const send = async () => A.vehicle.toFe(await put(`/api/vehicles/${id}/custom-fields`, { fields }))
+  return refresh ? write(send) : send()
 }
 
 /**

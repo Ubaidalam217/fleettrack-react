@@ -11,6 +11,7 @@ import { useVehicleDocuments } from '../../data/vehicleDocuments'
 import { useVehicleUsage } from '../../hooks/useVehicleUsage'
 import Skeleton from '../Skeleton'
 import { odometerLabel } from '../../utils/odometer'
+import { siteOf } from '../../utils/vehicleSite'
 import { computeSensors } from '../../utils/sensorsData'
 import {
   computeAlerts, ALERT_TYPES, SEVERITY, SEVERITY_FILTERS, UNAVAILABLE_NOTES,
@@ -270,6 +271,8 @@ function VehicleInfo({ v, onOpenInfo, onOpenConsole }) {
               <InfoField label="Group" value={groupName} />
               <InfoField label="Business Group" value={profile.bgName} />
               <InfoField label="Branch" value={branchName} />
+              {/* The reports' Site: set in Parameters, else the branch. */}
+              <InfoField label="Site" value={siteOf(row)} />
             </div>
           ) : (
             <div className="vinfo-note">

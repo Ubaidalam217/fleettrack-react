@@ -43,3 +43,15 @@ describe('filterOptions', () => {
     expect(activeFilterCount({ ...EMPTY_FILTERS, company: 'c2', validity: 'valid' })).toBe(2)
   })
 })
+
+describe('custom vehicle types', () => {
+  it('treats one custom type in any case as one choice', () => {
+    const t1 = vehicleAttributes({ master: { vehicleType: 'Tanker' } }, { linked: false }, NOW)
+    const t2 = vehicleAttributes({ master: {} }, profile({ vehicleType: ' tanker ' }), NOW)
+    expect(filterOptions([t1, t2, a1], EMPTY_FILTERS).assetType).toEqual([
+      { value: 'tanker', label: 'Tanker' },
+      { value: 'truck', label: 'Truck' },
+    ])
+    expect([t1, t2].every(a => matchesAttributes(a, { ...EMPTY_FILTERS, assetType: 'tanker' }))).toBe(true)
+  })
+})

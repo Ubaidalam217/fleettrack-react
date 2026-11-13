@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { VEHICLE_TYPES, saveMaster } from '../../services/vehicleMaster'
+import { saveMaster, cachedVehicleTypes } from '../../services/vehicleMaster'
+import VehicleTypeSelect from '../VehicleTypeSelect'
+import { vehicleTypeOptions } from '../../utils/vehicleTypes'
+import { siteField, withSite, MAX_SITE } from '../../utils/vehicleSite'
 import { useVehicleUsage } from '../../hooks/useVehicleUsage'
 import { odometerLabel } from '../../utils/odometer'
 import {
-  emptyVehicle, addVehicle, updateVehicle,
+  emptyVehicle, addVehicle, updateVehicle, updateVehicleCustomFields, useVehicles,
   settingsProfileForImei, vehicleByImei, imeiKey,
   useCompanies, useBranches, useResellers,
   branchTreeForCompany, branchOptionLabel,
@@ -162,6 +165,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
   // branch or GGB added or renamed on the Settings pages in this same session.
   const companies   = useCompanies()
   const allBranches = useBranches()
+  const allVehicles = useVehicles()
   useResellers()
 
   // Resolved once, at open. A profile that changed underneath an open dialog
@@ -180,8 +184,20 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
   const [form, setForm] = useState(() => ({
     plateNo:     (profile.linked && profile.plateNo) || m?.plateNo || '',
     fleetNo:     (profile.linked && profile.fleetNo) || m?.fleetNo || '',
-    vehicleType: m?.vehicleType ?? '',
+    // The device's type drives the marker; the Settings one (Bulk Action)
+    // fills in when the device has none, so saving never blanks it.
+    vehicleType: m?.vehicleType || (profile.linked && profile.vehicle?.vehicleType) || '',
   }))
+
+  // Built-ins plus every custom type already on a vehicle this user can see.
+  const typeOptions = useMemo(
+    () => vehicleTypeOptions([...cachedVehicleTypes(), ...allVehicles.map(v => v.vehicleType)]),
+    [allVehicles]
+  )
+
+  // Site lives in the Settings record's custom fields (own endpoint, no Flespi).
+  const savedSite = profile.linked ? siteField(profile.vehicle?.customFields) : ''
+  const [site, setSite] = useState(savedSite)
 
   // The Settings half. An unmatched device opens straight into the create-and-
   // link form rather than behind a prompt: the Console button is the one edit
@@ -331,6 +347,8 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
         // The single Plate No / Fleet No, landing on their Settings names.
         vehicleNumber: form.plateNo.trim(),
         vehicleId:     form.fleetNo.trim(),
+        // Same type on both sides, so Bulk Action and the reports agree with the map.
+        vehicleType:   form.vehicleType,
         subGroup:      String(sform.subGroup ?? '').trim(),
         make:          String(sform.make ?? '').trim(),
         model:         String(sform.model ?? '').trim(),
@@ -343,11 +361,16 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
       // a duplicate IMEI. A failure here propagates to the caller's catch rather
       // than being swallowed — the device metadata above has already been written,
       // so the user needs to know the two halves disagree.
+      let row = profile.vehicle
       if (profile.linked) {
         await updateVehicle(profile.vehicle.id, clean)
       } else {
-        await addVehicle(clean)
+        row = await addVehicle(clean)
         settingsNote = 'linked to a new Settings vehicle'
+      }
+      // Only when it changed: the custom-fields write is its own request.
+      if (site.trim() !== savedSite && row?.id) {
+        await updateVehicleCustomFields(row.id, withSite(row.customFields, site))
       }
     }
 
@@ -463,18 +486,13 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
               </Field>
 
               <Field label="Vehicle Type" hint="Drives the map marker artwork">
-                <select
+                <VehicleTypeSelect
                   name="vehicleType"
                   value={form.vehicleType}
-                  onChange={e => set('vehicleType', e.target.value)}
+                  options={typeOptions}
+                  onChange={v => set('vehicleType', v)}
                   style={inputStyle(false)}
-                >
-                  {VEHICLE_TYPES.map(t => (
-                    <option key={t || 'none'} value={t}>
-                      {t ? t.charAt(0).toUpperCase() + t.slice(1) : '— Not set —'}
-                    </option>
-                  ))}
-                </select>
+                />
               </Field>
 
               <ReadOnlyField
@@ -639,6 +657,17 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
                       type="date"
                       value={sform.validUntil ?? ''}
                       onChange={e => setS('validUntil', e.target.value)}
+                      style={inputStyle(false)}
+                    />
+                  </Field>
+
+                  <Field label="Site" hint="Shown in the reports' Site column — blank uses the branch">
+                    <input
+                      name="s-site"
+                      value={site}
+                      maxLength={MAX_SITE}
+                      onChange={e => setSite(e.target.value)}
+                      placeholder="Ruwais Plant"
                       style={inputStyle(false)}
                     />
                   </Field>

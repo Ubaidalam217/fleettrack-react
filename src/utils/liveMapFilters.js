@@ -15,6 +15,8 @@
  * while every Settings-side filter is on "All" (or on "Not set").
  */
 
+import { cleanVehicleType, vehicleTypeLabel } from './vehicleTypes'
+
 export const NOT_SET = '__none'
 
 export const EMPTY_FILTERS = { assetType: '', assetGroup: '', deviceType: '', company: '', branch: '', validity: '' }
@@ -47,8 +49,11 @@ export function validityState(validUntil, now = new Date()) {
  */
 export function vehicleAttributes(v, profile, now) {
   const row = profile?.linked ? profile.vehicle : null
+  // Custom types are the client's own words, so "Tanker" and "tanker" are one choice.
+  const type = cleanVehicleType(v.master?.vehicleType || row?.vehicleType)
   return {
-    assetType:  v.master?.vehicleType || row?.vehicleType || '',
+    assetType:  type.toLowerCase(),
+    assetTypeLabel: vehicleTypeLabel(type),
     assetGroup: (row?.subGroup || '').trim(),
     deviceType: (row?.deviceType || '').trim(),
     company:    row?.companyId || '',
@@ -83,11 +88,11 @@ export const activeFilterCount = filters => KEYS.filter(k => filters[k]).length
 export function filterOptions(attrsList, filters) {
   const distinct = (key, labelOf = a => a[key], keep = () => true) => {
     const seen = new Map()
-    for (const a of attrsList) if (a[key] && keep(a)) seen.set(a[key], labelOf(a))
+    for (const a of attrsList) if (a[key] && keep(a) && !seen.has(a[key])) seen.set(a[key], labelOf(a))
     return [...seen].map(([value, label]) => ({ value, label })).sort((x, y) => x.label.localeCompare(y.label))
   }
   return {
-    assetType:  distinct('assetType', a => a.assetType.charAt(0).toUpperCase() + a.assetType.slice(1)),
+    assetType:  distinct('assetType', a => a.assetTypeLabel || a.assetType),
     assetGroup: distinct('assetGroup'),
     deviceType: distinct('deviceType'),
     company:    distinct('company', a => a.companyName || a.company),

@@ -11,4 +11,10 @@ describe('changedCells', () => {
     expect(changedCells(row, { odometer: '' })).toEqual({})
     expect(changedCells(row, { odometer: '150000' })).toEqual({ odometer: '150000' })
   })
+  it('compares Site with the vehicle custom field of that name', () => {
+    const v = { ...row, customFields: [{ name: 'site', value: 'Ruwais' }] }
+    expect(changedCells(v, { site: 'Ruwais ' })).toEqual({})
+    expect(changedCells(v, { site: '' })).toEqual({ site: '' })
+    expect(changedCells(row, { site: 'Ruwais' })).toEqual({ site: 'Ruwais' })
+  })
 })

@@ -7,13 +7,16 @@ import { useToasts } from '../../hooks/useToasts'
 import {
   useVehicles, useCompanies, useBranches,
   companyNameFor, branchTreeForCompany, branchOptionLabel,
-  updateVehicle, updateVehicleDetails, listVehicleOdometers, setVehicleOdometer, refreshAll,
+  updateVehicle, updateVehicleDetails, updateVehicleCustomFields, listVehicleOdometers, setVehicleOdometer, refreshAll,
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
-import { VEHICLE_TYPES } from '../../services/vehicleMaster'
+import { cachedVehicleTypes } from '../../services/vehicleMaster'
+import VehicleTypeSelect from '../../components/VehicleTypeSelect'
+import { vehicleTypeOptions } from '../../utils/vehicleTypes'
+import { withSite, MAX_SITE } from '../../utils/vehicleSite'
 import { IS_REAL } from '../../data/mode'
 import { fmtKm } from '../../utils/odometer'
-import { MAX_ROWS_PER_SAVE, DETAIL_KEYS, NAME_KEYS, changedCells } from './bulkUpdate'
+import { MAX_ROWS_PER_SAVE, DETAIL_KEYS, NAME_KEYS, changedCells, cellValue } from './bulkUpdate'
 
 /**
  * Settings › Bulk Action › Bulk Object Update (client, 2026-11-12; modelled on
@@ -22,6 +25,8 @@ import { MAX_ROWS_PER_SAVE, DETAIL_KEYS, NAME_KEYS, changedCells } from './bulkU
  * What a save sends, per changed row and only for the cells that changed:
  *   - Branch, Make, Model, Vehicle Type, SIM / Mobile No, Validity → PATCH
  *     /api/vehicles/:id/details, which never touches the Flespi device;
+ *   - Site → the vehicle's custom fields (PUT /api/vehicles/:id/custom-fields),
+ *     which never touch it either;
  *   - Vehicle Number / Fleet No → the full vehicle update, which also renames
  *     the tracker in Flespi (said under the table);
  *   - Odometer → "Update the ODO meter reading": the vehicle's real odometer,
@@ -66,6 +71,12 @@ export default function BulkAction(props) {
       .some(x => String(x ?? '').toLowerCase().includes(q)))
   }, [vehicles, query])
 
+  // Built-ins plus the custom types already on these vehicles.
+  const typeOptions = useMemo(
+    () => vehicleTypeOptions([...cachedVehicleTypes(), ...vehicles.map(v => v.vehicleType)]),
+    [vehicles]
+  )
+
   const changed = useMemo(() => {
     const out = []
     for (const v of vehicles) {
@@ -76,7 +87,7 @@ export default function BulkAction(props) {
   }, [vehicles, edits])
 
   const edit = (id, key, value) => setEdits(e => ({ ...e, [id]: { ...e[id], [key]: value } }))
-  const valueOf = (v, key) => (edits[v.id] && key in edits[v.id] ? edits[v.id][key] : v[key] ?? '')
+  const valueOf = (v, key) => (edits[v.id] && key in edits[v.id] ? edits[v.id][key] : cellValue(v, key) ?? '')
   const isChanged = (v, key) => key in changedCells(v, edits[v.id])
   const readOnly = !access.canWrite
 
@@ -102,6 +113,7 @@ export default function BulkAction(props) {
         if (NAME_KEYS.some(k => k in c)) {
           await updateVehicle(v.id, { ...v, ...details, vehicleNumber: c.vehicleNumber ?? v.vehicleNumber, vehicleId: c.vehicleId ?? v.vehicleId })
         }
+        if ('site' in c) await updateVehicleCustomFields(v.id, withSite(v.customFields, c.site), { refresh: false })
         if ('odometer' in c) await setVehicleOdometer(v.id, Number(c.odometer), { refresh: false })
         ok += 1
       } catch (err) {
@@ -145,7 +157,7 @@ export default function BulkAction(props) {
           <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', fontSize: 12.5, color: 'var(--c-text1)' }}>
             <thead>
               <tr>
-                {['Vehicle Number', 'Fleet No', 'IMEI', 'Business Group', 'Branch', 'Make', 'Model', 'Vehicle Type', 'SIM / Mobile No', 'Validity', 'Odometer (km)']
+                {['Vehicle Number', 'Fleet No', 'IMEI', 'Business Group', 'Branch', 'Site', 'Make', 'Model', 'Vehicle Type', 'SIM / Mobile No', 'Validity', 'Odometer (km)']
                   .map(h => <th key={h} style={head}>{h}</th>)}
               </tr>
             </thead>
@@ -166,12 +178,11 @@ export default function BulkAction(props) {
                         {branches.map(b => <option key={b.id} value={b.id}>{branchOptionLabel(b)}</option>)}
                       </select>
                     </td>
+                    <td style={cell}><input aria-label="Site" value={valueOf(v, 'site')} maxLength={MAX_SITE} placeholder="Uses the branch" disabled={readOnly} onChange={e => edit(v.id, 'site', e.target.value)} style={box(isChanged(v, 'site'))} /></td>
                     <td style={cell}><input aria-label="Make" value={valueOf(v, 'make')} disabled={readOnly} onChange={e => edit(v.id, 'make', e.target.value)} style={box(isChanged(v, 'make'))} /></td>
                     <td style={cell}><input aria-label="Model" value={valueOf(v, 'model')} disabled={readOnly} onChange={e => edit(v.id, 'model', e.target.value)} style={box(isChanged(v, 'model'))} /></td>
                     <td style={cell}>
-                      <select aria-label="Vehicle Type" value={valueOf(v, 'vehicleType')} disabled={readOnly} onChange={e => edit(v.id, 'vehicleType', e.target.value)} style={box(isChanged(v, 'vehicleType'))}>
-                        {VEHICLE_TYPES.map(t => <option key={t} value={t}>{t ? t.charAt(0).toUpperCase() + t.slice(1) : '—'}</option>)}
-                      </select>
+                      <VehicleTypeSelect ariaLabel="Vehicle Type" value={valueOf(v, 'vehicleType')} options={typeOptions} disabled={readOnly} onChange={t => edit(v.id, 'vehicleType', t)} style={box(isChanged(v, 'vehicleType'))} />
                     </td>
                     <td style={cell}><input aria-label="SIM / Mobile No" value={valueOf(v, 'mobileNo')} disabled={readOnly} onChange={e => edit(v.id, 'mobileNo', e.target.value)} style={box(isChanged(v, 'mobileNo'))} /></td>
                     <td style={cell}><input aria-label="Validity" type="date" value={valueOf(v, 'validUntil')} disabled={readOnly} onChange={e => edit(v.id, 'validUntil', e.target.value)} style={box(isChanged(v, 'validUntil'))} /></td>
@@ -203,7 +214,7 @@ export default function BulkAction(props) {
                 )
               })}
               {!shown.length && (
-                <tr><td colSpan={11} style={{ ...cell, textAlign: 'center', color: 'var(--c-text3)', padding: 24 }}>{vehicles.length ? 'No vehicle matches the search' : 'No vehicles yet'}</td></tr>
+                <tr><td colSpan={12} style={{ ...cell, textAlign: 'center', color: 'var(--c-text3)', padding: 24 }}>{vehicles.length ? 'No vehicle matches the search' : 'No vehicles yet'}</td></tr>
               )}
             </tbody>
           </table>
@@ -217,7 +228,7 @@ export default function BulkAction(props) {
             <RotateCcw size={14} aria-hidden="true" />Reset
           </button>
           <span style={{ fontSize: 11.5, color: 'var(--c-text3)' }}>
-            {readOnly ? 'You can view these vehicles but not change them.' : 'A new Vehicle Number or Fleet No also renames the tracker in Flespi. The other columns, and Odometer, never touch the tracker.'}
+            {readOnly ? 'You can view these vehicles but not change them.' : 'A new Vehicle Number or Fleet No also renames the tracker in Flespi. The other columns, Site and Odometer never touch the tracker.'}
           </span>
         </div>
       </div>

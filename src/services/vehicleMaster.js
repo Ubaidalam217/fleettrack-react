@@ -100,6 +100,11 @@ export function getRawMetadata(deviceId) {
   return rawMetadataById.get(deviceId) ?? {}
 }
 
+/** The vehicle types set on the devices loaded so far (the user's own fleet). */
+export function cachedVehicleTypes() {
+  return [...rawMetadataById.values()].map(raw => normalizeMaster(raw).vehicleType).filter(Boolean)
+}
+
 /**
  * Persist a partial master update to the device's Flespi metadata.
  *

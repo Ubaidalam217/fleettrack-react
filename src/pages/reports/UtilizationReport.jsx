@@ -10,6 +10,7 @@ import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { settingsProfileForImei, useVehicles, useCompanies } from '../../data/settings'
+import { siteOf } from '../../utils/vehicleSite'
 import { fetchMovementMessages, formatDateTime, formatDateLabel, formatTime, formatPrintDate, isAbortError } from '../../utils/movementReport'
 import { resolveRowLocations } from '../../utils/reportLocations'
 import { PRESETS, presetRange, dateStr, timeStr } from '../../utils/reportRange'
@@ -293,8 +294,8 @@ function UtilizationDetails(props) {
       id: v.id,
       label: profile.plateNo || v.master?.plateNo || profile.fleetNo || v.name,
       company: profile.linked ? (profile.bgName || NOT_ASSIGNED) : NOT_ASSIGNED,
-      // Site = the vehicle's branch.
-      site: profile.linked && profile.branchName && profile.branchName !== '—' ? profile.branchName : '',
+      // Site = the vehicle's own Site, else its branch (utils/vehicleSite).
+      site: siteOf(profile.linked ? profile.vehicle : null),
       live: { id: v.id, ident: v.ident, master: v.master },
     }
   }).sort((a, b) => a.label.localeCompare(b.label)),

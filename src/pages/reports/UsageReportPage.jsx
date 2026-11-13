@@ -17,7 +17,8 @@ import { locationUrl } from '../../utils/mapLink'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { exportCtrackPdf, exportCtrackExcel } from '../../utils/ctrackExport'
 import { IS_REAL } from '../../data/mode'
-import { useVehicles as useRegisteredVehicles, branchNameFor, imeiKey } from '../settings/mockData'
+import { useVehicles as useRegisteredVehicles, imeiKey } from '../settings/mockData'
+import { siteOf as vehicleSiteOf } from '../../utils/vehicleSite'
 import DistanceDrivenCharts from '../../components/reports/DistanceDrivenCharts'
 import { ReportSkeleton } from '../../components/Skeleton'
 import {
@@ -812,12 +813,9 @@ function UsageReport({ variant, ...props }) {
 
   const built = useMemo(() => {
     if (!entries) return null
-    // Site: the vehicle's branch in Settings, blank without one (as in the client's sample).
+    // Site: the vehicle's own Site, else its branch, blank without either (utils/vehicleSite).
     const regByImei = new Map((registered ?? []).map(r => [imeiKey(r.imei), r]))
-    const siteOf = v => {
-      const reg = regByImei.get(imeiKey(v.vehicle?.ident))
-      return reg?.branchId ? branchNameFor(reg.branchId) : ''
-    }
+    const siteOf = v => vehicleSiteOf(regByImei.get(imeiKey(v.vehicle?.ident)))
     return V.build(entries, { hideZero, rule, bands, entity, siteOf })
   // rule / bands are rebuilt each render from their own state, listed below.
   // eslint-disable-next-line react-hooks/exhaustive-deps

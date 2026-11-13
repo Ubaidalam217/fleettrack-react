@@ -8,8 +8,9 @@ import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, ReportByToggl
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import {
-  useAlerts, useDrivers, useGeofences, useVehicles as useRegisteredVehicles, alertTypeLabel, branchNameFor, imeiKey,
+  useAlerts, useDrivers, useGeofences, useVehicles as useRegisteredVehicles, alertTypeLabel, imeiKey,
 } from '../../data/settings'
+import { siteOf as vehicleSiteOf } from '../../utils/vehicleSite'
 import { fetchAlertEventsInRange, REPORT_EVENT_LIMIT } from '../../data/alertEvents'
 import { IS_REAL } from '../../data/mode'
 import { fetchMovementMessages, isAbortError } from '../../utils/movementReport'
@@ -336,10 +337,8 @@ export default function ViolationReportPage({ variant = 'details', ...props }) {
   const violations = useMemo(() => {
     if (!raw) return null
     const regByImei = new Map((registered ?? []).map(r => [imeiKey(r.imei), r]))
-    const siteOf = meta => {
-      const reg = regByImei.get(imeiKey(meta?.ident))
-      return reg?.branchId ? branchNameFor(reg.branchId) : ''
-    }
+    // The vehicle's own Site, else its branch (utils/vehicleSite).
+    const siteOf = meta => vehicleSiteOf(regByImei.get(imeiKey(meta?.ident)))
     const deptById = new Map((drivers ?? []).map(d => [`d:${d.id}`, d.department || '']))
     // Zone speed: its zone is the geofence its message names ("… in Yard 1: …").
     const fences = [...(geofences ?? [])].filter(g => g.name).sort((a, b) => b.name.length - a.name.length)
