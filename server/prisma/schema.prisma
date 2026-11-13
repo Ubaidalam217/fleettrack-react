@@ -833,6 +833,26 @@ model DriverDocument {
   @@index([driverId])
 }
 
+/// The logo of a GGB, Group, Business Group or Branch (client, 2026-11-13): shown
+/// at the left of every report header for the accounts below it. Exactly one of
+/// the four owner ids is set; the row goes with its owner.
+model NodeLogo {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  ggbId     String?  @unique
+  groupId   String?  @unique
+  bgId      String?  @unique
+  branchId  String?  @unique
+  mimeType  String
+  data      Bytes
+  updatedAt DateTime @updatedAt
+
+  ggb    Ggb?           @relation(fields: [ggbId], references: [id], onDelete: Cascade)
+  group  Group?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  bg     BusinessGroup? @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  branch Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+}
+
 /// The bytes of a user's profile photo (see User.avatarKey). One row per user,
 /// replaced on upload; at most a few hundred KB, already resized by the client.
 model UserAvatar {
@@ -869,26 +889,6 @@ model DeviceState {
   fuel        Float?
   temperature Float?
   /// Less common fields the code reads, only when the device sends them.
-/// The logo of a GGB, Group, Business Group or Branch (client, 2026-11-13): shown
-/// at the left of every report header for the accounts below it. Exactly one of
-/// the four owner ids is set; the row goes with its owner.
-model NodeLogo {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  ggbId     String?  @unique
-  groupId   String?  @unique
-  bgId      String?  @unique
-  branchId  String?  @unique
-  mimeType  String
-  data      Bytes
-  updatedAt DateTime @updatedAt
-
-  ggb    Ggb?           @relation(fields: [ggbId], references: [id], onDelete: Cascade)
-  group  Group?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  bg     BusinessGroup? @relation(fields: [bgId], references: [id], onDelete: Cascade)
-  branch Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
-}
-
   extra       Json?
   updatedAt   DateTime @updatedAt
 
