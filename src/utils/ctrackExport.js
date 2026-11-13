@@ -66,8 +66,11 @@ function drawMapIcon(doc, cx, top, h) {
  * @param {object} o
  *   title, orientation ('landscape'|'portrait'), printDate,
  *   pairs: [[label, value]] for the From / To / Grouped By block (two per line),
- *   tables: [{ heading?, columns: [{key,label,width,align?,icon?:'map',hrefKey?}], rows }],
- *   summaryTitle, summary: [{label, value}], chart?: [{day,total,avg}]
+ *   tables: [{ heading?, headingItalic?, columns: [{key,label,width,align?,icon?:'map',hrefKey?}], rows }],
+ *   summaryTitle, summary: [{label, value}], chart?: [{day,total,avg}],
+ *   zebraContinue?: the zebra runs on across tables and pages (the violation samples)
+ * A row may set cellAlign: { [key]: 'left'|'center'|'right' } for its own cells.
+ * A null in `pairs` leaves that half of the line empty.
  */
 export async function buildCtrackPdf(o) {
   const [{ jsPDF }, logo] = await Promise.all([import('jspdf'), loadLogo()])
@@ -99,7 +102,9 @@ export async function buildCtrackPdf(o) {
         if (!p) return
         const x = M + 4 + j * 165
         doc.setFont('times', 'bold'); doc.text(`${p[0]}:`, x, y)
-        doc.setFont('times', 'normal'); doc.text(str(p[1]), x + (j ? 70 : 38), y)
+        // A label longer than the usual offset ("Grouped By Entity:") pushes its value along.
+        const off = Math.max(j ? 70 : 38, doc.getTextWidth(`${p[0]}:`) + 8)
+        doc.setFont('times', 'normal'); doc.text(str(p[1]), x + off, y)
       })
     }
     y += 9
@@ -116,6 +121,7 @@ export async function buildCtrackPdf(o) {
   newPage(true)
   const fs = 7.6
   const lineH = 8.6
+  let zebra = o.zebraStart ?? true
 
   for (const table of o.tables ?? []) {
     const cols = layout(table.columns, M + 2, usable - 4)
@@ -126,7 +132,7 @@ export async function buildCtrackPdf(o) {
 
     const drawHead = () => {
       if (table.heading) {
-        doc.setFont('times', 'bold'); doc.setFontSize(8.6); doc.setTextColor(...CTRACK_RED)
+        doc.setFont('times', table.headingItalic ? 'bolditalic' : 'bold'); doc.setFontSize(8.6); doc.setTextColor(...CTRACK_RED)
         doc.text(str(table.heading), M + 4, y + 10)
         y += headingH
       }
@@ -141,7 +147,7 @@ export async function buildCtrackPdf(o) {
     if (y + headingH + headH + 14 > BOTTOM) newPage(false)
     drawHead()
 
-    let zebra = o.zebraStart ?? true
+    if (!o.zebraContinue) zebra = o.zebraStart ?? true
     for (const row of table.rows) {
       if (row.kind === 'band') continue
       doc.setFont('times', row.strong ? 'bold' : 'normal'); doc.setFontSize(fs)
@@ -151,7 +157,7 @@ export async function buildCtrackPdf(o) {
       if (y + rowH > BOTTOM) {
         newPage(false)
         drawHead()
-        zebra = o.zebraStart ?? true
+        if (!o.zebraContinue) zebra = o.zebraStart ?? true
       }
       if (!row.strong && zebra) {
         doc.setFillColor(...CTRACK_ZEBRA)
@@ -169,7 +175,8 @@ export async function buildCtrackPdf(o) {
           }
           return
         }
-        drawLines(doc, lines[i], c, top + (n - lines[i].length) * lineH / 2, lineH, fs)
+        const cell = row.cellAlign?.[c.key] ? { ...c, align: row.cellAlign[c.key] } : c
+        drawLines(doc, lines[i], cell, top + (n - lines[i].length) * lineH / 2, lineH, fs)
       })
       y += rowH
     }
@@ -267,22 +274,25 @@ export async function exportCtrackExcel(o, filenameBase) {
   }
   ws.addRow([])
 
+  let zebra
   for (const table of o.tables ?? []) {
     const cols = table.columns
     if (table.heading) {
       const h = ws.addRow([table.heading])
-      h.font = { bold: true, color: red }
+      h.font = { bold: true, italic: !!table.headingItalic, color: red }
     }
     const head = ws.addRow(cols.map(c => c.label))
     head.font = { bold: true }
     head.eachCell(c => { c.border = { bottom: { style: 'medium' } } })
-    let zebra = o.zebraStart ?? true
+    if (!o.zebraContinue || zebra === undefined) zebra = o.zebraStart ?? true
     for (const row of table.rows) {
       if (row.kind === 'band') continue
       const r = ws.addRow(cols.map(c => (c.icon === 'map' ? ((row[c.hrefKey] || row.mapUrl) ? 'Map' : '') : row[c.key] ?? '')))
       cols.forEach((c, i) => {
         const cell = r.getCell(i + 1)
-        if (c.align === 'right') cell.alignment = { horizontal: 'right' }
+        const own = row.cellAlign?.[c.key]
+        if (own) cell.alignment = { horizontal: own }
+        else if (c.align === 'right') cell.alignment = { horizontal: 'right' }
         const href = c.icon === 'map' ? (row[c.hrefKey] || row.mapUrl) : null
         if (href) { cell.value = { text: 'Map', hyperlink: href }; cell.font = { color: { argb: 'FF0A7E9C' }, underline: true } }
       })

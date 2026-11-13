@@ -8,8 +8,9 @@ import { PaperSheet } from './PaperTable'
  * on a black rule, lavender zebra rows, dark-red summary lines, and the Report
  * Summary at the end.
  *
- * tables: [{ key, heading?, columns, rows }] — a column with `icon: 'map'` shows
- * the sample's map pin and opens the row on the map (onLocate).
+ * tables: [{ key, heading?, headingItalic?, columns, rows }] — a column with
+ * `icon: 'map'` shows the sample's map pin and opens the row on the map
+ * (onLocate). A row's `cellAlign: { [key]: align }` aligns its own cells.
  */
 const RED = '#8b0000'
 const ZEBRA = '#e4e4f7'
@@ -30,10 +31,12 @@ function MapPin() {
   )
 }
 
-export default function CtrackPaper({ title, pairs = [], tables, summaryTitle = 'Report Summary', summary, printDate, onLocate, emptyText, zebraStart = true }) {
+export default function CtrackPaper({ title, pairs = [], tables, summaryTitle = 'Report Summary', summary, printDate, onLocate, emptyText, zebraStart = true, zebraContinue = false }) {
   const total = tables.reduce((s, t) => s + t.rows.filter(r => r.kind !== 'band').length, 0)
   const lines = []
   for (let i = 0; i < pairs.length; i += 2) lines.push([pairs[i], pairs[i + 1]])
+  // zebraContinue: the stripes run on from one table to the next (the violation samples).
+  let zebra
 
   return (
     <PaperSheet>
@@ -57,10 +60,10 @@ export default function CtrackPaper({ title, pairs = [], tables, summaryTitle = 
             <div style={{ padding: '28px 16px', textAlign: 'center', color: '#6b7280', fontSize: 13 }}>{emptyText || 'Nothing matches this selection.'}</div>
           )}
           {total > 0 && tables.filter(t => t.rows.length).map(t => {
-            let zebra = zebraStart
+            if (!zebraContinue || zebra === undefined) zebra = zebraStart
             return (
               <div key={t.key} style={{ marginBottom: 10 }}>
-                {t.heading && <div style={{ color: RED, fontWeight: 700, fontSize: 12.5, margin: '8px 4px 4px' }}>{t.heading}</div>}
+                {t.heading && <div style={{ color: RED, fontWeight: 700, fontSize: 12.5, margin: '8px 4px 4px', fontStyle: t.headingItalic ? 'italic' : 'normal' }}>{t.heading}</div>}
                 <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 900 }}>
                   <colgroup>{t.columns.map(c => <col key={c.key} style={{ width: c.width }} />)}</colgroup>
                   <thead>
@@ -73,7 +76,7 @@ export default function CtrackPaper({ title, pairs = [], tables, summaryTitle = 
                       return (
                         <tr key={row.key ?? i} style={{ background: bg }}>
                           {t.columns.map(c => (
-                            <td key={c.key} style={{ ...td, textAlign: c.icon ? 'center' : c.align || 'left', ...(row.strong ? { color: RED, fontWeight: 700 } : {}) }}>
+                            <td key={c.key} style={{ ...td, textAlign: c.icon ? 'center' : row.cellAlign?.[c.key] || c.align || 'left', ...(row.strong ? { color: RED, fontWeight: 700 } : {}) }}>
                               {c.icon === 'map'
                                 ? (onLocate && (row.route || (row.lat != null && row.lng != null)) && (
                                   <button type="button" onClick={() => onLocate(row)} title="Show this trip on the map"

@@ -43,6 +43,7 @@ import VehicleListReport       from './pages/reports/VehicleListReport'
 import DriverListReport        from './pages/reports/DriverListReport'
 import EventOccurrenceReport   from './pages/reports/EventOccurrenceReport'
 import UsageReportPage         from './pages/reports/UsageReportPage'
+import ViolationReportPage     from './pages/reports/ViolationReportPage'
 import ReportPlaceholder       from './pages/reports/ReportPlaceholder'
 import DriverPerformanceReport from './pages/reports/DriverPerformanceReport'
 import PushPermissionModal from './components/PushPermissionModal'
@@ -217,6 +218,11 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/reports/trip-locations" element={guard(<UsageReportPage variant="tripLocations" {...themeProps} />)} />
         <Route path="/reports/trip-summary"   element={guard(<UsageReportPage variant="tripSummary" {...themeProps} />)} />
         <Route path="/reports/distance-driven" element={guard(<UsageReportPage variant="distanceDriven" {...themeProps} />)} />
+        {/* Oil & Gas (client, 2026-11-13): the violation reports of the client's Ctrack samples. */}
+        <Route path="/reports/violation-details"    element={guard(<ViolationReportPage variant="details" {...themeProps} />)} />
+        <Route path="/reports/violation-locations"  element={guard(<ViolationReportPage variant="locations" {...themeProps} />)} />
+        <Route path="/reports/violations-summary"   element={guard(<ViolationReportPage variant="summary" {...themeProps} />)} />
+        <Route path="/reports/violation-statistics" element={guard(<ViolationReportPage variant="statistics" {...themeProps} />)} />
         {/* The Oil & Gas reports with no page yet ("Coming soon" on the hub). */}
         <Route path="/reports/oil-gas/:slug" element={guard(<ReportPlaceholder {...themeProps} />)} />
         <Route path="/reports/event"         element={guard(<EventOccurrenceReport {...themeProps} />)} />
