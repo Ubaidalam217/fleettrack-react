@@ -20,7 +20,7 @@ import { revokeGrantsForBg } from '../lib/flespiGrant.js'
 import { actorOf, bgMoveRow, deviceRow, editMoves } from '../lib/vehicleMoves.js'
 import * as flespi from '../lib/flespi.js'
 import { channelAddresses, deviceName, deviceTypes, syncVehicleDevice, unregisteredDevices } from '../lib/flespiDevices.js'
-import { deviceOdometers, odometerRow } from '../lib/odometer.js'
+import { deviceOdometers, odometerRow, adjustmentRow } from '../lib/odometer.js'
 
 const router = Router()
 
@@ -410,12 +410,37 @@ router.put(
   })
 )
 
+/** How many past adjustments GET /:id/odometer returns, newest first. */
+const ADJUSTMENTS_SHOWN = 10
+
+/**
+ * One vehicle's odometer for the Vehicle information dialog: the tracker's
+ * reading, the correction, the vehicle's reading, and the latest adjustments.
+ */
+router.get(
+  '/:id/odometer',
+  asyncHandler(async (req, res) => {
+    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope, { select: ODOMETER_SELECT })
+    const [readings, adjustments] = await Promise.all([
+      deviceOdometers([existing]),
+      prisma.odometerAdjustment.findMany({
+        where: { vehicleId: existing.id },
+        orderBy: { setAt: 'desc' },
+        take: ADJUSTMENTS_SHOWN,
+      }),
+    ])
+    res.json({ data: { ...odometerRow(existing, readings.get(existing.id)), adjustments: adjustments.map(adjustmentRow) } })
+  })
+)
+
 /**
  * Set the vehicle's odometer (client, 2026-11-12: "Update the ODO meter
  * reading"): `reading` is the vehicle's real odometer now; the correction kept
  * is that minus the tracker's own reading, so the vehicle's odometer keeps
  * counting from it. Nothing is written to Flespi. Reminder cycles that started
  * on the old reading move with it, so "km since the last service" does not jump.
+ * Every call is kept in OdometerAdjustment (client, 2026-11-13), whichever
+ * screen sent it.
  */
 router.put(
   '/:id/odometer',
@@ -423,6 +448,7 @@ router.put(
     reading: z.union([z.number(), z.string()])
       .transform(v => (typeof v === 'number' ? v : Number(String(v).trim() || NaN)))
       .refine(v => Number.isFinite(v) && v >= 0 && v < 10_000_000, 'A reading from 0 to 9,999,999 km'),
+    note: optionalText(200),
   })),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
@@ -435,19 +461,29 @@ router.put(
     }
     const offset = req.body.reading - reading.deviceKm
     const delta = offset - (existing.odometerOffsetKm ?? 0)
+    const setAt = new Date()
+    const setBy = req.user?.shortName || req.user?.email || null
     const [row] = await prisma.$transaction([
       prisma.vehicle.update({
         where: { id: existing.id },
-        data: {
-          odometerOffsetKm: offset,
-          odometerSetAt: new Date(),
-          odometerSetBy: req.user?.shortName || req.user?.email || null,
-        },
+        data: { odometerOffsetKm: offset, odometerSetAt: setAt, odometerSetBy: setBy },
         select: ODOMETER_SELECT,
       }),
       prisma.reminderVehicle.updateMany({
         where: { vehicleId: existing.id, startOdometer: { not: null } },
         data: { startOdometer: { increment: delta } },
+      }),
+      prisma.odometerAdjustment.create({
+        data: {
+          vehicleId: existing.id,
+          readingKm: req.body.reading,
+          deviceKm: reading.deviceKm,
+          offsetKm: offset,
+          previousOffsetKm: existing.odometerOffsetKm ?? null,
+          setAt,
+          setBy,
+          note: req.body.note,
+        },
       }),
     ])
     res.json({ data: odometerRow(row, reading) })

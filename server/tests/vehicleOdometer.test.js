@@ -116,6 +116,42 @@ describe('vehicle odometer correction', () => {
   })
 })
 
+describe('odometer adjustment history', () => {
+  it('keeps every update with the tracker reading at the time, newest first', async () => {
+    const first = await request(app).put(`/api/vehicles/${fx.vehicles.v1.id}/odometer`).set(auth(fx.tokens.bgUserA1a))
+      .send({ reading: 150000, note: '  Dashboard photo at service  ' })
+    expect(first.status).toBe(200)
+    telemetry[101]['vehicle.mileage'] = 1300.5
+    clearDeviceCache()
+    await setOdo(fx.vehicles.v1.id, 150050)
+
+    const res = await request(app).get(`/api/vehicles/${fx.vehicles.v1.id}/odometer`).set(auth(fx.tokens.bgUserA1a))
+    expect(res.status).toBe(200)
+    expect(res.body.data).toMatchObject({ deviceKm: 1300.5, offsetKm: 148749.5, vehicleKm: 150050 })
+    expect(res.body.data.adjustments).toHaveLength(2)
+    expect(res.body.data.adjustments[0]).toMatchObject({ readingKm: 150050, deviceKm: 1300.5, offsetKm: 148749.5, previousOffsetKm: 148799.5, note: null })
+    expect(res.body.data.adjustments[1]).toMatchObject({ readingKm: 150000, deviceKm: 1200.5, offsetKm: 148799.5, previousOffsetKm: null, note: 'Dashboard photo at service' })
+    expect(res.body.data.adjustments[0].setBy).toBeTruthy()
+    expect(writes).toEqual([])
+  })
+
+  it('records nothing for a refused reading, and is scoped', async () => {
+    await setOdo(fx.vehicles.v1.id, 20_000_000)
+    await setOdo(fx.vehicles.v2.id, 5000) // no tracker reading
+    expect(await prisma.odometerAdjustment.count()).toBe(0)
+    const long = await request(app).put(`/api/vehicles/${fx.vehicles.v1.id}/odometer`).set(auth(fx.tokens.bgUserA1a))
+      .send({ reading: 1, note: 'x'.repeat(201) })
+    expect(long.status).toBe(400)
+    expect((await request(app).get(`/api/vehicles/${fx.vehicles.v5.id}/odometer`).set(auth(fx.tokens.bgUserA1a))).status).toBe(404)
+  })
+
+  it('goes with its vehicle', async () => {
+    await setOdo(fx.vehicles.v1.id, 150000)
+    await prisma.vehicle.delete({ where: { id: fx.vehicles.v1.id } })
+    expect(await prisma.odometerAdjustment.count()).toBe(0)
+  })
+})
+
 describe('PATCH /api/vehicles/:id/details', () => {
   it('changes only the fields sent, never Flespi, and logs a branch move', async () => {
     const v = fx.vehicles.v1

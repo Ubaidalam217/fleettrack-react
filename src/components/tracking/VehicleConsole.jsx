@@ -506,7 +506,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
                 label="ODO Reading"
                 name="odoReading"
                 value={odoLoading ? '…' : (odometerLabel(usage?.odometerKm, profile.linked ? profile.vehicle?.odometerOffsetKm : null) ?? '—')}
-                hint="The tracker's reading, corrected in Settings › Bulk Action"
+                hint="The tracker's reading, corrected in Vehicle information or Settings › Bulk Action"
               />
             </div>
 

@@ -11,6 +11,7 @@ import { validityState } from '../../utils/liveMapFilters'
 import {
   validateCustomFields, cleanCustomFields, fieldNameSuggestions, valueParts, MAX_CUSTOM_FIELDS,
 } from '../../utils/customFields'
+import OdometerSection from './OdometerSection'
 
 /**
  * "Vehicle information" from a vehicle's ⋮ menu on the Live Map (client,
@@ -397,6 +398,8 @@ export default function VehicleInfoDialog({ vehicle, title, onClose, onSaved, on
             </div>
           ) : !editing ? (
             <>
+              <OdometerSection vehicleId={row.id} canEdit={canEdit} onSaved={onSaved} />
+
               <div className="vi-sechead">
                 <div className="vi-sectitle">Custom fields <span className="vi-count">{saved.length}</span></div>
                 {row.customFieldsUpdatedAt && (

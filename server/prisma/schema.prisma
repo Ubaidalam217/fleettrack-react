@@ -258,6 +258,7 @@ model Vehicle {
   engineHours       VehicleEngineHours?
   moves             VehicleMove[]
   documents         VehicleDocument[]
+  odometerAdjustments OdometerAdjustment[]
 
   @@index([bgId])
   @@index([branchId])
@@ -1198,4 +1199,30 @@ model VehicleDocument {
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
   @@index([vehicleId])
+}
+
+/// Every "Update odometer" (client, 2026-11-13): the reading typed, the
+/// tracker's own reading at that moment and the correction that followed, so
+/// the dialog can show how the vehicle's odometer got to where it is. Written by
+/// PUT /api/vehicles/:id/odometer only — the Vehicle form, Bulk Action and the
+/// Vehicle information dialog all go through it.
+model OdometerAdjustment {
+  id               String   @id @default(cuid())
+  vehicleId        String
+  /// The vehicle's odometer as typed.
+  readingKm        Float
+  /// The tracker's reading (vehicle.mileage) when it was typed.
+  deviceKm         Float
+  /// readingKm - deviceKm: the correction from then on.
+  offsetKm         Float
+  /// The correction it replaced; null when there was none.
+  previousOffsetKm Float?
+  setAt            DateTime @default(now())
+  /// Who typed it, as a name to show.
+  setBy            String?
+  note             String?
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, setAt])
 }

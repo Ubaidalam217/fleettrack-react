@@ -405,13 +405,23 @@ export async function listVehicleOdometers() {
 }
 
 /**
+ * One vehicle's odometer with its latest adjustments, newest first
+ * (GET /api/vehicles/:id/odometer). null in the demo.
+ */
+export async function getVehicleOdometer(id) {
+  if (!IS_REAL) return null
+  return get(`/api/vehicles/${id}/odometer`)
+}
+
+/**
  * "Update the ODO meter reading": `reading` is the vehicle's real odometer now;
- * the server keeps the difference from the tracker's (PUT /api/vehicles/:id/odometer).
+ * the server keeps the difference from the tracker's (PUT /api/vehicles/:id/odometer)
+ * and a line in the vehicle's adjustment history, with `note` when given.
  * Never touches the tracker. `refresh: false` lets a bulk save refresh once.
  */
-export async function setVehicleOdometer(id, reading, { refresh = true } = {}) {
+export async function setVehicleOdometer(id, reading, { refresh = true, note } = {}) {
   if (!IS_REAL) throw new Error('Setting the odometer needs the server: the demo has no tracker readings')
-  const row = await put(`/api/vehicles/${id}/odometer`, { reading: Number(reading) })
+  const row = await put(`/api/vehicles/${id}/odometer`, { reading: Number(reading), ...(note ? { note } : {}) })
   if (refresh) await refreshAll()
   return row
 }

@@ -54,3 +54,17 @@ export function odometerRow(v, reading) {
     setBy: v.odometerSetBy ?? null,
   }
 }
+
+/** One OdometerAdjustment as the API returns it. */
+export function adjustmentRow(a) {
+  return {
+    id: a.id,
+    readingKm: a.readingKm,
+    deviceKm: a.deviceKm,
+    offsetKm: a.offsetKm,
+    previousOffsetKm: a.previousOffsetKm ?? null,
+    setAt: a.setAt,
+    setBy: a.setBy ?? null,
+    note: a.note ?? null,
+  }
+}
