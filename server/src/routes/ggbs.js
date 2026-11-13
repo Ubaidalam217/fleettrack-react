@@ -13,6 +13,7 @@ import { asyncHandler } from '../lib/http.js'
 import { optionalEmail, requiredText } from '../lib/fields.js'
 import { assertCanWrite, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { logoRoutes } from './nodeLogos.js'
 import { revokeGrantsUnderGgb } from '../lib/flespiGrant.js'
 
 const router = Router()
@@ -94,5 +95,8 @@ router.delete(
     res.json({ data: { id: existing.id, removed: { groups, businessGroups: bgs, vehicles } } })
   })
 )
+
+// The node's logo for report headers (routes/nodeLogos.js).
+router.use(logoRoutes('ggb'))
 
 export default router

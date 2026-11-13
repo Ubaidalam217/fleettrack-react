@@ -13,6 +13,8 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import NodeLogoField from './NodeLogoField'
+import { uploadStagedLogo } from './nodeLogo'
 import OrgTabs from './OrgTabs'
 import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions, NewNodeUsers, emptyNewUser, validateNewUsers, createNodeUsers, useMayAddNodeUsers } from './NodeUsersPanel'
 import NodeVehiclesPanel, { VehiclesButton, useNodeVehicleCount } from './NodeVehiclesPanel'
@@ -69,6 +71,8 @@ export default function Group(props) {
   const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
 
   const [draft,   setDraft]   = useState(null)
+  // A new node's logo, uploaded once the save has given it an id.
+  const [stagedLogo, setStagedLogo] = useState(null)
 
   // The logins created with a new GROUP (client: at least one main user).
 
@@ -85,8 +89,8 @@ export default function Group(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
-  const openAdd   = ()  => { setNewUsers([emptyNewUser()]); setErrors({}); setDraft(emptyGroup()) }
-  const openEdit  = row => { setErrors({}); setDraft({ ...row }) }
+  const openAdd   = ()  => { setNewUsers([emptyNewUser()]); setErrors({}); setStagedLogo(null); setDraft(emptyGroup()) }
+  const openEdit  = row => { setErrors({}); setStagedLogo(null); setDraft({ ...row }) }
   const closeForm = ()  => { setErrors({}); setDraft(null) }
 
   const set = (key, value) => {
@@ -116,6 +120,7 @@ export default function Group(props) {
         push(`${clean.name} updated`, { tone: 'success' })
       } else {
         const row = await addGroup(clean)
+        await uploadStagedLogo('group', row.id, stagedLogo, push)
         const { created, failed } = mayAddUsers ? await createNodeUsers('group', row.id, newUsers) : { created: [], failed: [] }
         if (failed.length) {
           push(`${clean.name} added, but ${failed.map(x => x.email).join(', ')} could not be created (${failed[0].message}). Add it from Users.`, { tone: 'error' })
@@ -153,6 +158,7 @@ export default function Group(props) {
             title={draft.id ? 'Group details' : 'New group'}
             subtitle="Fields marked with * are required."
           >
+            <NodeLogoField kind="group" noun="Group" draft={draft} setDraft={setDraft} onStage={setStagedLogo} push={push} />
             <FormFields
               fields={fieldsFor(resellers, !!draft.id)}
               values={draft}
@@ -175,6 +181,7 @@ export default function Group(props) {
               onReset={() => {
                 setErrors({})
                 if (!draft.id) setNewUsers([emptyNewUser()])
+                setStagedLogo(null)
                 const saved = draft.id ? groups.find(g => g.id === draft.id) : null
                 setDraft(saved ? { ...saved } : emptyGroup())
               }}

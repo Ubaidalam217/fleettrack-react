@@ -56,6 +56,9 @@ enum Status {
 /// this a `reseller`.
 model Ggb {
   id    String  @id @default(cuid())
+
+  /// Random key of the logo (GET /api/node-logos/:key), replaced on every upload.
+  logoKey String? @unique
   name  String
   /// Optional: the mock seeds two GGBs with no contact address at all.
   email String?
@@ -66,12 +69,16 @@ model Ggb {
   groups         Group[]
   businessGroups BusinessGroup[]
   users          User[]
+  logo NodeLogo?
 }
 
 /// An optional tier between a GGB and its BGs. A BG with no Group is its own
 /// group — see BusinessGroup.groupId.
 model Group {
   id    String @id @default(cuid())
+
+  /// Random key of the logo (GET /api/node-logos/:key), replaced on every upload.
+  logoKey String? @unique
   name  String
   ggbId String
 
@@ -81,6 +88,7 @@ model Group {
   ggb            Ggb             @relation(fields: [ggbId], references: [id], onDelete: Cascade)
   businessGroups BusinessGroup[]
   users          User[]
+  logo NodeLogo?
 
   @@index([ggbId])
 }
@@ -90,6 +98,9 @@ model Group {
 /// BGs may this account see".
 model BusinessGroup {
   id   String @id @default(cuid())
+
+  /// Random key of the logo (GET /api/node-logos/:key), replaced on every upload.
+  logoKey String? @unique
   name String
 
   /// Also the BG account's login username, which is why it is required here and
@@ -118,6 +129,7 @@ model BusinessGroup {
   reminderRules ReminderRule[]
   reminderAcks  ReminderAck[]
   vehicleMoves  VehicleMove[]
+  logo NodeLogo?
 
   @@index([ggbId])
   @@index([groupId])
@@ -131,6 +143,9 @@ model BusinessGroup {
 /// it is about to remove so the response can report it.
 model Branch {
   id             String  @id @default(cuid())
+
+  /// Random key of the logo (GET /api/node-logos/:key), replaced on every upload.
+  logoKey String? @unique
   name           String
   bgId           String
   /// null for a top-level branch; otherwise another branch of the SAME bg,
@@ -145,6 +160,7 @@ model Branch {
   children Branch[]        @relation("BranchTree")
   vehicles Vehicle[]
   subusers SubuserBranch[]
+  logo NodeLogo?
 
   @@index([bgId])
   @@index([parentBranchId])
@@ -853,6 +869,26 @@ model DeviceState {
   fuel        Float?
   temperature Float?
   /// Less common fields the code reads, only when the device sends them.
+/// The logo of a GGB, Group, Business Group or Branch (client, 2026-11-13): shown
+/// at the left of every report header for the accounts below it. Exactly one of
+/// the four owner ids is set; the row goes with its owner.
+model NodeLogo {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  ggbId     String?  @unique
+  groupId   String?  @unique
+  bgId      String?  @unique
+  branchId  String?  @unique
+  mimeType  String
+  data      Bytes
+  updatedAt DateTime @updatedAt
+
+  ggb    Ggb?           @relation(fields: [ggbId], references: [id], onDelete: Cascade)
+  group  Group?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  bg     BusinessGroup? @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  branch Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+}
+
   extra       Json?
   updatedAt   DateTime @updatedAt
 

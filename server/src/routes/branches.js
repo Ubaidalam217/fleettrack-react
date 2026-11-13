@@ -24,6 +24,7 @@ import {
   scopedWhere,
 } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { logoRoutes } from './nodeLogos.js'
 
 const router = Router()
 
@@ -169,5 +170,8 @@ router.delete(
     })
   })
 )
+
+// The node's logo for report headers (routes/nodeLogos.js).
+router.use(logoRoutes('branch'))
 
 export default router

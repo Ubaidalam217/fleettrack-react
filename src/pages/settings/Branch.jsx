@@ -14,6 +14,8 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import NodeLogoField from './NodeLogoField'
+import { uploadStagedLogo } from './nodeLogo'
 import OrgTabs from './OrgTabs'
 import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions } from './NodeUsersPanel'
 import NodeVehiclesPanel, { VehiclesButton, useNodeVehicleCount } from './NodeVehiclesPanel'
@@ -87,6 +89,8 @@ export default function Branch(props) {
   const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
 
   const [draft,   setDraft]   = useState(null)
+  // A new node's logo, uploaded once the save has given it an id.
+  const [stagedLogo, setStagedLogo] = useState(null)
   const [errors,  setErrors]  = useState({})
   const [pending, setPending] = useState(null)
   const [saving,  setSaving]  = useState(false)
@@ -131,9 +135,10 @@ export default function Branch(props) {
     return branchTreeForCompany(draft.companyId).filter(b => !blocked.has(b.id))
   }, [editing, draft, branches])
 
-  const openAdd   = ()  => { setErrors({}); setDraft(emptyBranch()) }
+  const openAdd   = ()  => { setErrors({}); setStagedLogo(null); setDraft(emptyBranch()) }
   const openEdit  = row => {
     setErrors({})
+    setStagedLogo(null)
     // Strip the derived fields the table added; the form edits the record, not
     // the row that was rendered from it. Saving `depth`/`parentName` back would
     // persist a snapshot of the tree that goes stale the moment it moves.
@@ -179,7 +184,8 @@ export default function Branch(props) {
         await updateBranch(draft.id, clean)
         push(`${clean.name} updated`, { tone: 'success' })
       } else {
-        await addBranch(clean)
+        const row = await addBranch(clean)
+        await uploadStagedLogo('branch', row?.id, stagedLogo, push)
         push(`${clean.name} added`, { tone: 'success' })
       }
       setDraft(null)
@@ -228,6 +234,7 @@ export default function Branch(props) {
             title={draft.id ? 'Branch details' : 'New branch'}
             subtitle="Fields marked with * are required. Leave Parent Branch blank for a top-level branch."
           >
+            <NodeLogoField kind="branch" noun="branch" draft={draft} setDraft={setDraft} onStage={setStagedLogo} push={push} />
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
@@ -308,6 +315,7 @@ export default function Branch(props) {
               onBack={closeForm}
               onReset={() => {
                 setErrors({})
+                setStagedLogo(null)
                 // Back to where the form opened; the fallback guards the row
                 // having vanished rather than spreading undefined into a draft.
                 const saved = draft.id ? branches.find(b => b.id === draft.id) : null

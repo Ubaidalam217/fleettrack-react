@@ -5,6 +5,7 @@
 // a document, and it is also what the Print button sends to the printer.
 import { memo, useMemo } from 'react'
 import { rowLocation, MOVEMENT_COLUMNS } from '../../utils/movementReport'
+import { AccountLogo } from './ReportLogo'
 
 const BAND_BLUE   = '#b0c4de'
 const GROUP_GRAY  = '#c0c0c0'
@@ -91,12 +92,16 @@ function MovementTable({ report, filters, limit, onShowMore, onLocate, hidden })
   return (
     <div id="movement-report-paper" style={{ background: '#fff', borderRadius: 10, border: `1px solid var(--c-border)`, overflow: 'hidden' }}>
 
-      {/* Document header — the PDF's title block and filter summary band */}
+      {/* Document header — the PDF's title block and filter summary band; the
+          account's logo at the left, FleetmaxX at the right (client, 2026-11-13). */}
       <div style={{ padding: '14px 16px 10px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-          <div>
-            <div style={{ fontSize: 19, fontWeight: 700, color: INK, lineHeight: 1.2 }}>Movement Report</div>
-            <div style={{ fontSize: 11, color: INK, marginTop: 3 }}>{filters.company || 'FleetmaxX'}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <AccountLogo height={36} maxWidth={140} />
+            <div>
+              <div style={{ fontSize: 19, fontWeight: 700, color: INK, lineHeight: 1.2 }}>Movement Report</div>
+              <div style={{ fontSize: 11, color: INK, marginTop: 3 }}>{filters.company || 'FleetmaxX'}</div>
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {/* The paper is white in both themes, so the light-theme logo. */}

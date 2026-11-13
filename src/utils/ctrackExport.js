@@ -1,13 +1,15 @@
 // Trip Details, Trip Locations, Trip Summary and Distance Driven — PDF/Excel
 // in the layout of the client's Ctrack MaXx samples (client, 2026-11-12: "match
 // those four reports exactly"), not the Movement paper the other reports use:
-// logo left and a centred serif title, a From / To / Grouped By block between
+// the account's logo left (utils/reportLogo.js), a centred serif title and
+// FleetmaxX right (client, 2026-11-13), a From / To / Grouped By block between
 // two black rules, dark-red group headings, a bold header row on a black rule,
 // lavender zebra rows, dark-red summary lines, "Page X of Y" and the print date
 // in the footer, and the Report Summary on a page of its own at the end.
 //
 // Column widths are weights, scaled to the page, as in geoZoneExport.js.
 import { loadLogo, fileStamp, download } from './reportExport'
+import { loadAccountLogo, drawAccountLogo, addExcelLogoRow } from './reportLogo'
 import { dateBarColor, dateLabelEvery } from './dateBarColors'
 
 export const CTRACK_RED = [139, 0, 0]
@@ -98,7 +100,7 @@ function drawMapIcon(doc, cx, top, h) {
  *   summaryTable: a table under the summary title, after any summary lines.
  */
 export async function buildCtrackPdf(o) {
-  const [{ jsPDF }, logo] = await Promise.all([import('jspdf'), loadLogo()])
+  const [{ jsPDF }, logo, account] = await Promise.all([import('jspdf'), loadLogo(), loadAccountLogo()])
   const P = o.pageSize ?? PAGE[o.orientation ?? 'landscape']
   const orientation = o.pageSize ? (P.w > P.h ? 'landscape' : 'portrait') : (o.orientation ?? 'landscape')
   const doc = new jsPDF({ orientation, unit: 'pt', format: o.pageSize ? [P.w, P.h] : 'a4' })
@@ -111,10 +113,12 @@ export async function buildCtrackPdf(o) {
   const ruleY = o.headerRuleY ?? 52
   const band = ruleY - 52
   const chrome = ({ withBlock }) => {
-    if (logo) doc.addImage(logo, 'JPEG', M + 2, 14 + band * 0.65, 64, 64 * (273 / 863), 'fleetmax-logo', 'FAST')
+    // The account's logo at the left (none for a Super Admin), FleetmaxX at the right.
+    drawAccountLogo(doc, account, M + 2, 10 + band * 0.65, 120, 36)
+    if (logo) doc.addImage(logo, 'JPEG', P.w - M - 2 - 64, 14 + band * 0.65, 64, 64 * (273 / 863), 'fleetmax-logo', 'FAST')
     else {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(10, 143, 176)
-      doc.text('FleetmaxX', M + 2, 28 + band * 0.65)
+      doc.text('FleetmaxX', P.w - M - 2, 28 + band * 0.65, { align: 'right' })
     }
     doc.setFont('times', 'bold'); doc.setFontSize(o.titleSize ?? 17); doc.setTextColor(0, 0, 0)
     doc.text(str(o.title), P.w / 2, 34 + band * 0.4, { align: 'center' })
@@ -454,6 +458,8 @@ export async function exportCtrackExcel(o, filenameBase) {
   const red = { argb: 'FF8B0000' }
   const lavender = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE4E4F7' } }
 
+  const [account, fleetmax] = await Promise.all([loadAccountLogo(), loadLogo()])
+  addExcelLogoRow(wb, ws, { account, fleetmax, lastCol: width })
   const t = ws.addRow([o.title])
   t.font = { name: 'Times New Roman', bold: true, size: 16 }
   ws.mergeCells(t.number, 1, t.number, width)

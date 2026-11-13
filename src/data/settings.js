@@ -31,6 +31,7 @@ import { del, get, post, put, request } from './http.js'
 import * as A from './adapters.js'
 import * as mock from '../pages/settings/mockData'
 import { PHASE, useSession, getToken as getSessionToken } from './session.js'
+import { resetReportLogos } from '../utils/reportLogo.js'
 
 // ── Pass-through: everything that is pure, or already mode-agnostic ─────────
 // Re-exported by name rather than with `export *` so this list is also the
@@ -281,6 +282,31 @@ export function updateCompany(id, patch) {
 export function removeCompany(id) {
   if (!IS_REAL) return done(mock.removeCompany(id))
   return write(() => del(`/api/bgs/${id}`))
+}
+
+// Logos ────────────────────────────────────────────────────────────────────
+// A GGB, Group, BG or Branch logo for report headers (client, 2026-11-13).
+// Mock mode keeps it as a data URL on the row, like the driver photo.
+
+const LOGO_NODES = {
+  ggb: { path: 'ggbs', mock: mock.updateReseller },
+  group: { path: 'groups', mock: mock.updateGroup },
+  bg: { path: 'bgs', mock: mock.updateCompany },
+  branch: { path: 'branches', mock: mock.updateBranch },
+}
+
+export async function setNodeLogo(kind, id, base64) {
+  const n = LOGO_NODES[kind]
+  if (!IS_REAL) return n.mock(id, { logoUrl: `data:image/png;base64,${base64}` })
+  await write(() => put(`/api/${n.path}/${id}/logo`, { image: base64 }))
+  resetReportLogos()
+}
+
+export async function removeNodeLogo(kind, id) {
+  const n = LOGO_NODES[kind]
+  if (!IS_REAL) return n.mock(id, { logoUrl: '' })
+  await write(() => del(`/api/${n.path}/${id}/logo`))
+  resetReportLogos()
 }
 
 // Branch ───────────────────────────────────────────────────────────────────

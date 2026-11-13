@@ -12,6 +12,8 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import NodeLogoField from './NodeLogoField'
+import { uploadStagedLogo } from './nodeLogo'
 import OrgTabs from './OrgTabs'
 import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions, NewNodeUsers, emptyNewUser, validateNewUsers, createNodeUsers, useMayAddNodeUsers } from './NodeUsersPanel'
 import NodeVehiclesPanel, { VehiclesButton, useNodeVehicleCount } from './NodeVehiclesPanel'
@@ -48,6 +50,8 @@ export default function Reseller(props) {
   const showUsers = access.roleKey !== 'SUB_USER' && usersLevel(session.user, 'users') !== 'none'
 
   const [draft,   setDraft]   = useState(null)
+  // A new node's logo, uploaded once the save has given it an id.
+  const [stagedLogo, setStagedLogo] = useState(null)
 
   // The logins created with a new GGB (client: at least one main user).
 
@@ -66,8 +70,8 @@ export default function Reseller(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
-  const openAdd   = ()  => { setNewUsers([emptyNewUser()]); setErrors({}); setDraft(emptyReseller()) }
-  const openEdit  = row => { setErrors({}); setDraft({ ...row }) }
+  const openAdd   = ()  => { setNewUsers([emptyNewUser()]); setErrors({}); setStagedLogo(null); setDraft(emptyReseller()) }
+  const openEdit  = row => { setErrors({}); setStagedLogo(null); setDraft({ ...row }) }
   const closeForm = ()  => { setErrors({}); setDraft(null) }
 
   const set = (key, value) => {
@@ -96,6 +100,7 @@ export default function Reseller(props) {
         push(`${clean.name} updated`, { tone: 'success' })
       } else {
         const row = await addReseller(clean)
+        await uploadStagedLogo('ggb', row.id, stagedLogo, push)
         const { created, failed } = mayAddUsers ? await createNodeUsers('ggb', row.id, newUsers) : { created: [], failed: [] }
         if (failed.length) {
           push(`${clean.name} added, but ${failed.map(x => x.email).join(', ')} could not be created (${failed[0].message}). Add it from Users.`, { tone: 'error' })
@@ -134,6 +139,7 @@ export default function Reseller(props) {
             title={draft.id ? 'Group Global Admin details' : 'New Group Global Admin'}
             subtitle="Fields marked with * are required."
           >
+            <NodeLogoField kind="ggb" noun="Group Global Admin" draft={draft} setDraft={setDraft} onStage={setStagedLogo} push={push} />
             <FormFields
               fields={FIELDS}
               values={draft}
@@ -156,6 +162,7 @@ export default function Reseller(props) {
               onReset={() => {
                 setErrors({})
                 if (!draft.id) setNewUsers([emptyNewUser()])
+                setStagedLogo(null)
                 const saved = draft.id ? resellers.find(r => r.id === draft.id) : null
                 setDraft(saved ? { ...saved } : emptyReseller())
               }}

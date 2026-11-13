@@ -25,6 +25,7 @@
 
 import { rowLocation, formatPrintDate, formatDateTime, MOVEMENT_COLUMNS } from './movementReport'
 import { locationUrl } from './mapLink'
+import { loadAccountLogo, drawAccountLogo, addExcelLogoRow } from './reportLogo'
 
 // ── geometry ──────────────────────────────────────────────────────────────
 
@@ -208,18 +209,29 @@ export function drawLogo(doc) {
   doc.text('FleetmaxX', 803, y + 12, { align: 'right' })
 }
 
-function drawChrome(doc, filters, meta, L) {
+/**
+ * The account's logo at the top left with the title after it, FleetmaxX in
+ * the top-right slot (client, 2026-11-13). Without an account logo the title
+ * stays at the margin. Returns the x the title starts at.
+ */
+export function drawAccountSlot(doc, account) {
+  const w = drawAccountLogo(doc, account, 23.15, 14, 110, 36)
+  return w ? 23.15 + w + 10 : 23.15
+}
+
+function drawChrome(doc, filters, meta, L, account) {
   doc.setTextColor(0, 0, 0)
   doc.setDrawColor(0, 0, 0)
   doc.setLineWidth(1)
 
+  const tx = drawAccountSlot(doc, account)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16.1)
-  doc.text('Movement Report', 23.15, 34.85)
+  doc.text('Movement Report', tx, 34.85)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.15)
-  doc.text(meta.subtitle, 23.15, 48.6)
+  doc.text(meta.subtitle, tx, 48.6)
 
   drawLogo(doc)
 
@@ -296,7 +308,7 @@ export async function buildMovementPdf(report, filters, meta = {}) {
   const C = L.cols
   // Both awaited up front: startPage() below is synchronous and every page
   // calls drawLogo(), so the artwork has to be resolved before the first one.
-  const [{ jsPDF }] = await Promise.all([import('jspdf'), loadLogo()])
+  const [{ jsPDF }, , account] = await Promise.all([import('jspdf'), loadLogo(), loadAccountLogo()])
 
   const resolved = {
     subtitle:   meta.subtitle   ?? 'FleetmaxX',
@@ -313,7 +325,7 @@ export async function buildMovementPdf(report, filters, meta = {}) {
   const startPage = () => {
     if (pageNo > 0) doc.addPage()
     pageNo += 1
-    drawChrome(doc, filters, resolved, L)
+    drawChrome(doc, filters, resolved, L, account)
     drawFooter(doc, pageNo, resolved)
     y = BODY_TOP
     zebra = false
@@ -485,6 +497,10 @@ export async function exportMovementExcel(report, filters, meta = {}) {
   const line = values => cols.map(c => values[c.key] ?? '')
   // A band's text sits in the Vehicle / Time column, or the first text column left.
   const textKey = preferred => (cols.some(c => c.key === preferred) ? preferred : (cols.find(c => c.key !== 'speed' && c.key !== 'odo') ?? cols[0]).key)
+
+  // The logo row (account logo left, FleetmaxX right) moves the frozen header down by one.
+  const [account, fleetmax] = await Promise.all([loadAccountLogo(), loadLogo()])
+  if (addExcelLogoRow(wb, ws, { account, fleetmax, lastCol: n })) ws.views = [{ state: 'frozen', ySplit: 7 }]
 
   const title = ws.addRow(['Movement Report'])
   title.getCell(1).font = { bold: true, size: 16 }

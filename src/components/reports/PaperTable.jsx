@@ -19,6 +19,8 @@
  *   the way the client's Ctrack MaXx reports end.
  */
 
+import { AccountLogo, ReportLogoPicker } from './ReportLogo'
+
 export const BAND_BLUE  = '#b0c4de'
 export const GROUP_GRAY = '#c0c0c0'
 export const TOTAL_YEL  = '#ffffc0'
@@ -34,9 +36,13 @@ export function PaperHead({ title, company, filters = [] }) {
   return (
     <>
       <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 19, fontWeight: 700, color: INK, lineHeight: 1.2 }}>{title}</div>
-          {company && <div style={{ fontSize: 11, color: INK, marginTop: 3 }}>{company}</div>}
+        {/* The account's logo at the left, FleetmaxX at the right (client, 2026-11-13). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          <AccountLogo height={36} maxWidth={140} />
+          <div>
+            <div style={{ fontSize: 19, fontWeight: 700, color: INK, lineHeight: 1.2 }}>{title}</div>
+            {company && <div style={{ fontSize: 11, color: INK, marginTop: 3 }}>{company}</div>}
+          </div>
         </div>
         <img src="/logo/fleetmax-logo-sea.png" alt="FleetmaxX" style={{ height: 26, width: 'auto' }} />
       </div>
@@ -72,9 +78,17 @@ export function PaperFoot({ printDate }) {
   )
 }
 
-/** The white sheet itself; `#report-paper` is what ReportFrame prints. */
+/**
+ * The white sheet itself; `#report-paper` is what ReportFrame prints. The
+ * report's Logo option sits above it, on screen only.
+ */
 export function PaperSheet({ id = 'report-paper', children }) {
-  return <div id={id} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--c-border)', overflow: 'hidden' }}>{children}</div>
+  return (
+    <>
+      <ReportLogoPicker />
+      <div id={id} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--c-border)', overflow: 'hidden' }}>{children}</div>
+    </>
+  )
 }
 
 const cell = { padding: '3px 6px', fontSize: 11, color: INK, verticalAlign: 'top', lineHeight: 1.35 }

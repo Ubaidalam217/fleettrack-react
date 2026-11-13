@@ -16,6 +16,7 @@ import { asyncHandler, HttpError } from '../lib/http.js'
 import { optionalText } from '../lib/fields.js'
 import { scopedWhere } from '../lib/scope.js'
 import { publicUser } from '../lib/serialize.js'
+import { chainLogos } from '../lib/nodeLogos.js'
 import { validate } from '../middleware/validate.js'
 
 const router = Router()
@@ -59,6 +60,17 @@ router.get(
       count: rows.length,
       role: req.scope.role,
     })
+  })
+)
+
+/**
+ * GET /api/me/logos — the logos a report header may show at its left for this
+ * account, nearest first (lib/nodeLogos.js). Empty for a Super Admin.
+ */
+router.get(
+  '/logos',
+  asyncHandler(async (req, res) => {
+    res.json({ data: await chainLogos(req.scope) })
   })
 )
 

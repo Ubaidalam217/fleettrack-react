@@ -12,7 +12,8 @@
 // Column widths are WEIGHTS, not points: the renderer scales every column's
 // weight to the page's actual usable width, so a report with 12 columns and
 // one with 26 both fill the page edge-to-edge without per-report tuning.
-import { loadLogo, drawLogo, fileStamp, download } from './reportExport'
+import { loadLogo, drawLogo, drawAccountSlot, fileStamp, download } from './reportExport'
+import { loadAccountLogo, addExcelLogoRow } from './reportLogo'
 import { locationText } from './geoZoneReports'
 
 // Page geometry and colours are the Movement Report PDF's (reportExport.js),
@@ -108,17 +109,19 @@ export function filterPairs({ filters, filtersText }) {
 const bandHeight = n => (n ? 10.7 + (Math.ceil(n / 3) - 1) * 13.5 + 6.85 : 0)
 
 /** Title, logo, filter band and page border; returns where the body starts. */
-function drawChrome(doc, { title, subtitle, pairs }) {
+function drawChrome(doc, { title, subtitle, pairs, account }) {
   doc.setTextColor(0, 0, 0)
   doc.setDrawColor(0, 0, 0)
   doc.setLineWidth(1)
 
+  // The account's logo first and the title after it; FleetmaxX top right.
+  const tx = drawAccountSlot(doc, account)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16.1)
-  doc.text(clip(doc, title, 640), 23.15, 34.85)
+  doc.text(clip(doc, title, 640 - (tx - 23.15)), tx, 34.85)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.15)
-  doc.text(subtitle, 23.15, 48.6)
+  doc.text(subtitle, tx, 48.6)
   drawLogo(doc)
 
   let top = BAND_TOP
@@ -191,7 +194,7 @@ const summaryLines = opts => [...(opts.summaryCards ?? []), ...(opts.reportSumma
  *   reports.
  */
 export async function buildGeoZonePdf(opts) {
-  const [{ jsPDF }] = await Promise.all([import('jspdf'), loadLogo()])
+  const [{ jsPDF }, , account] = await Promise.all([import('jspdf'), loadLogo(), loadAccountLogo()])
   const { title, subtitle = 'FleetmaxX', printDate, systemName = 'FleetmaxX' } = opts
   const pairs = filterPairs(opts)
   const tables = shownTables(opts)
@@ -204,7 +207,7 @@ export async function buildGeoZonePdf(opts) {
   const startPage = () => {
     if (pageNo > 0) doc.addPage()
     pageNo += 1
-    y = drawChrome(doc, { title, subtitle, pairs })
+    y = drawChrome(doc, { title, subtitle, pairs, account })
     drawFooter(doc, pageNo, printDate, systemName)
     stamped = null
   }
@@ -354,6 +357,8 @@ export async function exportGeoZoneExcel(opts, filenameBase) {
   const lastCol = (() => { let s = '', k = n; while (k > 0) { const r = (k - 1) % 26; s = String.fromCharCode(65 + r) + s; k = Math.floor((k - 1) / 26) } return s })()
   const mergeRow = r => ws.mergeCells(`A${r}:${lastCol}${r}`)
 
+  const [account, fleetmax] = await Promise.all([loadAccountLogo(), loadLogo()])
+  addExcelLogoRow(wb, ws, { account, fleetmax, lastCol: n })
   const t = ws.addRow([title])
   t.getCell(1).font = { bold: true, size: 16 }
   mergeRow(t.number)

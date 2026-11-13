@@ -43,6 +43,7 @@ import vehicleMoveRoutes from './routes/vehicleMoves.js'
 import assistantRoutes from './routes/assistant.js'
 import avatarRoutes from './routes/avatars.js'
 import driverPhotoRoutes from './routes/driverPhotos.js'
+import nodeLogoRoutes from './routes/nodeLogos.js'
 import driverPerformanceRoutes from './routes/driverPerformance.js'
 import deviceSettingsRoutes from './routes/deviceSettings.js'
 import { router as replayShareRoutes, publicRouter as publicReplayRoutes } from './routes/replayShares.js'
@@ -93,6 +94,8 @@ export function createApp() {
   app.use('/api/drivers', express.json({ limit: '8mb' }))
   app.use('/api/expenses', express.json({ limit: '8mb' }))
   app.use('/api/vehicles/:vehicleId/documents', express.json({ limit: '8mb' }))
+  // GGB / Group / BG / Branch logos (5 MB, base64).
+  app.use(['/api/ggbs/:id/logo', '/api/groups/:id/logo', '/api/bgs/:id/logo', '/api/branches/:id/logo'], express.json({ limit: '8mb' }))
   // The Flespi webhook: batches of device messages, so its own larger limit.
   // Mounted before the request log and before auth — it has its own token.
   app.use('/api/ingest', express.json({ limit: '20mb' }), ingestRoutes)
@@ -104,6 +107,7 @@ export function createApp() {
   // Public: profile photos by unguessable key, so <img src> works without a token.
   app.use('/api/avatars', avatarRoutes)
   app.use('/api/driver-photos', driverPhotoRoutes)
+  app.use('/api/node-logos', nodeLogoRoutes)
   // Public: the mobile app's over-the-air updates (routes/appUpdates.js).
   app.use('/api/app-updates', appUpdateRoutes)
   // Public: a shared replay, opened without signing in (routes/replayShares.js).

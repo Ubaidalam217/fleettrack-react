@@ -59,6 +59,9 @@ const orBlank = v => (v === null || v === undefined ? '' : v)
 /** A number column → the string the form's text input holds. */
 const numToText = v => (v === null || v === undefined ? '' : String(v))
 
+// A GGB, Group, BG or Branch logo (client, 2026-11-13), served by key.
+const nodeLogoUrl = r => (r.logoKey ? `${API_URL}/api/node-logos/${r.logoKey}` : '')
+
 // ── GGB (API: Ggb) ──────────────────────────────────────────────────────────
 
 export const ggb = {
@@ -66,6 +69,7 @@ export const ggb = {
     id: r.id,
     name: r.name ?? '',
     email: orBlank(r.email),
+    logoUrl: nodeLogoUrl(r),
   }),
   toApi: r => ({
     name: r.name,
@@ -80,6 +84,7 @@ export const group = {
     id: r.id,
     name: r.name ?? '',
     resellerId: r.ggbId ?? '',
+    logoUrl: nodeLogoUrl(r),
   }),
   toApiCreate: r => ({
     name: r.name,
@@ -103,6 +108,7 @@ export const company = {
     // '' is the real state "this BG is its own group", which the frontend renders
     // as "— (own group)".
     groupId: orBlank(r.groupId),
+    logoUrl: nodeLogoUrl(r),
   }),
   toApiCreate: r => ({
     name: r.name,
@@ -125,6 +131,7 @@ export const branch = {
     name: r.name ?? '',
     companyId: r.bgId ?? '',
     parentBranchId: orBlank(r.parentBranchId),
+    logoUrl: nodeLogoUrl(r),
   }),
   toApiCreate: r => ({
     name: r.name,

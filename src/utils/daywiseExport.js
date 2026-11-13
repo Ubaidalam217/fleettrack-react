@@ -14,7 +14,8 @@
  * empty columns' worth of gap.
  */
 
-import { drawLogo, fileStamp, download, loadLogo } from './reportExport'
+import { drawLogo, drawAccountSlot, fileStamp, download, loadLogo } from './reportExport'
+import { loadAccountLogo, addExcelLogoRow } from './reportLogo'
 import { formatPrintDate } from './movementReport'
 
 // ── geometry (A4 landscape, points) ────────────────────────────────────────
@@ -62,7 +63,7 @@ function layout(columns, days) {
 }
 
 export async function buildDaywisePdf(model, meta) {
-  const [{ jsPDF }] = await Promise.all([import('jspdf'), loadLogo()])
+  const [{ jsPDF }, , account] = await Promise.all([import('jspdf'), loadLogo(), loadAccountLogo()])
   const { rows, days, lastElapsed, columns, format, valueOf, totalOf } = model
   const printDate = meta.printDate ?? formatPrintDate()
 
@@ -96,13 +97,15 @@ export async function buildDaywisePdf(model, meta) {
     doc.setTextColor(0, 0, 0)
     doc.setDrawColor(0, 0, 0)
 
+    // The account's logo first and the title after it; FleetmaxX top right.
+    const tx = drawAccountSlot(doc, account)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(16.1)
-    doc.text(meta.title, 23.15, 34.85)
+    doc.text(meta.title, tx, 34.85)
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.15)
-    doc.text('FleetmaxX', 23.15, 48.6)
+    doc.text('FleetmaxX', tx, 48.6)
 
     drawLogo(doc)
 
@@ -260,6 +263,10 @@ export async function exportDaywiseExcel(model, meta) {
     return s
   }
   const mergeRow = r => ws.mergeCells(`A${r}:${colLetter(lastCol)}${r}`)
+
+  // The logo row (account logo left, FleetmaxX right) moves the frozen header down by one.
+  const [account, fleetmax] = await Promise.all([loadAccountLogo(), loadLogo()])
+  if (addExcelLogoRow(wb, ws, { account, fleetmax, lastCol })) ws.views = [{ state: 'frozen', xSplit: columns.length, ySplit: 6 }]
 
   const title = ws.addRow([meta.title])
   title.getCell(1).font = { bold: true, size: 16 }

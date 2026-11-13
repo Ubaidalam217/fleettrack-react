@@ -21,6 +21,7 @@ import {
   scopedWhere,
 } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { logoRoutes } from './nodeLogos.js'
 import { moveBg } from '../lib/moves.js'
 import { actorOf } from '../lib/vehicleMoves.js'
 import { revokeGrantsUnderBg } from '../lib/flespiGrant.js'
@@ -260,5 +261,8 @@ router.post(
     res.json({ data: await moveBg(req.scope, existing.id, req.body, actorOf(req)) })
   })
 )
+
+// The node's logo for report headers (routes/nodeLogos.js).
+router.use(logoRoutes('bg'))
 
 export default router

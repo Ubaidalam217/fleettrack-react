@@ -14,6 +14,8 @@ import {
 } from '../../data/settings'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
+import NodeLogoField from './NodeLogoField'
+import { uploadStagedLogo } from './nodeLogo'
 import OrgTabs from './OrgTabs'
 import NodeUsersPanel, { UsersButton, useNodeUserCount, PermissionsButton, NodePermissionsDialog, useCanSetPermissions, NewNodeUsers, emptyNewUser, validateNewUsers, createNodeUsers, useMayAddNodeUsers } from './NodeUsersPanel'
 import NodeVehiclesPanel, { VehiclesButton, useNodeVehicleCount } from './NodeVehiclesPanel'
@@ -99,6 +101,8 @@ export default function Company(props) {
   // null = list view. Otherwise the record being edited, with id null for a new
   // one — which is also what tells Save whether to add or update.
   const [draft,   setDraft]   = useState(null)
+  // A new node's logo, uploaded once the save has given it an id.
+  const [stagedLogo, setStagedLogo] = useState(null)
   // The logins created with a new BG (client: at least one main user).
   const [newUsers, setNewUsers] = useState([emptyNewUser()])
   const [errors,  setErrors]  = useState({})
@@ -113,8 +117,8 @@ export default function Company(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
-  const openAdd   = ()  => { setNewUsers([emptyNewUser()]); setErrors({}); setDraft(emptyCompany()) }
-  const openEdit  = row => { setErrors({}); setDraft({ ...row }) }
+  const openAdd   = ()  => { setNewUsers([emptyNewUser()]); setErrors({}); setStagedLogo(null); setDraft(emptyCompany()) }
+  const openEdit  = row => { setErrors({}); setStagedLogo(null); setDraft({ ...row }) }
   const closeForm = ()  => { setErrors({}); setDraft(null) }
 
   const set = (key, value) => {
@@ -154,6 +158,7 @@ export default function Company(props) {
         push(`${clean.name} updated`, { tone: 'success' })
       } else {
         const row = await addCompany(clean)
+        await uploadStagedLogo('bg', row.id, stagedLogo, push)
         const { created, failed } = mayAddUsers ? await createNodeUsers('bg', row.id, newUsers) : { created: [], failed: [] }
         if (failed.length) {
           push(`${clean.name} added, but ${failed.map(x => x.email).join(', ')} could not be created (${failed[0].message}). Add it from Users.`, { tone: 'error' })
@@ -194,6 +199,7 @@ export default function Company(props) {
             title={draft.id ? 'Business Group details' : 'New Business Group'}
             subtitle="Fields marked with * are required. Leave Group blank if the Business Group is its own group."
           >
+            <NodeLogoField kind="bg" noun="Business Group" draft={draft} setDraft={setDraft} onStage={setStagedLogo} push={push} />
             <FormFields
               fields={fieldsFor(resellers, { editing: !!draft.id, derivedParent })}
               values={draft}
@@ -220,6 +226,7 @@ export default function Company(props) {
                 // guards the row having vanished, which would otherwise spread
                 // undefined into a shapeless draft and throw on the next save.
                 if (!draft.id) setNewUsers([emptyNewUser()])
+                setStagedLogo(null)
                 const saved = draft.id ? companies.find(c => c.id === draft.id) : null
                 setDraft(saved ? { ...saved } : emptyCompany())
               }}

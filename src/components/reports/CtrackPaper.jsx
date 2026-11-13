@@ -1,13 +1,14 @@
 import { PaperSheet } from './PaperTable'
+import { AccountLogo } from './ReportLogo'
 import { CTRACK_LINE_COLORS, niceAxis } from '../../utils/ctrackExport'
 
 /**
  * The on-screen sheet of the four Ctrack-sample reports (Trip Details, Trip
  * Locations, Trip Summary, Distance Driven), drawn like their PDF
- * (utils/ctrackExport.js): logo and a centred serif title, the From / To /
- * Grouped By block between black rules, dark-red group headings, bold headers
- * on a black rule, lavender zebra rows, dark-red summary lines, and the Report
- * Summary at the end.
+ * (utils/ctrackExport.js): the account's logo left (utils/reportLogo.js), a
+ * centred serif title and FleetmaxX right, the From / To / Grouped By block
+ * between black rules, dark-red group headings, bold headers on a black rule,
+ * lavender zebra rows, dark-red summary lines, and the Report Summary at the end.
  *
  * tables: [{ key, heading?, headingItalic?, columns, rows }] — a column with
  * `icon: 'map'` shows the sample's map pin and opens the row on the map
@@ -178,8 +179,10 @@ export default function CtrackPaper({ title, pairs = [], tables, summaryTitle = 
   return (
     <PaperSheet>
       <div style={{ fontFamily: SERIF, color: INK }}>
+        {/* The account's logo at the left, FleetmaxX back at the right (client, 2026-11-13). */}
         <div style={{ position: 'relative', padding: '14px 16px 10px', minHeight: 54 }}>
-          <img src="/logo/fleetmax-logo-sea.png" alt="FleetmaxX" style={{ height: 24, width: 'auto', position: 'absolute', left: 16, top: 14 }} />
+          <AccountLogo height={34} maxWidth={150} style={{ position: 'absolute', left: 16, top: 10 }} />
+          <img src="/logo/fleetmax-logo-sea.png" alt="FleetmaxX" style={{ height: 24, width: 'auto', position: 'absolute', right: 16, top: 14 }} />
           <div style={{ textAlign: 'center', fontSize: 22, fontWeight: 700, paddingTop: 4 }}>{title}</div>
         </div>
         <div style={{ borderTop: `2px solid ${INK}`, borderBottom: `2px solid ${INK}`, padding: '6px 16px', fontSize: 12 }}>

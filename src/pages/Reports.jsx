@@ -27,6 +27,7 @@ import {
 import { exportMovementPdf, exportMovementExcel, printMovementReport } from '../utils/reportExport'
 import ReportsBackLink from '../components/reports/ReportsBackLink'
 import ColumnPicker from '../components/reports/ColumnPicker'
+import { ReportLogoPicker } from '../components/reports/ReportLogo'
 import { useHiddenColumns } from '../utils/reportColumns'
 import { useDriverDimension } from '../hooks/useDriverDimension'
 import { driverFilterLabel } from '../utils/driverAtTime'
@@ -642,6 +643,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                   </div>
                 </div>
 
+                <ReportLogoPicker />
                 <MovementTable
                   report={report}
                   filters={reportFilters}

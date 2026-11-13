@@ -13,6 +13,7 @@ import { asyncHandler } from '../lib/http.js'
 import { requiredId, requiredText } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { logoRoutes } from './nodeLogos.js'
 import { moveGroup } from '../lib/moves.js'
 import { actorOf } from '../lib/vehicleMoves.js'
 import { revokeGrantsUnderGroup } from '../lib/flespiGrant.js'
@@ -141,5 +142,8 @@ router.post(
     res.json({ data: await moveGroup(req.scope, existing.id, req.body.ggbId, actorOf(req)) })
   })
 )
+
+// The node's logo for report headers (routes/nodeLogos.js).
+router.use(logoRoutes('group'))
 
 export default router
