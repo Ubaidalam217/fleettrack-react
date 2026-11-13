@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   Plus, Search, Camera, Trash2, FileText, Upload, ExternalLink,
   UserRound, IdCard, ShieldCheck, Car, History, TriangleAlert, Paperclip,
-  ClipboardList, CalendarX, MapPin, Check, HeartPulse,
+  ClipboardList, CalendarX, MapPin, Check, HeartPulse, RotateCcw, Archive,
 } from 'lucide-react'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
@@ -24,7 +24,7 @@ import {
   listDriverAssignments, addDriverAssignment, endDriverAssignment, deleteDriverAssignment,
   listDriverIncidents, addDriverIncident, deleteDriverIncident, INCIDENT_TYPES,
   listDriverLeaves, addDriverLeave, deleteDriverLeave, LEAVE_TYPES, TAG_TYPES,
-  listUnregisteredDriverIds,
+  listUnregisteredDriverIds, listRemovedDrivers, restoreDriver,
 } from '../../data/settings'
 import UnregisteredDriverIds from './UnregisteredDriverIds'
 import UnregisteredDriverDialog from '../../components/tracking/UnregisteredDriverDialog'
@@ -149,6 +149,46 @@ const columnsFor = vehicleById => [
     label: 'Status',
     render: row => <Pill tone={STATUS_TONE[row.status] || STATUS_TONE.Inactive}>{row.status}</Pill>,
   },
+]
+
+/** "13 Nov 2026, 14:05" for the moment a driver was removed. */
+const removedOn = iso => {
+  const d = iso ? new Date(iso) : null
+  return d && !Number.isNaN(d.getTime())
+    ? d.toLocaleString([], { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '—'
+}
+
+/**
+ * Removed drivers (client, 2026-11-13: "All the drivers names will stay as it
+ * is"): kept on file so their trips keep their name, with Restore.
+ */
+const removedColumnsFor = ({ canWrite, onRestore }) => [
+  { key: 'driverNo', label: 'Driver No.', render: row => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{driverCode(row)}</span> },
+  {
+    key: 'name',
+    label: 'Driver',
+    render: row => (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <Avatar driver={row} />
+        <span style={{ fontWeight: 700, color: 'var(--c-text1)' }}>{row.name}</span>
+      </span>
+    ),
+  },
+  { key: 'employeeId', label: 'Employee ID', render: row => row.employeeId || '—' },
+  { key: 'company',    label: 'Business Group', render: row => companyNameFor(row.companyId) },
+  { key: 'deletedAt',  label: 'Removed On', render: row => removedOn(row.deletedAt) },
+  { key: 'deletedBy',  label: 'Removed By', render: row => row.deletedBy || '—' },
+  ...(canWrite ? [{
+    key: 'restore',
+    label: '',
+    render: row => (
+      <button type="button" className="ft-btn" onClick={() => onRestore(row)} style={{ ...SECONDARY_BTN, height: 28, padding: '0 10px', fontSize: 12 }}
+        title="Back to the driver list, without the old vehicle or Driver ID">
+        <RotateCcw size={13} /> Restore
+      </button>
+    ),
+  }] : []),
 ]
 
 /** A date with its expiry chip on the label line (a valid save even when expired). */
@@ -876,11 +916,41 @@ export default function Driver(props) {
     setPending(null)
     try {
       await removeDriver(row.id)
-      push(`${row.name} deleted`, { tone: 'success' })
+      push(`${row.name} removed`, { tone: 'success' })
     } catch (err) {
       handleApiError(err, { push })
     }
   }
+
+  // Removed drivers, on request (real mode): refetched whenever the drivers change.
+  const [showRemoved, setShowRemoved] = useState(false)
+  const [removedRows, setRemovedRows] = useState(null)
+  useEffect(() => {
+    if (!showRemoved) return undefined
+    let live = true
+    listRemovedDrivers()
+      .then(list => { if (live) setRemovedRows(list) })
+      .catch(err => { if (live) { setRemovedRows([]); handleApiError(err, { push }) } })
+    return () => { live = false }
+    // push is a stable toast helper.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRemoved, drivers])
+  const visibleRemoved = useMemo(
+    () => (removedRows ?? []).filter(d => !bgFilter || d.companyId === bgFilter).sort((a, b) => a.name.localeCompare(b.name)),
+    [removedRows, bgFilter]
+  )
+  const restore = async row => {
+    try {
+      await restoreDriver(row.id)
+      push(`${row.name} restored. Assign a vehicle and Driver ID again if needed.`, { tone: 'success' })
+    } catch (err) {
+      handleApiError(err, { push })
+    }
+  }
+  const removedColumns = useMemo(() => removedColumnsFor({ canWrite: access.canWrite, onRestore: restore }),
+    // restore only closes over stable helpers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [access.canWrite])
 
   const noCompanies = companies.length === 0
   const title = !editing ? 'Driver' : draft.id ? 'Edit Driver' : 'Add Driver'
@@ -1292,6 +1362,18 @@ export default function Driver(props) {
               />
 
               <TableToolbar count={rows.length} noun="driver" plural="drivers">
+                {IS_REAL && (
+                  <button
+                    type="button"
+                    style={{ ...SECONDARY_BTN }}
+                    aria-pressed={showRemoved}
+                    onClick={() => setShowRemoved(v => !v)}
+                    title="Drivers removed from the list. Their past trips and reports keep their name."
+                  >
+                    <Archive size={14} />
+                    {showRemoved ? 'Hide removed drivers' : 'Show removed drivers'}
+                  </button>
+                )}
                 {access.canAdd && (
                   <button
                     type="button"
@@ -1324,6 +1406,26 @@ export default function Driver(props) {
                         : 'No drivers yet — use Add Driver to add one.'
                 }
               />
+
+              {showRemoved && (
+                <section aria-label="Removed drivers" style={{ marginTop: 22 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', margin: '0 0 10px' }}>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text1)', margin: 0 }}>
+                      Removed drivers{removedRows ? ` (${visibleRemoved.length})` : ''}
+                    </h3>
+                    <span style={{ fontSize: 12, color: 'var(--c-text3)' }}>
+                      Kept on file so their past trips and reports keep their name. Their vehicle and Driver ID were freed.
+                    </span>
+                  </div>
+                  <SettingsTable
+                    columns={removedColumns}
+                    rows={visibleRemoved}
+                    onEdit={() => {}}
+                    canWrite={false}
+                    emptyLabel={removedRows === null ? 'Loading removed drivers…' : 'No removed drivers.'}
+                  />
+                </section>
+              )}
             </>
           )}
         </>
@@ -1331,13 +1433,17 @@ export default function Driver(props) {
 
       {pending && (
         <ConfirmDialog
-          title="Delete driver?"
-          body={`${pending.name} will be removed from ${companyNameFor(pending.companyId)}, with their photo and uploaded documents.`}
+          title="Remove driver?"
+          body={`${pending.name} will be removed from the driver list of ${companyNameFor(pending.companyId)}.`}
           note={[
+            modeNote(
+              'Trips and reports from the time they drove keep their name. Their vehicle and Driver ID are freed for someone else.',
+              'This is mock data — nothing is sent to a server.'
+            ),
             pending.vehicleId ? `${vehicleLabel(vehicleById.get(pending.vehicleId))} is left without a driver.` : null,
-            modeNote('This cannot be undone.', 'This is mock data — nothing is sent to a server.'),
+            pending.ibuttonCode ? `Driver ID ${pending.ibuttonCode} becomes unregistered.` : null,
           ].filter(Boolean).join(' ')}
-          confirmLabel="Delete"
+          confirmLabel="Remove"
           onConfirm={confirmDelete}
           onClose={() => setPending(null)}
         />

@@ -4,10 +4,12 @@
  * Every vehicle's trips in the period come from the same engine the reports
  * use (src/utils/usageReports.js deriveTrips), on our own telemetry history
  * when it covers the period and Flespi's otherwise. Each trip is credited to
- * a driver:
- *   1. the driver whose iButton tag was read during it;
+ * a driver, by the history at the trip's start (src/utils/driverHistory.js,
+ * the reports' rule):
+ *   1. whoever held the iButton tag read during it, at that time;
  *   2. else the Temporary assignment covering its start, else the Primary one;
  *   3. else nobody — "driving without identification", listed per vehicle.
+ * A removed driver keeps the trips it drove (client, 2026-11-13).
  *
  * The scores are rules on those numbers, not a trained model: there is no
  * accident history to learn from. Every threshold is here, in one place.
@@ -18,6 +20,7 @@ import * as flespi from './flespi.js'
 import { coverageStart, messagesBetween } from './telemetry.js'
 import { scopedWhere } from './scope.js'
 import { deriveTrips, sumTrips } from '../../../src/utils/usageReports.js'
+import { createDriverHistory, creditAt } from '../../../src/utils/driverHistory.js'
 
 const UAE_OFFSET_SEC = 4 * 3600
 const DAY = 86_400
@@ -65,17 +68,12 @@ async function loadMessages(deviceIds, fromTs, toTs) {
 
 const uaeDay = ts => new Date((ts + UAE_OFFSET_SEC) * 1000).toISOString().slice(0, 10)
 
-/** Which driver a trip belongs to, and how we know. */
+/**
+ * Which driver a trip belongs to, and how we know. `ctx.history` is
+ * createDriverHistory() over the assignment and tag rows.
+ */
 export function creditTrip(trip, vehicleId, ctx) {
-  if (trip.ibutton) {
-    const d = ctx.byTag.get(trip.ibutton)
-    return d ? { driverId: d.id, via: 'tag' } : { driverId: null, via: 'unknown tag', tag: trip.ibutton }
-  }
-  const at = trip.startTs * 1000
-  const covering = (ctx.assignByVehicle.get(vehicleId) ?? [])
-    .filter(a => a.startDate.getTime() <= at && (!a.endDate || a.endDate.getTime() + DAY * 1000 > at))
-  const pick = covering.find(a => a.role === 'Temporary') ?? covering.find(a => a.role === 'Primary')
-  return pick ? { driverId: pick.driverId, via: 'assignment' } : { driverId: null, via: 'none' }
+  return creditAt(ctx.history, { vehicleId, tag: trip.ibutton, ts: trip.startTs })
 }
 
 /**
@@ -205,8 +203,11 @@ export async function computePerformance(scope, fromTs, toTs, { fatigue = FATIGU
   ])
   const vehicleIds = vehicles.map(v => v.id)
   const driverIds = drivers.map(d => d.id)
-  const [assignments, incidents] = await Promise.all([
+  const [assignments, tags, incidents] = await Promise.all([
     prisma.driverAssignment.findMany({ where: { vehicleId: { in: vehicleIds }, startDate: { lte: new Date(toTs * 1000) }, OR: [{ endDate: null }, { endDate: { gte: new Date((fromTs - DAY) * 1000) } }] } }),
+    prisma.driverTagHistory.findMany({
+      where: { driverId: { in: driverIds }, AND: [{ OR: [{ startDate: null }, { startDate: { lte: new Date(toTs * 1000) } }] }, { OR: [{ endDate: null }, { endDate: { gte: new Date(fromTs * 1000) } }] }] },
+    }),
     prisma.driverIncident.findMany({ where: { driverId: { in: driverIds }, date: { gte: new Date(fromTs * 1000), lte: new Date(toTs * 1000) } } }),
   ])
 
@@ -215,14 +216,7 @@ export async function computePerformance(scope, fromTs, toTs, { fatigue = FATIGU
   const tracked = vehicles.map(v => ({ ...v, deviceId: byImei.get(digits(v.imei)) })).filter(v => v.deviceId !== undefined)
   const messages = await loadMessages(tracked.map(v => v.deviceId), fromTs, toTs)
 
-  const ctx = {
-    byTag: new Map(drivers.filter(d => d.ibuttonCode).map(d => [d.ibuttonCode, d])),
-    assignByVehicle: new Map(),
-  }
-  for (const a of assignments) {
-    if (!ctx.assignByVehicle.has(a.vehicleId)) ctx.assignByVehicle.set(a.vehicleId, [])
-    ctx.assignByVehicle.get(a.vehicleId).push(a)
-  }
+  const ctx = { history: createDriverHistory({ assignments, tags }, { tzOffsetSec: UAE_OFFSET_SEC }) }
 
   const tripsByDriver = new Map(driverIds.map(id => [id, []]))
   const vehiclesByDriver = new Map(driverIds.map(id => [id, new Set()]))
@@ -254,12 +248,14 @@ export async function computePerformance(scope, fromTs, toTs, { fatigue = FATIGU
   const incidentsByDriver = new Map()
   for (const i of incidents) incidentsByDriver.set(i.driverId, (incidentsByDriver.get(i.driverId) ?? 0) + 1)
 
-  const rows = drivers.map(d => {
+  // A removed driver is listed only for the trips it drove in the period.
+  const rows = drivers.filter(d => !d.deletedAt || tripsByDriver.get(d.id).length).map(d => {
     const trips = tripsByDriver.get(d.id)
     const t = sumTrips(trips)
     const fat = fatigueOf(trips, fatigue)
     return {
       driverId: d.id, driverNo: d.driverNo, name: d.name, status: d.status, bgId: d.bgId, photoKey: d.photoKey,
+      removed: !!d.deletedAt,
       department: d.department,
       trips: t.trips, distanceKm: t.distanceKm, driveSec: t.driveSec, idleSec: t.idleSec, nightSec: t.nightSec,
       avgSpeed: t.driveSec > 0 ? (t.distanceKm / t.driveSec) * 3600 : 0, maxSpeed: t.maxSpeed,
@@ -271,7 +267,7 @@ export async function computePerformance(scope, fromTs, toTs, { fatigue = FATIGU
       incidents: incidentsByDriver.get(d.id) ?? 0,
       // A suspended driver whose tag was read was driving while off duty.
       suspendedDriving: d.status === 'Suspended' ? viaCount.get(d.id).tag : 0,
-      nextExpiry: nextExpiry(d),
+      nextExpiry: d.deletedAt ? null : nextExpiry(d),
     }
   })
   return { drivers: rows, unidentified }

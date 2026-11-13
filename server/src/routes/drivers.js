@@ -5,6 +5,12 @@
  * vehicle that already has a driver MOVES it: the other driver is unassigned in
  * the same transaction, which is what an operator handing a truck to someone else
  * means, and the answer names who lost it so the form can say so.
+ *
+ * History is kept (client, 2026-11-13: "All the drivers names will stay as it
+ * is"): every change of vehicle opens / closes a DriverAssignment row, every
+ * change of tag a DriverTagHistory row, and removing a driver who has any
+ * history archives it (deletedAt) instead of deleting it. GET /history hands
+ * the reports all three, so a past trip shows who drove it then.
  */
 
 import { Router } from 'express'
@@ -18,8 +24,9 @@ import { randomBytes } from 'node:crypto'
 import { asyncHandler, badRequest, conflict, HttpError, notFound } from '../lib/http.js'
 import { fromBase64, sniffDocument, sniffImage } from '../lib/files.js'
 import { booleanField, optionalDate, optionalEmail, optionalId, optionalText, requiredId, requiredText } from '../lib/fields.js'
-import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
+import { assertCanWrite, assertWritableParent, findScopedOrThrow, isSubUser, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { assignmentSpan } from '../../../src/utils/driverHistory.js'
 
 const router = Router()
 
@@ -98,7 +105,11 @@ const DATE_FIELDS = [
 
 const createSchema = z.object({ bgId: requiredId('Business Group'), ...driverFields })
 const updateSchema = z.object(driverFields)
-const listQuery = z.object({ bgId: z.string().trim().min(1).optional() })
+const listQuery = z.object({
+  bgId: z.string().trim().min(1).optional(),
+  // "1": the removed drivers instead (Settings › Driver, "Show removed drivers").
+  removed: z.enum(['0', '1']).optional(),
+})
 
 const INCLUDE = {
   bg: { select: { id: true, name: true } },
@@ -145,6 +156,42 @@ async function syncPrimary(tx, driverId, vehicleId, previous) {
   }
 }
 
+/**
+ * Keep the tag history in step with Driver.ibuttonCode, inside the save's
+ * transaction: the driver's open row for another code closes, and a row opens
+ * for the new one. A code no driver ever held before starts "since always"
+ * (null): registering an Unregistered Driver ID names the trips already read
+ * with it. A code someone held before starts now, so their trips keep their
+ * name. Any other open row on the code closes too (the unique index means it
+ * can only be stale).
+ */
+export async function syncTag(tx, driverId, code, now = new Date()) {
+  await tx.driverTagHistory.updateMany({
+    where: { driverId, endDate: null, ...(code ? { NOT: { code } } : {}) },
+    data: { endDate: now },
+  })
+  if (!code) return
+  await tx.driverTagHistory.updateMany({ where: { code, endDate: null, NOT: { driverId } }, data: { endDate: now } })
+  const open = await tx.driverTagHistory.findFirst({ where: { driverId, code, endDate: null }, select: { id: true } })
+  if (open) return
+  const known = await tx.driverTagHistory.count({ where: { code } })
+  await tx.driverTagHistory.create({ data: { driverId, code, startDate: known ? now : null } })
+}
+
+/** 409 for a write to a removed driver: it stays on file for history only. */
+function assertLive(driver) {
+  if (driver.deletedAt) throw conflict('This driver was removed. Restore it first to change it.')
+}
+
+/** The driver by id in the caller's scope, refused when removed. */
+async function findLive(id, scope) {
+  const driver = await findScopedOrThrow('driver', id, scope)
+  assertLive(driver)
+  return driver
+}
+
+const actorOf = req => req.user?.shortName || req.user?.email || null
+
 /** 409 when another driver already holds this tag (the unique index is the backstop). */
 async function assertIbuttonFree(code, exceptId = null) {
   if (!code) return
@@ -170,13 +217,71 @@ router.get(
   '/',
   validate(listQuery, 'query'),
   asyncHandler(async (req, res) => {
-    const { bgId } = req.validatedQuery
+    const { bgId, removed } = req.validatedQuery
+    // Removed drivers are kept for history only: not in the list, the pickers or the counts.
     const rows = await prisma.driver.findMany({
-      where: scopedWhere('driver', req.scope, bgId ? { bgId } : null),
+      where: scopedWhere('driver', req.scope, bgId ? { bgId } : null, { deletedAt: removed === '1' ? { not: null } : null }),
       orderBy: { name: 'asc' },
       include: INCLUDE,
     })
     res.json({ data: rows.map(publicDriver) })
+  })
+)
+
+/**
+ * Who drove which vehicle when, for the reports (src/utils/driverHistory.js):
+ * the assignment rows of every vehicle the caller can see, the tag rows of its
+ * drivers, and the drivers those rows name — removed ones included, so their
+ * trips keep their name. ?from=&to= (ISO) narrows to rows overlapping the
+ * period; without them, everything. Before `/:id`.
+ */
+const isoMoment = () => z.string().trim().refine(v => Number.isFinite(Date.parse(v)), 'Use an ISO date and time').optional()
+const historyQuery = z.object({ from: isoMoment(), to: isoMoment() })
+
+router.get(
+  '/history',
+  validate(historyQuery, 'query'),
+  asyncHandler(async (req, res) => {
+    const { from, to } = req.validatedQuery
+    // Rows overlapping the period. A Temporary row's end is a calendar day, so
+    // a day of slack keeps one that ends on `from`; a tag row may have no start.
+    const endsAfter = from ? [{ OR: [{ endDate: null }, { endDate: { gte: new Date(Date.parse(from) - 86_400_000) } }] }] : []
+    const assignmentOverlap = [...(to ? [{ startDate: { lte: new Date(to) } }] : []), ...endsAfter]
+    const tagOverlap = [...(to ? [{ OR: [{ startDate: null }, { startDate: { lte: new Date(to) } }] }] : []), ...endsAfter]
+    const vehicleIds = (await prisma.vehicle.findMany({ where: scopedWhere('vehicle', req.scope), select: { id: true } })).map(v => v.id)
+    // The drivers of the caller's BGs, removed or not, whichever vehicle they hold now.
+    const ofBgs = scopedWhere('driverHistory', req.scope)
+    const assignments = await prisma.driverAssignment.findMany({
+      where: { AND: [{ vehicleId: { in: vehicleIds } }, { driver: ofBgs }, ...assignmentOverlap] },
+      select: { id: true, driverId: true, vehicleId: true, role: true, startDate: true, endDate: true },
+      orderBy: { startDate: 'asc' },
+    })
+    // A sub-user sees the tags of the drivers it can see and of those who drove its vehicles.
+    const tagOwners = isSubUser(req.scope)
+      ? { driverId: { in: [...new Set([
+        ...assignments.map(a => a.driverId),
+        ...(await prisma.driver.findMany({ where: scopedWhere('driver', req.scope), select: { id: true } })).map(d => d.id),
+      ])] } }
+      : { driver: ofBgs }
+    const tags = await prisma.driverTagHistory.findMany({
+      where: { AND: [tagOwners, ...tagOverlap] },
+      select: { id: true, driverId: true, code: true, startDate: true, endDate: true },
+      orderBy: { startDate: 'asc' },
+    })
+    const ids = [...new Set([...assignments.map(a => a.driverId), ...tags.map(t => t.driverId)])]
+    const drivers = ids.length
+      ? await prisma.driver.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, name: true, driverNo: true, employeeId: true, bgId: true, deletedAt: true },
+      })
+      : []
+    res.json({
+      data: {
+        drivers: drivers.map(d => ({ ...d, removed: !!d.deletedAt })),
+        assignments,
+        tags,
+      },
+    })
   })
 )
 
@@ -206,7 +311,8 @@ router.get(
       WHERE "deviceId" IN (${Prisma.join(deviceIds)}) AND ts >= ${since} AND extra->>'ibutton.code' IS NOT NULL
       GROUP BY 1, 2`
 
-    const held = new Set((await prisma.driver.findMany({ where: { ibuttonCode: { not: null } }, select: { ibuttonCode: true } }))
+    // A removed driver's tag was freed with it, so a read of it is unregistered again.
+    const held = new Set((await prisma.driver.findMany({ where: { ibuttonCode: { not: null }, deletedAt: null }, select: { ibuttonCode: true } }))
       .map(d => ibuttonKey(d.ibuttonCode)))
     const byCode = new Map()
     for (const r of rows) {
@@ -265,6 +371,7 @@ router.post(
       if (previous) await tx.driver.update({ where: { id: previous.id }, data: { vehicleId: null } })
       const created = await tx.driver.create({ data: { ...fields, bgId: bg.id }, include: INCLUDE })
       await syncPrimary(tx, created.id, created.vehicleId, previous)
+      await syncTag(tx, created.id, created.ibuttonCode)
       return created
     })
     res.status(201).json({ data: publicDriver(row), movedFrom: previous })
@@ -276,7 +383,7 @@ router.put(
   validate(updateSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const existing = await findLive(req.params.id, req.scope)
     await assertIbuttonFree(req.body.ibuttonCode, existing.id)
     assertAssignable(req.body)
     const { previous } = await resolveVehicle(existing.bgId, req.body.vehicleId, existing.id)
@@ -284,19 +391,69 @@ router.put(
       if (previous) await tx.driver.update({ where: { id: previous.id }, data: { vehicleId: null } })
       const updated = await tx.driver.update({ where: { id: existing.id }, data: req.body, include: INCLUDE })
       await syncPrimary(tx, existing.id, updated.vehicleId, previous)
+      await syncTag(tx, existing.id, updated.ibuttonCode)
       return updated
     })
     res.json({ data: publicDriver(row), movedFrom: previous })
   })
 )
 
+/**
+ * Remove a driver (client, 2026-11-13: "All the drivers names will stay as it
+ * is"). One who ever held a vehicle or a tag, or has alerts or incidents on
+ * record, is archived: its open assignments and tag end now, the vehicle and
+ * the tag are freed for someone else, and the row stays so every trip it drove
+ * keeps its name. One with no history at all (added by mistake, say) is
+ * deleted with its photo, documents and leave.
+ */
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
     const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
-    await prisma.driver.delete({ where: { id: existing.id } })
-    res.json({ data: { id: existing.id } })
+    if (existing.deletedAt) { res.json({ data: { id: existing.id, removed: 'archived' } }); return }
+
+    const [assignments, tags, events, incidents] = await Promise.all([
+      prisma.driverAssignment.count({ where: { driverId: existing.id } }),
+      prisma.driverTagHistory.count({ where: { driverId: existing.id } }),
+      prisma.alertEvent.count({ where: { driverId: existing.id } }),
+      prisma.driverIncident.count({ where: { driverId: existing.id } }),
+    ])
+    if (!assignments && !tags && !events && !incidents && !existing.vehicleId && !existing.ibuttonCode) {
+      await prisma.driver.delete({ where: { id: existing.id } })
+      res.json({ data: { id: existing.id, removed: 'deleted' } })
+      return
+    }
+
+    const now = new Date()
+    const nowSec = Math.floor(now.getTime() / 1000)
+    const temporary = await prisma.driverAssignment.findMany({ where: { driverId: existing.id, role: 'Temporary' } })
+    const span = a => assignmentSpan(a)
+    await prisma.$transaction(async tx => {
+      await tx.driverAssignment.updateMany({ where: { driverId: existing.id, role: 'Primary', endDate: null }, data: { endDate: now } })
+      // Cover that had not begun never happened; cover still running ends now.
+      const unstarted = temporary.filter(a => span(a).from > nowSec).map(a => a.id)
+      const running = temporary.filter(a => span(a).from <= nowSec && span(a).to > nowSec).map(a => a.id)
+      if (unstarted.length) await tx.driverAssignment.deleteMany({ where: { id: { in: unstarted } } })
+      if (running.length) await tx.driverAssignment.updateMany({ where: { id: { in: running } }, data: { endDate: now } })
+      await syncTag(tx, existing.id, null, now)
+      await tx.driver.update({
+        where: { id: existing.id },
+        data: { deletedAt: now, deletedBy: actorOf(req), vehicleId: null, ibuttonCode: null },
+      })
+    })
+    res.json({ data: { id: existing.id, removed: 'archived' } })
+  })
+)
+
+/** Bring a removed driver back to the list — without its old vehicle or tag, which may be someone else's now. */
+router.post(
+  '/:id/restore',
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'driver')
+    const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const row = await prisma.driver.update({ where: { id: existing.id }, data: { deletedAt: null, deletedBy: null }, include: INCLUDE })
+    res.json({ data: publicDriver(row) })
   })
 )
 
@@ -330,7 +487,7 @@ router.post(
   validate(assignmentSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const driver = await findLive(req.params.id, req.scope)
     if (driver.status === 'Suspended') throw badRequest('A suspended driver cannot be given a vehicle', { vehicleId: 'Not for a suspended driver' })
     const vehicle = await prisma.vehicle.findFirst({ where: { id: req.body.vehicleId, bgId: driver.bgId }, select: { id: true } })
     if (!vehicle) throw badRequest('The vehicle must belong to the driver’s own business group', { vehicleId: 'Not in this business group' })
@@ -349,9 +506,11 @@ router.put(
   validate(endSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
-    const a = await prisma.driverAssignment.findFirst({ where: { id: req.params.aid, driverId: driver.id } })
-    if (!a) throw notFound('Assignment')
+    const driver = await findLive(req.params.id, req.scope)
+    // Primary rows follow the Vehicle field: ending one here would leave the
+    // driver holding a vehicle the history says they gave up.
+    const a = await prisma.driverAssignment.findFirst({ where: { id: req.params.aid, driverId: driver.id, role: 'Temporary' } })
+    if (!a) throw notFound('Temporary assignment')
     if (req.body.endDate < a.startDate) throw badRequest('The end date is before the start date', { endDate: 'Before the start' })
     const row = await prisma.driverAssignment.update({ where: { id: a.id }, data: { endDate: req.body.endDate }, include: ASSIGN_INCLUDE })
     res.json({ data: publicAssignment(row) })
@@ -362,7 +521,7 @@ router.delete(
   '/:id/assignments/:aid',
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const driver = await findLive(req.params.id, req.scope)
     const { count } = await prisma.driverAssignment.deleteMany({ where: { id: req.params.aid, driverId: driver.id, role: 'Temporary' } })
     if (!count) throw notFound('Temporary assignment')
     res.json({ data: { id: req.params.aid } })
@@ -397,7 +556,7 @@ router.post(
   validate(incidentSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const driver = await findLive(req.params.id, req.scope)
     if (req.body.vehicleId) {
       const v = await prisma.vehicle.findFirst({ where: { id: req.body.vehicleId, bgId: driver.bgId }, select: { id: true } })
       if (!v) throw badRequest('The vehicle must belong to the driver’s own business group', { vehicleId: 'Not in this business group' })
@@ -411,7 +570,7 @@ router.delete(
   '/:id/incidents/:iid',
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const driver = await findLive(req.params.id, req.scope)
     const { count } = await prisma.driverIncident.deleteMany({ where: { id: req.params.iid, driverId: driver.id } })
     if (!count) throw notFound('Incident')
     res.json({ data: { id: req.params.iid } })
@@ -446,7 +605,7 @@ router.post(
   validate(leaveSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const driver = await findLive(req.params.id, req.scope)
     if (req.body.validTo && req.body.validTo < req.body.validFrom) {
       throw badRequest('The leave ends before it starts', { validTo: 'On or after the From date' })
     }
@@ -459,7 +618,7 @@ router.delete(
   '/:id/leaves/:lid',
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const driver = await findLive(req.params.id, req.scope)
     const { count } = await prisma.driverLeave.deleteMany({ where: { id: req.params.lid, driverId: driver.id } })
     if (!count) throw notFound('Leave')
     res.json({ data: { id: req.params.lid } })
@@ -479,7 +638,7 @@ router.put(
   validate(photoSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const existing = await findLive(req.params.id, req.scope)
     const data = fromBase64(req.body.image)
     const mimeType = sniffImage(data)
     if (!mimeType) throw badRequest('The photo must be a JPEG, PNG or WebP image')
@@ -497,7 +656,7 @@ router.delete(
   '/:id/photo',
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const existing = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const existing = await findLive(req.params.id, req.scope)
     const [, row] = await prisma.$transaction([
       prisma.driverPhoto.deleteMany({ where: { driverId: existing.id } }),
       prisma.driver.update({ where: { id: existing.id }, data: { photoKey: null }, include: INCLUDE }),
@@ -538,7 +697,7 @@ router.post(
   validate(documentSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const driver = await findLive(req.params.id, req.scope)
     const data = fromBase64(req.body.data)
     const mimeType = sniffDocument(data)
     if (!mimeType) throw badRequest('Upload a PDF, JPEG, PNG or WebP file', { data: 'Unsupported file type' })
@@ -569,7 +728,7 @@ router.delete(
   '/:id/documents/:docId',
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'driver')
-    const driver = await findScopedOrThrow('driver', req.params.id, req.scope)
+    const driver = await findLive(req.params.id, req.scope)
     const { count } = await prisma.driverDocument.deleteMany({ where: { id: req.params.docId, driverId: driver.id } })
     if (!count) throw notFound('Document')
     res.json({ data: { id: req.params.docId } })

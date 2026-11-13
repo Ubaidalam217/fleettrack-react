@@ -184,7 +184,8 @@ export default function ViolationOverviewReport(props) {
     const entityOf = e => {
       const v = info.get(Number(e.deviceId))
       if (by === 'vehicle') return { key: `v:${e.deviceId}`, label: v?.label ?? `Device ${e.deviceId}` }
-      return driverIdentity(e.driver) ?? (v ? dims.assignedFor(v.live) : null) ?? NO_DRIVER
+      // The driver the engine recorded, else the one assigned to the vehicle then.
+      return driverIdentity(e.driver) ?? (v ? dims.assignedFor(v.live, Math.floor(Date.parse(e.occurredAt) / 1000)) : null) ?? NO_DRIVER
     }
     const days = periodDays(from, to)
     return {

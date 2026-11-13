@@ -324,6 +324,10 @@ const WHERE_BUILDERS = Object.freeze({
   alert: alertWhere,
   geofence: geofenceWhere,
   driver: driverWhere,
+  // The drivers named in the history of the caller's vehicles (GET
+  // /api/drivers/history): their BG decides, not the vehicle they hold now —
+  // a removed driver holds none, and a sub-user's vehicles had other drivers before.
+  driverHistory: childBgWhere,
   alertEvent: alertEventWhere,
   expense: expenseWhere,
   // A reminder rule is BG-wide like a geofence; its status rows are narrowed to

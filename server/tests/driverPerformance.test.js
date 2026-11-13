@@ -16,6 +16,7 @@ const { createApp } = await import('../src/app.js')
 const { default: prisma } = await import('../src/prisma.js')
 const { clearDeviceCache } = await import('../src/lib/flespi.js')
 const P = await import('../src/lib/driverPerformance.js')
+const { createDriverHistory } = await import('../../src/utils/driverHistory.js')
 import { auth, resetDb, seedFixture } from './factories.js'
 
 const app = createApp()
@@ -110,11 +111,13 @@ describe('rules', () => {
 
   it('credits a trip to the tag holder, else the temporary cover, else the primary driver', () => {
     const ctx = {
-      byTag: new Map([['AAAA', { id: 'tagged' }]]),
-      assignByVehicle: new Map([['v', [
-        { driverId: 'primary', role: 'Primary', startDate: new Date('2026-01-01'), endDate: null },
-        { driverId: 'cover', role: 'Temporary', startDate: new Date('2026-11-04'), endDate: new Date('2026-11-06') },
-      ]]]),
+      history: createDriverHistory({
+        tags: [{ driverId: 'tagged', code: 'AAAA', startDate: null, endDate: null }],
+        assignments: [
+          { driverId: 'primary', vehicleId: 'v', role: 'Primary', startDate: new Date('2026-01-01'), endDate: null },
+          { driverId: 'cover', vehicleId: 'v', role: 'Temporary', startDate: new Date('2026-11-04'), endDate: new Date('2026-11-06') },
+        ],
+      }),
     }
     const at = d => Math.floor(Date.parse(d) / 1000)
     expect(P.creditTrip({ startTs: at('2026-11-05T08:00:00Z'), ibutton: 'AAAA' }, 'v', ctx)).toMatchObject({ driverId: 'tagged', via: 'tag' })

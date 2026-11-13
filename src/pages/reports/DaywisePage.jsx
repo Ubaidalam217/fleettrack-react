@@ -16,7 +16,7 @@ import {
 } from '../../data/settings'
 import {
   loadDaywiseMonth, warmDaywiseMonth, rowsFromDerived,
-  currentUaeMonth, daysInMonth, lastElapsedDay, monthLabel,
+  currentUaeMonth, daysInMonth, lastElapsedDay, monthLabel, uaeDayStart,
   formatHoursMinutes, formatKm, isAbortError,
 } from '../../utils/daywise'
 import { exportDaywiseExcel, exportDaywisePdf, printDaywiseReport } from '../../utils/daywiseExport'
@@ -45,10 +45,11 @@ import { driverFilterLabel, driverPasses, NO_DRIVER } from '../../utils/driverAt
  */
 
 /**
- * The vehicle's driver today, from Settings > Driver (legacy device metadata as
- * the fallback). Narrow on purpose: it is a label beside the vehicle, and every
- * point of width it takes comes out of the 31 day columns in the PDF. It is the
- * CURRENT assignment — nothing on these trackers records who drove a past day.
+ * The drivers assigned to the vehicle during the month, from the recorded
+ * history (client, 2026-11-13: a driver replaced or removed later keeps the
+ * months they drove), today's driver without one. Narrow on purpose: it is a
+ * label beside the vehicle, and every point of width it takes comes out of the
+ * 31 day columns in the PDF.
  */
 const DRIVER_COLUMN = { key: 'driver', label: 'Driver', width: 104, get: r => r.driver || '—' }
 
@@ -167,6 +168,8 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
         label: profile.plateNo || v.master?.plateNo || profile.fleetNo || v.name,
         company: profile.linked ? (profile.bgName || NOT_ASSIGNED) : NOT_ASSIGNED,
         driver: driverNameForDevice(v),
+        // The live vehicle's metadata, for the driver history lookup (useDriverDimension).
+        master: v.master,
       }
     })
     return list.sort((a, b) => a.label.localeCompare(b.label))
@@ -187,8 +190,9 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
   const [search, setSearch] = useState('')
   // Driver filter (client, 2026-11-12). Daywise figures are per vehicle and day
   // (the server's DailyUsage), with no split by who drove, so a driver here is
-  // the vehicle's assigned driver today — no Vehicle / Driver grouping, which
-  // would need every message of the month re-read and attributed.
+  // one assigned to the vehicle during the month (the history) — no Vehicle /
+  // Driver grouping, which would need every message of the month re-read and
+  // attributed.
   const driverDim = useDriverDimension()
   // Report By: Vehicle or Driver. Driver covers every vehicle and keeps the
   // drivers chosen (by assigned driver, see above) — a filter, not a regrouping.
@@ -261,15 +265,25 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
         signal: controller.signal,
         onProgress: p => setProgress(p),
       })
-      const selected = vehicles.filter(v => effectiveIds.includes(v.id))
-      setReport({ ...rowsFromDerived(derived, selected, year, monthNo), capped, printDate: formatPrintDate() })
+      // The month's drivers per vehicle, from the assignment history.
+      const monthFrom = uaeDayStart(year, monthNo, 1)
+      const monthTo = uaeDayStart(year, monthNo, daysInMonth(year, monthNo)) + 86_400
+      const whoById = new Map()
+      const selected = vehicles.filter(v => effectiveIds.includes(v.id)).map(v => {
+        const who = driverDim.assignedDuring(v, monthFrom, monthTo)
+        whoById.set(v.id, who)
+        return { ...v, driver: who.map(w => w.label).join(', ') }
+      })
+      const built = rowsFromDerived(derived, selected, year, monthNo)
+      built.rows = built.rows.map(r => ({ ...r, driverWho: whoById.get(r.deviceId) ?? [] }))
+      setReport({ ...built, capped, printDate: formatPrintDate() })
     } catch (err) {
       if (!isAbortError(err)) setError(err.message || String(err))
     } finally {
       abortRef.current = null
       setProgress(null)
     }
-  }, [effectiveIds, vehicles, year, monthNo])
+  }, [effectiveIds, vehicles, year, monthNo, driverDim])
 
   const cancel = () => abortRef.current?.abort()
 
@@ -300,8 +314,8 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
     }
     if (!allBgs) rows = rows.filter(r => selectedBgs.includes(r.company))
     if (driverFilter) {
-      const byId = new Map((data?.vehicles ?? []).map(v => [v.id, v]))
-      rows = rows.filter(r => driverPasses(driverDim.assignedFor(byId.get(r.deviceId)) ?? NO_DRIVER, driverFilter))
+      // A vehicle stays when any driver it had in the month is chosen.
+      rows = rows.filter(r => (r.driverWho?.length ? r.driverWho : [NO_DRIVER]).some(w => driverPasses(w, driverFilter)))
     }
 
     const dir = sort.dir === 'asc' ? 1 : -1
@@ -310,7 +324,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
       if (key === 'total') return (V.totalOf(a) - V.totalOf(b)) * dir
       return String(a[key] ?? '').localeCompare(String(b[key] ?? '')) * dir
     })
-  }, [report, search, allBgs, selectedBgs, sort, V, driverFilter, driverDim, data])
+  }, [report, search, allBgs, selectedBgs, sort, V, driverFilter])
 
   const onSort = key => {
     setSort(s => (s.key === key

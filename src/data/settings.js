@@ -32,6 +32,7 @@ import * as A from './adapters.js'
 import * as mock from '../pages/settings/mockData'
 import { PHASE, useSession, getToken as getSessionToken } from './session.js'
 import { resetReportLogos } from '../utils/reportLogo.js'
+import { setDriverHistory } from './driverHistory.js'
 
 // ── Pass-through: everything that is pure, or already mode-agnostic ─────────
 // Re-exported by name rather than with `export *` so this list is also the
@@ -121,6 +122,16 @@ const COLLECTIONS = [
   },
 ]
 
+/**
+ * Who drove which vehicle when (data/driverHistory.js), for the reports. Not a
+ * store of rows like the collections above, so loaded beside them; a server
+ * without the endpoint (404) means no history, and the reports fall back to
+ * today's assignment.
+ */
+function fetchDriverHistory() {
+  return get('/api/drivers/history').catch(err => (err?.status === 404 ? null : Promise.reject(err)))
+}
+
 /** One collection's rows; an optional collection's 404 reads as empty. */
 function fetchCollection(c) {
   if (c.fetch) return c.fetch()
@@ -171,8 +182,9 @@ export async function refreshAll() {
   if (!IS_REAL) return
   setStatus({ loading: true, error: null })
   try {
-    const results = await Promise.all(COLLECTIONS.map(fetchCollection))
+    const [results, history] = await Promise.all([Promise.all(COLLECTIONS.map(fetchCollection)), fetchDriverHistory()])
     COLLECTIONS.forEach((c, i) => mock.__replaceStore(c.key, results[i]))
+    setDriverHistory(history)
     setStatus({ loading: false, error: null, loaded: true })
   } catch (err) {
     // The stores keep whatever they already held: a failed refresh should not
@@ -200,6 +212,7 @@ export function useSettingsData() {
     if (!IS_REAL) return
     if (!ready) {
       COLLECTIONS.forEach(c => mock.__replaceStore(c.key, []))
+      setDriverHistory(null)
       setStatus({ loading: false, error: null, loaded: false })
       return
     }
@@ -685,7 +698,24 @@ export async function openDriverDocument(id, docId) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
+/**
+ * Remove a driver. The server keeps one with any history on file (archived) so
+ * its trips keep its name, and frees its vehicle and Driver ID; one with none
+ * is deleted. Resolves to { id, removed: 'archived' | 'deleted' }.
+ */
 export function removeDriver(id) {
   if (!IS_REAL) return done(mock.removeDriver(id))
   return write(() => del(`/api/drivers/${id}`))
+}
+
+/** Removed (archived) drivers, for Settings › Driver's "Show removed drivers"; [] in mock mode. */
+export async function listRemovedDrivers() {
+  if (!IS_REAL) return []
+  const rows = await get('/api/drivers', { removed: '1' })
+  return (rows ?? []).map(r => ({ ...A.driver.toFe(r), deletedAt: r.deletedAt ?? null, deletedBy: r.deletedBy ?? null }))
+}
+
+/** Bring a removed driver back to the list, without its old vehicle or Driver ID. */
+export function restoreDriver(id) {
+  return write(() => post(`/api/drivers/${id}/restore`, {}))
 }

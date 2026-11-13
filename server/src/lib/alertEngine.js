@@ -761,7 +761,8 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
     }),
     alerts.some(a => a.type === 'license_expiry')
       ? prisma.driver.findMany({
-        where: { bgId: { in: bgIds }, status: 'Active', OR: DRIVER_EXPIRIES.map(([f]) => ({ [f]: { not: null } })) },
+        // A removed driver (kept for history only) has no papers to watch.
+        where: { bgId: { in: bgIds }, status: 'Active', deletedAt: null, OR: DRIVER_EXPIRIES.map(([f]) => ({ [f]: { not: null } })) },
         include: { vehicle: { select: { id: true, plateNo: true, fleetNo: true, imei: true } } },
       })
       : [],
@@ -777,7 +778,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
     needsTelemetry ? (pre.deviceByImei ?? flespi.deviceMap()) : new Map(),
     customNames.length ? fetchCustomParams(customNames) : new Map(),
     // Drivers with an iButton tag: the one whose tag is in the reader is the one driving.
-    prisma.driver.findMany({ where: { bgId: { in: bgIds }, ibuttonCode: { not: null } }, select: { id: true, name: true, bgId: true, ibuttonCode: true, status: true } }),
+    prisma.driver.findMany({ where: { bgId: { in: bgIds }, ibuttonCode: { not: null }, deletedAt: null }, select: { id: true, name: true, bgId: true, ibuttonCode: true, status: true } }),
   ])
   const byTag = new Map(tagged.map(d => [d.ibuttonCode, d]))
 

@@ -10,7 +10,8 @@ import LocationMapModal from '../../components/reports/LocationMapModal'
 import TripRouteModal from '../../components/reports/TripRouteModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, ReportByToggle, DriverMultiSelect } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
-import { driverNameForDevice, driverForIbutton, ibuttonKey, useDrivers } from '../../data/settings'
+import { ibuttonKey, useDrivers } from '../../data/settings'
+import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { fetchMovementMessages, formatDateTime, formatDateLabel, formatTime, formatPrintDate, isAbortError } from '../../utils/movementReport'
 import { resolveRowLocations } from '../../utils/reportLocations'
 import { locationUrl } from '../../utils/mapLink'
@@ -647,6 +648,7 @@ function UsageReport({ variant, ...props }) {
   const byDriver = !hasEntity && driverMode
   const [driverSel, setDriverSel] = useState(null) // null = every driver; Driver mode only
   const registeredDrivers = useDrivers()
+  const driverDim = useDriverDimension()
   const file = title === V.title ? V.file : fileNameOf(title)
   const [hiddenCols, setHiddenCols] = useHiddenColumns(`usage-${variant}`, V.defaultHidden)
   const columns = useMemo(
@@ -767,21 +769,26 @@ function UsageReport({ variant, ...props }) {
     if (!raw) return null
     return tripsByVehicle(raw.byDevice, vehicles, { overSpeedKmh: speedNum, xiMinutes: idleNum, tzOffsetSec: -new Date().getTimezoneOffset() * 60 })
       .map(v => {
-        const assigned = driverNameForDevice({ ...v.vehicle, ibutton: null }) || '—'
-        // Each trip's driver is the iButton tag read during it; the assigned driver otherwise.
-        // The Driver ID always shows with a card read during the trip, and a card
-        // nobody holds is an "Unregistered Driver" (client, 2026-11-09).
-        const tagLabel = code => {
+        // Each trip's driver is the iButton tag read during it — whoever held that
+        // tag then — else the driver assigned to the vehicle when it started
+        // (client, 2026-11-13: a driver replaced, re-tagged or removed later
+        // keeps the trips they drove; hooks/useDriverDimension.js). The Driver ID
+        // always shows with a card read during the trip, and a card nobody held
+        // is an "Unregistered Driver" (client, 2026-11-09).
+        const tagLabel = (code, ts) => {
           const key = ibuttonKey(code)
           if (!key) return ''
-          const d = driverForIbutton(key)
+          const d = driverDim.tagHolderAt(key, ts)
           return d ? `${d.name} · ID ${key}` : `Unregistered Driver · ID ${key}`
         }
-        const trips = v.trips.map(t => ({ ...t, driver: tagLabel(t.ibutton) || assigned }))
+        const assignedAt = ts => driverDim.assignedFor(v.vehicle, ts)?.label || '—'
+        const trips = v.trips.map(t => ({ ...t, driver: tagLabel(t.ibutton, t.startTs) || assignedAt(t.startTs) }))
         const names = [...new Set(trips.map(t => t.driver))]
-        return { ...v, trips, driver: names.length === 1 ? names[0] : names.length ? names.join(', ') : assigned }
+        // No trips: whoever was assigned during the period.
+        const period = driverDim.assignedDuring(v.vehicle, raw.applied.fromTs, raw.applied.toTs).map(w => w.label).join(', ') || '—'
+        return { ...v, trips, driver: names.length === 1 ? names[0] : names.length ? names.join(', ') : period }
       })
-  }, [raw, vehicles, speedNum, idleNum])
+  }, [raw, vehicles, speedNum, idleNum, driverDim])
 
   // Drivers to offer: Settings › Driver, plus whoever the trips name that is not
   // one of them (an unregistered tag), and "No driver".
@@ -802,14 +809,15 @@ function UsageReport({ variant, ...props }) {
     if (!vehicleTrips) return null
     const filtered = filterTripsByDriver(vehicleTrips, driverMode ? driverSel : null)
     if (!byDriver) return filtered
-    const byName = new Map((registeredDrivers ?? []).filter(d => d.name).map(d => [d.name, d]))
+    // Removed drivers too: their trips keep their name, and their heading its number.
+    const byName = new Map(driverDim.allDrivers.filter(d => d.name).map(d => [d.name, d]))
     const heading = name => {
       const d = byName.get(name)
       const no = d?.employeeId || (d?.driverNo ? `DRV-${String(d.driverNo).padStart(4, '0')}` : '')
       return no ? `${name} (${no})` : name
     }
     return regroupByDriver(filtered, { heading })
-  }, [vehicleTrips, driverSel, driverMode, byDriver, registeredDrivers])
+  }, [vehicleTrips, driverSel, driverMode, byDriver, driverDim])
 
   const built = useMemo(() => {
     if (!entries) return null

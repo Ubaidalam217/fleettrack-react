@@ -62,7 +62,8 @@ export default function TopDriversPanel() {
       data => {
         if (!live) return
         const rows = (data?.drivers ?? [])
-          .filter(d => d.trips > 0 && d.safetyScore != null)
+          // Removed drivers keep their trips in the reports, not a place in the ranking.
+          .filter(d => !d.removed && d.trips > 0 && d.safetyScore != null)
           .sort((a, b) => b.safetyScore - a.safetyScore || b.distanceKm - a.distanceKm)
           .slice(0, 5)
         setState({ loading: false, error: null, rows })

@@ -196,8 +196,9 @@ export default function HeatMapReport(props) {
     const label = new Map(vehicles.map(v => [v.id, v.label]))
     const liveById = new Map((data?.vehicles ?? []).map(v => [v.id, v]))
     if (raw.view === 'events') {
-      // An event's driver: the one the alert engine recorded, else the vehicle's.
-      const whoOf = e => driverIdentity(e.driver) ?? driverDim.assignedFor(liveById.get(Number(e.deviceId))) ?? NO_DRIVER
+      // An event's driver: the one the alert engine recorded, else the one assigned to the vehicle then.
+      const whoOf = e => driverIdentity(e.driver)
+        ?? driverDim.assignedFor(liveById.get(Number(e.deviceId)), Math.floor(Date.parse(e.occurredAt) / 1000)) ?? NO_DRIVER
       const kept = raw.events.filter(e => types.includes(e.type) && driverPasses(whoOf(e), driverFilter))
       const r = eventCells(kept, { labelOf: e => label.get(Number(e.deviceId)) ?? `Device ${e.deviceId}` })
       return { ...r, amountOf: w => `${w}`, totalText: `${r.total} event${r.total === 1 ? '' : 's'}`, totalWeight: r.total }

@@ -89,7 +89,7 @@ export function violationNames(events, rules, typeLabel, { keepType = null } = {
  * @param {Set<string>|null} [opts.names]  Event names to keep; null = every violation type
  * @param {(type) => boolean} [opts.keepType]  types allowed at all, whatever the names (the Oil & Gas list)
  * @param {(vehicle, messages) => (ts) => {key,label}} [opts.driverAt]
- * @param {(vehicle) => {key,label}|null} [opts.assignedFor]
+ * @param {(vehicle, ts) => {key,label}|null} [opts.assignedFor]  the driver assigned at ts
  * @param {Set|null} [opts.driverFilter]  driver keys to keep (null = all)
  * @param {(vehicle) => string} [opts.siteOf]
  * @param {(who) => string} [opts.departmentOf]  a driver's category ('' = none)
@@ -127,7 +127,7 @@ export function buildViolations(events, byDevice, opts = {}) {
 
     const meta = metaById.get(deviceId)
     const asset = meta?.master?.plateNo || e.vehicle?.plateNo || e.vehicle?.fleetNo || meta?.name || `Device ${deviceId}`
-    const who = driverIdentity(e.driver) ?? timelineOf(deviceId, meta)?.(ep.fromTs) ?? assignedFor?.(meta) ?? NO_DRIVER
+    const who = driverIdentity(e.driver) ?? timelineOf(deviceId, meta)?.(ep.fromTs) ?? assignedFor?.(meta, ep.fromTs) ?? NO_DRIVER
     if (!driverPasses(who, driverFilter)) continue
     const site = siteOf(meta) || ''
 

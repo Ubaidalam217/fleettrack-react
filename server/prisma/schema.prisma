@@ -727,6 +727,15 @@ model Driver {
   mediclaimNo         String?
   mediclaimExpiry     DateTime?
 
+  /// Set when the driver is removed (client, 2026-11-13: "All the drivers names
+  /// will stay as it is"). A driver who ever drove or held a tag is never
+  /// deleted: the row stays so past trips keep their name, with the vehicle and
+  /// the tag freed for someone else. Hidden from the driver list, the pickers
+  /// and the alerts; still read by id for history.
+  deletedAt DateTime?
+  /// Who removed the driver, as a name to show.
+  deletedBy String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -736,6 +745,7 @@ model Driver {
   photo       DriverPhoto?
   documents   DriverDocument[]
   assignments DriverAssignment[]
+  tagHistory  DriverTagHistory[]
   incidents   DriverIncident[]
   leaves      DriverLeave[]
 
@@ -743,9 +753,16 @@ model Driver {
 }
 
 /// Who drove which vehicle when (Driver Management phase 2). The Primary row
-/// mirrors Driver.vehicleId and is opened / closed when that changes;
-/// Temporary rows are dated cover. A trip with no iButton tag is credited to
-/// the Temporary row covering its start, else the Primary one.
+/// mirrors Driver.vehicleId and is opened / closed when that changes (exact
+/// times); Temporary rows are dated cover (whole days). A trip with no iButton
+/// tag is credited to the Temporary row covering its start, else the Primary
+/// one (src/utils/driverHistory.js, shared with the server).
+///
+/// Removing a driver archives it (Driver.deletedAt) and never deletes a driver
+/// with history (routes/drivers.js), so these rows outlive the driver's removal.
+/// The cascade below is only reached when a whole Business Group, Group or GGB
+/// is deleted, which takes its vehicles, accounts and alerts with it; a
+/// Restrict here would make those deletes fail.
 model DriverAssignment {
   id        String    @id @default(cuid())
   driverId  String
@@ -761,6 +778,28 @@ model DriverAssignment {
 
   @@index([driverId])
   @@index([vehicleId])
+}
+
+/// Who held an iButton / driver-ID tag when (client, 2026-11-13): a trip read
+/// with a tag is credited to whoever held that code at the time, not to whoever
+/// holds it now. A row opens when a driver's code is set and closes when it is
+/// changed, cleared or the driver is removed. startDate null means "since
+/// always": the first driver a code is registered to owns its earlier reads,
+/// which is what registering an Unregistered Driver ID is for. Kept like
+/// DriverAssignment: a removed driver is archived, not deleted.
+model DriverTagHistory {
+  id        String    @id @default(cuid())
+  driverId  String
+  /// Upper-case hex, as Driver.ibuttonCode.
+  code      String
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([code])
+  @@index([driverId])
 }
 
 /// An accident or incident on a driver's record (entered by hand).

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { useDrivers, useVehicles, ibuttonKey, driverForVehicleImei } from '../../data/settings'
+import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { fetchTodayMessages } from '../../utils/todayMessages'
 import { tripsByVehicle } from '../../utils/usageReports'
 import { vehiclesDrivenBy } from '../../utils/vehiclesDrivenToday'
@@ -11,7 +12,8 @@ import { vehiclesDrivenBy } from '../../utils/vehiclesDrivenToday'
  * One fleet-wide Flespi read of today (utils/todayMessages.js, shared with the
  * Dashboard), cut into trips the way the Trip reports
  * do it, and each trip given to the driver whose iButton was read in it — or,
- * untagged, to the vehicle's assigned driver (utils/vehiclesDrivenToday.js).
+ * untagged, to the driver assigned to the vehicle when it started
+ * (utils/vehiclesDrivenToday.js, the assignment history).
  * A driver with no iButton can only have driven the vehicles assigned to them,
  * so only those are read.
  */
@@ -26,11 +28,15 @@ export default function VehiclesDrivenToday({ driver }) {
   const { data } = useFlespiData()
   const drivers = useDrivers()
   const settingsVehicles = useVehicles()
+  const driverDim = useDriverDimension()
   const code = ibuttonKey(driver?.ibuttonCode)
 
   // Re-keyed on the vehicle ids, not on each live poll's new array.
   const fleet = data?.vehicles ?? []
-  const assignedTo = v => !!driver && driverForVehicleImei(v.ident)?.id === driver.id
+  // Without a tag, the vehicles assigned to the driver at any time today (history), else now.
+  const dayStart = new Date().setHours(0, 0, 0, 0) / 1000
+  const assignedTo = v => !!driver && (driverForVehicleImei(v.ident)?.id === driver.id
+    || driverDim.assignedDuring(v, dayStart, Date.now() / 1000).some(w => w.key === `d:${driver.id}`))
   const candidates = code ? fleet : fleet.filter(assignedTo)
   const idsKey = candidates.map(v => v.id).sort((a, b) => a - b).join(',')
 
@@ -48,10 +54,12 @@ export default function VehiclesDrivenToday({ driver }) {
   const rows = useMemo(() => {
     if (!state.byDevice || !driver) return []
     const trips = tripsByVehicle(state.byDevice, fleet, { tzOffsetSec: -new Date().getTimezoneOffset() * 60 })
-    return vehiclesDrivenBy(trips, { code, isAssigned: assignedTo })
-  // fleet/assignedTo read the stores below; the ids and the fetched day are what change the answer.
+    // Assigned when the trip started: a vehicle handed over today counts only from then.
+    const assignedAt = (v, ts) => driverDim.assignedFor(v, ts)?.key === `d:${driver.id}`
+    return vehiclesDrivenBy(trips, { code, isAssigned: assignedAt })
+  // fleet reads the stores below; the ids and the fetched day are what change the answer.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.byDevice, driver, code, drivers, settingsVehicles])
+  }, [state.byDevice, driver, code, drivers, settingsVehicles, driverDim])
 
   if (!driver) return <Note>No driver assigned.</Note>
   if (state.loading) return <Note>Loading today’s trips…</Note>

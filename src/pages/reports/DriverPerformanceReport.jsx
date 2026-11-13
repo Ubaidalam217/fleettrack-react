@@ -164,7 +164,8 @@ export default function DriverPerformanceReport(props) {
     key: 'perf', label: `Drivers (${drivers.length})`,
     total: `Total   ·   Trips ${drivers.reduce((n, d) => n + d.trips, 0)}   ·   ${km(drivers.reduce((n, d) => n + d.distanceKm, 0))} km   ·   Driving ${hms(drivers.reduce((n, d) => n + d.driveSec, 0))}`,
     rows: drivers.map(d => ({
-      key: d.driverId, code: driverCode(d), name: d.status === 'Suspended' ? `${d.name} (Suspended)` : d.name,
+      // A removed driver is listed for the trips it drove (client, 2026-11-13).
+      key: d.driverId, code: driverCode(d), name: d.removed ? `${d.name} (Removed)` : d.status === 'Suspended' ? `${d.name} (Suspended)` : d.name,
       trips: d.trips, distance: km(d.distanceKm), drive: hours(d.driveSec), avg: Math.round(d.avgSpeed), max: Math.round(d.maxSpeed),
       os: d.overSpeedCount, hb: d.hbCount, ha: d.haCount, hc: d.hcCount, xi: d.xiCount, night: hours(d.nightSec), incidents: d.incidents,
       vehicles: d.vehicles.join(', ') || '—',
