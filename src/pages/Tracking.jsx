@@ -11,7 +11,10 @@ import VehicleMarker, { VEHICLE_MARKER_CSS } from '../components/tracking/Vehicl
 import VehicleClusterLayer, { VEHICLE_CLUSTER_CSS } from '../components/tracking/VehicleClusterLayer'
 import { useLiveRefreshSec, useThrottledValue, vehiclesGained, liveRefreshTag } from '../data/liveRefresh'
 import ReplayPanel from '../components/tracking/ReplayPanel'
+import ReplayPlayerBar from '../components/tracking/ReplayPlayerBar'
+import ReplayMapLayers, { REPLAY_LAYERS_CSS } from '../components/tracking/ReplayMapLayers'
 import ReplayInfoCard, { REPLAY_INFO_CSS } from '../components/tracking/ReplayInfoCard'
+import { useReplayView } from '../hooks/useReplayView'
 import { DEFAULT_REPLAY_FIELDS } from '../components/tracking/replayFields'
 import VehicleActionMenu from '../components/tracking/VehicleActionMenu'
 import VehicleConsole from '../components/tracking/VehicleConsole'
@@ -27,8 +30,9 @@ import {
   ALL, FILTERS, statusColor, statusLabel,
   filterLabel, filterColor, countByFilter, matchesFilter,
 } from '../utils/vehicleStatus'
-import { fetchDeviceTrack, buildSegments } from '../utils/replay'
-import { tripPoints } from '../utils/replayTrips'
+import { fetchDeviceTrack } from '../utils/replay'
+import { tripPoints, localDay } from '../utils/replayTrips'
+import { indexAtTime } from '../utils/replayTimeline'
 import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/traces'
 import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
 import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, useGroups, driverNameForDevice, driverDisplayForDevice, settingsProfileForImei, vehicleByImei } from '../data/settings'
@@ -144,15 +148,21 @@ function MapLiveView({ trigger }) {
   return null
 }
 
-// Keeps the replay marker on screen and clear of the control dock as the track
+// Keeps the replay marker on screen and clear of the player bar as the track
 // plays.
 //
 // The inset along the bottom is what stops the marker and its info card from
-// ending up underneath the replay dock. Only pans when the marker has actually
+// ending up underneath the player bar. Only pans when the marker has actually
 // left the safe rectangle, so it doesn't drag the map away from a user who
 // panned somewhere deliberately, and never animates — at 10x a smooth pan is
 // still running when the next point arrives.
 const FOLLOW_INSET = { top: 70, right: 60, bottom: 175, left: 60 }
+
+/** Height of the replay player bar over the map's bottom edge, with its margin. */
+function replayBarInset(map, fallback) {
+  const bar = map.getContainer().parentElement?.querySelector('.track-replay-bar')
+  return bar ? bar.offsetHeight + 24 : fallback
+}
 
 function ReplayFollow({ point }) {
   const map = useMap()
@@ -160,6 +170,7 @@ function ReplayFollow({ point }) {
     if (!point) return
     const size = map.getSize()
     const p    = map.latLngToContainerPoint([point.lat, point.lng])
+    const bottom = Math.min(replayBarInset(map, FOLLOW_INSET.bottom) + 20, size.y * 0.6)
 
     // Positive dy pans the view down, which moves the marker up the screen.
     let dx = 0
@@ -167,25 +178,23 @@ function ReplayFollow({ point }) {
     if (p.x < FOLLOW_INSET.left)               dx = p.x - FOLLOW_INSET.left
     else if (p.x > size.x - FOLLOW_INSET.right) dx = p.x - (size.x - FOLLOW_INSET.right)
     if (p.y < FOLLOW_INSET.top)                dy = p.y - FOLLOW_INSET.top
-    else if (p.y > size.y - FOLLOW_INSET.bottom) dy = p.y - (size.y - FOLLOW_INSET.bottom)
+    else if (p.y > size.y - bottom)            dy = p.y - (size.y - bottom)
 
     if (dx || dy) map.panBy([dx, dy], { animate: false })
   }, [point]) // eslint-disable-line react-hooks/exhaustive-deps
   return null
 }
 
-// Frames a replay trip when one is picked in the dock (and the whole range
+// Frames a replay trip when one is picked in the panel (and the whole range
 // when going back to it). `fit.n` is a counter, so picking the same trip again
-// re-frames it. The bottom padding is the dock's live height — the trip list
-// makes it taller than FOLLOW_INSET assumes — capped so a short map can still
-// show the route.
+// re-frames it. The bottom padding is the player bar's live height, capped so
+// a short map can still show the route.
 function ReplayFitBounds({ fit }) {
   const map = useMap()
   useEffect(() => {
     if (!fit?.points?.length) return
-    const dock   = map.getContainer().parentElement?.querySelector('.track-replay-dock')
     const height = map.getSize().y
-    const bottom = Math.min((dock?.offsetHeight ?? 150) + 30, height * 0.55)
+    const bottom = Math.min(replayBarInset(map, 150) + 10, height * 0.55)
     map.fitBounds(
       L.latLngBounds(fit.points.map(p => [p.lat, p.lng])),
       { paddingTopLeft: [50, 60], paddingBottomRight: [50, bottom], maxZoom: 16, animate: true }
@@ -258,6 +267,8 @@ function PopupFit() {
       // squeezed to 150px by the detail sheet, a fixed 50px inset would cost
       // a third of the height the popup has to live in.
       const padTop = Math.min(POPUP_TOGGLE_PX, Math.max(POPUP_FIT_PAD.top, box.height * 0.14))
+      // The replay player bar covers the map's bottom edge while a replay plays.
+      const padBottom = Math.min(replayBarInset(map, POPUP_FIT_PAD.bottom), box.height * 0.5)
 
       // No amount of panning fits a card that is taller than the map, and the
       // sheet can legitimately be dragged until the map is ~120px. Cap the
@@ -265,7 +276,7 @@ function PopupFit() {
       // difference between "mostly visible" and "never cut off".
       const content = el.querySelector('.leaflet-popup-content')
       if (content) {
-        const avail = box.height - padTop - POPUP_FIT_PAD.bottom - POPUP_CHROME_PX
+        const avail = box.height - padTop - padBottom - POPUP_CHROME_PX
         content.style.maxHeight = `${Math.max(POPUP_MIN_PX, avail)}px`
         content.style.overflowY = 'auto'
       }
@@ -279,7 +290,7 @@ function PopupFit() {
       if (r.left < box.left + POPUP_FIT_PAD.left)          dx = r.left - (box.left + POPUP_FIT_PAD.left)
       else if (r.right > box.right - POPUP_FIT_PAD.right)  dx = r.right - (box.right - POPUP_FIT_PAD.right)
       if (r.top < box.top + padTop)                        dy = r.top - (box.top + padTop)
-      else if (r.bottom > box.bottom - POPUP_FIT_PAD.bottom) dy = r.bottom - (box.bottom - POPUP_FIT_PAD.bottom)
+      else if (r.bottom > box.bottom - padBottom)           dy = r.bottom - (box.bottom - padBottom)
 
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return
       map.panBy([dx, dy], { animate: true, duration: 0.3 })
@@ -564,6 +575,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const [replayAllPoints, setReplayAllPoints] = useState([])
   const [replayTrip, setReplayTrip]           = useState(null)
   const [replayFit, setReplayFit]             = useState(null)
+  // Events (approved replay "Option C"): the one whose card is open, and a
+  // request — from the panel or the timeline — to zoom to one and open it.
+  const [replayActiveEvent, setReplayActiveEvent] = useState(null)
+  const [replayFocus, setReplayFocus]             = useState(null)
 
   const setFields = useCallback(next => {
     setReplayFields(next)
@@ -640,6 +655,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     setReplayError(null)
     setReplayTruncated(false)
     setReplayStatus(null)
+    setReplayRange(null)
+    setReplayActiveEvent(null)
+    setReplayFocus(null)
   }, [])
 
   // Leaving replay is this page's "go live" action, and going live re-frames
@@ -706,12 +724,14 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       setReplayTrip(null)
       setReplayIndex(0)
       setReplayPlaying(false)
+      setReplayActiveEvent(null)
       setReplayTruncated(truncated)
       setReplayRange(points.length ? { fromTs, toTs } : null)
       if (points.length === 0) {
         setReplayError('No GPS points in this range.')
       } else {
-        setFlyTarget({ lat: points[0].lat, lng: points[0].lng, n: ++flyCount.current })
+        // Frame the whole route, clear of the player bar.
+        setReplayFit(f => ({ points, n: (f?.n ?? 0) + 1 }))
       }
     } catch (e) {
       setReplayError(e.message)
@@ -724,18 +744,49 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     }
   }, [replayVehicleId])
 
-  // Play one trip (from the dock's list) or, with null, the whole range again —
+  // Play one trip (from the panel's list) or, with null, the whole range again —
   // a slice of what is loaded, then the map is framed on it. Back on the whole
   // range the playhead stays on the point it was on inside the trip.
-  const selectReplayTrip = useCallback((trip) => {
+  //   opts.play  start playing (a trip card plays its trip)
+  //   opts.atTs  put the playhead on this moment instead
+  //   opts.fit   false: leave the map where it is
+  const selectReplayTrip = useCallback((trip, opts = {}) => {
     const pts = trip ? tripPoints(replayAllPoints, trip) : replayAllPoints
     if (!pts.length) return
-    setReplayPlaying(false)
     setReplayPoints(pts)
     setReplayTrip(trip ?? null)
-    setReplayIndex(trip ? 0 : clamp((replayTrip?.fromIdx ?? 0) + replayIndex, 0, pts.length - 1))
-    setReplayFit(f => ({ points: pts, n: (f?.n ?? 0) + 1 }))
+    setReplayIndex(
+      opts.atTs != null ? indexAtTime(pts, opts.atTs)
+        : trip ? 0
+          : clamp((replayTrip?.fromIdx ?? 0) + replayIndex, 0, pts.length - 1)
+    )
+    setReplayPlaying(!!opts.play)
+    if (opts.fit !== false) setReplayFit(f => ({ points: pts, n: (f?.n ?? 0) + 1 }))
   }, [replayAllPoints, replayTrip, replayIndex])
+
+  // An event picked in the panel or on the timeline: pause, zoom to it and
+  // open its card. One outside the trip playing goes back to the whole range
+  // first, so its dot is on the map.
+  const focusReplayEvent = useCallback((e) => {
+    setReplayPlaying(false)
+    const first = replayPoints[0]?.ts
+    const last = replayPoints[replayPoints.length - 1]?.ts
+    if (first == null || e.fromTs < first || e.fromTs > last) selectReplayTrip(null, { fit: false })
+    setReplayActiveEvent(e.id)
+    setReplayFocus(f => ({ id: e.id, n: (f?.n ?? 0) + 1 }))
+  }, [replayPoints, selectReplayTrip])
+
+  // "▶ Play from here" on an event's card.
+  const playReplayFrom = useCallback((e) => {
+    const first = replayPoints[0]?.ts
+    const last = replayPoints[replayPoints.length - 1]?.ts
+    if (first != null && e.fromTs >= first && e.fromTs <= last) {
+      setReplayIndex(indexAtTime(replayPoints, e.fromTs))
+      setReplayPlaying(true)
+    } else {
+      selectReplayTrip(null, { atTs: e.fromTs, play: true, fit: false })
+    }
+  }, [replayPoints, selectReplayTrip])
 
   // Track the viewport so the list toggle can behave differently per breakpoint
   // without a second piece of state to keep in sync.
@@ -1006,27 +1057,21 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     </VehicleMarker>
   )
 
-  // Keyed on the points array only. Rebuilding this inline meant every playback
-  // tick produced new positions arrays for every segment, so react-leaflet
-  // re-ran setLatLngs()/setStyle() on the whole track several times a second.
-  // The track itself never changes during playback. pathOptions is built here
-  // rather than inline in the JSX for the same reason: a fresh object literal
-  // per render is a prop change to react-leaflet and costs a setStyle() call.
-  const replaySegments = useMemo(
-    () => (replayShowing
-      ? buildSegments(replayPoints).map(s => ({
-          ...s,
-          pathOptions: { color: s.color, weight: 4, opacity: 0.85 },
-        }))
-      : []),
-    [replayShowing, replayPoints]
-  )
   const replayPoint = replayShowing ? replayPoints[replayIndex] : null
+  const replayVehicle = replayActive ? vehicles.find(v => v.id === replayVehicleId) ?? null : null
   // The track carries no vehicle type, so the replay marker borrows it from the
   // vehicle whose route is loaded — a bus replaying yesterday is still a bus.
-  const replayVehicleType = replayActive
-    ? vehicles.find(v => v.id === replayVehicleId)?.master?.vehicleType
-    : undefined
+  const replayVehicleType = replayVehicle?.master?.vehicleType
+  // Trips, events, filters, the red-route speed and drivers, shared by the
+  // panel, the map and the player bar.
+  const replayView = useReplayView({
+    deviceId: replayVehicleId,
+    vehicle: replayVehicle,
+    range: replayRange,
+    allPoints: replayAllPoints,
+  })
+  const replayMultiDay = replayAllPoints.length > 0 &&
+    localDay(replayAllPoints[0].ts) !== localDay(replayAllPoints[replayAllPoints.length - 1].ts)
 
   // Follow yields to Replay: while a track is loaded the map is already being
   // driven by ReplayFollow, and two things panning it would fight each other.
@@ -1054,7 +1099,12 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     // On mobile the list covers the map, so get out of the way of the thing
     // the user just asked to look at.
     if (!isDesktop) setListOpen(false)
-    if (startReplay) setReplayVehicleId(v.id)
+    if (startReplay) {
+      setReplayVehicleId(v.id)
+      // The replay panel takes the list's column; on desktop make sure it is
+      // open. On mobile it stays a drawer, so the map is what shows first.
+      if (isDesktop) setListOpen(true)
+    }
   }
 
   // Clicking the already-open row closes its card and the detail sheet with it.
@@ -1139,13 +1189,28 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     vehicleId: replayVehicleId,
     onStop:    exitReplayToLive,
     onLoad:    handleReplayLoad,
-    onPlayToggle:   () => setReplayPlaying(p => !p),
+    // Play at the end starts over rather than doing nothing.
+    onPlayToggle:   () => {
+      if (!replayPlaying && replayIndex >= replayPoints.length - 1) setReplayIndex(0)
+      setReplayPlaying(p => !p)
+    },
     onSeek:         (idx) => { setReplayPlaying(false); setReplayIndex(idx) },
     onSpeedChange:  setReplaySpeed,
     onFieldsChange: setFields,
     trip:         replayTrip,
     allPoints:    replayAllPoints,
-    onSelectTrip: selectReplayTrip,
+    // On mobile the panel is a drawer over the map: get it out of the way of
+    // the trip or event just picked.
+    onSelectTrip: (trip, opts) => {
+      selectReplayTrip(trip, opts)
+      if (!isDesktop) setListOpen(false)
+    },
+    view:           replayView,
+    activeEventId:  replayActiveEvent,
+    onEventClick:   (e) => {
+      focusReplayEvent(e)
+      if (!isDesktop) setListOpen(false)
+    },
   }
 
   // Resolved from the live list rather than captured at open time, so an
@@ -1360,6 +1425,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
         ${VEHICLE_POPUP_CSS}
         ${LIST_CARD_CSS}
         ${REPLAY_INFO_CSS}
+        ${REPLAY_LAYERS_CSS}
 
         /* ── Vehicle list ──
            Mobile: full-height overlay sliding in from the left, above the map.
@@ -1380,6 +1446,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
 
         .track-panel-inner {
           width: 320px;
+          max-width: 100vw;
           height: 100%;
           flex-shrink: 0;
           display: flex;
@@ -1438,6 +1505,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
             transition: width 0.3s ease;
           }
           .track-panel[data-open="true"] { width: 320px; min-width: 320px; }
+          /* The replay panel (approved "Option C") is a little wider than the list. */
+          .track-panel[data-open="true"][data-replay="true"] { width: 340px; min-width: 340px; }
           .track-panel-inner {
             transform: translateX(-100%);
             transition: transform 0.3s ease;
@@ -1527,14 +1596,15 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           color: #fff;
         }
 
-        /* Replay dock — floats over the bottom of the map, above the sheet. */
-        .track-replay-dock {
+        .track-panel[data-replay="true"] .track-panel-inner { width: 340px; }
+
+        /* Replay player — across the bottom of the map, above the sheet. */
+        .track-replay-bar {
           position: absolute;
-          left: 50%;
-          bottom: 14px;
-          transform: translateX(-50%);
+          left: 12px;
+          right: 12px;
+          bottom: 12px;
           z-index: 900;
-          width: min(700px, calc(100% - 24px));
         }
 
         /* ── Detail sheet ──
@@ -1637,7 +1707,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
             )}
 
             {/* ── Left list ── */}
-            <div className="track-panel" data-open={listOpen ? 'true' : 'false'}>
+            <div className="track-panel" data-open={listOpen ? 'true' : 'false'} data-replay={replayActive ? 'true' : 'false'}>
               <div className="track-panel-inner">
                 {/* Mobile-only header with close button */}
                 <div
@@ -1645,7 +1715,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   style={{ borderBottom: '1px solid var(--c-border2)', backgroundColor: 'var(--c-card)', paddingTop: '52px' }}
                 >
                   <span className="text-sm font-semibold" style={{ color: 'var(--c-text1)' }}>
-                    Vehicles ({filtered.length})
+                    {replayActive ? 'Replay' : `Vehicles (${filtered.length})`}
                   </span>
                   <button
                     onClick={() => setListOpen(false)}
@@ -1658,6 +1728,17 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   </button>
                 </div>
 
+                {/* While a replay is open its panel takes this column (approved
+                    "Option C"); "‹ Live Map" in it brings the list back. */}
+                {replayActive ? (
+                  <div style={{ flex: 1, minHeight: 0 }}>
+                    <ReplayPanel
+                      key={replayVehicleId}
+                      replay={replay}
+                      vehicleName={vehicleName(replayVehicle)}
+                    />
+                  </div>
+                ) : (<>
                 {/* Status tabs */}
                 <div style={{
                   display: 'flex',
@@ -1768,6 +1849,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     </>
                   )}
                 </div>
+                </>)}
               </div>
             </div>
 
@@ -1779,7 +1861,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   className="track-toggle"
                   data-hidden={toggleHidden ? 'true' : 'false'}
                   onClick={() => setListOpen(o => !o)}
-                  title={listOpen ? 'Hide vehicle list' : 'Show vehicle list'}
+                  title={replayActive
+                    ? (listOpen ? 'Hide the replay panel' : 'Show the replay panel — trips and events')
+                    : (listOpen ? 'Hide vehicle list' : 'Show vehicle list')}
                 >
                   {listOpen ? (
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
@@ -1792,7 +1876,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       <line x1="3" y1="18" x2="21" y2="18" />
                     </svg>
                   )}
-                  {listOpen ? 'Hide list' : `Vehicles (${filtered.length})`}
+                  {listOpen
+                    ? (replayActive ? 'Hide panel' : 'Hide list')
+                    : (replayActive ? 'Replay' : `Vehicles (${filtered.length})`)}
                 </button>
 
                 <button
@@ -1941,13 +2027,20 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     <FollowVehicle target={followTarget} onManualPan={handleManualPan} />
                   )}
 
-                  {replaySegments.map(seg => (
-                    <Polyline
-                      key={seg.key}
-                      positions={seg.positions}
-                      pathOptions={seg.pathOptions}
+                  {replayShowing && (
+                    <ReplayMapLayers
+                      points={replayPoints}
+                      index={replayIndex}
+                      highlightKmh={replayView.highlightKmh}
+                      events={replayView.shown}
+                      activeEventId={replayActiveEvent}
+                      focus={replayFocus}
+                      multiDay={replayMultiDay}
+                      onActiveEvent={setReplayActiveEvent}
+                      onPlayFrom={playReplayFrom}
+                      eventDriver={replayView.eventDriver}
                     />
-                  ))}
+                  )}
 
                   {replayPoint && <ReplayFollow point={replayPoint} />}
                   {/* After ReplayFollow: framing a picked trip is the last word on
@@ -1963,16 +2056,26 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       heading={replayPoint.heading}
                       zIndexOffset={1000}
                     >
-                      <ReplayInfoCard point={replayPoint} fields={replayFields} />
+                      {/* Folded away while an event's card is open, so the two never overlap. */}
+                      {!replayActiveEvent && <ReplayInfoCard point={replayPoint} fields={replayFields} />}
                     </VehicleMarker>
                   )}
                 </MapContainer>
 
-                {replayActive && (
-                  <div className="track-replay-dock">
-                    <ReplayPanel
-                      replay={replay}
-                      vehicleName={vehicleName(vehicles.find(v => v.id === replayVehicleId))}
+                {replayShowing && (
+                  <div className="track-replay-bar">
+                    <ReplayPlayerBar
+                      points={replayPoints}
+                      index={replayIndex}
+                      playing={replayPlaying}
+                      speed={replaySpeed}
+                      limitKmh={replayView.highlightKmh}
+                      events={replayView.shown}
+                      activeEventId={replayActiveEvent}
+                      onPlayToggle={replay.onPlayToggle}
+                      onSeek={replay.onSeek}
+                      onSpeedChange={setReplaySpeed}
+                      onEventClick={focusReplayEvent}
                     />
                   </div>
                 )}

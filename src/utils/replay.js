@@ -223,8 +223,9 @@ export async function fetchFleetMessages(deviceIds, fromTs, toTs, opts = {}) {
 // The replay also lists its trips (utils/replayTrips.js), measured with the
 // Trip Report's distance rule — which wants the odometer and the fix validity
 // to agree with that report's kilometres. Two small fields; the rest of
-// TRACK_FIELDS' callers do not need them.
-const REPLAY_TRACK_FIELDS = `${TRACK_FIELDS},vehicle.mileage,position.valid`
+// TRACK_FIELDS' callers do not need them. ibutton.code names each trip's
+// driver the way the Trip Report does (utils/driverAtTime.js).
+const REPLAY_TRACK_FIELDS = `${TRACK_FIELDS},vehicle.mileage,position.valid,ibutton.code`
 
 // fromTs/toTs are unix seconds. Returns { points, truncated }; points are
 // sorted ascending by timestamp and filtered to those with a position.
@@ -250,8 +251,9 @@ export async function fetchDeviceTrack(deviceId, fromTs, toTs, onStatus) {
       const mileage  = m['vehicle.mileage'] ?? null
       const valid    = m['position.valid']
       const volt     = m['external.powersource.voltage'] ?? null
+      const ibutton  = typeof m['ibutton.code'] === 'string' ? m['ibutton.code'] : null
 
-      return { lat, lng, speed, heading, ignition, ts, mileage, valid, volt, status: pointStatus(ignition, speed) }
+      return { lat, lng, speed, heading, ignition, ts, mileage, valid, volt, ibutton, status: pointStatus(ignition, speed) }
     })
     .filter(Boolean)
     .sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0))

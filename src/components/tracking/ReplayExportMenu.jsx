@@ -24,9 +24,10 @@ const FORMATS = [
  *
  * `scopeLabel` says what will be exported ("Trip 2", "Whole range"), so the
  * menu never leaves it to guess. `onExport(format)` does the work and may be
- * async; the button shows it is busy until it settles.
+ * async; the button shows it is busy until it settles. `placement` 'down'
+ * opens the menu below the button (the replay panel's header row).
  */
-export default function ReplayExportMenu({ scopeLabel, onExport }) {
+export default function ReplayExportMenu({ scopeLabel, onExport, placement = 'up' }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const wrapRef = useRef(null)
@@ -100,7 +101,8 @@ export default function ReplayExportMenu({ scopeLabel, onExport }) {
           aria-label={`Export ${scopeLabel.toLowerCase()}`}
           onKeyDown={onMenuKey}
           style={{
-            position: 'absolute', bottom: 'calc(100% + 8px)', right: 0, zIndex: 20,
+            position: 'absolute', right: 0, zIndex: 20,
+            ...(placement === 'down' ? { top: 'calc(100% + 6px)' } : { bottom: 'calc(100% + 8px)' }),
             minWidth: 214, padding: '8px 5px 5px',
             borderRadius: 10, border: '1px solid var(--c-border2)',
             background: 'var(--c-card)', boxShadow: '0 10px 32px rgba(0,0,0,0.22)',
