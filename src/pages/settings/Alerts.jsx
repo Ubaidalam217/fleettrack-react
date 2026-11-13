@@ -816,6 +816,9 @@ export default function Alerts(props) {
       // leave a temperature range attached to, say, an over-speed rule.
       if (key === 'type') {
         next.settings = alertTypeOf(value)?.defaults() ?? {}
+        // A type with a severity of its own (Tamper, Panic…) brings it along.
+        const sev = alertTypeOf(value)?.severity
+        if (sev) next.severity = sev
       }
       return next
     })

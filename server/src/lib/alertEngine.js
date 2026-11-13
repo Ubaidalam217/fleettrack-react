@@ -57,6 +57,8 @@ const TELEMETRY_FIELDS = [
   'ble.sensor.humidity.1', 'ble.sensor.battery.voltage.1',
   // The odometer, for distance-based reminders (lib/reminders.js).
   'vehicle.mileage',
+  // The iTriangle's tamper, power and panic flags (client, 2026-11-13).
+  'device.tamper.status', 'external.powersource.status', 'sos.alarm',
 ].join(',')
 
 /** An iButton code as stored on a driver: upper-case hex, '' when no tag is in. */
@@ -94,6 +96,24 @@ export const TYPES = Object.freeze({
   // stop or launch is an event of its own (no cooldown), dated when it began.
   harsh_braking:      { label: 'Harsh Braking',      defaults: { thresholdMs2: HARSH_MS2 } },
   harsh_acceleration: { label: 'Harsh Acceleration', defaults: { thresholdMs2: HARSH_MS2 } },
+  // Client, 2026-11-13: the iTriangle's own events, each with its start, end
+  // and duration. Only a tracker that sends the flag can raise them.
+  //   device.tamper.status         true = tampered, false = over
+  //   external.powersource.status  false = power cut (battery tamper), true = back
+  //   sos.alarm                    true = panic button pressed
+  tamper:         { label: 'Tamper',         defaults: {}, severity: 'High' },
+  battery_tamper: { label: 'Battery Tamper', defaults: {}, severity: 'Critical' },
+  panic:          { label: 'Panic (SOS)',    defaults: {}, severity: 'Critical' },
+})
+
+/** The flag each device event reads, and the value that means "it is happening". */
+const FLAG_EVENTS = Object.freeze({
+  tamper:         { key: 'tamper', field: 'device.tamper.status', active: true,
+    start: 'Device tamper detected' },
+  battery_tamper: { key: 'power', field: 'external.powersource.status', active: false,
+    start: 'Battery tamper: the external power was cut' },
+  panic:          { key: 'sos', field: 'sos.alarm', active: true,
+    start: 'Panic button (SOS) pressed' },
 })
 
 /** The harsh types and which way the speed changes. */
@@ -140,6 +160,28 @@ const OPERATOR_TEXT = { '>': '>', '>=': '≥', '<': '<', '<=': '≤', '=': '=', 
 const shownValue = v => (typeof v === 'number' ? String(+v.toFixed(3)) : String(v))
 
 export const SEVERITIES = ['Low', 'Medium', 'High', 'Critical']
+
+// ── episodes ────────────────────────────────────────────────────────────────
+//
+// A violation that lasts — over speed, idle, a tamper — is one AlertEvent from
+// its start to its end (client, 2026-11-13: From, To, Duration, Max Speed).
+// The rule's state carries the open episode as `ep`:
+//   { at, since, peak }  at    = the pass that raised it (the event's occurredAt)
+//                        since = telemetry time it began; peak = worst reading
+// When it ends, evaluate() returns `end` and the pass fills endedAt /
+// durationSec / peakValue on that event (closeEpisodes below).
+
+function openEpisode(s, now, since, peak = null) {
+  s.ep = { at: now, since, peak: num(peak) }
+}
+function bumpPeak(s, v) {
+  if (s.ep && num(v) !== null && (s.ep.peak === null || v > s.ep.peak)) s.ep = { ...s.ep, peak: v }
+}
+function closeEpisode(s, endTs) {
+  const ep = s.ep
+  delete s.ep
+  return ep ? { at: ep.at, since: ep.since, endTs, peak: ep.peak } : null
+}
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -219,11 +261,20 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
       const limit = num(Number(p.speedKmh))
       if (!fresh || speed === null || limit === null) return none
       if (speed > limit) {
-        if (s.over) return none
+        if (s.over) {
+          bumpPeak(s, speed)
+          return none
+        }
         s.over = true
+        openEpisode(s, now, ts, speed)
         return { state: s, fire: { message: `Over speed: ${Math.round(speed)} km/h (limit ${limit} km/h)`, value: speed } }
       }
-      if (speed < limit - SPEED_HYSTERESIS_KMH) s.over = false
+      if (speed < limit - SPEED_HYSTERESIS_KMH) {
+        const end = s.over ? closeEpisode(s, ts) : null
+        s.over = false
+        return { state: s, fire: null, end }
+      }
+      bumpPeak(s, speed) // still inside the hysteresis band: the same episode
       return none
     }
 
@@ -231,11 +282,12 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
       const minutes = num(Number(p.minutes))
       if (!fresh || minutes === null) return none
       const idling = tel.ignition === true && speed !== null && speed < STILL_KMH
-      if (!idling) return { state: {}, fire: null }
+      if (!idling) return { state: {}, fire: null, end: s.fired ? closeEpisode(s, ts) : null }
       s.since ??= ts
       const idleMin = (now - s.since) / 60
       if (!s.fired && idleMin >= minutes) {
         s.fired = true
+        openEpisode(s, now, s.since) // the idle began at `since`, not when it was noticed
         return { state: s, fire: { message: `Idling with the engine on for ${Math.round(idleMin)} min`, value: Math.round(idleMin) } }
       }
       return none
@@ -276,6 +328,7 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
       const prev = s.zones ?? {}
       const next = {}
       let fire = null
+      const ends = []
       for (const g of fences) {
         const limit = Number(g.speedLimitKmh)
         const grace = Math.max(0, Number(g.speedGraceSec) || 0)
@@ -285,6 +338,7 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
           const z = was ? { ...was, lastTs: ts, peak: Math.max(was.peak, speed) } : { since: ts, lastTs: ts, peak: speed, fired: false }
           if (!z.fired && ts - z.since >= grace && !fire) {
             z.fired = true
+            z.at = now // the pass that raised it: the event's occurredAt, for closing it
             const held = ts - z.since
             fire = {
               message: `Geo Zone speed violation in ${g.name}: ${Math.round(z.peak)} km/h (limit ${limit} km/h${held ? `, over for ${held} s` : ''})`,
@@ -295,19 +349,29 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
         } else if (was) {
           // Still within a few km/h of the limit inside the zone: the same episode.
           if (inside && speed > limit - SPEED_HYSTERESIS_KMH) { next[g.id] = was; continue }
-          // Ended before the grace ran out: recorded, not alerted.
+          // Ended before the grace ran out: recorded, not alerted — already whole.
           if (!was.fired && !fire) {
             const held = Math.max(0, was.lastTs - was.since)
             fire = {
               message: `Over the speed limit in ${g.name} ${held ? `for ${held} s` : 'on one reading'}, within the ${grace} s grace: ${Math.round(was.peak)} km/h (limit ${limit} km/h)`,
               value: was.peak,
               recordOnly: true,
+              episode: { startTs: was.since, endTs: ts, peak: was.peak },
             }
           }
+          // An alerted one ends here.
+          if (was.fired && num(was.at) !== null) ends.push({ at: was.at, since: was.since, endTs: ts, peak: was.peak })
+        }
+      }
+      // A zone that dropped out of the rule (or the vehicle left every zone at
+      // once) ends its episode too.
+      for (const [id, was] of Object.entries(prev)) {
+        if (!(id in next) && !fences.some(g => g.id === id) && was.fired && num(was.at) !== null) {
+          ends.push({ at: was.at, since: was.since, endTs: ts, peak: was.peak })
         }
       }
       s.zones = next
-      return { state: s, fire }
+      return { state: s, fire, end: ends.length ? ends : null }
     }
 
     case 'ignition_on':
@@ -330,8 +394,11 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
       s.off = off
       if (off && !was) {
         const h = Math.floor(silentMin / 60), m = Math.round(silentMin % 60)
+        openEpisode(s, now, ts) // silent since its last message
         return { state: s, fire: { message: `No data from the tracker for ${h ? `${h} h ` : ''}${m} min`, value: Math.round(silentMin) } }
       }
+      // Reporting again: the gap ends at the first new message.
+      if (!off && was) return { state: s, fire: null, end: closeEpisode(s, ts) }
       return { state: s, fire: null }
     }
 
@@ -342,11 +409,20 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
       const out = (min !== null && t < min) || (max !== null && t > max)
       if (out && !s.out) {
         s.out = true
+        openEpisode(s, now, ts, t)
         const why = max !== null && t > max ? `above the maximum ${max} °C` : `below the minimum ${min} °C`
         return { state: s, fire: { message: `Temperature ${t.toFixed(1)} °C, ${why}`, value: t } }
       }
       const back = (min === null || t >= min + 0.5) && (max === null || t <= max - 0.5)
-      if (back) s.out = false
+      if (back && s.out) {
+        s.out = false
+        return { state: s, fire: null, end: closeEpisode(s, ts) }
+      }
+      // The worst reading: the highest when over the maximum, the lowest when under the minimum.
+      if (s.out && s.ep) {
+        const worse = max !== null && t > max ? (s.ep.peak === null || t > s.ep.peak) : (s.ep.peak === null || t < s.ep.peak)
+        if (worse) s.ep = { ...s.ep, peak: t }
+      }
       return { state: s, fire: null }
     }
 
@@ -365,12 +441,18 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
       const driver = tag ? ctx.suspendedByTag?.get(tag) : null
       const active = fresh && !!driver && (tel.ignition === true || (speed ?? 0) > 0)
       if (!active) {
+        const end = s.tag ? closeEpisode(s, ts) : null
         if (s.tag) s.tag = null
-        return { state: s, fire: null }
+        return { state: s, fire: null, end }
       }
-      if (s.tag === tag) return none
+      if (s.tag === tag) {
+        bumpPeak(s, speed)
+        return none
+      }
+      const end = s.tag ? closeEpisode(s, ts) : null // another suspended driver's tag replaced it
       s.tag = tag
-      return { state: s, fire: { message: `Suspended driver ${driver.name} is driving (iButton ${tag})`, value: null } }
+      openEpisode(s, now, ts, speed)
+      return { state: s, fire: { message: `Suspended driver ${driver.name} is driving (iButton ${tag})`, value: null }, end }
     }
 
     case 'custom': {
@@ -381,16 +463,43 @@ export function evaluate(alert, tel, state, now, ctx = {}) {
       if (!reading || pts === null || now - pts > FRESH_SEC) return none
       const met = customMatches(reading.value, p.operator, p.value)
       if (!met) {
-        if (s.met) s.met = false
-        return { state: s, fire: null }
+        if (!s.met) return { state: s, fire: null }
+        s.met = false
+        return { state: s, fire: null, end: closeEpisode(s, pts) }
       }
-      if (s.met) return none
+      if (s.met) {
+        if (typeof reading.value === 'number') bumpPeak(s, reading.value)
+        return none
+      }
       s.met = true
+      openEpisode(s, now, pts, typeof reading.value === 'number' ? reading.value : null)
       const rule = p.operator === 'true' || p.operator === 'false'
         ? `is ${p.operator}`
         : `${OPERATOR_TEXT[p.operator] ?? p.operator} ${p.value}`
       const value = typeof reading.value === 'number' ? reading.value : null
       return { state: s, fire: { message: `${p.parameter} = ${shownValue(reading.value)} (rule: ${rule})`, value } }
+    }
+
+    case 'tamper':
+    case 'battery_tamper':
+    case 'panic': {
+      const f = FLAG_EVENTS[alert.type]
+      const raw = tel?.[f.key]
+      // Only a tracker that sends the flag, and only a current reading.
+      if (!fresh || typeof raw !== 'boolean') return none
+      const active = raw === f.active
+      if (s.on === undefined) {
+        // First sight records a baseline, like every edge rule here.
+        s.on = active
+        return { state: s, fire: null }
+      }
+      if (active === s.on) return none
+      s.on = active
+      if (active) {
+        openEpisode(s, now, ts)
+        return { state: s, fire: { message: f.start, value: null } }
+      }
+      return { state: s, fire: null, end: closeEpisode(s, ts) }
     }
 
     default:
@@ -481,6 +590,11 @@ export async function fetchTelemetry() {
       temperature: liveTemperature(t, t.timestamp?.value ?? (stamps.length ? Math.max(...stamps) : undefined)),
       ibutton: ibuttonKey(t['ibutton.code']?.value),
       mileage: t['vehicle.mileage']?.value ?? null,
+      // The device events (tamper, battery tamper, panic): booleans, or null
+      // from a tracker that does not send them.
+      tamper: typeof t['device.tamper.status']?.value === 'boolean' ? t['device.tamper.status'].value : null,
+      power: typeof t['external.powersource.status']?.value === 'boolean' ? t['external.powersource.status'].value : null,
+      sos: typeof t['sos.alarm']?.value === 'boolean' ? t['sos.alarm'].value : null,
       ts: t.timestamp?.value ?? (stamps.length ? Math.max(...stamps) : null),
     })
   }
@@ -494,7 +608,7 @@ const vehicleName = v => v.plateNo || v.fleetNo || v.imei
  * when it holds that stretch, else one Flespi read for all of them.
  * @returns {Promise<Map<number, object[]>>}
  */
-export async function fetchRecent(deviceIds, fromTs, toTs) {
+export async function fetchRecent(deviceIds, fromTs, toTs, fields = HARSH_FIELDS) {
   const byDevice = new Map(deviceIds.map(id => [id, []]))
   if (!deviceIds.length) return byDevice
   const start = isServing() ? await coverageStart() : null
@@ -502,7 +616,7 @@ export async function fetchRecent(deviceIds, fromTs, toTs) {
   if (start !== null && start <= fromTs) {
     rows = await messagesBetween(deviceIds, fromTs, toTs, { limit: 50_000 })
   } else {
-    const data = encodeURIComponent(JSON.stringify({ from: fromTs, to: toTs, fields: HARSH_FIELDS }))
+    const data = encodeURIComponent(JSON.stringify({ from: fromTs, to: toTs, fields }))
     const res = await flespi.forward(`/gw/devices/${deviceIds.join(',')}/messages?data=${data}`, { timeoutMs: 20_000 })
     if (res.status !== 200) throw new Error(`Flespi messages answered ${res.status}`)
     rows = JSON.parse(res.text).result ?? []
@@ -510,6 +624,117 @@ export async function fetchRecent(deviceIds, fromTs, toTs) {
   for (const m of rows) byDevice.get(m['device.id'])?.push(m)
   for (const list of byDevice.values()) list.sort((a, b) => a.timestamp - b.timestamp)
   return byDevice
+}
+
+// ── closing episodes ────────────────────────────────────────────────────────
+
+/** Fields the exact start / end of an episode is read from. */
+const EPISODE_FIELDS = 'device.id,timestamp,position.speed,engine.ignition.status,device.tamper.status,external.powersource.status,sos.alarm'
+/** An episode longer than this is closed from the passes alone, not re-read. */
+const REFINE_MAX_SEC = 24 * 3600
+/** How far before the pass that noticed it an episode may really have begun. */
+const REFINE_LOOKBACK_SEC = 10 * 60
+
+/**
+ * What decides, per type, that a message belongs to the episode: `has` — the
+ * message carries the reading at all (status packets without speed are
+ * skipped); `on` — it starts / is the episode; `stays` — it keeps it going
+ * (over speed holds inside the 5 km/h hysteresis band); `peak` — the reading
+ * the worst value is taken from.
+ */
+export function episodeRule(alert) {
+  const p = paramsOf(alert)
+  const speedOf = m => num(m['position.speed'])
+  switch (alert.type) {
+    case 'overspeed': {
+      const limit = num(Number(p.speedKmh))
+      if (limit === null) return null
+      return {
+        has: m => speedOf(m) !== null,
+        on: m => speedOf(m) > limit,
+        stays: m => speedOf(m) >= limit - SPEED_HYSTERESIS_KMH,
+        peak: speedOf,
+      }
+    }
+    case 'idle': {
+      const idle = m => m['engine.ignition.status'] === true && speedOf(m) !== null && speedOf(m) < STILL_KMH
+      return { has: m => typeof m['engine.ignition.status'] === 'boolean' && speedOf(m) !== null, on: idle, stays: idle, peak: null }
+    }
+    case 'tamper':
+    case 'battery_tamper':
+    case 'panic': {
+      const f = FLAG_EVENTS[alert.type]
+      const on = m => m[f.field] === f.active
+      return { has: m => typeof m[f.field] === 'boolean', on, stays: on, peak: null }
+    }
+    default:
+      return null
+  }
+}
+
+/**
+ * The exact run of an episode in a device's messages (ascending): from the
+ * first message of the unbroken stretch that holds `since`, to the first
+ * message after it that no longer does. Null when the messages do not show it.
+ *
+ * @returns {{ startTs: number, endTs: number, peak: number|null } | null}
+ */
+export function refineEpisode(msgs, rule, { since, endTs }) {
+  if (!rule) return null
+  const list = (msgs ?? []).filter(m => num(m.timestamp) !== null && rule.has(m))
+  const i = list.findIndex(m => m.timestamp >= since && rule.on(m))
+  if (i < 0) return null
+  // A message just before `since` may already belong to it.
+  let s = i
+  while (s > 0 && rule.on(list[s - 1])) s--
+  let e = i
+  while (e + 1 < list.length && rule.stays(list[e + 1])) e++
+  const after = list[e + 1]
+  const stop = after ? after.timestamp : Math.max(endTs, list[e].timestamp)
+  let peak = null
+  if (rule.peak) {
+    for (let k = s; k <= e; k++) {
+      const v = rule.peak(list[k])
+      if (v !== null && (peak === null || v > peak)) peak = v
+    }
+  }
+  return { startTs: list[s].timestamp, endTs: stop, peak }
+}
+
+/**
+ * Fill each ended episode's event: where it began (occurredAt), where it ended,
+ * how long it lasted and its worst reading. The start and end are read off the
+ * device's messages when they are at hand, else taken from the passes.
+ * Matched by rule, device and the pass that raised it, so an episode whose
+ * event the cooldown suppressed updates nothing.
+ */
+export async function closeEpisodes(closes, now) {
+  if (!closes.length) return
+  const refinable = closes.filter(c => c.deviceId != null && episodeRule(c.alert) && c.endTs - c.since <= REFINE_MAX_SEC)
+  let msgs = new Map()
+  if (refinable.length) {
+    const from = Math.min(...refinable.map(c => c.since)) - REFINE_LOOKBACK_SEC
+    try {
+      msgs = await fetchRecent([...new Set(refinable.map(c => c.deviceId))], from, now, EPISODE_FIELDS)
+    } catch (err) {
+      console.error(`[fleetmax] episode messages read failed: ${err.message}`)
+    }
+  }
+  for (const c of closes) {
+    const exact = refinable.includes(c) ? refineEpisode(msgs.get(c.deviceId), episodeRule(c.alert), c) : null
+    const startTs = exact?.startTs ?? c.since
+    const endTs = Math.max(startTs, exact?.endTs ?? c.endTs)
+    const peak = exact?.peak ?? num(c.peak)
+    await prisma.alertEvent.updateMany({
+      where: { alertId: c.alert.id, deviceId: c.deviceId, occurredAt: new Date(c.at * 1000), endedAt: null },
+      data: {
+        occurredAt: new Date(startTs * 1000),
+        endedAt: new Date(endTs * 1000),
+        durationSec: Math.round(endTs - startTs),
+        peakValue: peak === null ? null : Math.round(peak * 10) / 10,
+      },
+    })
+  }
 }
 
 /**
@@ -559,6 +784,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
   const stateOf = new Map(states.map(r => [`${r.alertId}|${r.subject}`, r.state]))
   const changed = []
   const events = []
+  const closes = []
 
   // Harsh rules read the messages since their last pass: one read for every
   // device they cover, from the oldest place any of them stopped.
@@ -592,12 +818,21 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
     // A within-grace excursion is a record, not an alert: it is stored already
     // read (no bell), never emailed, and does not start the cooldown.
     if (result.fire?.recordOnly) {
-      events.push({ ...event, alertId: alert.id, bgId: alert.bgId, type: alert.type, severity: 'Low', title: `${alert.name} · recorded`, message: result.fire.message, value: result.fire.value ?? null, occurredAt: new Date(now * 1000), readAt: new Date(now * 1000) })
+      const ep = result.fire.episode
+      events.push({
+        ...event, alertId: alert.id, bgId: alert.bgId, type: alert.type, severity: 'Low', title: `${alert.name} · recorded`, message: result.fire.message, value: result.fire.value ?? null,
+        occurredAt: new Date((ep?.startTs ?? now) * 1000), readAt: new Date(now * 1000),
+        ...(ep ? { endedAt: new Date(ep.endTs * 1000), durationSec: Math.round(ep.endTs - ep.startTs), peakValue: num(ep.peak) } : {}),
+      })
     } else if (result.fire && now - last >= COOLDOWN_SEC) {
       next = { ...next, lastFiredAt: now }
       events.push({ ...event, alertId: alert.id, bgId: alert.bgId, type: alert.type, severity: alert.severity, title: alert.name, message: result.fire.message, value: result.fire.value ?? null, occurredAt: new Date(now * 1000) })
     }
     if (JSON.stringify(next) !== JSON.stringify(prev ?? {})) changed.push({ alertId: alert.id, subject, state: next })
+    // Episodes that ended this pass (an over speed back under the limit…).
+    for (const end of [].concat(result.end ?? [])) {
+      if (end && num(end.at) !== null && event.deviceId != null) closes.push({ alert, deviceId: event.deviceId, ...end })
+    }
   }
 
   // Each hard stop or launch since the last pass is its own event, dated when it began.
@@ -697,6 +932,11 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
   if (created.length) emailEvents(created, alerts).catch(err => console.error(`[fleetmax] alert email failed: ${err.message}`))
   // The mobile app's notifications (lib/push.js); never throws.
   if (created.length) pushEvents(created)
+  try {
+    await closeEpisodes(closes, now)
+  } catch (err) {
+    console.error(`[fleetmax] closing alert episodes failed: ${err.message}`)
+  }
   return created
 }
 

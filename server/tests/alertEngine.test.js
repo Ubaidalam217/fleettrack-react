@@ -23,7 +23,7 @@ vi.mock('../src/env.js', async importOriginal => {
 
 const { createApp } = await import('../src/app.js')
 const { default: prisma } = await import('../src/prisma.js')
-const { customMatches, evaluate, evaluateLicence, nightWindow, runAlertPass } = await import('../src/lib/alertEngine.js')
+const { customMatches, evaluate, evaluateLicence, episodeRule, nightWindow, refineEpisode, runAlertPass } = await import('../src/lib/alertEngine.js')
 import { auth, resetDb, seedFixture } from './factories.js'
 import { clearDeviceCache } from '../src/lib/flespi.js'
 
@@ -31,6 +31,8 @@ const app = createApp()
 let fx
 /** deviceId -> telemetry the mocked Flespi answers with. */
 let telemetry = {}
+/** What the mocked Flespi answers a /messages read with. */
+let flespiMessages = []
 
 const NOW = Math.floor(Date.UTC(2026, 9, 30, 10, 0, 0) / 1000) // 14:00 UAE
 
@@ -38,6 +40,7 @@ function installFlespiMock() {
   vi.stubGlobal('fetch', url => {
     const u = String(url)
     const json = body => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
+    if (u.includes('/messages')) return json({ result: flespiMessages })
     if (u.includes('/gw/devices/all/telemetry/')) {
       return json({
         result: Object.entries(telemetry).map(([id, t]) => ({
@@ -60,6 +63,7 @@ beforeEach(async () => {
   fx = await seedFixture()
   clearDeviceCache()
   telemetry = {}
+  flespiMessages = []
   installFlespiMock()
 })
 
@@ -472,5 +476,127 @@ describe('/api/drivers', () => {
     const list = await request(app).get('/api/drivers').set(auth(fx.tokens.subUserA1a))
     expect(list.body.data.map(d => d.name)).toEqual(['On v1'])
     expect((await create(fx.tokens.subUserA1a, { bgId: fx.bgA1a.id, name: 'Nope' })).status).toBe(403)
+  })
+})
+
+// ── episodes: a violation's start, end, duration and worst reading ─────────
+
+describe('violation episodes', () => {
+  it('Over Speed opens an episode, keeps its peak, and returns its end', () => {
+    const a = { type: 'overspeed', params: { speedKmh: 120 } }
+    let r = evaluate(a, tel({ speed: 130, ts: NOW - 30 }), {}, NOW)
+    expect(r.state.ep).toEqual({ at: NOW, since: NOW - 30, peak: 130 })
+    r = evaluate(a, tel({ speed: 141, ts: NOW + 30 }), r.state, NOW + 60)
+    r = evaluate(a, tel({ speed: 118, ts: NOW + 90 }), r.state, NOW + 120) // inside the 5 km/h band: same episode
+    expect(r.end ?? null).toBeNull()
+    r = evaluate(a, tel({ speed: 90, ts: NOW + 150 }), r.state, NOW + 180)
+    expect(r.end).toEqual({ at: NOW, since: NOW - 30, endTs: NOW + 150, peak: 141 })
+    expect(r.state.ep).toBeUndefined()
+  })
+
+  it('Idle closes with the time it began, not when it was noticed', () => {
+    const a = { type: 'idle', params: { minutes: 10 } }
+    let r = evaluate(a, tel({ ts: NOW - 700 }), {}, NOW - 690)
+    r = evaluate(a, tel({ ts: NOW - 10 }), r.state, NOW)
+    expect(r.fire).not.toBeNull()
+    r = evaluate(a, tel({ speed: 30, ts: NOW + 50 }), r.state, NOW + 60)
+    expect(r.end).toEqual({ at: NOW, since: NOW - 700, endTs: NOW + 50, peak: null })
+  })
+
+  it('Tamper / Battery Tamper / Panic: baseline, start, end — only from a tracker that sends the flag', () => {
+    const tamper = { type: 'tamper', params: {} }
+    expect(evaluate(tamper, tel(), {}, NOW).fire).toBeNull() // no flag at all
+    let r = evaluate(tamper, tel({ tamper: false }), {}, NOW)
+    expect(r.fire).toBeNull() // the first sight is the baseline
+    r = evaluate(tamper, tel({ tamper: true, ts: NOW + 50 }), r.state, NOW + 60)
+    expect(r.fire.message).toBe('Device tamper detected')
+    r = evaluate(tamper, tel({ tamper: true, ts: NOW + 110 }), r.state, NOW + 120)
+    expect(r.fire).toBeNull()
+    r = evaluate(tamper, tel({ tamper: false, ts: NOW + 170 }), r.state, NOW + 180)
+    expect(r.end).toEqual({ at: NOW + 60, since: NOW + 50, endTs: NOW + 170, peak: null })
+
+    const battery = { type: 'battery_tamper', params: {} }
+    r = evaluate(battery, tel({ power: true }), {}, NOW)
+    r = evaluate(battery, tel({ power: false, ts: NOW + 50 }), r.state, NOW + 60) // external power cut
+    expect(r.fire.message).toMatch(/Battery tamper/)
+    expect(evaluate(battery, tel({ power: true, ts: NOW + 110 }), r.state, NOW + 120).end).toMatchObject({ since: NOW + 50, endTs: NOW + 110 })
+
+    const panic = { type: 'panic', params: {} }
+    r = evaluate(panic, tel({ sos: false }), {}, NOW)
+    expect(evaluate(panic, tel({ sos: true, ts: NOW + 50 }), r.state, NOW + 60).fire.message).toMatch(/Panic/)
+  })
+
+  it('reads the exact start, end and peak off the messages', () => {
+    const rule = episodeRule({ type: 'overspeed', params: { speedKmh: 80 } })
+    const m = (t, speed) => ({ timestamp: NOW + t, 'position.speed': speed })
+    const msgs = [m(0, 60), m(10, 85), { timestamp: NOW + 15 }, m(20, 94), m(30, 78), m(40, 83), m(50, 70), m(60, 90)]
+    // Noticed by the pass at +20; the stretch began at +10, held through 78
+    // (inside the 5 km/h band) and ended at the first reading under 75.
+    expect(refineEpisode(msgs, rule, { since: NOW + 20, endTs: NOW + 55 })).toEqual({ startTs: NOW + 10, endTs: NOW + 50, peak: 94 })
+
+    const flag = episodeRule({ type: 'battery_tamper', params: {} })
+    const f = (t, v) => ({ timestamp: NOW + t, 'external.powersource.status': v })
+    expect(refineEpisode([f(0, true), f(5, false), f(9, false), f(13, true)], flag, { since: NOW + 9, endTs: NOW + 40 }))
+      .toEqual({ startTs: NOW + 5, endTs: NOW + 13, peak: null })
+    expect(refineEpisode([], rule, { since: NOW, endTs: NOW + 60 })).toBeNull()
+    expect(episodeRule({ type: 'harsh_braking', params: {} })).toBeNull()
+  })
+
+  it('the pass fills endedAt / durationSec / peakValue, and the API returns them', async () => {
+    await overspeedRule(fx.bgA1a.id)
+    const at = (ts, speed) => ({ 'position.speed': speed, 'position.latitude': 24.4, 'position.longitude': 54.4, timestamp: ts })
+    telemetry = { 101: at(NOW - 20, 142) }
+    const [opened] = await runAlertPass(NOW)
+    expect(opened).toMatchObject({ endedAt: null, durationSec: null, peakValue: null })
+    telemetry = { 101: at(NOW + 40, 151) }
+    await runAlertPass(NOW + 60)
+    const open = await request(app).get('/api/alert-events').set(auth(fx.tokens.bgUserA1a))
+    expect(open.body.data[0]).toMatchObject({ endedAt: null, durationSec: null, peakValue: null })
+
+    // Back under the limit; the messages show it began at NOW - 25 and ended at NOW + 95.
+    flespiMessages = [
+      { 'device.id': 101, timestamp: NOW - 40, 'position.speed': 100 },
+      { 'device.id': 101, timestamp: NOW - 25, 'position.speed': 125 },
+      { 'device.id': 101, timestamp: NOW + 40, 'position.speed': 153 },
+      { 'device.id': 101, timestamp: NOW + 95, 'position.speed': 60 },
+    ]
+    telemetry = { 101: at(NOW + 100, 60) }
+    await runAlertPass(NOW + 120)
+    const row = await prisma.alertEvent.findUnique({ where: { id: opened.id } })
+    expect(row.occurredAt.getTime()).toBe((NOW - 25) * 1000)
+    expect(row.endedAt.getTime()).toBe((NOW + 95) * 1000)
+    expect(row).toMatchObject({ durationSec: 120, peakValue: 153 })
+
+    const res = await request(app).get('/api/alert-events').set(auth(fx.tokens.bgUserA1a))
+    expect(res.body.data[0]).toMatchObject({ durationSec: 120, peakValue: 153, endedAt: new Date((NOW + 95) * 1000).toISOString() })
+  })
+
+  it('closes from the passes alone when the messages do not show it', async () => {
+    await prisma.alert.create({ data: { name: 'Battery cut', type: 'battery_tamper', bgId: fx.bgA1a.id, severity: 'Critical', params: {}, allVehicles: true } })
+    telemetry = { 101: { 'external.powersource.status': true, timestamp: NOW - 20 } }
+    expect(await runAlertPass(NOW)).toHaveLength(0) // baseline
+    telemetry = { 101: { 'external.powersource.status': false, timestamp: NOW + 40 } }
+    const [cut] = await runAlertPass(NOW + 60)
+    expect(cut).toMatchObject({ type: 'battery_tamper', severity: 'Critical', title: 'Battery cut' })
+    telemetry = { 101: { 'external.powersource.status': true, timestamp: NOW + 400 } }
+    await runAlertPass(NOW + 420)
+    const row = await prisma.alertEvent.findUnique({ where: { id: cut.id } })
+    expect(row.occurredAt.getTime()).toBe((NOW + 40) * 1000)
+    expect(row).toMatchObject({ durationSec: 360, peakValue: null })
+  })
+
+  it('a tracker without the flag never raises Tamper', async () => {
+    await prisma.alert.create({ data: { name: 'Tamper', type: 'tamper', bgId: fx.bgA1a.id, severity: 'High', params: {}, allVehicles: true } })
+    telemetry = { 101: { 'position.speed': 40, timestamp: NOW - 20 } }
+    expect(await runAlertPass(NOW)).toHaveLength(0)
+    telemetry = { 101: { 'position.speed': 40, timestamp: NOW + 40 } }
+    expect(await runAlertPass(NOW + 60)).toHaveLength(0)
+  })
+
+  it('accepts the three new types on a rule', async () => {
+    for (const type of ['tamper', 'battery_tamper', 'panic']) {
+      const res = await request(app).post('/api/alerts').set(auth(fx.tokens.bgUserA1a)).send({ bgId: fx.bgA1a.id, allVehicles: true, name: type, type, severity: 'High' })
+      expect(res.status).toBe(201)
+    }
   })
 })

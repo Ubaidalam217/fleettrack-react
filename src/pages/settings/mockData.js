@@ -169,6 +169,29 @@ export const ALERT_TYPES = [
     hint: 'Raised each time a vehicle speeds up harder than the threshold.',
     defaults: () => ({ thresholdMs2: '3.5' }),
   },
+  // Client, 2026-11-13: the iTriangle's own events. Each is recorded with its
+  // start, end and duration; only a tracker that sends the flag can raise it.
+  {
+    value: 'tamper',
+    label: 'Tamper',
+    hint: 'Raised when the tracker reports it is being tampered with (device.tamper.status), and closed with its duration when that ends.',
+    defaults: () => ({}),
+    severity: 'High',
+  },
+  {
+    value: 'battery_tamper',
+    label: 'Battery Tamper',
+    hint: 'Raised when the tracker loses the vehicle’s power (external.powersource.status off), and closed with its duration when power is back.',
+    defaults: () => ({}),
+    severity: 'Critical',
+  },
+  {
+    value: 'panic',
+    label: 'Panic (SOS)',
+    hint: 'Raised when the driver presses the panic button (sos.alarm), and closed with its duration when it is released.',
+    defaults: () => ({}),
+    severity: 'Critical',
+  },
 ]
 
 /**

@@ -76,6 +76,26 @@ export function useAlertEvents() {
 
 const byNewest = (a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)
 
+const finite = v => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+
+/**
+ * An event with its episode fields always present (server 2026-11-13): a
+ * violation that lasts — over speed, idle, tamper, battery tamper, panic… —
+ * gets, once it has ended,
+ *   endedAt      ISO string, null while it goes on and for instant events
+ *   durationSec  seconds from occurredAt (moved to where it began) to endedAt
+ *   peakValue    the worst reading, e.g. the peak speed in km/h
+ * An older server sends none of them; they read as null.
+ */
+export function withEpisode(e) {
+  return {
+    ...e,
+    endedAt: typeof e?.endedAt === 'string' ? e.endedAt : null,
+    durationSec: finite(e?.durationSec),
+    peakValue: finite(e?.peakValue),
+  }
+}
+
 /**
  * Desktop notifications for events this tab has not seen before.
  *
@@ -114,7 +134,7 @@ export async function refreshAlertEvents() {
     // unwrap: false â€” `unreadCount` rides beside `data`.
     const payload = await request('/api/alert-events', { query: { limit: PAGE_SIZE }, unwrap: false })
     if (gen !== generation) return
-    const fresh = Array.isArray(payload?.data) ? payload.data : []
+    const fresh = Array.isArray(payload?.data) ? payload.data.map(withEpisode) : []
     const oldest = fresh.length ? Date.parse(fresh[fresh.length - 1].occurredAt) : Infinity
     // Older pages already loaded with "Load more" survive the refresh.
     const kept = fresh.length === PAGE_SIZE
@@ -145,7 +165,7 @@ export async function loadOlderAlertEvents() {
   try {
     const older = await request('/api/alert-events', { query: { limit: PAGE_SIZE, before } })
     if (gen !== generation) return setState({ loadingMore: false })
-    const list = Array.isArray(older) ? older : []
+    const list = Array.isArray(older) ? older.map(withEpisode) : []
     const have = new Set(state.events.map(e => e.id))
     list.forEach(e => seen.add(e.id))
     setState({
@@ -265,6 +285,7 @@ export async function fetchAlertEventsInRange({ fromTs, toTs, deviceIds }) {
   }
   const wanted = new Set(deviceIds.map(Number))
   const events = (Array.isArray(rows) ? rows : [])
+    .map(withEpisode)
     .filter(e => {
       const t = Date.parse(e.occurredAt) / 1000
       return t >= fromTs && t <= toTs && wanted.has(Number(e.deviceId))

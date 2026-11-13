@@ -101,6 +101,12 @@ describe('POST /api/ingest/flespi', () => {
     expect(latest.extra).toEqual({ 'ibutton.code': '94000001D9DF0801' })
   })
 
+  it('keeps an extra a message leaves out next to the extras it carries (tamper flag)', async () => {
+    await post([msg({ timestamp: NOW - 20, 'device.tamper.status': true, 'sos.alarm': false })])
+    await post([msg({ timestamp: NOW - 10, 'external.powersource.status': true })])
+    expect(T.getLatest(101).extra).toMatchObject({ 'device.tamper.status': true, 'sos.alarm': false, 'external.powersource.status': true })
+  })
+
   it('accepts 5,000 vehicles in one batch', async () => {
     const big = Array.from({ length: 5000 }, (_, i) => msg({ 'device.id': 1000 + i }))
     const res = await post(big)

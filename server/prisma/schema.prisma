@@ -612,6 +612,14 @@ model AlertEvent {
   lat      Float?
   lng      Float?
 
+  /// The end of a violation that lasts (over speed, idle, tamper…), filled by
+  /// the engine when it ends; null while it goes on and for instant events.
+  /// occurredAt is then moved to where it really began.
+  endedAt     DateTime?
+  durationSec Int?
+  /// The worst reading during it: peak speed (km/h) for the speed types.
+  peakValue   Float?
+
   occurredAt DateTime  @default(now())
   /// Shared, not per user: "read" means someone in the BG has seen it.
   readAt     DateTime?

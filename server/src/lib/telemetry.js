@@ -61,6 +61,10 @@ export const EXTRA_FIELDS = Object.freeze([
   // usageReports.js parkedEngineOff / ignitionGlitches, 2026-11-12). Without it
   // here the reports, answered from this copy, never saw a voltage.
   'external.powersource.voltage',
+  // The iTriangle's tamper and panic flags (alert types tamper / panic,
+  // client 2026-11-13); external.powersource.status above is its battery tamper.
+  'device.tamper.status',
+  'sos.alarm',
 ])
 
 /**
@@ -172,7 +176,12 @@ export function ingest(messages) {
           if (merged[col] === null && !SENSOR_COLUMNS.has(col)) merged[col] = prev[col]
         }
         if (!merged.ident) merged.ident = prev.ident
-        if (!merged.extra && prev.extra) merged.extra = withoutSensors(prev.extra)
+        // Field by field: a message carrying some extras but not, say, the
+        // tamper flag keeps the flag's last value (sensors are not carried).
+        if (prev.extra) {
+          const kept = withoutSensors(prev.extra)
+          if (kept) merged.extra = { ...kept, ...(merged.extra ?? {}) }
+        }
       }
       latest.set(row.deviceId, merged)
       dirty.add(row.deviceId)
