@@ -1,49 +1,24 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef } from 'react'
+import { useMap } from 'react-leaflet'
+import L from 'leaflet'
 import HeatLayer from '../reports/HeatLayer'
-import { fetchTodayMessages } from '../../utils/todayMessages'
-import { presenceCells } from '../../utils/heatmap'
 
 /**
- * The Live Map's "Heat map" toggle (client, 2026-11-12): where the vehicles in
- * the list have been today, as the Heat Map report draws it — engine-on time
- * per place, blue (little) to red (most).
+ * The Live Map's heat map layer: the cells hooks/useLiveHeat.js worked out,
+ * drawn as the Heat Map report draws them — blue (little) to red (most).
  *
- * Reads the shared today messages (utils/todayMessages.js — one fleet-wide read,
- * cached five minutes), so turning it on adds no Flespi request of its own
- * beyond that, and re-reads only when the cache runs out.
+ * fitTick: each bump frames the map on the heat ("Zoom to heat" in the legend).
  */
-const REFRESH_MS = 5 * 60 * 1000
-
-export default function LiveHeatLayer({ ids, onStatus }) {
-  const key = [...ids].sort((a, b) => a - b).join(',')
-  const [byVehicle, setByVehicle] = useState(null)
-  const [tick, setTick] = useState(0)
+export default function LiveHeatLayer({ points, fitTick = 0 }) {
+  const map = useMap()
+  const latest = useRef(points)
+  useEffect(() => { latest.current = points }, [points])
 
   useEffect(() => {
-    const t = setInterval(() => setTick(n => n + 1), REFRESH_MS)
-    return () => clearInterval(t)
-  }, [])
-
-  useEffect(() => {
-    if (!key) { setByVehicle(new Map()); return }
-    let live = true
-    onStatus?.('loading')
-    fetchTodayMessages(key.split(',').map(Number))
-      .then(byDevice => {
-        if (!live) return
-        setByVehicle(new Map([...byDevice].map(([id, e]) => [id, e.messages ?? []])))
-        onStatus?.('ready')
-      })
-      .catch(() => { if (live) onStatus?.('error') })
-    return () => { live = false }
-  // onStatus is a state setter from the page; tick re-reads after the cache expires.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, tick])
-
-  const points = useMemo(() => {
-    if (!byVehicle) return []
-    return presenceCells(byVehicle, { mode: 'engine' }).cells.map(c => ({ lat: c.lat, lng: c.lng, weight: c.weight }))
-  }, [byVehicle])
+    const pts = latest.current
+    if (!fitTick || !pts?.length) return
+    map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lng])), { padding: [40, 40], maxZoom: 15 })
+  }, [fitTick, map])
 
   return <HeatLayer points={points} />
 }

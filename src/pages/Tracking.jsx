@@ -40,6 +40,8 @@ import { useSession } from '../data/session'
 import { IS_REAL } from '../data/mode'
 import FleetTreeHeader, { GroupsToggle } from '../components/tracking/FleetTreeHeader'
 import LiveHeatLayer from '../components/tracking/LiveHeatLayer'
+import HeatMapControls from '../components/tracking/HeatMapControls'
+import { useLiveHeat } from '../hooks/useLiveHeat'
 import { buildFleetTree, levelsForRole, placeVehicle, vehicleIdsOf } from '../utils/fleetTree'
 import { FilterToggle, FilterPanel } from '../components/tracking/LiveMapFilters'
 import { EMPTY_FILTERS, vehicleAttributes, matchesAttributes, filterOptions } from '../utils/liveMapFilters'
@@ -462,19 +464,6 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     try { localStorage.setItem(clusterKey, on ? '0' : '1') } catch { /* private window */ }
     return !on
   })
-  // Heat map of where the listed vehicles have been today (client, 2026-11-12):
-  // off unless this user turned it on in this browser.
-  const heatKey = `fm.liveMap.heat.${me?.id ?? 'demo'}`
-  const [heatOn, setHeatOn] = useState(() => {
-    try { return localStorage.getItem(heatKey) === '1' } catch { return false }
-  })
-  const [heatStatus, setHeatStatus] = useState(null)
-  const toggleHeat = () => setHeatOn(on => {
-    try { localStorage.setItem(heatKey, on ? '0' : '1') } catch { /* private window */ }
-    if (on) setHeatStatus(null)
-    return !on
-  })
-
   // Live vehicle data, shared MQTT session, no REST polling. The map and shell
   // render immediately — nothing here gates the UI. Vehicles appear as MQTT
   // messages arrive; the hook's background REST bootstrap only fills in names
@@ -1023,6 +1012,16 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     return () => { ro.disconnect(); clearTimeout(settle) }
   }, [focusId])
 
+  // Heat map (client, 2026-11-12/13; hooks/useLiveHeat.js): the listed
+  // vehicles, a custom pick or the selected one. While it is narrowed to some
+  // vehicles, the others leave the map.
+  const heat = useLiveHeat({
+    userId: me?.id ?? 'demo',
+    fleet: vehicles,
+    listed: filtered.filter(v => !hiddenIds.has(v.id)),
+    focusId,
+  })
+
   // While a vehicle's route is loaded, its live marker is replaced by the
   // replay marker below so there's only ever one car for that vehicle.
   const replayActive  = replayVehicleId != null
@@ -1031,6 +1030,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     .filter(v => v.lat != null && v.lng != null)
     .filter(v => !hiddenIds.has(v.id))
     .filter(v => !(replayShowing && v.id === replayVehicleId))
+    .filter(v => heat.showsMarker(v.id))
   // Never inside a cluster bubble: the selected vehicle and the followed one.
   const pinnedIds = new Set([focusId, followId].filter(id => id != null))
 
@@ -1911,19 +1911,13 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   Clusters
                 </button>
 
-                <button
-                  type="button"
-                  className="track-geofence-toggle is-heat"
-                  data-on={heatOn ? 'true' : 'false'}
-                  onClick={toggleHeat}
-                  title={heatOn ? 'Hide the heat map' : 'Show where the listed vehicles have been today'}
-                  aria-pressed={heatOn}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-                  </svg>
-                  {heatOn && heatStatus === 'loading' ? 'Heat map…' : heatOn && heatStatus === 'error' ? 'Heat map ⚠' : 'Heat map'}
-                </button>
+                {/* The Heat map button, its options and its legend. */}
+                <HeatMapControls
+                  heat={heat}
+                  fleet={vehicles}
+                  onShowAll={() => { setFocusId(null); clearReplay() }}
+                  raised={replayShowing}
+                />
 
                 {/* Status banner — live connection errors only. Non-blocking:
                     the map stays interactive underneath. */}
@@ -1999,7 +1993,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     return null
                   })}
 
-                  {heatOn && <LiveHeatLayer ids={filtered.map(v => v.id)} onStatus={setHeatStatus} />}
+                  {heat.on && <LiveHeatLayer points={heat.result?.cells ?? []} fitTick={heat.fitTick} />}
 
                   {clusterOn ? (
                     <>
