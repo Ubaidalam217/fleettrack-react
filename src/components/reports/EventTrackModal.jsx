@@ -103,7 +103,11 @@ export default function EventTrackModal({ event, onClose }) {
 
   const view = useMemo(() => {
     if (!event) return null
-    const span = violationSpan(event, state.messages)
+    // The span the report already worked out (or the engine stored) wins, so
+    // the dialog's "Lasted" agrees with the report's Duration.
+    const endTs = event.endedAt ? Math.round(Date.parse(event.endedAt) / 1000) : null
+    const stored = Number.isFinite(endTs) && endTs > event.ts ? { startTs: event.ts, endTs } : null
+    const span = event.span ?? stored ?? violationSpan(event, state.messages)
     const inSpan = state.messages.filter(m => m.timestamp >= span.startTs && m.timestamp <= span.endTs)
     const around = state.messages.filter(m => m.timestamp >= span.startTs - CONTEXT_SEC && m.timestamp <= span.endTs + CONTEXT_SEC)
     const red = inSpan.map(pos).filter(Boolean)
