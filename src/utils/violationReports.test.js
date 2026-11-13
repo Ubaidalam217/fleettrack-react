@@ -4,6 +4,7 @@ import {
   hhmmss, ctrackDate, ctrackTime, isViolationType, UNCATEGORIZED,
 } from './violationReports'
 import { NO_DRIVER } from './driverAtTime'
+import { isOilGasViolation } from './oilGasViolations'
 
 const at = (day, hms) => new Date(`2026-11-${day}T${hms}`) // local time, as the report groups days
 const iso = (day, hms) => at(day, hms).toISOString()
@@ -57,6 +58,17 @@ describe('violationReports', () => {
     expect(names.find(n => n.name === 'Gate').byDefault).toBe(false)
     expect(isViolationType('ignition_on')).toBe(false)
     expect(isViolationType('harsh_braking')).toBe(true)
+  })
+
+  it('Oil & Gas: offers and builds only its violation types, whatever names are picked', () => {
+    const withTemp = [...events, ev('t', { occurredAt: iso('02', '11:00:00'), alertId: null, type: 'temperature', title: 'Reefer temp' })]
+    const names = violationNames(withTemp, rules, t => t, { keepType: isOilGasViolation })
+    expect(names.map(n => n.name)).toEqual(['Adnoc-over-speed', 'Adnoc-over-speed-alarm'])
+    expect(names.every(n => n.byDefault)).toBe(true)
+    expect(buildViolations(withTemp, null, { ...opts, keepType: isOilGasViolation }).map(v => v.key)).toEqual(['a', 'b', 'c', 'd'])
+    // Ticking a left-out name by hand does not bring it back.
+    const picked = buildViolations(withTemp, null, { ...opts, keepType: isOilGasViolation, names: new Set(['Gate', 'Reefer temp', 'Adnoc-over-speed']) })
+    expect(picked.map(v => v.key)).toEqual(['b'])
   })
 
   it('builds one violation per event with its driver, site, asset and category', () => {

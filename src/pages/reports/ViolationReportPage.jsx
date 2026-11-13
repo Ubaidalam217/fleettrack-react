@@ -18,6 +18,7 @@ import { locationUrl } from '../../utils/mapLink'
 import { pointInGeofence } from '../../utils/geoZoneEngine'
 import { exportCtrackPdf, exportCtrackExcel } from '../../utils/ctrackExport'
 import { driverFilterLabel } from '../../utils/driverAtTime'
+import { isOilGasViolation } from '../../utils/oilGasViolations'
 import {
   buildViolations, violationNames, detailDays, summaryDays, statisticsDays, violationTotals,
   ctrackTime, ctrackDateTime, hhmmss,
@@ -154,7 +155,7 @@ function detailRow(v) {
     lat: v.lat, lng: v.lng,
     mapUrl: locationUrl({ lat: v.lat, lng: v.lng, vehicle: v.asset, time: ctrackDateTime(v.fromTs), address: location }),
     // For the map dialog (EventTrackModal).
-    deviceId: v.deviceId, type: v.type, ts: v.fromTs, toTs: v.toTs, value: v.value, message: v.message, severity: v.severity,
+    deviceId: v.deviceId, type: v.type, ts: v.fromTs, toTs: v.toTs, speedKph: v.speed, value: v.value, message: v.message, severity: v.severity,
   }
 }
 
@@ -271,8 +272,9 @@ export default function ViolationReportPage({ variant = 'details', ...props }) {
       : effectiveIds.length === 1 ? (vehicleName(vehicles.find(v => v.id === effectiveIds[0]) ?? {}) || '1 vehicle')
         : `${effectiveIds.length} vehicles`
 
-  // The Violations filter: the account's rules and whatever names the events carry.
-  const nameOptions = useMemo(() => violationNames(raw?.events ?? [], rules, alertTypeLabel), [raw, rules])
+  // The Violations filter: the account's rules and whatever names the events
+  // carry, of the Oil & Gas types only (these four are Oil & Gas reports).
+  const nameOptions = useMemo(() => violationNames(raw?.events ?? [], rules, alertTypeLabel, { keepType: isOilGasViolation }), [raw, rules])
   const defaultNames = useMemo(() => new Set(nameOptions.filter(n => n.byDefault).map(n => n.name)), [nameOptions])
   const picked = names ?? defaultNames
   const namesLabel = !names ? 'All violations' : names.size === 0 ? 'None' : names.size === 1 ? [...names][0] : `${names.size} selected`
@@ -307,8 +309,11 @@ export default function ViolationReportPage({ variant = 'details', ...props }) {
     setProgress({ text: 'Loading violations...' })
     const applied = { fromTs, toTs, selectionLabel, reportBy, printDate: ctrackDateTime(Math.floor(Date.now() / 1000)) }
     try {
-      const { events, truncated } = await fetchAlertEventsInRange({ fromTs, toTs, deviceIds: effectiveIds })
+      const fetched = await fetchAlertEventsInRange({ fromTs, toTs, deviceIds: effectiveIds })
       if (controller.signal.aborted) return
+      const { truncated } = fetched
+      // Oil & Gas violations only: no temperature, licence, ignition, geo zone enter / exit…
+      const events = fetched.events.filter(e => isOilGasViolation(e.type))
       // Tracking only for the vehicles that had an alert: one fleet read per day.
       const withAlerts = [...new Set(events.map(e => e.deviceId).filter(id => id != null))]
       let byDevice = null
@@ -347,7 +352,7 @@ export default function ViolationReportPage({ variant = 'details', ...props }) {
       }
     }
     return buildViolations(raw.events, raw.byDevice, {
-      vehicles, rules, typeLabel: alertTypeLabel, names,
+      vehicles, rules, typeLabel: alertTypeLabel, names, keepType: isOilGasViolation,
       driverAt: driverDim.timelineFor, assignedFor: driverDim.assignedFor, driverFilter,
       siteOf, departmentOf: who => deptById.get(who.key) ?? '', zoneFor,
     })
@@ -477,7 +482,7 @@ export default function ViolationReportPage({ variant = 'details', ...props }) {
           </div>
           <MultiSelect label="VIOLATIONS" summary={namesLabel}>
             <CheckRow checked={!names} onChange={() => setNames(null)}
-              title="Every alert rule except ignition on / off and geo zone enter / exit">
+              title="Every Oil & Gas violation: over speed, zone speed, harsh driving, night driving, idle, tamper, battery tamper and SOS">
               <strong>All violations</strong>
             </CheckRow>
             <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
@@ -556,9 +561,9 @@ export default function ViolationReportPage({ variant = 'details', ...props }) {
             zebraContinue
             printDate={applied.printDate}
             onLocate={V.map ? r => setLocated({
-              deviceId: r.deviceId, vehicle: r.asset, type: r.type, ts: r.ts, value: r.value, message: r.message, severity: r.severity, lat: r.lat, lng: r.lng,
-              // The span this report shows, for a dialog that reads it.
-              span: { startTs: r.ts, endTs: r.toTs },
+              deviceId: r.deviceId, vehicle: r.asset, name: r.event, type: r.type, ts: r.ts, value: r.value, message: r.message, severity: r.severity, lat: r.lat, lng: r.lng,
+              // The span and speed this report shows, so the dialog says the same.
+              span: { startTs: r.ts, endTs: r.toTs, speed: r.speedKph },
             }) : undefined}
             emptyText="No violations in this period for this selection."
           />

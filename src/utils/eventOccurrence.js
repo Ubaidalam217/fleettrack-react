@@ -110,6 +110,11 @@ export function buildEventReport(events, byDevice, opts = {}) {
       alertType: e.type,
       severity: e.severity,
       message: e.message || e.title || '',
+      // A lasting violation's end, as the engine stored it, for the map dialog.
+      endedAt: e.endedAt ?? null,
+      durationSec: e.durationSec ?? null,
+      peakValue: e.peakValue ?? null,
+      value: e.value ?? null,
       // Tracking at that moment. An over-speed alert's own reading wins over
       // the nearest message, which may be a few seconds away from the peak.
       status: track?.status ?? '—',

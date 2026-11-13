@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import CtrackPaper from '../../components/reports/CtrackPaper'
@@ -15,6 +16,8 @@ import { exportCtrackPdf, exportCtrackExcel, CTRACK_RED } from '../../utils/ctra
 import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import { driverIdentity, driverPasses, NO_DRIVER } from '../../utils/driverAtTime'
 import { overviewByRule, periodDays, localDay } from '../../utils/violationOverview'
+import { isOilGasViolation } from '../../utils/oilGasViolations'
+import { hubForReport, OIL_GAS_HUB_PATH } from '../../components/sidebar/reportsNav'
 
 /**
  * Violation Overview Report, in the layout of the client's Ctrack sample
@@ -63,7 +66,12 @@ export default function ViolationOverviewReport(props) {
   const { data } = useFlespiData()
   const settingsVehicles = useVehicles()
   const companies = useCompanies()
-  const alertRules = useAlerts()
+  const allRules = useAlerts()
+  // Opened from the Oil & Gas hub: its violations only — no temperature,
+  // licence, ignition or geo zone enter / exit (utils/oilGasViolations.js).
+  const { pathname, state: navState } = useLocation()
+  const oilGas = hubForReport(pathname, navState) === OIL_GAS_HUB_PATH
+  const alertRules = useMemo(() => (oilGas ? allRules.filter(r => isOilGasViolation(r.type)) : allRules), [allRules, oilGas])
   const dims = useDriverDimension()
   const liveVehicles = data?.vehicles ?? []
   const vehiclesKey = liveVehicles.map(v => `${v.id}:${v.master?.plateNo || v.name}:${v.ident}`).sort().join('|')
@@ -171,7 +179,7 @@ export default function ViolationOverviewReport(props) {
     const info = new Map(vehicles.map(v => [v.id, v]))
     const nameById = new Map(alertRules.map(r => [r.id, (r.name || '').trim()]))
     // A deleted rule's events keep the name they were raised under.
-    const nameOf = e => (e.type === 'reminder' ? null
+    const nameOf = e => (e.type === 'reminder' || (oilGas && !isOilGasViolation(e.type)) ? null
       : nameById.get(e.alertId) || String(e.title ?? '').replace(/ · recorded$/, '').trim() || alertTypeLabel(e.type))
     const entityOf = e => {
       const v = info.get(Number(e.deviceId))
@@ -188,7 +196,7 @@ export default function ViolationOverviewReport(props) {
       }),
       vehicleLabel: id => info.get(Number(id))?.label ?? `Device ${id}`,
     }
-  }, [raw, vehicles, alertRules, ruleNames, ruleSel, driverSel, dims])
+  }, [raw, vehicles, alertRules, ruleNames, ruleSel, driverSel, dims, oilGas])
 
   const byDriver = raw?.applied.reportBy === 'driver'
   const sheet = useMemo(() => {
@@ -237,6 +245,7 @@ export default function ViolationOverviewReport(props) {
     }
     const events = result.items.filter(pick).sort((a, b) => b.ts - a.ts).map(it => ({
       ...it.event,
+      name: it.rule,
       deviceId: Number(it.event.deviceId), vehicle: result.vehicleLabel(it.event.deviceId), ts: it.ts,
       driver: it.entity.key.startsWith('v:') ? (it.event.driver?.name ?? '') : it.entity.label,
     }))

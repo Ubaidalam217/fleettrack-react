@@ -208,3 +208,25 @@ export function violationEpisode(event, messages = [], opts = {}) {
     : at(fromTs)?.speed ?? null
   return { fromTs, toTs, durationSec: Math.max(0, toTs - fromTs), speed, ...where(fromTs), source: 'track' }
 }
+
+/**
+ * The span the event map dialog draws (components/reports/EventTrackModal.jsx),
+ * by the same rule as the reports' From / To / Duration, so the two agree:
+ * the span the report passes, else the end the engine stored, else
+ * violationEpisode's reading of the track.
+ *
+ * @param {object} event  { type, ts, span?: { startTs, endTs, speed? }, endedAt?, durationSec?,
+ *   peakValue?, value?, message?, lat?, lng? }
+ * @param {object[]} [messages]  the vehicle's messages around it, oldest first
+ * @returns {{ startTs: number, endTs: number, speed: number|null, known: boolean }|null}
+ *   known: the span did not need the track (it can be fetched from start to end)
+ */
+export function eventSpan(event, messages = [], opts = {}) {
+  const given = event?.span
+  if (given && Number.isFinite(given.startTs) && Number.isFinite(given.endTs) && given.endTs >= given.startTs) {
+    return { startTs: given.startTs, endTs: given.endTs, speed: num(given.speed), known: true }
+  }
+  if (!Number.isFinite(event?.ts)) return null
+  const ep = violationEpisode({ ...event, occurredAt: new Date(event.ts * 1000).toISOString() }, messages, opts)
+  return { startTs: ep.fromTs, endTs: Math.max(ep.fromTs, ep.toTs), speed: ep.speed, known: ep.source === 'stored' }
+}

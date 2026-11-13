@@ -56,14 +56,18 @@ export function eventName(e, ruleById, typeLabel = t => t) {
  * with whether it counts as a violation by default (all but ignition and geo
  * zone enter / exit).
  *
+ * @param {object}  [opts]
+ * @param {(type) => boolean} [opts.keepType]  only these types are offered, all
+ *   ticked by default (the Oil & Gas list, utils/oilGasViolations.js)
  * @returns {{ name: string, type: string, byDefault: boolean }[]} by name
  */
-export function violationNames(events, rules, typeLabel) {
+export function violationNames(events, rules, typeLabel, { keepType = null } = {}) {
   const ruleById = new Map((rules ?? []).map(r => [r.id, r]))
   const out = new Map()
   const add = (name, type) => {
     if (!name || out.has(name)) return
-    out.set(name, { name, type, byDefault: isViolationType(type) })
+    if (keepType && !keepType(type)) return
+    out.set(name, { name, type, byDefault: keepType ? true : isViolationType(type) })
   }
   for (const r of rules ?? []) {
     // Licence expiry watches paperwork, not how a vehicle is driven or kept.
@@ -83,6 +87,7 @@ export function violationNames(events, rules, typeLabel) {
  * @param {object[]} [opts.rules]        alert rules ({ id, name, type, settings })
  * @param {(type) => string} [opts.typeLabel]
  * @param {Set<string>|null} [opts.names]  Event names to keep; null = every violation type
+ * @param {(type) => boolean} [opts.keepType]  types allowed at all, whatever the names (the Oil & Gas list)
  * @param {(vehicle, messages) => (ts) => {key,label}} [opts.driverAt]
  * @param {(vehicle) => {key,label}|null} [opts.assignedFor]
  * @param {Set|null} [opts.driverFilter]  driver keys to keep (null = all)
@@ -92,7 +97,7 @@ export function violationNames(events, rules, typeLabel) {
  */
 export function buildViolations(events, byDevice, opts = {}) {
   const {
-    vehicles = [], rules = [], typeLabel = t => t, names = null, driverAt = null, assignedFor = null,
+    vehicles = [], rules = [], typeLabel = t => t, names = null, keepType = null, driverAt = null, assignedFor = null,
     driverFilter = null, siteOf = () => '', departmentOf = () => '', zoneFor = null,
   } = opts
   const ruleById = new Map(rules.map(r => [r.id, r]))
@@ -108,6 +113,7 @@ export function buildViolations(events, byDevice, opts = {}) {
   const out = []
   for (const e of events ?? []) {
     if (e.deviceId == null) continue
+    if (keepType && !keepType(e.type)) continue
     const deviceId = Number(e.deviceId)
     const name = eventName(e, ruleById, typeLabel)
     if (names ? !names.has(name) : !isViolationType(e.type)) continue

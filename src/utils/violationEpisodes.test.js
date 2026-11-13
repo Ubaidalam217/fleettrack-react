@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { violationEpisode, messageAt, maxSpeedBetween } from './violationEpisodes'
+import { violationEpisode, eventSpan, messageAt, maxSpeedBetween } from './violationEpisodes'
 
 const T0 = Math.floor(Date.parse('2026-11-13T04:00:00Z') / 1000)
 const iso = s => new Date((T0 + s) * 1000).toISOString()
@@ -57,6 +57,34 @@ describe('violationEpisode', () => {
   it('finds the hard stop itself', () => {
     const msgs = [m(0, 60), m(1, 45), m(2, 30), m(40, 30)]
     expect(violationEpisode({ type: 'harsh_braking', occurredAt: iso(0) }, msgs)).toMatchObject({ fromTs: T0, toTs: T0 + 2, durationSec: 2, speed: 60 })
+  })
+})
+
+describe('eventSpan (the map dialog)', () => {
+  const ts = T0 + 62
+  it('takes the span the report passes, as is', () => {
+    expect(eventSpan({ type: 'overspeed', ts, span: { startTs: T0 + 30, endTs: T0 + 150, speed: 140 } }))
+      .toEqual({ startTs: T0 + 30, endTs: T0 + 150, speed: 140, known: true })
+  })
+
+  it('else the end the engine stored, without the track', () => {
+    const e = { type: 'overspeed', ts: T0 + 10, endedAt: iso(40), durationSec: 30, peakValue: 131.4 }
+    expect(eventSpan(e)).toEqual({ startTs: T0 + 10, endTs: T0 + 40, speed: 131.4, known: true })
+  })
+
+  it('else reads it from the track by the same rule as the report, so the two agree', () => {
+    const msgs = [m(0, 100), m(30, 125), m(60, 140), m(90, 118), m(120, 122), m(150, 110), m(180, 130)]
+    const e = { type: 'overspeed', ts, value: 140, message: 'Over speed: 140 km/h (limit 120 km/h)' }
+    const report = violationEpisode({ ...e, occurredAt: iso(62) }, msgs)
+    expect(eventSpan(e, msgs)).toEqual({ startTs: report.fromTs, endTs: report.toTs, speed: report.speed, known: false })
+    expect(eventSpan(e, msgs)).toMatchObject({ startTs: T0 + 30, endTs: T0 + 150 })
+    // Not found yet (no track): the moment itself.
+    expect(eventSpan(e)).toMatchObject({ startTs: ts, endTs: ts, known: false })
+  })
+
+  it('never ends before it starts, and needs a time', () => {
+    expect(eventSpan({ type: 'tamper', ts: T0 + 100, endedAt: iso(50) })).toMatchObject({ startTs: T0 + 100, endTs: T0 + 100 })
+    expect(eventSpan({ type: 'overspeed', span: { startTs: 5, endTs: 1 } })).toBe(null)
   })
 })
 

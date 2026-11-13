@@ -394,7 +394,10 @@ export default function EventOccurrenceReport(props) {
             groups={groups}
             printDate={applied.printDate}
             // Client, 2026-11-10: the violation on the map from where it began to where it ended.
-            onLocate={r => setLocated({ deviceId: r.deviceId, vehicle: r.vehicle, type: r.alertType, ts: r.ts, message: r.message, severity: r.severity, lat: r.lat, lng: r.lng })}
+            onLocate={r => setLocated({
+              deviceId: r.deviceId, vehicle: r.vehicle, type: r.alertType, ts: r.ts, message: r.message, severity: r.severity, lat: r.lat, lng: r.lng,
+              endedAt: r.endedAt, durationSec: r.durationSec, peakValue: r.peakValue, value: r.value,
+            })}
             emptyText="No alerts were raised for this selection."
           />
         </>
