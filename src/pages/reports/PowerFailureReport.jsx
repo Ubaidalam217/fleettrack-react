@@ -1,38 +1,30 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
-import PaperTable from '../../components/reports/PaperTable'
-import ColumnPicker from '../../components/reports/ColumnPicker'
-import LocationMapModal from '../../components/reports/LocationMapModal'
+import CtrackPaper from '../../components/reports/CtrackPaper'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, HelpTip } from '../../components/reports/controls'
-import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import { useFlespiData } from '../../hooks/useFlespiData'
-import { settingsProfileForImei, useVehicles, useCompanies, useBranches } from '../../data/settings'
 import { fetchFleetMessages, isAbortError } from '../../utils/replay'
-import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
-import { resolveRowLocations } from '../../utils/reportLocations'
 import { PRESETS, presetRange, dateStr, timeStr } from '../../utils/reportRange'
-import { locationUrl } from '../../utils/mapLink'
-import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
+import { exportCtrackPdf, exportCtrackExcel, CTRACK_RED } from '../../utils/ctrackExport'
 import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
-import { IS_REAL } from '../../data/mode'
 import { hms } from '../../utils/usageReports'
-import {
-  DEFAULT_POWER_OPTS, POWER_FIELDS, powerCutsByVehicle, visibleCuts, sumCuts, volts, batteryVolts,
-} from '../../utils/powerFailure'
+import { localDay } from '../../utils/violationOverview'
+import { DEFAULT_POWER_OPTS, POWER_FIELDS, powerCutsByVehicle, cutsByDay } from '../../utils/powerFailure'
 
 /**
- * Power Failure Report (client report list, 2026-11-10, after Ctrack MaXx):
- * each time a tracker lost its external (vehicle) power — when, until when,
- * how low the supply fell, the backup battery and ignition at the cut, and
- * where. Grouped by vehicle with its totals; the fleet total sits in the
- * filter band. The cut rules live in utils/powerFailure.js.
+ * Power Failure Report, in the layout of the client's Ctrack sample
+ * (Power_Failure_Report, 2026-11-13): portrait, the From / To block, then
+ * day by day each cut of a vehicle's external power — Asset, From, To (with
+ * the date when the power came back on another day) and Duration — closed by
+ * the day's "No. of Occurrences" and summed duration; the Report Summary
+ * table (Asset, No. of Occurrences, Duration) on the last page. The cut rules
+ * live in utils/powerFailure.js (voltage under the cut-below, or the
+ * tracker's own power status — iTriangle and Teltonika alike).
  *
  * Cut below (V) and the short-cut filter recompute from the fetched messages —
- * changing them never fetches again.
- *
- * Trackers that send no external-power reading are listed by name instead of
- * showing as "no cuts": they could not have reported one.
+ * changing them never fetches again. Trackers that send no external-power
+ * reading are named above the sheet instead of passing as "no cuts".
  *
  * Scope: vehicles come from useFlespiData(), already narrowed to what the
  * signed-in user may see (see components/sidebar/reportsNav.js).
@@ -40,47 +32,54 @@ import {
 
 const TITLE = 'Power Failure Report'
 const FILE = 'Power_Failure_Report'
-const DESC = 'Each time a tracker lost its external power: when, for how long and where.'
+const DESC = 'Each time a tracker lost its external power: from when, until when and for how long.'
 const MAX_RANGE_DAYS = 31
-const NOT_ASSIGNED = 'Not assigned'
+// The sample's page (7 x 11 in) and where its tables sit.
+const PAGE = { w: 504, h: 792 }
+const USABLE = PAGE.w - 28
+const DAY_TABLE = { fit: 452 / USABLE, indent: 16 / USABLE }
+const SUMMARY_TABLE = { fit: 344 / USABLE, indent: 32 / USABLE }
 
-// columns: [{ key, label, width, pdf, align?, locate? }]
-const COLUMNS = [
-  { key: 'start',    label: 'Power Cut',      width: '14%', pdf: 13 },
-  { key: 'end',      label: 'Power Restored', width: '14%', pdf: 13 },
-  { key: 'duration', label: 'Duration',       width: '8%',  pdf: 7 },
-  { key: 'minV',     label: 'Lowest Volts',   width: '7%',  pdf: 6, align: 'right' },
-  { key: 'batV',     label: 'Battery V',      width: '7%',  pdf: 6, align: 'right' },
-  { key: 'ignition', label: 'Ignition',       width: '6%',  pdf: 5 },
-  { key: 'location', label: 'Location',       width: '44%', pdf: 42, locate: true },
-]
-
-const STILL_OFF_STYLE = { color: '#b91c1c', fontWeight: 700 }
-
-const coords = (lat, lng) => (lat != null && lng != null ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : '—')
-const lowest = v => (v === null ? '—' : `${volts(v)} V`)
-const names = list => list.join(', ')
-
-function vehicleTotal(s) {
-  const parts = [`Cuts ${s.cuts}`, `Without power ${hms(s.offSec)}`, `Lowest ${lowest(s.lowestV)}`]
-  if (s.open) parts.push('Still off at the end of the period')
-  return `Vehicle Total   ·   ${parts.join('   ·   ')}`
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const two = n => String(n).padStart(2, '0')
+/** '2026-11-07' → "07 Nov, 2026" */
+const ctrackDay = iso => `${iso.slice(8, 10)} ${MONTHS[Number(iso.slice(5, 7)) - 1]}, ${iso.slice(0, 4)}`
+const clock = ts => {
+  const d = new Date(ts * 1000)
+  return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`
 }
+/** "07 Nov, 2026 00:00:00" */
+const ctrackDateTime = ts => `${ctrackDay(localDay(ts))} ${clock(ts)}`
+/** The sample's To: the time, or "08/11/2026 07:09:55" when the power came back on another day. */
+const toCell = (startTs, endTs) => {
+  const day = localDay(endTs)
+  return day === localDay(startTs) ? clock(endTs) : `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)} ${clock(endTs)}`
+}
+
+const DAY_COLS = [
+  { key: 'asset',    label: 'Asset',    w: 172 },
+  { key: 'from',     label: 'From',     w: 82, align: 'right' },
+  { key: 'to',       label: 'To',       w: 140, align: 'right' },
+  { key: 'duration', label: 'Duration', w: 58, align: 'right' },
+]
+const SUMMARY_COLS = [
+  { key: 'asset',    label: 'Asset',              w: 180 },
+  { key: 'count',    label: 'No. of Occurrences', w: 104, align: 'right' },
+  { key: 'duration', label: 'Duration',           w: 60, align: 'right' },
+]
+const onScreen = cols => {
+  const sum = cols.reduce((s, c) => s + c.w, 0)
+  return cols.map(c => ({ ...c, width: `${((c.w / sum) * 100).toFixed(3)}%` }))
+}
+const forPdf = cols => cols.map(c => ({ ...c, width: c.w }))
+const names = list => list.join(', ')
 
 export default function PowerFailureReport(props) {
   const title = useReportTitle(TITLE) // Oil & Gas opens it as "Power Failure"
   const file = title === TITLE ? FILE : fileNameOf(title)
-  const [hiddenCols, setHiddenCols] = useHiddenColumns('power-failure')
-  const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
   const { data } = useFlespiData()
-  // Subscribed so a BG or branch changed in Settings re-labels the groups;
-  // settingsProfileForImei reads these stores.
-  const settingsVehicles = useVehicles()
-  const companies = useCompanies()
-  const branches = useBranches()
   // The live feed hands over a new vehicle array on every poll. The report only
-  // cares which vehicles there are and what they are called, so it keys on that:
-  // otherwise each poll rebuilt the report and restarted the address lookup.
+  // cares which vehicles there are and what they are called, so it keys on that.
   const liveVehicles = data?.vehicles ?? []
   const vehiclesKey = liveVehicles.map(v => `${v.id}:${v.master?.plateNo || v.name}:${v.ident}`).sort().join('|')
   const vehicles = useMemo(
@@ -88,17 +87,6 @@ export default function PowerFailureReport(props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [vehiclesKey]
   )
-  // "Company / Branch" for each device's group heading; a device with no
-  // Settings registration reads "Not assigned".
-  const placeOf = useMemo(() => new Map(vehicles.map(v => {
-    const p = settingsProfileForImei(v.ident)
-    if (!p.linked) return [v.id, NOT_ASSIGNED]
-    const company = p.bgName || NOT_ASSIGNED
-    return [v.id, p.branchName && p.branchName !== '—' && p.branchName !== company ? `${company} / ${p.branchName}` : company]
-  })),
-  // settingsVehicles, companies and branches are the stores settingsProfileForImei reads.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [vehicles, settingsVehicles, companies, branches])
 
   const now = useRef(new Date()).current
   const [selectedIds, setSelectedIds] = useState(null) // null = all
@@ -114,10 +102,6 @@ export default function PowerFailureReport(props) {
   const [raw, setRaw] = useState(null)        // { byDevice, applied }
   const [progress, setProgress] = useState(null)
   const [error, setError] = useState(null)
-  const [geoTick, setGeoTick] = useState(0)
-  const [geoProgress, setGeoProgress] = useState(null) // { done, total } while addresses load
-  const [located, setLocated] = useState(null)
-  const closeLocated = useCallback(() => setLocated(null), [])
   const abortRef = useRef(null)
   const busy = progress !== null
 
@@ -167,14 +151,14 @@ export default function PowerFailureReport(props) {
       // A cut still open runs to the end of the period, or to now when the
       // period reaches into the future (Today's "to" can be 23:59).
       const endTs = Math.min(toTs, Math.floor(Date.now() / 1000))
-      setRaw({ byDevice, applied: { fromTs, toTs, endTs, selectionLabel, printDate: formatPrintDate() } })
+      setRaw({ byDevice, applied: { fromTs, toTs, endTs } })
     } catch (err) {
       if (!isAbortError(err)) setError(err.message || String(err))
     } finally {
       abortRef.current = null
       setProgress(null)
     }
-  }, [rangeValid, rangeTooLong, effectiveIds, fromTs, toTs, selectionLabel])
+  }, [rangeValid, rangeTooLong, effectiveIds, fromTs, toTs])
 
   const cancel = () => abortRef.current?.abort()
 
@@ -189,101 +173,66 @@ export default function PowerFailureReport(props) {
 
   const built = useMemo(() => {
     if (!vehiclePower) return null
-    let hidden = 0
-    const shown = []
-    const groups = vehiclePower.map(v => {
-      const vis = visibleCuts(v.cuts, minNum)
-      hidden += vis.hidden
-      shown.push(...vis.cuts)
-      const rows = vis.cuts.map(c => ({
-        key: c.startTs, lat: c.lat, lng: c.lng, vehicle: v.vehicleId,
-        start: c.beforePeriod ? `${formatDateTime(c.startTs)} (already off)` : formatDateTime(c.startTs),
-        end: c.open ? '(still off)' : formatDateTime(c.endTs),
-        duration: hms(c.durationSec),
-        minV: volts(c.minVoltage),
-        batV: batteryVolts(c.batteryV),
-        ignition: c.ignition === null ? '—' : c.ignition ? 'On' : 'Off',
-        cellStyle: c.open ? { end: STILL_OFF_STYLE } : undefined,
-      }))
-      return { key: v.deviceId, label: `${v.vehicleId}   ·   ${placeOf.get(v.deviceId) ?? NOT_ASSIGNED}`, rows, total: vehicleTotal(sumCuts(vis.cuts)) }
-    })
-    const reporting = vehiclePower.filter(v => v.reports)
+    const { days, perVehicle, hidden } = cutsByDay(vehiclePower, { dayOf: localDay, minCutMin: minNum })
+    const tables = days.map(d => ({
+      key: d.day,
+      heading: ctrackDay(d.day),
+      headingColor: [0, 0, 0],
+      headingSize: 9.8,
+      ...DAY_TABLE,
+      minWidth: 560,
+      columns: DAY_COLS,
+      rows: [
+        ...d.cuts.map(c => ({
+          key: `${c.deviceId}-${c.startTs}`,
+          asset: c.vehicleId,
+          from: c.beforePeriod ? `${clock(c.startTs)} (already off)` : clock(c.startTs),
+          to: c.open ? '(still off)' : toCell(c.startTs, c.endTs),
+          duration: hms(c.durationSec),
+        })),
+        { key: `${d.day}-total`, strong: true, asset: '', from: 'No. of Occurrences:', to: String(d.count), duration: hms(d.durationSec) },
+      ],
+    }))
+    const summaryTable = {
+      ...SUMMARY_TABLE,
+      minWidth: 440,
+      headColor: CTRACK_RED,
+      zebraStart: false,
+      columns: SUMMARY_COLS,
+      rows: perVehicle.map(v => ({ key: v.deviceId, asset: v.vehicleId, count: String(v.count), duration: hms(v.durationSec) })),
+    }
     return {
-      groups,
+      tables,
+      summaryTable,
       hidden,
-      fleet: sumCuts(shown),
-      withCuts: groups.filter(g => g.rows.length).length,
-      reporting: reporting.length,
+      cuts: days.reduce((n, d) => n + d.count, 0),
+      withCuts: perVehicle.length,
+      open: days.reduce((n, d) => n + d.cuts.filter(c => c.open).length, 0),
       noReading: vehiclePower.filter(v => v.hasData && !v.reports).map(v => v.vehicleId),
       noData: vehiclePower.filter(v => !v.hasData).map(v => v.vehicleId),
     }
-  }, [vehiclePower, minNum, placeOf])
-
-  useEffect(() => {
-    if (!built) return
-    const controller = new AbortController()
-    resolveRowLocations(built.groups, {
-      limit: IS_REAL ? 2000 : 200,
-      signal: controller.signal,
-      onChunk: (done, total) => {
-        if (controller.signal.aborted) return
-        setGeoTick(t => t + 1)
-        setGeoProgress(done < total ? { done, total } : null)
-      },
-    })
-      .catch(() => {})
-      .finally(() => { if (!controller.signal.aborted) setGeoProgress(null) })
-    return () => controller.abort()
-  }, [built])
-
-  const groups = useMemo(() => {
-    if (!built) return []
-    return built.groups.map(g => ({
-      ...g,
-      rows: g.rows.map(r => {
-        const location = r.locationText || coords(r.lat, r.lng)
-        return {
-          ...r,
-          location,
-          mapUrl: r.lat != null ? locationUrl({ lat: r.lat, lng: r.lng, vehicle: r.vehicle, time: formatDateTime(r.key), address: location }) : undefined,
-        }
-      }),
-    }))
-  // geoTick: resolveRowLocations fills the address text in place.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [built, geoTick])
+  }, [vehiclePower, minNum])
 
   const applied = raw?.applied
-  const fleetText = built ? [
-    `Cuts ${built.fleet.cuts}`,
-    `Without power ${hms(built.fleet.offSec)}`,
-    `Vehicles with cuts ${built.withCuts} of ${built.reporting}`,
-    ...(built.fleet.open ? [`${built.fleet.open} still off at the end of the period`] : []),
-  ].join('   ·   ') : ''
-  const filters = applied ? [
-    ['Selection', applied.selectionLabel],
-    ['From Date', formatDateTime(applied.fromTs)],
-    ['To Date', formatDateTime(applied.toTs)],
-    ['Cut Below', `${cutNum} V`],
-    ['Shorter Cuts', minNum > 0 ? `Under ${minNum} min hidden` : 'Shown'],
-    ['Fleet Total', fleetText],
-    ...(built.noReading.length ? [['No External Power Reading', names(built.noReading)]] : []),
-    ...(built.noData.length ? [['No Data In Period', names(built.noData)]] : []),
-  ] : []
+  const pairs = applied ? [['From', ctrackDateTime(applied.fromTs)], ['To', ctrackDateTime(applied.toTs)]] : []
 
-  const dataRows = groups.reduce((n, g) => n + g.rows.length, 0)
-
-  const exportOpts = () => ({
+  // The sample's footer has the page number only, no print date.
+  const ctrackOpts = () => ({
     title,
-    subtitle: 'FleetmaxX',
-    filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
-    printDate: applied?.printDate,
-    systemName: 'FleetmaxX',
-    tables: groups.filter(g => g.rows.length).map(g => ({
-      heading: `${g.label} — ${g.total}`,
-      columns: shownCols.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, hrefKey: c.locate ? 'mapUrl' : undefined })),
-      rows: g.rows,
-    })),
+    pageSize: PAGE,
+    fontSize: 9.8,
+    titleSize: 20,
+    headerRuleY: 74,
+    rowPad: 7,
+    pairsPerLine: 1,
+    pairCols: [{ x: 9, vx: 51 }],
+    pairLineH: 20,
+    pairTop: 15,
+    printDate: '',
+    pairs,
+    tables: built.tables.map(t => ({ ...t, columns: forPdf(t.columns) })),
+    summaryTitle: 'Report Summary:',
+    summaryTable: built.cuts ? { ...built.summaryTable, columns: forPdf(built.summaryTable.columns) } : null,
   })
 
   const truncated = raw && [...raw.byDevice.values()].some(e => e?.truncated)
@@ -326,11 +275,12 @@ export default function PowerFailureReport(props) {
             <label style={{ ...LABEL, display: 'flex', alignItems: 'center', gap: 6 }}>
               CUT BELOW (V)
               <HelpTip title="When power counts as cut">
-                A power cut starts when the vehicle supply reading falls below this voltage (or the tracker reports
-                its power lost) and ends at the first reading back at or above it. Vehicles run at 12 V or 24 V, so
-                the default of 6 V only catches a real cut. &ldquo;Already off&rdquo; means the power was off at the
-                first reading of the period, so the cut began earlier. &ldquo;Still off&rdquo; means the power had not
-                come back by the end of the period; its time counts to then. Changing this does not fetch the data again.
+                A power cut starts when the tracker reports its power lost (iTriangle and Teltonika send this as the
+                external power status) or the vehicle supply falls below this voltage, and ends at the first reading
+                with the power back. Vehicles run at 12 V or 24 V, so the default of 6 V only catches a real cut.
+                &ldquo;Already off&rdquo; means the power was off at the first reading of the period, so the cut began
+                earlier. &ldquo;Still off&rdquo; means the power had not come back by the end of the period; its time
+                counts to then. Changing this does not fetch the data again.
               </HelpTip>
             </label>
             <input type="number" min="0.5" max="40" step="0.5" style={FIELD} value={cutBelow} onChange={e => setCutBelow(e.target.value)} />
@@ -374,36 +324,33 @@ export default function PowerFailureReport(props) {
         <>
           <div className="report-screen-only" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
             <div style={{ fontSize: 12.5, color: 'var(--c-text2)' }}>
-              <strong style={{ color: 'var(--c-text1)' }}>{dataRows.toLocaleString()}</strong> power cut{dataRows === 1 ? '' : 's'}
+              <strong style={{ color: 'var(--c-text1)' }}>{built.cuts.toLocaleString()}</strong> power cut{built.cuts === 1 ? '' : 's'}
               {' · '}{built.withCuts} vehicle{built.withCuts === 1 ? '' : 's'} with cuts
+              {built.open > 0 && <span style={{ color: '#b91c1c' }}> · {built.open} still off at the end of the period</span>}
               {built.hidden > 0 && <span style={{ color: 'var(--c-text3)' }}> · {built.hidden} shorter cut{built.hidden === 1 ? '' : 's'} hidden</span>}
               {built.noReading.length > 0 && <span style={{ color: 'var(--c-text3)' }}> · No external power reading from: {names(built.noReading)}</span>}
               {built.noData.length > 0 && <span style={{ color: 'var(--c-text3)' }}> · No data in this period: {names(built.noData)}</span>}
-              {geoProgress && <span style={{ color: 'var(--ft-accent)' }}> · Resolving addresses {geoProgress.done}/{geoProgress.total}…</span>}
               {truncated && <span style={{ color: '#f97316' }}> · some days hit the message limit — narrow the range for full detail</span>}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <ColumnPicker columns={COLUMNS} hidden={hiddenCols} onChange={setHiddenCols} />
-              <ToolbarButton onClick={() => exportGeoZonePdf(exportOpts(), file)} icon={FileDown} primary disabled={!dataRows}>Download PDF</ToolbarButton>
-              <ToolbarButton onClick={() => exportGeoZoneExcel(exportOpts(), file)} icon={FileSpreadsheet} disabled={!dataRows}>Download Excel</ToolbarButton>
-              <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!dataRows}>Print</ToolbarButton>
+              <ToolbarButton onClick={() => exportCtrackPdf(ctrackOpts(), file)} icon={FileDown} primary disabled={!built.cuts}>Download PDF</ToolbarButton>
+              <ToolbarButton onClick={() => exportCtrackExcel(ctrackOpts(), file)} icon={FileSpreadsheet} disabled={!built.cuts}>Download Excel</ToolbarButton>
+              <ToolbarButton onClick={() => window.print()} icon={Printer} disabled={!built.cuts}>Print</ToolbarButton>
             </div>
           </div>
 
-          <PaperTable
+          <CtrackPaper
             title={title}
-            company="FleetmaxX"
-            filters={filters}
-            columns={shownCols}
-            groups={groups}
-            printDate={applied.printDate}
-            onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: 'Power cut', location: r.location })}
+            pairs={pairs}
+            pairsPerLine={1}
+            tables={built.tables.map(t => ({ ...t, columns: onScreen(t.columns) }))}
+            summaryTitle="Report Summary:"
+            summaryTable={{ ...built.summaryTable, columns: onScreen(built.summaryTable.columns) }}
+            printDate=""
             emptyText="No power cuts in this period for the selected vehicles."
           />
         </>
       )}
-
-      <LocationMapModal point={located} onClose={closeLocated} />
     </ReportFrame>
   )
 }

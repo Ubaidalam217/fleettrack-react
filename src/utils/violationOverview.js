@@ -15,6 +15,79 @@ export const VIOLATION_TYPES = [
 
 const HIGH = new Set(['High', 'Critical'])
 
+const pad2 = n => String(n).padStart(2, '0')
+/** 'YYYY-MM-DD' of a unix time in the browser's time, as the dates were picked. */
+export const localDay = ts => {
+  const d = new Date(ts * 1000)
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+/** Every day of [fromTs, toTs] in the browser's time, oldest first. */
+export function periodDays(fromTs, toTs) {
+  const out = []
+  const d = new Date(fromTs * 1000)
+  d.setHours(12, 0, 0, 0) // noon: a day step never lands on a DST edge
+  const last = localDay(toTs)
+  for (let i = 0; i < 400; i++) {
+    const day = localDay(Math.floor(d.getTime() / 1000))
+    out.push(day)
+    if (day >= last) break
+    d.setDate(d.getDate() + 1)
+  }
+  return out
+}
+
+/**
+ * The Violation Overview in the client's Ctrack layout (sample, 2026-11-13):
+ * the alert rules by name, every one of them — those nobody broke as zeros —
+ * counted per day of the period; and per entity (vehicle or driver) a count
+ * of each rule and their sum. Rules with the same name (one per Business
+ * Group, say) share a line.
+ *
+ * @param {object[]} events  alert events (alertId, title, type, deviceId, occurredAt, …)
+ * @param {object} opts
+ *   ruleNames   every rule's name: each gets a line
+ *   nameOf      event => its rule's name ('' or null: not counted)
+ *   days        the period's days ('YYYY-MM-DD'), oldest first
+ *   dayOf       ts => 'YYYY-MM-DD'
+ *   entityOf    event => {key, label}
+ *   keepRule    name => boolean (default: all)
+ *   keepEntity  {key, label} => boolean (default: all)
+ * @returns {{ rules: {key, label, byDay, total}[], entities: {key, label, counts, total}[], items: object[], total: number }}
+ *   items: each counted event with its ts, day, rule and entity — for the drill-down.
+ */
+export function overviewByRule(events, { ruleNames = [], nameOf, days = [], dayOf, entityOf, keepRule = null, keepEntity = null }) {
+  const byRule = new Map()
+  const ruleFor = name => {
+    let r = byRule.get(name)
+    if (!r) byRule.set(name, (r = { key: name, label: name, byDay: Object.fromEntries(days.map(d => [d, 0])), total: 0 }))
+    return r
+  }
+  for (const name of ruleNames) if (name && (!keepRule || keepRule(name))) ruleFor(name)
+
+  const entities = new Map()
+  const items = []
+  for (const e of events ?? []) {
+    const ts = Math.floor(Date.parse(e.occurredAt) / 1000)
+    if (!Number.isFinite(ts)) continue
+    const name = nameOf(e)
+    if (!name || (keepRule && !keepRule(name))) continue
+    const who = entityOf(e)
+    if (keepEntity && !keepEntity(who)) continue
+    const day = dayOf(ts)
+    const r = ruleFor(name)
+    r.byDay[day] = (r.byDay[day] ?? 0) + 1
+    r.total += 1
+    let en = entities.get(who.key)
+    if (!en) entities.set(who.key, (en = { key: who.key, label: who.label, counts: {}, total: 0 }))
+    en.counts[name] = (en.counts[name] ?? 0) + 1
+    en.total += 1
+    items.push({ event: e, ts, day, rule: name, entity: who })
+  }
+  const byLabel = (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }) || a.key.localeCompare(b.key)
+  return { rules: [...byRule.values()].sort(byLabel), entities: [...entities.values()].sort(byLabel), items, total: items.length }
+}
+
 /**
  * events → one row per vehicle (by: 'vehicle') or per driver (by: 'driver'):
  * { key, label, vehicles:Set, drivers:Set, counts: {type: n}, total, high, first, last, events }

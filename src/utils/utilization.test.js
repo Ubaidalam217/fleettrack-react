@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { usageByDay, summarize, pickRows, hhmm, uaeIso } from './utilization'
+import { usageByDay, usageDetailsByDay, summarize, pickRows, hhmm, uaeIso } from './utilization'
 
 // 2026-11-03 00:00 UAE = 2026-11-02 20:00 UTC.
 const D0 = Date.UTC(2026, 10, 2, 20, 0, 0) / 1000
@@ -81,5 +81,39 @@ describe('usageByDay in another time zone', () => {
     expect([...uae.days.keys()]).toEqual(['2026-11-03'])
     const pk = usageByDay(msgs, D0, D0 + 2 * 86400, { tzOffsetSec: 5 * 3600 })
     expect([...pk.days.keys()]).toEqual(['2026-11-04'])
+  })
+})
+
+describe('usageDetailsByDay', () => {
+  it('splits a day into driving, standing and idling, with distance and the highest speed', () => {
+    // 08:00-08:30 driving at 40 km/h (70 once), 08:30-08:33 stopped (a short
+    // stop), 08:33-08:40 driving, 08:40-08:50 stopped (idling), ignition off at 08:50.
+    const msgs = []
+    for (let t = 8 * 3600; t < 8.5 * 3600; t += 60) msgs.push(msg(t, { 'position.speed': t === 8 * 3600 + 600 ? 70 : 40 }))
+    for (let t = 8.5 * 3600; t < 8.5 * 3600 + 180; t += 60) msgs.push(msg(t, { 'position.speed': 0 }))
+    for (let t = 8.5 * 3600 + 180; t < 8 * 3600 + 2400; t += 60) msgs.push(msg(t))
+    for (let t = 8 * 3600 + 2400; t < 8 * 3600 + 3000; t += 60) msgs.push(msg(t, { 'position.speed': 0 }))
+    msgs.push(msg(8 * 3600 + 3000, { 'engine.ignition.status': false, 'position.speed': 0 }))
+    const days = usageDetailsByDay(msgs, D0, D0 + 86400)
+    const c = days.get('2026-11-03').get('vehicle')
+    expect(c.driveSec).toBe(1800 + 420)
+    expect(c.standSec).toBe(180 + 600)
+    expect(c.idleSec).toBe(600) // the 3-minute stop is standing, not idling
+    expect(c.maxKmh).toBe(70)
+    // Agrees with usageByDay on driving, standing (its idle) and distance.
+    const u = usageByDay(msgs, D0, D0 + 86400).days.get('2026-11-03')
+    expect([c.driveSec, c.standSec]).toEqual([u.driveSec, u.idleSec])
+    expect(c.km).toBeCloseTo(u.km, 6)
+  })
+
+  it('splits the figures between whoever drove, and across midnight', () => {
+    const msgs = []
+    for (let t = 86400 - 1200; t <= 86400 + 1200; t += 60) msgs.push(msg(t))
+    const who = ts => (ts < D0 + 86400 - 600 ? { key: 'd:1', label: 'Ali' } : { key: 'd:2', label: 'Omar' })
+    const days = usageDetailsByDay(msgs, D0, D0 + 2 * 86400, { who })
+    expect(days.get('2026-11-03').get('d:1').driveSec).toBe(600)
+    expect(days.get('2026-11-03').get('d:2').driveSec).toBe(600)
+    expect(days.get('2026-11-04').get('d:2').driveSec).toBe(1200)
+    expect(days.get('2026-11-04').has('d:1')).toBe(false)
   })
 })

@@ -86,6 +86,95 @@ export function usageByDay(messages, from, to, { tzOffsetSec = UAE_OFFSET_SEC } 
   return { days, lastMove, lastPos }
 }
 
+/** Engine-on standstill from this long on is Idling — the Movement Report's Excessive Idling. */
+export const IDLING_MIN_SEC = 5 * 60
+
+/**
+ * Utilization Details (the client's Ctrack sample, 2026-11-13): per day and
+ * per entity — the vehicle, or whoever drove it at the time — driving,
+ * standing (engine on, not moving), idling (the standstills of
+ * IDLING_MIN_SEC or more, a part of standing), distance and the highest
+ * speed. The interval rules are usageByDay's, so the two agree on driving,
+ * standing (its idleSec) and km.
+ *
+ * @param {object[]} messages  one vehicle's, ascending
+ * @param {number} from        period start (unix s)
+ * @param {number} to          period end (unix s, exclusive)
+ * @param {object} [opts]
+ *   tzOffsetSec  the days' offset (the pages pass the browser's)
+ *   who          ts => {key, label}: the entity at that moment; one entity, 'vehicle', when left out
+ *   idleMinSec   the idling threshold
+ * @returns {Map<string, Map<string, {key, label, driveSec, standSec, idleSec, km, maxKmh}>>} day → entity key → figures
+ */
+export function usageDetailsByDay(messages, from, to, { tzOffsetSec = UAE_OFFSET_SEC, who = null, idleMinSec = IDLING_MIN_SEC } = {}) {
+  const out = new Map()
+  if (!messages?.length) return out
+  const VEHICLE = { key: 'vehicle', label: '' }
+  const whoAt = ts => (who ? who(ts) : VEHICLE)
+  const cellAt = (ts, w) => {
+    const day = isoAt(ts, tzOffsetSec)
+    let byWho = out.get(day)
+    if (!byWho) out.set(day, (byWho = new Map()))
+    let c = byWho.get(w.key)
+    if (!c) byWho.set(w.key, (c = { key: w.key, label: w.label, driveSec: 0, standSec: 0, idleSec: 0, km: 0, maxKmh: 0 }))
+    return c
+  }
+
+  // The engine-on standstill under way, piece by piece: idling once it reaches idleMinSec.
+  let still = []
+  let stillSec = 0
+  const endStill = () => {
+    if (stillSec >= idleMinSec) for (const p of still) p.cell.idleSec += p.len
+    still = []
+    stillSec = 0
+  }
+
+  const step = createDistanceStepper()
+  step(messages[0])
+  for (let i = 1; i < messages.length; i++) {
+    const a = messages[i - 1], m = messages[i]
+    const { km } = step(m)
+    const t0 = a.timestamp, t1 = m.timestamp
+    if (t0 == null || t1 == null) continue
+    const dt = t1 - t0
+    if (dt <= 0) {
+      if (km > 0 && t1 >= from && t1 < to) cellAt(t1, whoAt(t1)).km += km
+      continue
+    }
+    if (t1 <= from || t0 >= to) { endStill(); continue }
+
+    const engineOn = dt <= MAX_GAP_SEC && a['engine.ignition.status'] !== false
+    const speed = num(a['position.speed']) ?? 0
+    const driving = engineOn && speed > 0
+    if (!engineOn || driving) endStill()
+    if (!engineOn && km === 0) continue
+
+    const w = whoAt(t0)
+    if (driving && t0 >= from) {
+      const c = cellAt(t0, w)
+      if (speed > c.maxKmh) c.maxKmh = speed
+    }
+    // Split the span across midnights.
+    for (let c = Math.max(t0, from), end = Math.min(t1, to); c < end;) {
+      const next = Math.min(midnightAt(c, tzOffsetSec) + DAY_SEC, end)
+      const len = next - c
+      const cell = cellAt(c, w)
+      if (km !== 0) cell.km += km * (len / dt)
+      if (engineOn) {
+        if (driving) cell.driveSec += len
+        else {
+          cell.standSec += len
+          still.push({ cell, len })
+          stillSec += len
+        }
+      }
+      c = next
+    }
+  }
+  endStill()
+  return out
+}
+
 /**
  * A vehicle's totals over the period against what was expected of it.
  * `expectedHours` is per day (default 24), prorated over the period, so

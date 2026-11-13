@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  derivePowerCuts, powerState, sumCuts, visibleCuts, powerCutsByVehicle, volts, batteryVolts, POWER_FIELDS,
+  derivePowerCuts, powerState, sumCuts, visibleCuts, powerCutsByVehicle, cutsByDay, volts, batteryVolts, POWER_FIELDS,
 } from './powerFailure'
 
 // 2026-11-10 08:00 local
@@ -216,5 +216,52 @@ describe('formatting', () => {
       'timestamp', 'external.powersource.voltage', 'external.powersource.status', 'battery.voltage',
       'engine.ignition.status', 'position.latitude', 'position.longitude',
     ])
+  })
+})
+
+describe('iTriangle power status (client, 2026-11-13)', () => {
+  // Shaped on the 13 Nov iTriangle messages: false with the voltage still
+  // falling, the voltage low a moment later, true with the voltage back.
+  const S = (status, v) => ({ 'external.powersource.status': status, 'external.powersource.voltage': v })
+  it('cuts from the false status to the true one', () => {
+    const cuts = derivePowerCuts([
+      msg(0, S(true, 12)),
+      msg(60, S(false, 7)),
+      msg(62, S(false, 4.7)),
+      msg(98, S(true, 11.7)),
+      msg(4000, S(false, 0.1)),
+      msg(9713, S(true, 13.1)),
+    ])
+    expect(cuts.map(c => [c.startTs - T0, c.endTs - T0, c.durationSec])).toEqual([[60, 98, 38], [4000, 9713, 5713]])
+  })
+})
+
+describe('cutsByDay', () => {
+  const day = ts => {
+    const d = new Date(ts * 1000)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  const cut = (start, dur, o = {}) => ({ startTs: T0 + start, endTs: T0 + start + dur, durationSec: dur, open: false, beforePeriod: false, ...o })
+  const vehicles = [
+    { deviceId: 2, vehicleId: 'Sino Truck', cuts: [cut(3600, 600), cut(86400 + 60, 120)] },
+    { deviceId: 1, vehicleId: 'Kenworth', cuts: [cut(7200, 30 * 3600), cut(60, 30)] },
+    { deviceId: 3, vehicleId: 'Actros', cuts: [] },
+  ]
+
+  it('puts each cut under the day it began, in time order, with the day totals', () => {
+    const { days } = cutsByDay(vehicles, { dayOf: day })
+    expect(days.map(d => [d.day, d.count, d.durationSec])).toEqual([
+      ['2026-11-10', 3, 30 + 600 + 30 * 3600],
+      ['2026-11-11', 1, 120],
+    ])
+    expect(days[0].cuts.map(c => c.vehicleId)).toEqual(['Kenworth', 'Sino Truck', 'Kenworth'])
+  })
+
+  it('sums per vehicle by name for the Report Summary, and hides short cuts', () => {
+    const all = cutsByDay(vehicles, { dayOf: day })
+    expect(all.perVehicle.map(v => [v.vehicleId, v.count, v.durationSec])).toEqual([['Kenworth', 2, 30 * 3600 + 30], ['Sino Truck', 2, 720]])
+    const long = cutsByDay(vehicles, { dayOf: day, minCutMin: 5 })
+    expect(long.hidden).toBe(2)
+    expect(long.days.map(d => d.day)).toEqual(['2026-11-10'])
   })
 })

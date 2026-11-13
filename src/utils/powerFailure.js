@@ -31,6 +31,12 @@
  *     (not when that reading is a `false` status — that is the cut itself).
  *   - Still "no power" on the last message: the cut is `open` and runs to the
  *     end of the period (`periodEndTs`), or to the last message without one.
+ *
+ * iTriangle (client, 2026-11-13): its `external.powersource.status` false is
+ * the power cut ("battery tamper") and true the power back — the same reading
+ * as the Teltonika trackers', so the same rule serves both. Checked on the
+ * two iTriangle units' 13 Nov messages (GET only): the status and the voltage
+ * agree, and the cuts come out at 10:04, 11:11, 12:39-14:14 and 14:25 UAE.
  */
 
 export const DEFAULT_POWER_OPTS = Object.freeze({
@@ -184,6 +190,41 @@ export function powerCutsByVehicle(byDevice, vehicles, opts = {}) {
     })
   }
   return out.sort((a, b) => a.vehicleId.localeCompare(b.vehicleId))
+}
+
+/**
+ * The cuts as the client's Ctrack sample lays them out (2026-11-13): each
+ * under the day it began, oldest day first and in time order within it, every
+ * day with its count and summed time without power; and per vehicle, by name,
+ * its count and time for the Report Summary. Cuts shorter than `minCutMin`
+ * are left out (see visibleCuts) and counted in `hidden`.
+ *
+ * @param {object[]} vehicles  powerCutsByVehicle's result
+ * @param {object}   opts      { dayOf: ts => 'YYYY-MM-DD', minCutMin }
+ * @returns {{ days: {day, cuts, count, durationSec}[], perVehicle: {vehicleId, deviceId, count, durationSec}[], hidden: number }}
+ */
+export function cutsByDay(vehicles, { dayOf, minCutMin = 0 } = {}) {
+  const days = new Map()
+  const perVehicle = []
+  let hidden = 0
+  for (const v of vehicles ?? []) {
+    const vis = visibleCuts(v.cuts, minCutMin)
+    hidden += vis.hidden
+    if (!vis.cuts.length) continue
+    perVehicle.push({ vehicleId: v.vehicleId, deviceId: v.deviceId, count: vis.cuts.length, durationSec: sumCuts(vis.cuts).offSec })
+    for (const c of vis.cuts) {
+      const day = dayOf(c.startTs)
+      let d = days.get(day)
+      if (!d) days.set(day, (d = { day, cuts: [], count: 0, durationSec: 0 }))
+      d.cuts.push({ ...c, vehicleId: v.vehicleId, deviceId: v.deviceId })
+      d.count += 1
+      d.durationSec += c.durationSec
+    }
+  }
+  const list = [...days.values()].sort((a, b) => a.day.localeCompare(b.day))
+  for (const d of list) d.cuts.sort((a, b) => a.startTs - b.startTs || a.vehicleId.localeCompare(b.vehicleId))
+  perVehicle.sort((a, b) => a.vehicleId.localeCompare(b.vehicleId))
+  return { days: list, perVehicle, hidden }
 }
 
 /** "11.6" — one decimal for the vehicle supply; "—" for no reading. */
