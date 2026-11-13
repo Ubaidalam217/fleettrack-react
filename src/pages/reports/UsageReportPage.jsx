@@ -591,7 +591,7 @@ const VARIANTS = {
         total += dayKm
         // The average is over every vehicle that made a trip that day (client's sample).
         const assets = new Set(d.trips.map(t => t._vehicle.deviceId)).size
-        chart.push({ day: date.slice(0, 6), total: Math.round(dayKm * 10) / 10, avg: assets ? Math.round((dayKm / assets) * 10) / 10 : 0 })
+        chart.push({ day: date.slice(0, 6), date, total: Math.round(dayKm * 10) / 10, avg: assets ? Math.round((dayKm / assets) * 10) / 10 : 0 })
       }
       if (rows.length) rows.push({ key: 'total', date: 'Total', entity: `Entity Count: ${entities.size}`, distance: Math.round(total), strong: true })
       return {

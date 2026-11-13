@@ -8,6 +8,7 @@
 //
 // Column widths are weights, scaled to the page, as in geoZoneExport.js.
 import { loadLogo, fileStamp, download } from './reportExport'
+import { dateBarColor, dateLabelEvery } from './dateBarColors'
 
 export const CTRACK_RED = [139, 0, 0]
 export const CTRACK_ZEBRA = [228, 228, 247]
@@ -249,9 +250,18 @@ export async function buildCtrackPdf(o) {
   }
 
   if (o.chart?.length) {
+    // The two graphs one under the other, each with its date legend (client's
+    // Ctrack image, 2026-11-13); the second moves to a new page if it can't fit.
     newPage(false)
-    drawBarChart(doc, { x: M + 56, y: y + 8, w: usable - 80, h: 150, title: 'Distance Driven Graph', data: o.chart.map(d => ({ label: d.day, v: d.total })) })
-    drawBarChart(doc, { x: M + 56, y: y + 230, w: usable - 80, h: 150, title: 'Average Distance Driven per Asset', data: o.chart.map(d => ({ label: d.day, v: d.avg })) })
+    const graphs = [
+      { title: 'Distance Driven Graph', data: o.chart.map(d => ({ label: d.date ?? d.day, v: d.total })) },
+      { title: 'Average Distance Driven per Asset', data: o.chart.map(d => ({ label: d.date ?? d.day, v: d.avg })) },
+    ]
+    graphs.forEach((g, k) => {
+      const h = 150
+      if (k > 0 && y + barChartHeight(g.data.length, h) > BOTTOM) newPage(false)
+      y = drawBarChart(doc, { x: M + 58, y: y + 10, w: usable - 72, h, title: g.title, data: g.data }) + 16
+    })
   }
 
   if (o.summary?.length || o.summaryTable) {
@@ -285,34 +295,78 @@ export async function buildCtrackPdf(o) {
   return doc
 }
 
-const PALETTE = [[66, 165, 199], [214, 39, 73], [76, 175, 80], [222, 158, 23], [232, 106, 46], [186, 58, 58], [86, 180, 210], [231, 88, 110]]
+const LEGEND_PER_ROW = 8
+const LEGEND_ROW_H = 11
 
+/** Height drawBarChart takes for n dates and a plot h high, legend included. */
+function barChartHeight(n, h) {
+  return 14 + h + 40 + Math.ceil(n / LEGEND_PER_ROW) * LEGEND_ROW_H + 10
+}
+
+/**
+ * A Distance Driven graph like the client's Ctrack image (2026-11-13): a thin
+ * bar per date in its own colour (utils/dateBarColors.js), light grid, every
+ * other date labelled on two alternating rows, and a boxed legend of every
+ * date underneath, eight to a row. Returns the y below the legend.
+ */
 function drawBarChart(doc, { x, y, w, h, title, data }) {
+  const n = data.length
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(120, 120, 120)
-  doc.text(title, x + w / 2, y, { align: 'center' })
-  const top = y + 10
-  const max = Math.max(1, ...data.map(d => d.v))
-  const step = Math.pow(10, Math.floor(Math.log10(max)))
-  const nice = Math.ceil(max / step) * step
-  doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.5)
-  doc.rect(x, top, w, h)
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(60, 60, 60)
-  for (let i = 0; i <= 5; i++) {
-    const gy = top + h - (h * i) / 5
+  doc.text(title, x + w / 2, y + 8, { align: 'center' })
+  const top = y + 14
+  const { top: yTop, step } = niceAxis(Math.max(0, ...data.map(d => d.v)))
+  const slot = w / Math.max(1, n)
+  const cx = i => x + slot * i + slot / 2
+  const every = dateLabelEvery(n)
+
+  // Grid: horizontal at each step, vertical at each labelled date.
+  doc.setDrawColor(222, 222, 222); doc.setLineWidth(0.4)
+  for (let v = 0; v <= yTop; v += step) {
+    const gy = top + h - (h * v) / yTop
     doc.line(x, gy, x + w, gy)
-    doc.text(String(Math.round((nice * i) / 5)), x - 3, gy + 2, { align: 'right' })
   }
-  const slot = w / Math.max(1, data.length)
+  for (let i = 0; i < n; i += every) doc.line(cx(i), top, cx(i), top + h)
+  doc.setDrawColor(170, 170, 170); doc.setLineWidth(0.6)
+  doc.rect(x, top, w, h)
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(60, 60, 60)
+  for (let v = 0; v <= yTop; v += step) doc.text(String(v), x - 4, top + h - (h * v) / yTop + 2, { align: 'right' })
+
+  const bw = Math.max(1.2, Math.min(3.2, slot * 0.18))
   data.forEach((d, i) => {
-    const bh = (h * d.v) / nice
-    doc.setFillColor(...PALETTE[i % PALETTE.length])
-    doc.rect(x + slot * i + slot * 0.3, top + h - bh, Math.max(1.2, slot * 0.4), bh, 'F')
-    if (data.length <= 16 || i % 2 === 0) doc.text(d.label, x + slot * i + slot / 2, top + h + 9, { align: 'center' })
+    const bh = (h * Math.max(0, d.v)) / yTop
+    doc.setFillColor(...dateBarColor(i))
+    if (bh > 0) doc.rect(cx(i) - bw / 2, top + h - bh, bw, bh, 'F')
   })
+
+  // Dates: every other one, the upper and lower rows taking turns.
+  doc.setFontSize(6); doc.setTextColor(40, 40, 40)
+  doc.setDrawColor(170, 170, 170); doc.setLineWidth(0.5)
+  for (let i = 0; i < n; i += every) {
+    const upper = (i / every) % 2 === 1
+    doc.line(cx(i), top + h, cx(i), top + h + 2.5)
+    doc.text(str(data[i].label), cx(i), top + h + (upper ? 9 : 17), { align: 'center' })
+  }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(0, 0, 0)
-  doc.text('Date', x + w / 2, top + h + 21, { align: 'center' })
+  doc.text('Date', x + w / 2, top + h + 29, { align: 'center' })
   const yl = 'Distance Driven (km)'
-  doc.text(yl, x - 30, top + h / 2 + doc.getTextWidth(yl) / 2, { angle: 90 })
+  doc.text(yl, x - 34, top + h / 2 + doc.getTextWidth(yl) / 2, { angle: 90 })
+
+  // Legend: every date with its colour, eight to a row, in a light box.
+  const lx = x + 6, lw = w - 12
+  const lTop = top + h + 38
+  const rows = Math.ceil(n / LEGEND_PER_ROW)
+  doc.setDrawColor(190, 190, 190); doc.setLineWidth(0.5)
+  if (n) doc.rect(lx, lTop, lw, rows * LEGEND_ROW_H + 6)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(40, 40, 40)
+  data.forEach((d, i) => {
+    const colX = lx + 6 + (i % LEGEND_PER_ROW) * ((lw - 8) / LEGEND_PER_ROW)
+    const rowY = lTop + 4 + Math.floor(i / LEGEND_PER_ROW) * LEGEND_ROW_H
+    doc.setFillColor(...dateBarColor(i))
+    doc.rect(colX, rowY + 1, 11, 6.5, 'F')
+    doc.text(str(d.label), colX + 14, rowY + 6.4)
+  })
+  return lTop + rows * LEGEND_ROW_H + 6
 }
 
 /** A round axis top and step for counts: 138 → 140 by 20. */
