@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
 import { pointToMessage, tripsFromPoints, visibleReplayTrips, isZeroTrip, tripTotals } from '../utils/replayTrips'
 import { DEFAULT_HIDDEN_GROUPS, eventsByTrip, groupCounts, visibleEvents } from '../utils/replayEvents'
-import { driverIdentity, driverTimeline, NO_DRIVER } from '../utils/driverAtTime'
-import { driverForIbutton, driverForVehicleImei, useDrivers } from '../data/settings'
+import { NO_DRIVER } from '../utils/driverAtTime'
+import { useDriverDimension } from './useDriverDimension'
 import { useTripPlaces } from './useTripPlaces'
 import { useReplayEvents } from './useReplayEvents'
 
@@ -35,8 +35,10 @@ function loadHighlight() {
  *   events     alert events + harsh / ignition read off the track; the chips
  *              switch groups off (remembered), `shown` is what stays on
  *   highlight  the "route above N km/h in red" speed (remembered)
- *   driverOf   who drove at a moment: iButton read in the drive, else the
- *              vehicle's assigned driver (utils/driverAtTime.js)
+ *   driverOf   who drove at a moment: the tag read in the drive (whoever held
+ *              it then), else the driver assigned then — from the recorded
+ *              driver history, so a replaced or removed driver still names
+ *              their old trips (hooks/useDriverDimension.js)
  *
  * Mounted for the whole page, so it is cheap with nothing loaded.
  */
@@ -76,14 +78,14 @@ export function useReplayView({ deviceId, vehicle, range, allPoints }) {
     }
   }, [])
 
-  // Drivers: re-derived when Settings > Driver loads or changes.
-  const drivers = useDrivers()
+  // Drivers: re-derived when Settings > Driver or the driver history changes.
+  const driverDim = useDriverDimension()
   const imei = vehicle?.ident
-  const metaDriver = vehicle?.master?.driver?.name
-  const driverAt = useMemo(() => {
-    const assigned = driverIdentity(driverForVehicleImei(imei)) ?? driverIdentity(metaDriver)
-    return driverTimeline(messages, { driverForTag: driverForIbutton, assigned })
-  }, [messages, imei, metaDriver, drivers]) // eslint-disable-line react-hooks/exhaustive-deps
+  const master = vehicle?.master
+  const driverAt = useMemo(
+    () => driverDim.timelineFor({ ident: imei, master }, messages),
+    [driverDim, imei, master, messages]
+  )
 
   /** The driver's name at a moment, or null for none. */
   const driverOf = useCallback(ts => {
@@ -91,14 +93,11 @@ export function useReplayView({ deviceId, vehicle, range, allPoints }) {
     return who && who.key !== NO_DRIVER.key ? who.label : null
   }, [driverAt])
 
-  /** An event's driver: the one the alert engine recorded, else whoever drove then. */
+  /** An event's driver: the one the alert engine recorded (removed drivers too), else whoever drove then. */
   const eventDriver = useCallback(e => {
-    if (e?.driverId) {
-      const d = (Array.isArray(drivers) ? drivers : []).find(x => x.id === e.driverId)
-      if (d?.name) return d.name
-    }
-    return driverOf(e?.fromTs)
-  }, [drivers, driverOf])
+    const d = e?.driverId ? driverDim.driverById(e.driverId) : null
+    return d?.name || driverOf(e?.fromTs)
+  }, [driverDim, driverOf])
 
   return {
     allTrips, trips, totals, zeroCount, showZero, setShowZero, places,
