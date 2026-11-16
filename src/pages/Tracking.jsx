@@ -2164,13 +2164,16 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   )}
                 </MapContainer>
 
-                {replayPoint && cardPrefs.show && (cardPrefs.dock === 'tl' || cardPrefs.dock === 'tr') && (
+                {/* Pinned to a corner it sits over the whole map (z 905), above even
+                    an event's card — so, like the following card, it folds away
+                    while one is open. */}
+                {replayPoint && cardPrefs.show && !replayActiveEvent && (cardPrefs.dock === 'tl' || cardPrefs.dock === 'tr') && (
                   <ReplayDockedCard point={replayPoint} fields={replayFields} prefs={cardPrefs} onPrefs={setCardPrefs} driver={replayDriver} />
                 )}
 
                 {replayShowing && (
                   <div className="track-replay-bar">
-                    {replayPoint && cardPrefs.show && cardPrefs.dock === 'bl' && (
+                    {replayPoint && cardPrefs.show && !replayActiveEvent && cardPrefs.dock === 'bl' && (
                       <ReplayDockedCard point={replayPoint} fields={replayFields} prefs={cardPrefs} onPrefs={setCardPrefs} driver={replayDriver} />
                     )}
                     <ReplayPlayerBar

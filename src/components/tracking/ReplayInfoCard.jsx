@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Tooltip, useMap } from 'react-leaflet'
-import { EyeOff, Maximize2, Minimize2, Move, Pin, PinOff } from 'lucide-react'
+import { EyeOff, Maximize2, Minimize2, Move, Phone, Pin, PinOff } from 'lucide-react'
 import { replayStateOf } from '../../utils/replayTimeline'
 import { togglePinned, nextCorner } from '../../utils/replayCard'
 import { useSettledAddress } from '../../hooks/useAddress'
@@ -64,7 +64,15 @@ export const REPLAY_INFO_CSS = `
   }
   .rp-card-tools button:hover { background: rgba(255, 255, 255, 0.26); }
   .rp-card-tools button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-  .rp-card-tel { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+  /* Leaflet paints every link in its container blue (.leaflet-container a),
+     which on the gradient read as a faint grey-blue (client, 2026-11-16). The
+     number is the card's white, underlined, with a phone icon. */
+  .leaflet-container .rp-card-tel, .rp-card-tel {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: var(--ft-card-text); font-weight: 700;
+    text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.7); text-underline-offset: 2px;
+  }
+  .leaflet-container .rp-card-tel:hover, .rp-card-tel:hover { color: #fff; text-decoration-color: #fff; }
   .rp-card-tel:focus-visible { outline: 2px solid #fff; outline-offset: 1px; border-radius: 3px; }
 `
 
@@ -257,7 +265,10 @@ function CardBody({ point, fields, prefs, onPrefs, docked, driver }) {
       {fields.driver    && <Line label="Driver">{driver?.name ?? '—'}</Line>}
       {fields.mobile    && driver?.mobile && (
         <Line label="Mobile">
-          <a href={`tel:${driver.mobile.replace(/[^\d+]/g, '')}`} className="rp-card-tel">{driver.mobile}</a>
+          <a href={`tel:${driver.mobile.replace(/[^\d+]/g, '')}`} className="rp-card-tel" title={`Call ${driver.name}`}>
+            <Phone size={11} aria-hidden="true" />
+            {driver.mobile}
+          </a>
         </Line>
       )}
       {fields.heading   && <Line label="Heading">{headingLabel(point.heading)}</Line>}
