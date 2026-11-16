@@ -75,10 +75,16 @@ const columns = body => ({
   note: body.note,
 })
 
-const vehicleOf = req => findScopedOrThrow('vehicle', req.params.vehicleId, req.scope)
+/**
+ * The vehicle, if the caller can see it. A write needs the vehicle's owner:
+ * a vehicle shared into the caller's scope shows its papers read-only
+ * (lib/sharePolicy.js) — 404 to a write, like any vehicle it could not edit.
+ */
+const vehicleOf = (req, { write = false } = {}) =>
+  findScopedOrThrow(write ? 'ownedVehicle' : 'vehicle', req.params.vehicleId, req.scope)
 
-async function docOf(req) {
-  const vehicle = await vehicleOf(req)
+async function docOf(req, opts) {
+  const vehicle = await vehicleOf(req, opts)
   const doc = await prisma.vehicleDocument.findFirst({ where: { id: req.params.docId, vehicleId: vehicle.id }, select: SELECT })
   if (!doc) throw notFound('Document')
   return doc
@@ -102,7 +108,7 @@ router.post(
   validate(createSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
-    const vehicle = await vehicleOf(req)
+    const vehicle = await vehicleOf(req, { write: true })
     const file = fileColumns(req.body)
     const row = await prisma.vehicleDocument.create({
       data: {
@@ -122,7 +128,7 @@ router.put(
   validate(updateSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
-    const doc = await docOf(req)
+    const doc = await docOf(req, { write: true })
     const file = fileColumns(req.body)
     const cleared = req.body.removeFile ? { fileName: null, mimeType: null, size: null, data: null } : {}
     const row = await prisma.vehicleDocument.update({
@@ -138,7 +144,7 @@ router.delete(
   '/:docId',
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
-    const doc = await docOf(req)
+    const doc = await docOf(req, { write: true })
     await prisma.vehicleDocument.delete({ where: { id: doc.id } })
     res.json({ data: { id: doc.id } })
   })

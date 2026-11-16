@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Plus, FileBadge, BellPlus, ArrowRightLeft } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import SettingsLayout from './SettingsLayout'
@@ -14,7 +14,11 @@ import {
   companyNameFor, branchTreeForCompany, branchOptionLabel,
   groupsForCompany, groupIdForCompany,
   groupNameFor, vehicleLabel, emptyVehicle, isImeiTaken,
+  SHARING_AVAILABLE, setVehicleShares,
 } from '../../data/settings'
+import ShareTargetsField from './ShareTargetsField'
+import SharedChip from '../../components/SharedChip'
+import { isOwned, sharedFromText, shareTargetsOf, sharesChanged } from '../../utils/vehiclePlacement'
 import { usePageAccess, handleApiError, modeNote } from './pageChrome'
 import PageNotice from './PageNotice'
 import VehicleMoveDialog from './VehicleMoveDialog'
@@ -31,16 +35,44 @@ import { get } from '../../data/http'
 // because Branch and Group depend on the chosen company and the IMEI field
 // carries a warning that is not a validation error.
 
+// One vehicle in several places (client, 2026-11-13; utils/vehiclePlacement.js):
+// a vehicle shared INTO this account shows where it was shared to, marked
+// Shared and read-only; one of its own lists where else it shows.
+const placeText = s => s.label || s.companyName || s.groupName || '—'
 const COLUMNS = [
   { key: 'vehicleNumber', label: 'Vehicle Number', bold: true },
   { key: 'imei',          label: 'IMEI' },
-  { key: 'company',       label: 'Business Group', render: row => companyNameFor(row.companyId) },
+  {
+    key: 'company',
+    label: 'Business Group',
+    render: row => isOwned(row)
+      ? companyNameFor(row.companyId)
+      : (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {row.shares?.[0] ? placeText(row.shares[0]) : '—'}
+          <SharedChip title={`${sharedFromText(row)} — read-only`} />
+        </span>
+      ),
+  },
   {
     key: 'makeModel',
     label: 'Make/Model',
     render: row => [row.make, row.model].filter(Boolean).join(' ') || '—',
   },
+  ...(SHARING_AVAILABLE ? [{
+    key: 'alsoIn',
+    label: 'Also in',
+    render: row => {
+      const list = isOwned(row) ? row.shares ?? [] : []
+      if (!list.length) return '—'
+      const first = list.slice(0, 2).map(placeText).join(', ')
+      return <span title={list.map(placeText).join('\n')}>{first}{list.length > 2 ? ` +${list.length - 2}` : ''}</span>
+    },
+  }] : []),
 ]
+
+/** The vehicle record's own fields, as the form edits them (what PUT /api/vehicles/:id saves). */
+const RECORD_KEYS = ['companyId', 'branchId', 'groupId', 'subGroup', 'vehicleNumber', 'vehicleId', 'imei', 'odometer', 'make', 'model', 'deviceType', 'mobileNo', 'vehicleType', 'validUntil']
 
 const GRID = {
   display: 'grid',
@@ -132,8 +164,14 @@ export default function Vehicle(props) {
   const companies = useCompanies()
   // Subscribed so the Branch and Group dropdowns react to rows added on their
   // own pages; the per-BG slices come from the *ForCompany reads.
-  useBranches()
-  useGroups()
+  const branchList = useBranches()
+  const groupList  = useGroups()
+  // The places this account can see, for the "Also show in" field.
+  const visible = useMemo(() => ({
+    companies: new Map(companies.map(c => [c.id, c])),
+    groups: new Map(groupList.map(g => [g.id, g])),
+    branches: new Map(branchList.map(b => [b.id, b])),
+  }), [companies, groupList, branchList])
 
   const { toasts, push, dismiss } = useToasts()
   // Client, 2026-11-10: one vehicle can move to another Business Group.
@@ -161,8 +199,13 @@ export default function Vehicle(props) {
     if (editing) firstRef.current?.focus()
   }, [editing])
 
-  const openAdd   = (preset = {}) => { setErrors({}); setDraft({ ...emptyVehicle(), ...preset }) }
-  const openEdit  = row => { setErrors({}); setDraft({ ...row }) }
+  // `shareTargets` is the "Also show in" pick; `sharesBefore` what it was on open.
+  const openAdd   = (preset = {}) => { setErrors({}); setDraft({ ...emptyVehicle(), ...preset, shareTargets: [], sharesBefore: [], sharesFixed: [] }) }
+  const openEdit  = row => {
+    setErrors({})
+    const { value, fixed } = shareTargetsOf(row, visible)
+    setDraft({ ...row, shareTargets: value, sharesBefore: value, sharesFixed: fixed })
+  }
   const closeForm = ()  => { setErrors({}); setDraft(null) }
 
   // Deep link from the Vehicles panel on the GGB / Group / BG / Branch pages:
@@ -192,6 +235,11 @@ export default function Vehicle(props) {
         // The group is the BG's own when it has one; only a BG that acts as
         // its own group leaves this free to choose.
         next.groupId = groupIdForCompany(value)
+        // Its own BG cannot also be a place it is shared to.
+        next.shareTargets = (d.shareTargets ?? []).filter(t => !(t.level === 'bg' && t.id === value))
+      }
+      if (key === 'branchId') {
+        next.shareTargets = (d.shareTargets ?? []).filter(t => !(t.level === 'branch' && t.id === value))
       }
       return next
     })
@@ -231,8 +279,10 @@ export default function Vehicle(props) {
       return
     }
 
+    const { shareTargets = [], sharesBefore = [], sharesFixed: _fixed, ...rest } = draft
+    const sharesDirty = SHARING_AVAILABLE && sharesChanged(sharesBefore, shareTargets)
     const clean = {
-      ...draft,
+      ...rest,
       vehicleNumber: draft.vehicleNumber.trim(),
       vehicleId:     draft.vehicleId.trim(),
       imei:          draft.imei.trim(),
@@ -246,13 +296,20 @@ export default function Vehicle(props) {
     setSaving(true)
     try {
       if (draft.id) {
-        await updateVehicle(draft.id, clean)
+        // Only "Also show in" changed: no vehicle save, so the Flespi device
+        // (renamed by every vehicle save) is not touched for a share.
+        const saved = vehicles.find(v => v.id === draft.id)
+        const fieldsDirty = !saved || RECORD_KEYS.some(k => String(saved[k] ?? '').trim() !== String(clean[k] ?? '').trim())
+        if (fieldsDirty) await updateVehicle(draft.id, clean)
         // A new odometer reading corrects the vehicle's odometer (utils/odometer.js);
         // it never reaches the tracker.
         if (odo.changed(draft.odoReading)) await setVehicleOdometer(draft.id, Number(draft.odoReading))
+        // Its other places: their own endpoint, which leaves the tracker alone.
+        if (sharesDirty) await setVehicleShares(draft.id, shareTargets)
         push(`${clean.vehicleNumber} updated`, { tone: 'success' })
       } else {
-        await addVehicle(clean)
+        const created = await addVehicle(clean)
+        if (sharesDirty && created?.id) await setVehicleShares(created.id, shareTargets)
         push(`${clean.vehicleNumber} added`, { tone: 'success' })
       }
       setDraft(null)
@@ -539,12 +596,25 @@ export default function Vehicle(props) {
               </Field>
             </div>
 
+            {/* One vehicle in several places (client, 2026-11-13). Needs the server. */}
+            {SHARING_AVAILABLE && draft.companyId && (
+              <div style={{ marginTop: 16 }}>
+                <ShareTargetsField
+                  draft={draft}
+                  value={draft.shareTargets ?? []}
+                  fixed={draft.sharesFixed ?? []}
+                  onChange={v => { setDraft(d => ({ ...d, shareTargets: v })); setErrors(e => (e.targets ? { ...e, targets: null } : e)) }}
+                  error={errors.targets}
+                />
+              </div>
+            )}
+
             <FormActions
               onBack={closeForm}
               onReset={() => {
-                setErrors({})
                 const saved = draft.id ? vehicles.find(v => v.id === draft.id) : null
-                setDraft(saved ? { ...saved } : emptyVehicle())
+                if (saved) openEdit(saved)
+                else openAdd()
               }}
               saveLabel={draft.id ? 'Save Changes' : 'Save'}
               saving={saving}
@@ -592,11 +662,13 @@ export default function Vehicle(props) {
                 rows={vehicles}
                 // Rows are identified by their Vehicle Number, not a `name` field.
                 labelKey="vehicleNumber"
+                // A vehicle shared into this account: its owner edits it, not this one.
+                rowReadOnly={row => !isOwned(row)}
                 extraActions={row => [{
                   label: `Create alert for ${row.vehicleNumber || row.imei}`,
                   icon: <BellPlus size={13} />,
                   onClick: () => navigate(`/settings/alerts?imei=${encodeURIComponent(row.imei)}`),
-                }, ...(access.canWrite ? [{
+                }, ...(access.canWrite && isOwned(row) ? [{
                   label: `Move ${row.vehicleNumber || row.imei} to another Business Group`,
                   icon: <ArrowRightLeft size={13} />,
                   onClick: () => setMoving(row),

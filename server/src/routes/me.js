@@ -17,6 +17,7 @@ import { optionalText } from '../lib/fields.js'
 import { scopedWhere } from '../lib/scope.js'
 import { publicUser } from '../lib/serialize.js'
 import { chainLogos } from '../lib/nodeLogos.js'
+import { SHARES_INCLUDE, withShares } from '../lib/vehicleShares.js'
 import { validate } from '../middleware/validate.js'
 
 const router = Router()
@@ -50,11 +51,13 @@ router.get(
         branchId: true,
         bg: { select: { id: true, name: true, groupId: true } },
         branch: { select: { id: true, name: true } },
+        // The other places it shows (VehicleShare); `owned` false = shared in.
+        shares: SHARES_INCLUDE,
       },
     })
 
     res.json({
-      data: rows,
+      data: await withShares(rows, req.scope),
       // Saves the client a length check to decide whether to open the MQTT
       // subscription at all, and makes an empty result legible in a log.
       count: rows.length,

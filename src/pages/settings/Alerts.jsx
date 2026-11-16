@@ -11,7 +11,7 @@ import { useToasts } from '../../hooks/useToasts'
 import {
   useAlerts, useCompanies, useVehicles, useGeofences,
   addAlert, updateAlert, removeAlert,
-  companyNameFor, vehiclesForCompany, emptyAlert, normalizeAlert, vehicleByImei,
+  companyNameFor, vehiclesForCompany, emptyAlert, normalizeAlert, vehicleByImei, settingsProfileForImei,
   vehicleLabel, vehicleSubLabel,
   ALERT_TYPES, ALERT_SEVERITIES, GEO_DIRECTIONS, alertTypeLabel, alertTypeOf,
 } from '../../data/settings'
@@ -793,7 +793,9 @@ export default function Alerts(props) {
       push('This vehicle is not registered under a Business Group yet — add it in Object first.', { tone: 'error' })
       return
     }
-    open({ ...emptyAlert(), companyId: v.companyId, allVehicles: false, vehicleIds: [v.id] })
+    // A vehicle shared into this account: its rule is this account's own BG's.
+    const bgId = v.owned === false ? settingsProfileForImei(v.imei).bgId || v.companyId : v.companyId
+    open({ ...emptyAlert(), companyId: bgId, allVehicles: false, vehicleIds: [v.id] })
     push(`New alert for ${v.vehicleNumber || v.imei}`, { tone: 'info' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forImei, access.loading, access.canAdd, fleet])
@@ -854,7 +856,7 @@ export default function Alerts(props) {
       allVehicles: on,
       // Dropping to an explicit list starts from what "all" currently covers,
       // so turning the toggle off does not blank the selection under the user.
-      vehicleIds: on ? [] : vehiclesForCompany(d.companyId).map(v => v.id),
+      vehicleIds: on ? [] : vehiclesForCompany(d.companyId, { includeShared: true }).map(v => v.id),
     }))
     clearError('scope')
   }
@@ -908,7 +910,8 @@ export default function Alerts(props) {
     clearError('emails')
   }
 
-  const vehicles = editing ? vehiclesForCompany(draft.companyId) : []
+  // Its own vehicles and those shared into it: a BG's rules cover both (client, 2026-11-13).
+  const vehicles = editing ? vehiclesForCompany(draft.companyId, { includeShared: true }) : []
   const SettingsFields = editing ? SETTINGS_RENDERERS[draft.type] : null
   const byVehicle = editing && watchesVehicles(draft.type)
   const typeMeta = editing ? alertTypeOf(draft.type) : null

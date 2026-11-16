@@ -22,7 +22,8 @@ import {
 } from '../lib/fields.js'
 import { publicAlert } from '../lib/serialize.js'
 import { CUSTOM_OPERATORS, PARAMETER_NAME, SEVERITIES, TYPES } from '../lib/alertEngine.js'
-import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
+import { assertCanWrite, assertWritableParent, bgFleetWhere, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
+import { SHARED_BG_RULES_APPLY } from '../lib/sharePolicy.js'
 import { validate } from '../middleware/validate.js'
 
 const router = Router()
@@ -166,11 +167,14 @@ function assertConsistent(body) {
   }
 }
 
-/** The named vehicles, confirmed to be in this alert's own BG. */
+/**
+ * The named vehicles, confirmed to be in this alert's own BG — its own, or
+ * shared into it when that BG's rules cover shared vehicles (lib/sharePolicy.js).
+ */
 async function resolveVehicles(bgId, ids) {
   if (!ids.length) return []
   const rows = await prisma.vehicle.findMany({
-    where: { id: { in: ids }, bgId },
+    where: { AND: [{ id: { in: ids } }, SHARED_BG_RULES_APPLY ? bgFleetWhere(bgId) : { bgId }] },
     select: { id: true },
   })
   if (rows.length !== ids.length) {

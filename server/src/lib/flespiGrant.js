@@ -42,7 +42,9 @@ export function methodsForRole(role) {
 /**
  * The ACL this account should have right now.
  *
- * Returns `{ acl, deviceIds, methods, unmatchedImeis }`. `deviceIds` is null for a
+ * Returns `{ acl, deviceIds, writableDeviceIds, methods, unmatchedImeis }`.
+ * `writableDeviceIds` is the part of `deviceIds` the account may change: its
+ * own vehicles, not those shared into it. `deviceIds` is null for a
  * Super Admin, meaning "all devices" — null and [] are emphatically different
  * here, exactly as in the frontend's fleetScope: null reaches everything, [] must
  * reach nothing.
@@ -60,19 +62,26 @@ export async function buildAcl(scope) {
     return {
       acl: [{ uri: 'gw/devices', methods }],
       deviceIds: null,
+      writableDeviceIds: null,
       methods,
       unmatchedImeis: [],
     }
   }
 
-  const vehicles = await prisma.vehicle.findMany({
-    where: scopedWhere('vehicle', scope),
-    select: { imei: true },
-  })
+  // What the account may see includes vehicles shared into it; what it may
+  // change (metadata save, Poll, device settings) is its own vehicles only —
+  // a shared vehicle's tracker belongs to its owner (lib/sharePolicy.js).
+  const canWrite = methods.includes('PUT')
+  const [vehicles, owned] = await Promise.all([
+    prisma.vehicle.findMany({ where: scopedWhere('vehicle', scope), select: { id: true, imei: true } }),
+    canWrite ? prisma.vehicle.findMany({ where: scopedWhere('ownedVehicle', scope), select: { id: true } }) : [],
+  ])
+  const ownedIds = new Set(owned.map(v => v.id))
 
   const byImei = await flespi.deviceMap()
 
   const deviceIds = []
+  const writableDeviceIds = []
   const unmatchedImeis = []
   for (const v of vehicles) {
     const id = byImei.get(digits(v.imei))
@@ -81,15 +90,18 @@ export async function buildAcl(scope) {
       // account. Normal (a tracker not yet added) and not an error — but worth
       // returning so the caller can report it rather than silently narrowing.
       unmatchedImeis.push(v.imei)
-    } else if (!deviceIds.includes(id)) {
-      deviceIds.push(id)
+      continue
     }
+    if (!deviceIds.includes(id)) deviceIds.push(id)
+    if (ownedIds.has(v.id) && !writableDeviceIds.includes(id)) writableDeviceIds.push(id)
   }
   deviceIds.sort((a, b) => a - b)
+  writableDeviceIds.sort((a, b) => a - b)
 
   return {
     acl: [{ uri: 'gw/devices', ids: deviceIds, methods }],
     deviceIds,
+    writableDeviceIds,
     methods,
     unmatchedImeis,
   }

@@ -23,7 +23,7 @@ import { CARD_SURFACE } from './formStyles'
  * leave an empty header and a ragged right edge on every row; the server rejects
  * the calls regardless, so the column has nothing to offer.
  */
-export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLabel, labelKey = 'name', canWrite = true, extraActions }) {
+export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLabel, labelKey = 'name', canWrite = true, extraActions, rowReadOnly }) {
   const [hovered, setHovered] = useState(null)
 
   return (
@@ -95,15 +95,19 @@ export default function SettingsTable({ columns, rows, onEdit, onDelete, emptyLa
                           {a.icon}
                         </IconButton>
                       ))}
-                      <IconButton
-                        label={`Edit ${row[labelKey]}`}
-                        tone="var(--ft-accent)"
-                        onClick={() => onEdit(row)}
-                      >
-                        <Pencil size={13} />
-                      </IconButton>
+                      {/* rowReadOnly: a row this account sees but may not change
+                          (e.g. a vehicle shared into it) has no Edit or Delete. */}
+                      {!rowReadOnly?.(row) && (
+                        <IconButton
+                          label={`Edit ${row[labelKey]}`}
+                          tone="var(--ft-accent)"
+                          onClick={() => onEdit(row)}
+                        >
+                          <Pencil size={13} />
+                        </IconButton>
+                      )}
                       {/* No onDelete: the user may edit here but not delete (permissions). */}
-                      {onDelete && (
+                      {onDelete && !rowReadOnly?.(row) && (
                         <IconButton
                           label={`Delete ${row[labelKey]}`}
                           tone="#ef4444"

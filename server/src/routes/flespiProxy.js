@@ -14,7 +14,8 @@
  *   - an explicit id list must be entirely inside the caller's scope, else 404 —
  *     the same "not found" any other out-of-scope record gets;
  *   - writes (PUT) are allowed only for roles that may write, and only to a device
- *     itself (vehicle master metadata) or one of its settings (the Poll command).
+ *     itself (vehicle master metadata) or one of its settings (the Poll command),
+ *     of a vehicle the caller owns — not one merely shared into its scope.
  *
  * The device scope is the same one buildAcl() always computed for the token ACL,
  * so what each role can see through Flespi has not changed.
@@ -70,7 +71,7 @@ router.use(
     const requested = parseSelector(selector)
     if (requested === undefined) throw notFound('Flespi resource')
 
-    const { deviceIds, methods } = await buildAcl(req.scope)
+    const { deviceIds, writableDeviceIds, methods } = await buildAcl(req.scope)
 
     if (method === 'PUT') {
       if (!methods.includes('PUT')) throw new HttpError(403, 'Your account is read-only')
@@ -93,6 +94,12 @@ router.use(
       } else if (!requested.every(id => deviceIds.includes(id))) {
         throw notFound('Vehicle')
       }
+    }
+    // A vehicle shared into this account is seen, not changed: its tracker is
+    // its owner's (lib/sharePolicy.js). Checked after the 404 above, so this
+    // only ever names a vehicle the caller can already see.
+    if (method === 'PUT' && writableDeviceIds && !writableDeviceIds.includes(requested[0])) {
+      throw new HttpError(403, 'This vehicle is shared with you — only its owner can change it')
     }
 
     // Reads answered from our own copy when the Flespi webhook is delivering

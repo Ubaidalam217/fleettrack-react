@@ -55,7 +55,7 @@ const COLUMNS = [
     key: 'vehicles',
     label: 'Assigned Vehicles',
     render: row => {
-      const total = vehiclesForCompany(row.companyId).length
+      const total = vehiclesForCompany(row.companyId, { includeShared: true }).length
       const n = row.vehicleIds.length
       return n === 0 ? 'None' : `${n} of ${total}`
     },
@@ -269,7 +269,7 @@ export default function CompanySubuser(props) {
     const clean = {
       ...draft,
       ...(allOfBg && {
-        vehicleIds: vehiclesForCompany(draft.companyId).map(v => v.id),
+        vehicleIds: vehiclesForCompany(draft.companyId, { includeShared: true }).map(v => v.id),
         branchIds: branchesForCompany(draft.companyId).map(b => b.id),
       }),
       name:                  draft.name.trim(),

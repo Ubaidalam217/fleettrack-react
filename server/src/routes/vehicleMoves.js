@@ -20,7 +20,7 @@ export const MOVE_LIMIT = 5000
 const listQuery = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
-  level: z.enum(['branch', 'group', 'ggb', 'bg', 'device']).optional(),
+  level: z.enum(['branch', 'group', 'ggb', 'bg', 'device', 'share']).optional(),
 })
 
 router.get(
@@ -33,7 +33,8 @@ router.get(
       level ? { level } : null,
     ].filter(Boolean)
     // A vehicle moved to another BG stays in the history of the BG it left
-    // (not for a sub-user, whose access ended with the move).
+    // (not for a sub-user, whose access ended with the move); a share row is
+    // read by the BG it was shared into the same way (fromBgId).
     let left = null
     if (req.scope.role !== ROLES.SUB_USER) {
       const mine = await prisma.businessGroup.findMany({ where: scopedWhere('bg', req.scope), select: { id: true } })

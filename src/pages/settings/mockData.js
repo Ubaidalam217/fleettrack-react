@@ -4,6 +4,7 @@ import { isoDateFromToday } from '../../utils/licenceExpiry'
 // Real mode keeps the stores and selectors below but replaces their data source.
 // See the note above the localStorage section for what that changes.
 import { IS_REAL as REAL_MODE } from '../../data/mode'
+import { displayPlacement, isOwned, vehicleInCompany } from '../../utils/vehiclePlacement'
 
 /**
  * Phase 2 mock backend for the Settings module.
@@ -1291,9 +1292,15 @@ export function removeVehicle(id) {
 }
 
 /** Every vehicle belonging to one BG; empty array for an unknown id. */
-export function vehiclesForCompany(companyId) {
+/**
+ * The vehicles of one BG. Its own only by default — what its alert rules
+ * name, its drivers drive, its expenses and reminders are for.
+ * `includeShared` adds the vehicles shared into it (client, 2026-11-13):
+ * what its accounts see, e.g. a sub-user's "n of total".
+ */
+export function vehiclesForCompany(companyId, { includeShared = false } = {}) {
   if (!companyId) return []
-  return vehicleStore.get().filter(v => v.companyId === companyId)
+  return vehicleStore.get().filter(v => (includeShared ? vehicleInCompany(v, companyId) : v.companyId === companyId))
 }
 
 /**
@@ -1348,10 +1355,35 @@ export function vehicleByImei(imei) {
  * state for a tracker that was just added to the Flespi account, and the panel
  * says so instead of rendering blanks that look like a bug.
  */
+/**
+ * The places a report or a panel names come from here. A vehicle shared INTO
+ * the viewer's scope (client, 2026-11-13: one vehicle in several places) is
+ * named by where it was shared to — its owner's BG and branch are not the
+ * viewer's business — and is `shared`, i.e. read-only here.
+ */
+function sharedProfile(row) {
+  const lookup = (store, id) => store.get().find(x => x.id === id) ?? null
+  const ctx = {
+    companies: { get: id => lookup(companyStore, id), has: id => !!lookup(companyStore, id) },
+    groups: { get: id => lookup(groupStore, id), has: id => !!lookup(groupStore, id) },
+    branches: { get: id => lookup(branchStore, id), has: id => !!lookup(branchStore, id) },
+  }
+  const p = displayPlacement(row, ctx)
+  return {
+    bgId: p?.companyId || '',
+    bgName: p?.companyName || '—',
+    groupName: p?.groupName || '—',
+    branchId: p?.branchId || '',
+    branchName: p?.branchName || p?.companyName || '—',
+    branchIsBg: !p?.branchName,
+  }
+}
+
 export function settingsProfileForImei(imei) {
   const key = imeiKey(imei)
   const row = vehicleByImei(imei)
   if (!row) return { linked: false, imeiKey: key, vehicle: null }
+  const shared = !isOwned(row)
 
   const company = companyStore.get().find(c => c.id === row.companyId) ?? null
   // The vehicle's own groupId is authoritative: the Vehicle form copies the
@@ -1371,6 +1403,10 @@ export function settingsProfileForImei(imei) {
     // Business Group) as its branch.
     branchName: row.branchId ? branchNameFor(row.branchId) : (company?.name || '—'),
     branchIsBg: !row.branchId,
+    // Shared into the viewer's scope: named where it was shared to, read-only.
+    shared,
+    ownerName:  row.ownerName || '',
+    ...(shared ? sharedProfile(row) : {}),
     subGroup:   row.subGroup   || '',
     plateNo:    row.vehicleNumber || '',
     // `vehicleId` is the operator's own identifier for the asset, and Fleet No

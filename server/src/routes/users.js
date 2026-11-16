@@ -37,6 +37,7 @@ import {
   assertCanWrite,
   assertCanWriteRole,
   assertWritableParent,
+  bgFleetWhere,
   findScopedOrThrow,
   ROLES,
   scopedWhere,
@@ -191,13 +192,15 @@ async function assertScopeLinks(scope, role, body) {
  * Checked against the sub-user's own BG rather than the caller's scope: the rule
  * is "a sub-user can only be assigned vehicles from its own BG", and a Super
  * Admin — who can see every vehicle — must not be able to hand a sub-user a
- * vehicle from a different tenant. The error names the offending ids so the form
- * can point at them.
+ * vehicle from a different tenant. "Its own BG" includes the vehicles shared
+ * into that BG (VehicleShare): the BG's accounts see them, so it may hand them
+ * on to its sub-users. The error names the offending ids so the form can point
+ * at them.
  */
 async function resolveAssignableVehicles(bgId, ids) {
   if (!ids.length) return []
   const rows = await prisma.vehicle.findMany({
-    where: { id: { in: ids }, bgId },
+    where: { AND: [{ id: { in: ids } }, bgFleetWhere(bgId)] },
     select: { id: true },
   })
   if (rows.length !== ids.length) {

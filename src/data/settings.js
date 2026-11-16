@@ -409,6 +409,36 @@ export function transferVehicle(id, { companyId, branchId }) {
 }
 
 /**
+ * One vehicle in several places (client, 2026-11-13). Each call is a share
+ * (routes/vehicleShares.js on the server): visibility only, the vehicle keeps
+ * its owner, and the Flespi device is never touched. The demo has no server,
+ * so sharing is a real-mode feature (SHARING_AVAILABLE).
+ *
+ *   setVehicleShares(id, [{ level, id }])   the vehicle form's "Also show in"
+ *   shareVehicles(ids, level, targetId)     "Also show here", Bulk Action
+ *   unshareVehicles(ids, level, targetId)   "Remove from here"
+ *
+ * `level` is 'group' | 'bg' | 'branch'.
+ */
+export const SHARING_AVAILABLE = IS_REAL
+
+export function setVehicleShares(id, targets, { refresh = true } = {}) {
+  if (!IS_REAL) return Promise.resolve([])
+  const send = () => put(`/api/vehicle-shares/vehicle/${id}`, { targets })
+  return refresh ? write(send) : send()
+}
+
+export function shareVehicles(vehicleIds, level, targetId) {
+  if (!IS_REAL) return Promise.resolve({ added: [], skipped: { home: [], already: [] } })
+  return write(() => post('/api/vehicle-shares/add', { vehicleIds, level, targetId }))
+}
+
+export function unshareVehicles(vehicleIds, level, targetId) {
+  if (!IS_REAL) return Promise.resolve({ removed: [] })
+  return write(() => post('/api/vehicle-shares/remove', { vehicleIds, level, targetId }))
+}
+
+/**
  * Every visible vehicle's odometer: the tracker's reading, the correction and
  * the vehicle's reading (GET /api/vehicles/odometers). Empty in the demo.
  */

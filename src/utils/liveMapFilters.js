@@ -56,10 +56,14 @@ export function vehicleAttributes(v, profile, now) {
     assetTypeLabel: vehicleTypeLabel(type),
     assetGroup: (row?.subGroup || '').trim(),
     deviceType: (row?.deviceType || '').trim(),
-    company:    row?.companyId || '',
+    // A vehicle shared into this account is filed where it was shared to
+    // (settingsProfileForImei; client, 2026-11-13), never under its owner.
+    company:    profile?.shared ? profile.bgId || '' : row?.companyId || '',
     companyName: profile?.linked ? profile.bgName : '',
     // No branch: the client (Business Group) is the branch.
-    branch:     row?.branchId || (row?.companyId ? `bg:${row.companyId}` : ''),
+    branch:     profile?.shared
+      ? profile.branchId || (profile.bgId ? `bg:${profile.bgId}` : '')
+      : row?.branchId || (row?.companyId ? `bg:${row.companyId}` : ''),
     branchName: row ? profile.branchName : '',
     validity:   validityState(row?.validUntil, now),
   }

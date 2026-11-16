@@ -8,7 +8,7 @@ import LocationMapModal from '../../components/reports/LocationMapModal'
 import { LABEL, FIELD, Chip, ToolbarButton } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
 import {
-  useVehicles, useCompanies, useDrivers, companyNameFor, branchNameFor, imeiKey,
+  useVehicles, useCompanies, useDrivers, companyNameFor, branchNameFor, imeiKey, settingsProfileForImei,
 } from '../../data/settings'
 import { STATUS, STATUS_KEYS } from '../../utils/vehicleStatus'
 import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
@@ -69,13 +69,18 @@ export default function VehicleListReport(props) {
 
     const toRow = (reg, lv) => {
       const st = lv?.status ?? 'NoData'
+      const shared = !!reg && reg.owned === false
+      const sharedAt = shared ? settingsProfileForImei(reg.imei) : null
       return {
         key: reg?.id ?? `live-${lv?.id}`,
-        companyId: reg?.companyId || NOT_REGISTERED,
+        // A vehicle shared into this account (client, 2026-11-13) is one row,
+        // under the BG it was shared to — never under its owner's.
+        companyId: (shared ? sharedAt.bgId : reg?.companyId) || NOT_REGISTERED,
         vehicleId: reg?.vehicleId || lv?.name || '—',
         plateNo: reg?.vehicleNumber || '—',
         // No branch: the client (Business Group) is the branch.
-        branch: reg ? (reg.branchId ? branchNameFor(reg.branchId) : companyNameFor(reg.companyId)) : '—',
+        branch: shared ? sharedAt.branchName : reg ? (reg.branchId ? branchNameFor(reg.branchId) : companyNameFor(reg.companyId)) : '—',
+        companyLabel: shared ? sharedAt.bgName : '',
         makeModel: [reg?.make, reg?.model].filter(Boolean).join(' ') || '—',
         type: reg?.vehicleType || '—',
         imei: reg?.imei || lv?.ident || '—',
@@ -141,7 +146,7 @@ export default function VehicleListReport(props) {
     return [...by.entries()]
       .map(([id, list]) => ({
         key: id,
-        label: id === NOT_REGISTERED ? 'Not registered in Settings' : companyNameFor(id),
+        label: id === NOT_REGISTERED ? 'Not registered in Settings' : list.find(r => r.companyLabel)?.companyLabel || companyNameFor(id),
         rows: list,
         total: `Total Vehicles : ${list.length}`,
       }))

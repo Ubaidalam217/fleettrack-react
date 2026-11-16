@@ -19,6 +19,14 @@
  *   BG_USER       bg.id      = user.bgId
  *   SUB_USER      bg.id      = user.bgId, narrowed again to assigned vehicles
  *
+ * ── Shared vehicles (VehicleShare) ───────────────────────────────────────────
+ *
+ * A vehicle may also be shared to other Groups, BGs and Branches. Seeing it
+ * follows the share (vehicleWhere); changing it does not (ownedVehicleWhere):
+ * the owner's BG keeps the edits, the tracker, the expenses and the papers.
+ * Alerts, expenses and the rest keep their own bgId pivot, so what a shared
+ * BG raises or records stays in that BG. lib/sharePolicy.js has the switches.
+ *
  * ── Subtree only, no ancestors ───────────────────────────────────────────────
  *
  * A role sees its own node and everything below it, and NOT the chain above it:
@@ -36,6 +44,7 @@
 
 import prisma from '../prisma.js'
 import { forbidden, notFound } from './http.js'
+import { GROUP_SHARE_REACHES_BG_USERS } from './sharePolicy.js'
 
 export const ROLES = Object.freeze({
   SUPER_ADMIN: 'SUPER_ADMIN',
@@ -74,6 +83,8 @@ const ENTITIES = Object.freeze({
   bg: { delegate: 'businessGroup', label: 'Business Group' },
   branch: { delegate: 'branch', label: 'Branch' },
   vehicle: { delegate: 'vehicle', label: 'Vehicle' },
+  // A vehicle this scope owns, not one shared into it: what every write takes.
+  ownedVehicle: { delegate: 'vehicle', label: 'Vehicle' },
   user: { delegate: 'user', label: 'User' },
   alert: { delegate: 'alert', label: 'Alert' },
   geofence: { delegate: 'geofence', label: 'Geofence' },
@@ -116,7 +127,9 @@ export function buildScope(user, { branchVehicleIds = [] } = {}) {
 
 /**
  * Ids of the BG's vehicles that sit in any of `branchIds` or in a branch
- * below one of them (branches nest to any depth).
+ * below one of them (branches nest to any depth) — its own vehicles filed
+ * there, and the vehicles of other BGs shared into one of those branches
+ * (VehicleShare, level 'branch').
  */
 export async function vehiclesInBranches(bgId, branchIds) {
   if (!bgId || !branchIds?.length) return []
@@ -136,7 +149,11 @@ export async function vehiclesInBranches(bgId, branchIds) {
     stack.push(...(children.get(id) ?? []))
   }
   if (!seen.size) return []
-  const rows = await prisma.vehicle.findMany({ where: { bgId, branchId: { in: [...seen] } }, select: { id: true } })
+  const ids = [...seen]
+  const rows = await prisma.vehicle.findMany({
+    where: { OR: [{ bgId, branchId: { in: ids } }, { shares: { some: { branchId: { in: ids } } } }] },
+    select: { id: true },
+  })
   return rows.map(r => r.id)
 }
 
@@ -219,13 +236,66 @@ export function branchWhere(scope) {
   return { AND: [base, { id: { in: scope.assignedBranchIds ?? [] } }] }
 }
 
-export function vehicleWhere(scope) {
+/**
+ * Which VehicleShare rows land inside this scope (client, 2026-11-13: "One
+ * vehicle can be assigned to multiple Group, BG, Branch"). Mirrors
+ * childBgWhere: a share to a BG or to a branch carries that BG's id, so it is
+ * the same pivot; a share to a Group reaches the Group's admins and its GGB's.
+ * null = nothing to add (a Super Admin already sees everything; a role with a
+ * missing scope link sees nothing).
+ */
+export function shareTargetWhere(scope) {
+  switch (scope.role) {
+    case ROLES.GGB_ADMIN:
+      return scope.ggbId ? { OR: [{ bg: { ggbId: scope.ggbId } }, { group: { ggbId: scope.ggbId } }] } : null
+    case ROLES.GROUP_ADMIN:
+      return scope.groupId ? { OR: [{ bg: { groupId: scope.groupId } }, { groupId: scope.groupId }] } : null
+    case ROLES.BG_USER:
+    case ROLES.SUB_USER:
+      if (!scope.bgId) return null
+      return GROUP_SHARE_REACHES_BG_USERS
+        ? { OR: [{ bgId: scope.bgId }, { group: { businessGroups: { some: { id: scope.bgId } } } }] }
+        : { bgId: scope.bgId }
+    default:
+      return null
+  }
+}
+
+/**
+ * The vehicles whose OWNER is inside this scope — today's rule from before
+ * vehicles could be shared. Every write to a vehicle resolves it through this
+ * (the `ownedVehicle` entity below), so a vehicle shared into a scope is
+ * readable there but answers 404 to an edit, a delete or a move: editing stays
+ * with the owner (lib/sharePolicy.js, question 1).
+ */
+export function ownedVehicleWhere(scope) {
   const base = childBgWhere(scope)
   if (!isSubUser(scope)) return base
   // The join IS the scope. The bgId constraint stays in the AND as a second
   // line: an assignment row that somehow points outside the sub-user's own BG
   // still must not widen what they can see.
   return { AND: [base, { id: { in: scope.assignedVehicleIds ?? [] } }] }
+}
+
+/**
+ * The vehicles this scope may SEE: its own, and those shared into it. A share
+ * only ever adds (a union), and it is a filter, not a join, so a vehicle
+ * reached both ways still comes back once.
+ */
+export function vehicleWhere(scope) {
+  const owned = childBgWhere(scope)
+  const target = shareTargetWhere(scope)
+  const base = target ? { OR: [owned, { shares: { some: target } }] } : owned
+  if (!isSubUser(scope)) return base
+  return { AND: [base, { id: { in: scope.assignedVehicleIds ?? [] } }] }
+}
+
+/**
+ * Every vehicle a BG's own accounts see: its own and those shared into it.
+ * What a BG's alert rules may name and its sub-users may be given.
+ */
+export function bgFleetWhere(bgId) {
+  return vehicleWhere({ role: ROLES.BG_USER, bgId })
 }
 
 /**
@@ -320,6 +390,7 @@ const WHERE_BUILDERS = Object.freeze({
   bg: bgWhere,
   branch: branchWhere,
   vehicle: vehicleWhere,
+  ownedVehicle: ownedVehicleWhere,
   user: userWhere,
   alert: alertWhere,
   geofence: geofenceWhere,

@@ -26,6 +26,8 @@ import VehiclesDrivenToday from './VehiclesDrivenToday'
 import VehicleExpenses from './VehicleExpenses'
 import { licenceExpiryState, formatExpiryDate } from '../../utils/licenceExpiry'
 import { BASE_URL, HEADERS } from '../../hooks/flespiConfig'
+import SharedChip from '../SharedChip'
+import { sharedFromText } from '../../utils/vehiclePlacement'
 
 // Replay used to be a tab here. It now lives in its own dock over the map and
 // is started from the vehicle's card in the list or from its marker popup.
@@ -262,18 +264,26 @@ function VehicleInfo({ v, onOpenInfo, onOpenConsole }) {
           icon={Building2}
           title="Organisation"
           wide
-          aside={!profile.linked && onOpenConsole && (
+          aside={!profile.linked && onOpenConsole ? (
             <button type="button" className="vinfo-btn" onClick={onOpenConsole}><Pencil size={12} />Register</button>
-          )}
+          ) : profile.shared ? <SharedChip title={`${sharedFromText(row)} — read-only`} /> : null}
         >
           {profile.linked ? (
-            <div className="vinfo-fields four">
-              <InfoField label="Group" value={groupName} />
-              <InfoField label="Business Group" value={profile.bgName} />
-              <InfoField label="Branch" value={branchName} />
-              {/* The reports' Site: set in Parameters, else the branch. */}
-              <InfoField label="Site" value={siteOf(row)} />
-            </div>
+            <>
+              <div className="vinfo-fields four">
+                <InfoField label="Group" value={groupName} />
+                <InfoField label="Business Group" value={profile.bgName} />
+                <InfoField label="Branch" value={branchName} />
+                {/* The reports' Site: set in Parameters, else the branch. */}
+                <InfoField label="Site" value={siteOf(row)} />
+              </div>
+              {/* One vehicle in several places (client, 2026-11-13). */}
+              {!profile.shared && row?.shares?.length > 0 && (
+                <div className="vinfo-note" style={{ marginTop: 8 }}>
+                  Also shown in: {row.shares.map(s => s.label).join(' · ')}
+                </div>
+              )}
+            </>
           ) : (
             <div className="vinfo-note">
               This tracker is not registered under Settings › Object › Vehicle yet, so it has no Group, Business Group or Branch. Register it with Parameters.
@@ -305,8 +315,9 @@ function VehicleInfo({ v, onOpenInfo, onOpenConsole }) {
           title={<>Custom fields <span className="vinfo-count">{fields.length}</span></>}
           wide
           aside={row && onOpenInfo && (
+            // A vehicle shared into this account: its owner keeps the fields — open to read only.
             <button type="button" className="vinfo-btn" onClick={onOpenInfo}>
-              {fields.length ? <><Pencil size={12} />Manage</> : <><Plus size={13} />Add</>}
+              {profile.shared ? 'View' : fields.length ? <><Pencil size={12} />Manage</> : <><Plus size={13} />Add</>}
             </button>
           )}
         >
@@ -326,7 +337,7 @@ function VehicleInfo({ v, onOpenInfo, onOpenConsole }) {
           ) : (
             <div className="vinfo-empty">
               {row
-                ? 'No custom fields yet — keep contract numbers, dates, contacts or anything else for this vehicle.'
+                ? profile.shared ? 'No custom fields on this vehicle.' : 'No custom fields yet — keep contract numbers, dates, contacts or anything else for this vehicle.'
                 : 'Register the tracker first to keep custom fields for it.'}
             </div>
           )}

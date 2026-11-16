@@ -42,7 +42,9 @@ import FleetTreeHeader, { GroupsToggle } from '../components/tracking/FleetTreeH
 import LiveHeatLayer from '../components/tracking/LiveHeatLayer'
 import HeatMapControls from '../components/tracking/HeatMapControls'
 import { useLiveHeat } from '../hooks/useLiveHeat'
-import { buildFleetTree, levelsForRole, placeVehicle, vehicleIdsOf } from '../utils/fleetTree'
+import { buildFleetTree, levelsForRole, placesOf, vehicleIdsOf } from '../utils/fleetTree'
+import { isOwned, sharedFromText } from '../utils/vehiclePlacement'
+import SharedChip from '../components/SharedChip'
 import { FilterToggle, FilterPanel } from '../components/tracking/LiveMapFilters'
 import { EMPTY_FILTERS, vehicleAttributes, matchesAttributes, filterOptions } from '../utils/liveMapFilters'
 
@@ -523,12 +525,14 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   const [activeTab, setActiveTab]   = useState(ALL)
   const [search, setSearch]         = useState('')
   const [attrFilters, setAttrFilters] = useState(EMPTY_FILTERS)
-  // List tree: which groups are folded (kept per browser) and which vehicles
-  // the user has unticked off the map (this visit only).
+  // List tree: which groups are folded (kept per browser) and which top-level
+  // bars the user has unticked off the map (this visit only). Bars, not
+  // vehicles: a vehicle shared to two places (client, 2026-11-13) leaves the
+  // map only when every bar it sits under is unticked.
   const [collapsedKeys, setCollapsedKeys] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('fm.liveTree.collapsed') || '[]')) } catch { return new Set() }
   })
-  const [hiddenIds, setHiddenIds] = useState(() => new Set())
+  const [hiddenTops, setHiddenTops] = useState(() => new Set())
   // The Groups button: the list grouped (default) or plain. Kept per browser.
   const [groupsOn, setGroupsOn] = useState(() => {
     try { return localStorage.getItem('fm.liveTree.on') !== '0' } catch { return true }
@@ -953,7 +957,23 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // settingsVehicles: vehicleByImei reads that store, so a registration edit re-places the vehicle.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [companies, groupsList, branches, settingsVehicles])
-  const fleetTree = buildFleetTree(filtered, v => placeVehicle(v, placeCtx), treeLevels)
+  const fleetTree = buildFleetTree(filtered, v => placesOf(v, placeCtx), treeLevels)
+
+  // Off the map: the vehicles under an unticked bar that no ticked bar also
+  // holds. A vehicle with no bar (the plain list) is always on it.
+  const hiddenIds = new Set()
+  if (hiddenTops.size) {
+    const shown = new Set()
+    for (const node of fleetTree.children) {
+      for (const id of vehicleIdsOf(node)) (hiddenTops.has(node.key) ? hiddenIds : shown).add(id)
+    }
+    for (const id of shown) hiddenIds.delete(id)
+  }
+  // A vehicle shared INTO this account (utils/vehiclePlacement.js): seen, not changed.
+  const isSharedIn = v => {
+    const row = vehicleByImei(v.ident)
+    return !!row && !isOwned(row)
+  }
 
   const toggleCollapsed = key => setCollapsedKeys(prev => {
     const next = new Set(prev)
@@ -962,12 +982,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     try { localStorage.setItem('fm.liveTree.collapsed', JSON.stringify([...next])) } catch { /* private window */ }
     return next
   })
-  const setOnMap = (ids, show) => setHiddenIds(prev => {
+  const toggleOnMap = key => setHiddenTops(prev => {
     const next = new Set(prev)
-    for (const id of ids) {
-      if (show) next.delete(id)
-      else next.add(id)
-    }
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
     return next
   })
 
@@ -1000,7 +1018,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // no-op once the card is fully visible.
   useEffect(() => {
     if (focusId == null) return
-    const card = rowRefs.current.get(focusId)?.querySelector('.vl-card')
+    // A shared vehicle can have a row under each of its places: the first one.
+    const row = [...rowRefs.current.entries()].find(([k]) => k.endsWith(`|${focusId}`))?.[1]
+    const card = row?.querySelector('.vl-card')
     if (!card) return
 
     let settle = null
@@ -1155,12 +1175,13 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       onSelect: () => selectVehicle(v, { startReplay: true }),
     },
     { type: 'separator' },
-    {
+    // A command writes to the tracker: its owner's only (a shared vehicle is read-only here).
+    ...(isSharedIn(v) ? [] : [{
       key: 'poll',
       label: 'Poll',
       icon: MenuIcon.poll,
       onSelect: () => setPendingCommand({ vehicleId: v.id, actionKey: 'poll' }),
-    },
+    }]),
     {
       key: 'nearest',
       label: 'Find Nearest Assets',
@@ -1241,15 +1262,17 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       : sheetMode === 'max' ? '100%'
       : `${sheetVh}vh`
   // One vehicle row of the Live Map list; `depth` indents it under its group.
-  const renderVehicleRow = (v, idx, depth) => {
+  // `rowKey` is unique per row — a shared vehicle has a row under each of its
+  // places — and `shared` marks a row that is there through a share.
+  const renderVehicleRow = (v, idx, depth, rowKey = `list|${v.id}`, shared = isSharedIn(v)) => {
     const sel = focusId === v.id
 
     return (
       <div
-        key={v.id}
+        key={rowKey}
         ref={el => {
-          if (el) rowRefs.current.set(v.id, el)
-          else rowRefs.current.delete(v.id)
+          if (el) rowRefs.current.set(rowKey, el)
+          else rowRefs.current.delete(rowKey)
         }}
         className="track-vrow"
         data-sel={sel ? 'true' : 'false'}
@@ -1275,6 +1298,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
             <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {vehicleName(v)}
             </span>
+            {shared && <SharedChip title={sharedFromText(vehicleByImei(v.ident))} />}
             <span style={{ fontSize: 10, color: statusColor(v.status), fontWeight: 700, flexShrink: 0 }}>
               {statusLabel(v.status)}
             </span>
@@ -1390,8 +1414,10 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // One GGB / Group / BG of the list tree with everything under it.
   const renderTreeNode = (node, depth) => {
     const collapsed = collapsedKeys.has(node.key)
-    const ids = vehicleIdsOf(node)
-    const hiddenCount = ids.filter(id => hiddenIds.has(id)).length
+    // Only the top-level bars carry a tick box. Unticked, it is still partly
+    // on the map when another, ticked bar holds some of its vehicles.
+    const unticked = depth === 0 && hiddenTops.has(node.key)
+    const stillShown = unticked ? vehicleIdsOf(node).filter(id => !hiddenIds.has(id)).length : 0
     return (
       <div key={node.key}>
         <FleetTreeHeader
@@ -1399,14 +1425,14 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
           depth={depth}
           collapsed={collapsed}
           onToggle={() => toggleCollapsed(node.key)}
-          checked={hiddenCount === 0}
-          indeterminate={hiddenCount > 0 && hiddenCount < ids.length}
-          onCheck={() => setOnMap(ids, hiddenCount > 0)}
+          checked={!unticked}
+          indeterminate={unticked && stillShown > 0}
+          onCheck={() => toggleOnMap(node.key)}
         />
         {!collapsed && (
           <>
             {node.children.map(child => renderTreeNode(child, depth + 1))}
-            {node.vehicles.map((v, idx) => renderVehicleRow(v, idx, depth + 1))}
+            {node.vehicles.map((v, idx) => renderVehicleRow(v, idx, depth + 1, `${node.key}|${v.id}`, node.sharedIds?.has(v.id) ?? false))}
           </>
         )}
       </div>

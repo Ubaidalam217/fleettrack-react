@@ -89,6 +89,7 @@ model Group {
   businessGroups BusinessGroup[]
   users          User[]
   logo NodeLogo?
+  vehicleShares  VehicleShare[]
 
   @@index([ggbId])
 }
@@ -130,6 +131,7 @@ model BusinessGroup {
   reminderAcks  ReminderAck[]
   vehicleMoves  VehicleMove[]
   logo NodeLogo?
+  vehicleShares VehicleShare[]
 
   @@index([ggbId])
   @@index([groupId])
@@ -161,6 +163,7 @@ model Branch {
   vehicles Vehicle[]
   subusers SubuserBranch[]
   logo NodeLogo?
+  vehicleShares VehicleShare[]
 
   @@index([bgId])
   @@index([parentBranchId])
@@ -259,7 +262,47 @@ model Vehicle {
   moves             VehicleMove[]
   documents         VehicleDocument[]
   odometerAdjustments OdometerAdjustment[]
+  /// The other Groups, BGs and Branches it also shows in (VehicleShare).
+  shares            VehicleShare[]
 
+  @@index([bgId])
+  @@index([branchId])
+}
+
+/// A place, besides its own, where a vehicle also shows (client, 2026-11-13:
+/// "One vehicle can be assigned to multiple Group, BG, Branch"). Visibility
+/// only: the vehicle's owner stays Vehicle.bgId / branchId — its tracker, its
+/// edits, its expenses and papers, its driver. A share only ever adds to who
+/// may see the vehicle, never takes away (src/lib/scope.js vehicleWhere).
+///
+///   'group'   the Group's admins (and its GGB's) see it; groupId is set
+///   'bg'      the BG's accounts see it, directly under the BG; bgId is set
+///   'branch'  under that branch; branchId AND its bgId are set (a branch never
+///             changes BG, so the copy cannot go stale)
+///
+/// targetId is the target's own id, NOT NULL so the unique index really stops
+/// a duplicate (Postgres treats NULLs as distinct). A CHECK constraint in the
+/// migration keeps the columns in step with `level`.
+model VehicleShare {
+  id        String  @id @default(cuid())
+  vehicleId String
+  level     String
+  targetId  String
+  groupId   String?
+  bgId      String?
+  branchId  String?
+
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  vehicle Vehicle        @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  group   Group?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  bg      BusinessGroup? @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  branch  Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleId, targetId])
+  @@index([groupId])
   @@index([bgId])
   @@index([branchId])
 }
@@ -1150,7 +1193,8 @@ model VehicleEngineHours {
 model VehicleMove {
   id           String  @id @default(cuid())
   bgId         String
-  /// The BG a 'bg' move came from; null otherwise.
+  /// The other BG that may read this row: the BG a 'bg' move came from, or
+  /// the BG a 'share' row's vehicle was shared into; null otherwise.
   fromBgId     String?
   /// Null once the vehicle is deleted; vehicleLabel and imei keep what it was.
   vehicleId    String?
@@ -1159,7 +1203,9 @@ model VehicleMove {
   imei         String?
 
   /// What changed: 'branch', 'group', 'ggb', 'bg', or 'device' — a tracker
-  /// installed (toName is the vehicle) or taken out (fromName is the vehicle).
+  /// installed (toName is the vehicle) or taken out (fromName is the vehicle) —
+  /// or 'share': the vehicle also shown in another place (toName) or no
+  /// longer (fromName), see VehicleShare.
   level    String
   fromName String?
   toName   String?

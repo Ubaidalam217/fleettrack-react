@@ -27,6 +27,7 @@ import { booleanField, optionalDate, optionalEmail, optionalId, optionalText, re
 import { assertCanWrite, assertWritableParent, findScopedOrThrow, isSubUser, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { assignmentSpan } from '../../../src/utils/driverHistory.js'
+import { ownedIdsOf } from '../lib/vehicleShares.js'
 
 const router = Router()
 
@@ -234,6 +235,11 @@ router.get(
  * drivers, and the drivers those rows name — removed ones included, so their
  * trips keep their name. ?from=&to= (ISO) narrows to rows overlapping the
  * period; without them, everything. Before `/:id`.
+ *
+ * A vehicle shared into the caller's scope (VehicleShare) brings its whole
+ * assignment history — whoever's BG the driver is in — and the tag rows of
+ * those drivers, so the shared place's reports name who drove it. Reads only:
+ * the drivers themselves stay their own BG's.
  */
 const isoMoment = () => z.string().trim().refine(v => Number.isFinite(Date.parse(v)), 'Use an ISO date and time').optional()
 const historyQuery = z.object({ from: isoMoment(), to: isoMoment() })
@@ -249,10 +255,14 @@ router.get(
     const assignmentOverlap = [...(to ? [{ startDate: { lte: new Date(to) } }] : []), ...endsAfter]
     const tagOverlap = [...(to ? [{ OR: [{ startDate: null }, { startDate: { lte: new Date(to) } }] }] : []), ...endsAfter]
     const vehicleIds = (await prisma.vehicle.findMany({ where: scopedWhere('vehicle', req.scope), select: { id: true } })).map(v => v.id)
-    // The drivers of the caller's BGs, removed or not, whichever vehicle they hold now.
+    const owned = await ownedIdsOf(req.scope, vehicleIds)
+    const sharedIn = vehicleIds.filter(id => !owned.has(id))
+    // The drivers of the caller's BGs, removed or not, whichever vehicle they
+    // hold now — and anyone who drove a vehicle shared into the caller's scope.
     const ofBgs = scopedWhere('driverHistory', req.scope)
+    const driverOk = sharedIn.length ? { OR: [{ driver: ofBgs }, { vehicleId: { in: sharedIn } }] } : { driver: ofBgs }
     const assignments = await prisma.driverAssignment.findMany({
-      where: { AND: [{ vehicleId: { in: vehicleIds } }, { driver: ofBgs }, ...assignmentOverlap] },
+      where: { AND: [{ vehicleId: { in: vehicleIds } }, driverOk, ...assignmentOverlap] },
       select: { id: true, driverId: true, vehicleId: true, role: true, startDate: true, endDate: true },
       orderBy: { startDate: 'asc' },
     })
@@ -262,7 +272,9 @@ router.get(
         ...assignments.map(a => a.driverId),
         ...(await prisma.driver.findMany({ where: scopedWhere('driver', req.scope), select: { id: true } })).map(d => d.id),
       ])] } }
-      : { driver: ofBgs }
+      : sharedIn.length
+        ? { OR: [{ driver: ofBgs }, { driverId: { in: [...new Set(assignments.filter(a => sharedIn.includes(a.vehicleId)).map(a => a.driverId))] } }] }
+        : { driver: ofBgs }
     const tags = await prisma.driverTagHistory.findMany({
       where: { AND: [tagOwners, ...tagOverlap] },
       select: { id: true, driverId: true, code: true, startDate: true, endDate: true },

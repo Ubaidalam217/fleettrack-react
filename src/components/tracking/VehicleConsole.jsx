@@ -5,6 +5,8 @@ import VehicleTypeSelect from '../VehicleTypeSelect'
 import { vehicleTypeOptions } from '../../utils/vehicleTypes'
 import { siteField, withSite, MAX_SITE } from '../../utils/vehicleSite'
 import { useVehicleUsage } from '../../hooks/useVehicleUsage'
+import SharedChip from '../SharedChip'
+import { sharedFromText } from '../../utils/vehiclePlacement'
 import { odometerLabel } from '../../utils/odometer'
 import {
   emptyVehicle, addVehicle, updateVehicle, updateVehicleCustomFields, useVehicles,
@@ -172,6 +174,10 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
   // would swap the form's identity mid-edit, which is worse than being a few
   // seconds stale on a modal the user is actively typing into.
   const [profile] = useState(() => settingsProfileForImei(vehicle?.ident))
+  // A vehicle shared INTO this account (client, 2026-11-13): its owner's BG
+  // keeps the edits and the tracker, so here it can be read, not saved (the
+  // server refuses the write too).
+  const readOnly = !!(profile.linked && profile.shared)
 
   // Read-only, and free: the detail panel behind this dialog has already
   // fetched the same device's messages, and that fetch is cached per device.
@@ -287,7 +293,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
 
   const submit = async e => {
     e.preventDefault()
-    if (saving) return
+    if (saving || readOnly) return
 
     const next = {}
     if (!form.plateNo.trim()) next.plateNo = 'Plate No is required'
@@ -454,6 +460,18 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
         </div>
 
         <div style={{ padding: '16px 20px 4px', overflowY: 'auto', flex: '1 1 auto', minHeight: 0 }}>
+          {readOnly && (
+            <div role="note" style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '9px 12px', borderRadius: 10,
+              fontSize: 12, fontWeight: 600, color: 'var(--c-text2)',
+              background: 'color-mix(in srgb, var(--ft-accent) 9%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--ft-accent) 28%, transparent)',
+            }}>
+              <SharedChip title={sharedFromText(profile.vehicle)} />
+              <span>{sharedFromText(profile.vehicle)} — read-only. Its owner makes the changes.</span>
+            </div>
+          )}
+          <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
           {/* ── Vehicle ── */}
           <Block title="Vehicle" note="On the device, and on its Settings record">
@@ -677,6 +695,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
               </>
             )}
           </Block>
+          </fieldset>
         </div>
 
         <div style={{
@@ -693,9 +712,9 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
               color: 'var(--c-text2)', fontSize: 12.5, fontWeight: 650, cursor: 'pointer',
             }}
           >
-            Cancel
+            {readOnly ? 'Close' : 'Cancel'}
           </button>
-          <button
+          {!readOnly && <button
             type="submit"
             disabled={saving}
             style={{
@@ -707,7 +726,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
             }}
           >
             {saving ? 'Saving…' : 'Save Changes'}
-          </button>
+          </button>}
         </div>
       </form>
     </>,

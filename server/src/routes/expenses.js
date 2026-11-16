@@ -119,10 +119,15 @@ function publicExpense(e) {
   }
 }
 
-/** The vehicle, confirmed to be one the caller may see; its BG is the expense's. */
+/**
+ * The vehicle, confirmed to be one the caller owns; its BG is the expense's.
+ * Not one merely shared into the caller's scope: a cost is filed under the
+ * vehicle's owner, and a place it is shared to must not write the owner's
+ * books (lib/sharePolicy.js).
+ */
 async function resolveVehicle(scope, vehicleId) {
   try {
-    return await findScopedOrThrow('vehicle', vehicleId, scope)
+    return await findScopedOrThrow('ownedVehicle', vehicleId, scope)
   } catch {
     throw badRequest('Choose one of your vehicles', { vehicleId: 'Not one of your vehicles' })
   }

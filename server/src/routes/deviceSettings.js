@@ -61,13 +61,18 @@ export function primaryPlatform(settings) {
   return { host, itc: /itc\.gov\.ae$/i.test(host) }
 }
 
+/**
+ * The device, if the caller can see it (404 otherwise), and whether it is the
+ * caller's own: a vehicle shared into its scope is read-only here — its
+ * tracker belongs to the owner (lib/sharePolicy.js).
+ */
 async function deviceFor(req) {
   if (!flespi.isConfigured()) throw new HttpError(503, 'Live tracking is not configured on this server')
   const id = Number(req.params.deviceId)
   if (!Number.isInteger(id) || id <= 0) throw notFound('Vehicle')
-  const { deviceIds } = await buildAcl(req.scope)
+  const { deviceIds, writableDeviceIds } = await buildAcl(req.scope)
   if (deviceIds !== null && !deviceIds.includes(id)) throw notFound('Vehicle')
-  return id
+  return { id, owned: writableDeviceIds === null || writableDeviceIds.includes(id) }
 }
 
 const readAll = async id => (await flespi.request(`/gw/devices/${id}/settings/all`, { timeoutMs: 20_000 }))?.result ?? []
@@ -85,14 +90,14 @@ function shape(settings) {
 router.get(
   '/:deviceId',
   asyncHandler(async (req, res) => {
-    const id = await deviceFor(req)
+    const { id, owned } = await deviceFor(req)
     const all = await readAll(id)
     const { settings, reset } = shape(all)
     res.json({
       data: {
         deviceId: id,
         supported: Object.values(settings).some(Boolean),
-        canEdit: canEdit(req.scope),
+        canEdit: canEdit(req.scope) && owned,
         primaryPlatform: primaryPlatform(all),
         settings,
         reset,
@@ -106,8 +111,9 @@ const changeSchema = z.object({
   confirmPlatform: z.boolean().default(false),
 })
 
-function assertMayWrite(req, all) {
+function assertMayWrite(req, all, owned) {
   if (!canEdit(req.scope)) throw forbidden('Only an administrator can change device settings')
+  if (!owned) throw forbidden('This vehicle is shared with you — only its owner can change it')
   const platform = primaryPlatform(all)
   if (platform && !req.body.confirmPlatform) {
     throw new HttpError(409, `This tracker reports first to ${platform.host}${platform.itc ? ' (UAE ITC)' : ''}. Confirm to change it.`, { confirmPlatform: 'Confirmation required' })
@@ -120,9 +126,9 @@ router.put(
   asyncHandler(async (req, res) => {
     const def = EDITABLE[req.params.key]
     if (!def) throw notFound('Setting')
-    const id = await deviceFor(req)
+    const { id, owned } = await deviceFor(req)
     const all = await readAll(id)
-    assertMayWrite(req, all)
+    assertMayWrite(req, all, owned)
     const setting = all.find(s => def.pattern.test(s.name))
     if (!setting) throw badRequest('This tracker does not have that setting')
 
@@ -153,9 +159,9 @@ router.post(
   '/:deviceId/reset',
   validate(resetSchema),
   asyncHandler(async (req, res) => {
-    const id = await deviceFor(req)
+    const { id, owned } = await deviceFor(req)
     const all = await readAll(id)
-    assertMayWrite(req, all)
+    assertMayWrite(req, all, owned)
     const reset = all.find(s => RESET.test(s.name))
     if (!reset) throw badRequest('This tracker cannot be restarted from here')
     await flespi.request(`/gw/devices/${id}/settings/${reset.name}`, { method: 'PUT', body: { address: 'connection' }, timeoutMs: 20_000 })

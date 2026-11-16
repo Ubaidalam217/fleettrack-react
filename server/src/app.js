@@ -40,6 +40,7 @@ import { router as reminderRoutes, ruleRouter as reminderRuleRoutes } from './ro
 import { requireScreen, WRITE_SCREENS } from './lib/permissions.js'
 import alertEventRoutes from './routes/alertEvents.js'
 import vehicleMoveRoutes from './routes/vehicleMoves.js'
+import vehicleShareRoutes from './routes/vehicleShares.js'
 import assistantRoutes from './routes/assistant.js'
 import avatarRoutes from './routes/avatars.js'
 import driverPhotoRoutes from './routes/driverPhotos.js'
@@ -178,6 +179,8 @@ export function createApp() {
   // Before /api/vehicles: a vehicle's documents (adding one needs Full, like a record).
   app.use('/api/vehicles/:vehicleId/documents', requireScreen(WRITE_SCREENS['/api/vehicles']), vehicleDocumentRoutes)
   app.use('/api/vehicles', requireScreen(WRITE_SCREENS['/api/vehicles']), vehicleRoutes)
+  // One vehicle in several places: an assignment on the Vehicle screen.
+  app.use('/api/vehicle-shares', requireScreen(WRITE_SCREENS['/api/vehicles']), vehicleShareRoutes)
   app.use('/api/users', requireScreen(WRITE_SCREENS['/api/users']), userRoutes)
   app.use('/api/alerts', requireScreen(WRITE_SCREENS['/api/alerts']), alertRoutes)
   app.use('/api/geofences', requireScreen(WRITE_SCREENS['/api/geofences']), geofenceRoutes)

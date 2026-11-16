@@ -7,6 +7,11 @@
  *
  * No telemetry is stored or returned. Position, speed, temperature and ignition
  * all stay in Flespi and are joined client-side on the IMEI.
+ *
+ * A vehicle may also be shared to other Groups, BGs and Branches
+ * (routes/vehicleShares.js). Reads here include vehicles shared into the
+ * caller's scope, each with `owned: false`; every write takes the vehicle
+ * through the `ownedVehicle` scope, so only its owner's side may change it.
  */
 
 import { Router } from 'express'
@@ -21,6 +26,7 @@ import { actorOf, bgMoveRow, deviceRow, editMoves } from '../lib/vehicleMoves.js
 import * as flespi from '../lib/flespi.js'
 import { channelAddresses, deviceName, deviceTypes, syncVehicleDevice, unregisteredDevices } from '../lib/flespiDevices.js'
 import { deviceOdometers, odometerRow, adjustmentRow } from '../lib/odometer.js'
+import { SHARES_INCLUDE, dropSharesForTransfer, stripLostAccess, withShares, withSharesOne } from '../lib/vehicleShares.js'
 
 const router = Router()
 
@@ -159,7 +165,18 @@ async function resolveGroup(groupId, bgId) {
 const VEHICLE_INCLUDE = {
   bg: { select: { id: true, name: true, groupId: true } },
   branch: { select: { id: true, name: true } },
+  // The other places it also shows (VehicleShare). Every response passes the
+  // row through withShares(), which adds `owned` and keeps only the shares the
+  // caller may know about.
+  shares: SHARES_INCLUDE,
 }
+
+/**
+ * ?bgId= / ?branchId= match a vehicle filed there OR shared there — both are
+ * "the vehicles of this BG / branch" to whoever asks.
+ */
+const inBg = bgId => ({ OR: [{ bgId }, { shares: { some: { bgId } } }] })
+const inBranch = branchId => ({ OR: [{ branchId }, { shares: { some: { branchId } } }] })
 
 router.get(
   '/',
@@ -170,13 +187,13 @@ router.get(
       where: scopedWhere(
         'vehicle',
         req.scope,
-        bgId ? { bgId } : null,
-        branchId ? { branchId } : null
+        bgId ? inBg(bgId) : null,
+        branchId ? inBranch(branchId) : null
       ),
       orderBy: [{ plateNo: 'asc' }, { imei: 'asc' }],
       include: VEHICLE_INCLUDE,
     })
-    res.json({ data: rows })
+    res.json({ data: await withShares(rows, req.scope) })
   })
 )
 
@@ -235,7 +252,7 @@ router.get(
     const row = await findScopedOrThrow('vehicle', req.params.id, req.scope, {
       include: VEHICLE_INCLUDE,
     })
-    res.json({ data: row })
+    res.json({ data: await withSharesOne(row, req.scope) })
   })
 )
 
@@ -268,7 +285,7 @@ router.post(
     // Dropping the grants makes the next refresh mint one that includes this
     // vehicle; leaving them would hide a brand-new vehicle until the token expired.
     await revokeGrantsForBg(bg.id)
-    res.status(201).json({ data: row, flespi: flespiDevice })
+    res.status(201).json({ data: await withSharesOne(row, req.scope), flespi: flespiDevice })
   })
 )
 
@@ -277,7 +294,7 @@ router.put(
   validate(updateSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
-    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
     await assertImeiFree(req.body.imei, existing.id)
     const flespiDevice = await syncVehicleDevice({
       imei: req.body.imei ?? existing.imei,
@@ -308,7 +325,7 @@ router.put(
     // An edit can change the IMEI, which is the Flespi join key, so the ACL's
     // device ids may no longer match.
     await revokeGrantsForBg(existing.bgId)
-    res.json({ data: row, flespi: flespiDevice })
+    res.json({ data: await withSharesOne(row, req.scope), flespi: flespiDevice })
   })
 )
 
@@ -324,7 +341,7 @@ router.put(
   validate(z.object({ branchId: optionalId() })),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
-    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
     const branchId = await resolveBranch(req.body.branchId, existing.bgId)
     const history = await editMoves(existing, {}, { branchId, groupId: existing.groupId }, actorOf(req))
     const [row] = await prisma.$transaction([
@@ -334,7 +351,7 @@ router.put(
     // A branch's sub-users gain or lose the vehicle, so their live Flespi
     // tokens are re-issued with the new list.
     await revokeGrantsForBg(existing.bgId)
-    res.json({ data: row })
+    res.json({ data: await withSharesOne(row, req.scope) })
   })
 )
 
@@ -345,43 +362,52 @@ router.put(
  * rules drop it, its driver is unassigned and any open driver assignment ends.
  * The trips, alerts, expenses and history recorded so far stay with the old BG.
  * The caller must be able to write vehicles in both BGs.
+ *
+ * Its shares (VehicleShare) into the old BG, the new BG or the new BG's Group
+ * go — it leaves the one and lives in the others now; shares to anywhere else
+ * stay, and what those places gave it (their sub-users, their alert rules)
+ * stays with them.
  */
 router.post(
   '/:id/transfer',
   validate(z.object({ bgId: requiredId('Business Group'), branchId: optionalId() })),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
-    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
     const target = await assertWritableParent(req.scope, 'bg', req.body.bgId)
     if (target.id === existing.bgId) throw badRequest('The vehicle is already in this Business Group', { bgId: 'Same Business Group' })
     const branchId = await resolveBranch(req.body.branchId, target.id)
-    const [fromBg, branch, subusers, alerts, reminders, driver] = await Promise.all([
+    const [fromBg, branch, reminders, driver] = await Promise.all([
       prisma.businessGroup.findUnique({ where: { id: existing.bgId }, select: { id: true, name: true } }),
       branchId ? prisma.branch.findUnique({ where: { id: branchId }, select: { name: true } }) : null,
-      prisma.subuserVehicle.count({ where: { vehicleId: existing.id } }),
-      prisma.alertVehicle.count({ where: { vehicleId: existing.id } }),
       prisma.reminderVehicle.count({ where: { vehicleId: existing.id } }),
       prisma.driver.findUnique({ where: { vehicleId: existing.id }, select: { id: true, name: true } }),
     ])
-    const [row] = await prisma.$transaction([
-      prisma.vehicle.update({
+    const by = actorOf(req)
+    const { row, lost, sharesRemoved } = await prisma.$transaction(async tx => {
+      const moved = await tx.vehicle.update({
         where: { id: existing.id },
         data: { bgId: target.id, branchId, groupId: null },
-        include: VEHICLE_INCLUDE,
-      }),
-      prisma.subuserVehicle.deleteMany({ where: { vehicleId: existing.id } }),
-      prisma.alertVehicle.deleteMany({ where: { vehicleId: existing.id } }),
-      prisma.reminderVehicle.deleteMany({ where: { vehicleId: existing.id } }),
-      prisma.driver.updateMany({ where: { vehicleId: existing.id }, data: { vehicleId: null } }),
-      prisma.driverAssignment.updateMany({ where: { vehicleId: existing.id, endDate: null }, data: { endDate: new Date() } }),
-      prisma.vehicleMove.create({ data: bgMoveRow(existing, fromBg, target, branch?.name, actorOf(req)) }),
-    ])
+        select: { id: true, bgId: true, plateNo: true, fleetNo: true, imei: true },
+      })
+      // Reminder rules are only ever the owner's, and so is the driver.
+      await tx.reminderVehicle.deleteMany({ where: { vehicleId: existing.id } })
+      await tx.driver.updateMany({ where: { vehicleId: existing.id }, data: { vehicleId: null } })
+      await tx.driverAssignment.updateMany({ where: { vehicleId: existing.id, endDate: null }, data: { endDate: new Date() } })
+      await tx.vehicleMove.create({ data: bgMoveRow(existing, fromBg, target, branch?.name, by) })
+      const removed = await dropSharesForTransfer(tx, moved, existing.bgId, target, by)
+      // The old BG (and any place whose share just went) no longer sees it:
+      // its sub-users and alert rules lose it. A BG it is still shared into keeps both.
+      const stripped = await stripLostAccess(tx, moved)
+      const after = await tx.vehicle.findUnique({ where: { id: existing.id }, include: VEHICLE_INCLUDE })
+      return { row: after, lost: stripped, sharesRemoved: removed }
+    })
     // Both BGs' fleets changed, so their Flespi ACLs are stale.
     await revokeGrantsForBg(existing.bgId)
     await revokeGrantsForBg(target.id)
     res.json({
-      data: row,
-      stripped: { subuserAssignments: subusers, alertAssignments: alerts, reminders, driver: driver?.name ?? null },
+      data: await withSharesOne(row, req.scope),
+      stripped: { ...lost, reminders, driver: driver?.name ?? null, sharesRemoved },
     })
   })
 )
@@ -395,7 +421,7 @@ router.put(
   validate(customFieldsSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
-    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
     const fields = cleanCustomFields(req.body.fields)
     const row = await prisma.vehicle.update({
       where: { id: existing.id },
@@ -406,7 +432,7 @@ router.put(
       },
       include: VEHICLE_INCLUDE,
     })
-    res.json({ data: row })
+    res.json({ data: await withSharesOne(row, req.scope) })
   })
 )
 
@@ -452,7 +478,7 @@ router.put(
   })),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
-    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
     const reading = (await deviceOdometers([existing])).get(existing.id)
     if (reading?.deviceKm == null) {
       throw badRequest('The tracker has not sent an odometer reading yet, so there is nothing to correct', {
@@ -514,7 +540,7 @@ router.patch(
   validate(detailsSchema),
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
-    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
     const data = Object.fromEntries(Object.entries(req.body).filter(([k]) => req.sentKeys.has(k)))
     let history = []
     if ('branchId' in data) {
@@ -527,7 +553,7 @@ router.patch(
     ])
     // A branch's sub-users gain or lose the vehicle, as with PUT /:id/branch.
     if (history.length) await revokeGrantsForBg(existing.bgId)
-    res.json({ data: row })
+    res.json({ data: await withSharesOne(row, req.scope) })
   })
 )
 
@@ -543,7 +569,7 @@ router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
-    const existing = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
 
     const [subusers, alerts] = await Promise.all([
       prisma.subuserVehicle.count({ where: { vehicleId: existing.id } }),

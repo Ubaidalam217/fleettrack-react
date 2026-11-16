@@ -42,6 +42,17 @@ export function deviceRow(v, imei, installed, by) {
   return { ...row(v, 'device', installed ? null : label, installed ? label : null, by), imei: imei ?? null }
 }
 
+/**
+ * A vehicle shared to another place, or the share removed (VehicleShare):
+ * level 'share', toName = the place when added, fromName when removed — the
+ * direction reads like a 'device' row. `bgId` is the owner's, so the owner
+ * reads it; `fromBgId` — "the other BG that may read this row" — is the BG
+ * the share lands in (a BG or branch share), so that BG reads it too.
+ */
+export function shareRow(v, share, added, by) {
+  return { ...row(v, 'share', added ? null : share.label, added ? share.label : null, by), fromBgId: share.bgId ?? null }
+}
+
 /** A vehicle moved to another Business Group, readable from both. */
 export function bgMoveRow(v, fromBg, toBg, toBranchName, by) {
   const to = toBranchName ? `${toBg.name} / ${toBranchName}` : toBg.name

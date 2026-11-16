@@ -148,6 +148,21 @@ export const branch = {
 
 // ── Vehicle ─────────────────────────────────────────────────────────────────
 
+/** A VehicleShare as the API sends it → the frontend's vocabulary (bg = company). */
+export const shareToFe = s => ({
+  id: s.id,
+  level: s.level,
+  targetId: s.targetId,
+  groupId: orBlank(s.groupId),
+  companyId: orBlank(s.bgId),
+  branchId: orBlank(s.branchId),
+  label: s.label ?? '',
+  groupName: s.group?.name ?? '',
+  companyName: s.bg?.name ?? '',
+  companyGroupId: orBlank(s.bg?.groupId),
+  branchName: s.branch?.name ?? '',
+})
+
 export const vehicle = {
   toFe: r => ({
     id: r.id,
@@ -188,6 +203,16 @@ export const vehicle = {
     odometerOffsetKm: typeof r.odometerOffsetKm === 'number' ? r.odometerOffsetKm : null,
     odometerSetAt: r.odometerSetAt ?? null,
     odometerSetBy: r.odometerSetBy ?? '',
+    /**
+     * One vehicle in several places (client, 2026-11-13). `owned` false = the
+     * vehicle is shared INTO the caller's scope: seen, not changed (its owner's
+     * BG keeps the edits). `shares` = the other places it shows, as far as the
+     * caller may know them (utils/vehiclePlacement.js). An API without them
+     * (an older server) reads as owned with no shares, i.e. as before.
+     */
+    owned: r.owned !== false,
+    ownerName: r.bg?.name ?? '',
+    shares: Array.isArray(r.shares) ? r.shares.map(shareToFe) : [],
   }),
   toApiCreate: r => ({
     bgId: r.companyId,

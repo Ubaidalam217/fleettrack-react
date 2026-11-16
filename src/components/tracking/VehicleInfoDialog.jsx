@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import { useSettingsProfile, useVehicles, updateVehicleCustomFields } from '../../data/settings'
 import { usePageAccess } from '../../pages/settings/pageChrome'
+import SharedChip from '../SharedChip'
+import { sharedFromText } from '../../utils/vehiclePlacement'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { validityState } from '../../utils/liveMapFilters'
 import {
@@ -247,7 +249,10 @@ export default function VehicleInfoDialog({ vehicle, title, onClose, onSaved, on
   const access = usePageAccess('vehicle')
   const row = profile.linked ? profile.vehicle : null
   const saved = useMemo(() => row?.customFields ?? [], [row])
-  const canEdit = !!row && access.canWrite
+  // A vehicle shared into this account (client, 2026-11-13) is read-only here:
+  // its owner's BG keeps the custom fields and the odometer.
+  const sharedIn = !!row && row.owned === false
+  const canEdit = !!row && access.canWrite && !sharedIn
 
   const [editing, setEditing] = useState(false)
   const [rows, setRows] = useState(() => toRows(saved))
@@ -356,6 +361,7 @@ export default function VehicleInfoDialog({ vehicle, title, onClose, onSaved, on
             </div>
             <div className="vi-sub">
               {editing ? 'Edit vehicle information' : place.length ? place.map((p, i) => <span key={p}>{i > 0 && '  ·  '}<b>{p}</b></span>) : 'Vehicle information'}
+              {sharedIn && <SharedChip title={`${sharedFromText(row)} — read-only`} style={{ marginLeft: 8, verticalAlign: 'middle' }} />}
             </div>
           </div>
           {/* With no fields yet, the empty state's "Add fields" is the one way in. */}

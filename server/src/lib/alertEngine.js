@@ -38,6 +38,8 @@ import { haversineMeters } from '../../../src/utils/distance.js'
 import { telemetryResponse, isServing, coverageStart, messagesBetween } from './telemetry.js'
 import { harshEpisodes, describeHarsh, HARSH_MS2 } from '../../../src/utils/harshEvents.js'
 import { runReminderPass } from './reminders.js'
+import { bgFleetWhere } from './scope.js'
+import { SHARED_BG_RULES_APPLY } from './sharePolicy.js'
 import { liveTemperature } from '../../../src/utils/sensorReadings.js'
 
 const UAE_OFFSET_SEC = 4 * 3600
@@ -737,6 +739,30 @@ export async function closeEpisodes(closes, now) {
   }
 }
 
+const FLEET_VEHICLE_SELECT = { id: true, bgId: true, imei: true, plateNo: true, fleetNo: true, driver: { select: { id: true, name: true } } }
+
+/**
+ * The vehicles the rules of these BGs watch, and each BG's fleet: its own
+ * vehicles and, when a BG's rules cover shared vehicles (lib/sharePolicy.js),
+ * those shared into it. One query per BG with active rules — a handful — and
+ * a vehicle in two fleets is loaded once. Each rule keeps its own state per
+ * device (AlertState), so two BGs' rules on one vehicle never interfere: each
+ * raises its own events, in its own BG.
+ */
+async function loadFleets(bgIds) {
+  const byId = new Map()
+  const fleetOf = new Map()
+  for (const bgId of bgIds) {
+    const rows = await prisma.vehicle.findMany({
+      where: SHARED_BG_RULES_APPLY ? bgFleetWhere(bgId) : { bgId },
+      select: FLEET_VEHICLE_SELECT,
+    })
+    fleetOf.set(bgId, new Set(rows.map(r => r.id)))
+    for (const r of rows) byId.set(r.id, r)
+  }
+  return { vehicles: [...byId.values()], fleetOf }
+}
+
 /**
  * One pass over every active rule. Returns the events it created. `pre` may
  * carry telemetry and the IMEI map already fetched this tick (the reminder
@@ -754,11 +780,8 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
   const needsFences = alerts.some(a => a.type.startsWith('geofence'))
   const customNames = alerts.filter(a => a.type === 'custom').map(a => paramsOf(a).parameter)
 
-  const [vehicles, drivers, vehicleDocs, geofences, states, telemetry, deviceByImei, customParams, tagged] = await Promise.all([
-    prisma.vehicle.findMany({
-      where: { bgId: { in: bgIds } },
-      select: { id: true, bgId: true, imei: true, plateNo: true, fleetNo: true, driver: { select: { id: true, name: true } } },
-    }),
+  const [{ vehicles, fleetOf }, drivers, vehicleDocs, geofences, states, telemetry, deviceByImei, customParams, tagged] = await Promise.all([
+    loadFleets(bgIds),
     alerts.some(a => a.type === 'license_expiry')
       ? prisma.driver.findMany({
         // A removed driver (kept for history only) has no papers to watch.
@@ -781,6 +804,11 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
     prisma.driver.findMany({ where: { bgId: { in: bgIds }, ibuttonCode: { not: null }, deletedAt: null }, select: { id: true, name: true, bgId: true, ibuttonCode: true, status: true } }),
   ])
   const byTag = new Map(tagged.map(d => [d.ibuttonCode, d]))
+  // Is `v` in this BG's fleet — its own, or shared into it (VehicleShare)?
+  const inFleet = (v, bgId) => fleetOf.get(bgId)?.has(v.id) ?? false
+  // The driver whose tag is in the reader counts when the vehicle is in that
+  // driver's BG's fleet: a shared BG's own driver in a vehicle shared to it.
+  const tagDriverFor = (v, tagDriver) => (tagDriver && inFleet(v, tagDriver.bgId) ? tagDriver : v.driver)
 
   const stateOf = new Map(states.map(r => [`${r.alertId}|${r.subject}`, r.state]))
   const changed = []
@@ -797,7 +825,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
     for (const alert of harshRules) {
       const listed = new Set(alert.vehicles.map(v => v.vehicleId))
       for (const v of vehicles) {
-        if (v.bgId !== alert.bgId || !(alert.allVehicles || listed.has(v.id))) continue
+        if (!inFleet(v, alert.bgId) || !(alert.allVehicles || listed.has(v.id))) continue
         const deviceId = deviceByImei.get(digits(v.imei))
         if (deviceId === undefined) continue
         ids.add(deviceId)
@@ -847,7 +875,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
     const threshold = num(Number(paramsOf(alert).thresholdMs2)) ?? HARSH_MS2
     const found = harshEpisodes(msgs, { kind, thresholdMs2: threshold }).filter(e => e.startTs > since)
     const tagDriver = telemetry.get(deviceId)?.ibutton ? byTag.get(telemetry.get(deviceId).ibutton) : undefined
-    const who = tagDriver && tagDriver.bgId === v.bgId ? tagDriver : v.driver
+    const who = tagDriverFor(v, tagDriver)
     for (const e of found.slice(0, HARSH_MAX_EVENTS)) {
       events.push({
         alertId: alert.id, bgId: alert.bgId, type: alert.type, severity: alert.severity, title: alert.name,
@@ -877,6 +905,8 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
         }
       }
       // The vehicles' own documents (Documents tab), for the vehicles the rule covers.
+      // The owner's papers: only the owner BG's rules watch them, not a BG the
+      // vehicle is shared into (it sees them read-only).
       const listed = new Set(alert.vehicles.map(v => v.vehicleId))
       for (const doc of vehicleDocs) {
         const v = doc.vehicle
@@ -891,7 +921,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
     }
 
     const listed = new Set(alert.vehicles.map(v => v.vehicleId))
-    const targets = vehicles.filter(v => v.bgId === alert.bgId && (alert.allVehicles || listed.has(v.id)))
+    const targets = vehicles.filter(v => inFleet(v, alert.bgId) && (alert.allVehicles || listed.has(v.id)))
     const fences = geofences.filter(g => g.bgId === alert.bgId)
     const suspendedByTag = new Map(tagged.filter(d => d.bgId === alert.bgId && d.status === 'Suspended').map(d => [d.ibuttonCode, d]))
     for (const v of targets) {
@@ -908,7 +938,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
       const result = evaluate(alert, tel, prev, now, { geofences: fences, suspendedByTag })
       // The tag in the reader names the driver; the vehicle's assigned driver otherwise.
       const tagDriver = tel.ibutton ? byTag.get(tel.ibutton) : undefined
-      const who = tagDriver && tagDriver.bgId === v.bgId ? tagDriver : v.driver
+      const who = tagDriverFor(v, tagDriver)
       if (result.fire) {
         const driver = who ? ` · Driver: ${who.name}` : ''
         result.fire.message = `${vehicleName(v)}: ${result.fire.message}${driver}`
