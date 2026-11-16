@@ -13,6 +13,7 @@
 // row with lat/lng/location — so its geocoding helpers work on it unchanged.
 
 import { deriveMovementReport, AVAILABLE_STATUS_KEYS, formatTime, formatDateLabel, flattenRows } from './movementReport'
+import { vehicleLabel } from './vehicleLabel.js'
 import { driverIdentity, driverPasses, NO_DRIVER } from './driverAtTime.js'
 
 /** How far from the alert a message may be and still describe that moment. */
@@ -97,7 +98,7 @@ export function buildEventReport(events, byDevice, opts = {}) {
     const track = trackAt(trackByDevice.get(e.deviceId), ts)
     if (!track) untracked += 1
     const meta = metaById.get(e.deviceId)
-    const vehicleId = meta?.master?.plateNo || e.vehicle?.plateNo || e.vehicle?.fleetNo || meta?.name || `Device ${e.deviceId}`
+    const vehicleId = (e.vehicle && vehicleLabel(e.vehicle)) || (meta && vehicleLabel(meta)) || `Device ${e.deviceId}`
     const who = driverIdentity(e.driver) ?? timelineOf(e.deviceId, meta)?.(ts)
       ?? driverIdentity((meta && driverNameFor ? driverNameFor(meta) : '') || null) ?? NO_DRIVER
     if (!driverPasses(who, driverFilter)) continue

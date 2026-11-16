@@ -16,6 +16,7 @@ import { assertCanWrite, assertWritableParent, findScopedOrThrow, scopedWhere } 
 import { validate } from '../middleware/validate.js'
 import { fetchTelemetry } from '../lib/alertEngine.js'
 import { describe as describeStatus, metersFor, reminderStatus, REMINDER_TYPES } from '../lib/reminders.js'
+import { vehicleLabel } from '../lib/vehicleLabel.js'
 
 export const ruleRouter = Router()
 export const router = Router()
@@ -298,7 +299,7 @@ router.post(
       prisma.reminderAck.create({
         data: {
           bgId: rule.bgId, ruleId: rule.id, ruleName: rule.name, type: rule.type,
-          vehicleId: vehicle.id, vehicleLabel: vehicle.plateNo || vehicle.fleetNo || vehicle.imei,
+          vehicleId: vehicle.id, vehicleLabel: vehicleLabel(vehicle),
           doneAt, odometer: req.body.odometer ?? meter.odometer ?? null, engineHours: meter.engineHours ?? null,
           note: req.body.note, expenseId: req.body.expenseId, byName: req.user.shortName || req.user.email,
         },

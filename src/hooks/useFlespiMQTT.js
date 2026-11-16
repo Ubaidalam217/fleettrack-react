@@ -1,8 +1,10 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import { BASE_URL, HEADERS, hasFlespiToken } from './flespiConfig'
 import { IS_REAL, API_URL } from '../data/mode'
 import { normalizeMaster, cacheRawMetadata } from '../services/vehicleMaster'
 import { useScopedSnapshot } from '../data/fleetScope'
+import { useVehicles } from '../pages/settings/mockData'
+import { withRegisterLabels } from '../utils/vehicleLabel'
 import { liveFuelLevel, liveTemperature, probeTemperature, flatTelemetry } from '../utils/sensorReadings'
 
 // Live fleet state, kept fresh by polling the Flespi proxy.
@@ -126,6 +128,8 @@ let snapshot = {
   error: null, mqttFatalError: null, mqttRetryNotice: null,
   /** This account reaches no device: a settled empty state, not a pending one. */
   noVehicles: false,
+  /** The device list (names, IMEIs) has been read at least once since start. */
+  devicesLoaded: false,
   tokenError: null,
 }
 const listeners = new Set()
@@ -236,7 +240,7 @@ async function pollOnce() {
       const meta = await fetchDeviceMeta()
       applyDeviceMeta(meta)
       lastMetaAt = Date.now()
-      publish({ noVehicles: meta.size === 0 })
+      publish({ noVehicles: meta.size === 0, devicesLoaded: true })
     }
     applyTelemetrySnapshot(await fetchTelemetrySnapshot())
     publish({
@@ -372,6 +376,22 @@ function getSnapshot() {
 }
 
 /**
+ * Every live device named the way our register names it (utils/vehicleLabel.js):
+ * a registered tracker shows its vehicle's plate (else fleet no.), never the
+ * Flespi device name, which is edited outside the app and goes stale. The
+ * Settings store is subscribed, so a rename saved anywhere in the app shows on
+ * the map, the lists and the reports without a reload. The snapshot keeps its
+ * identity while neither side changes.
+ */
+function useRegisterLabels(snapshot) {
+  const rows = useVehicles()
+  return useMemo(() => {
+    if (!snapshot?.vehicles?.length) return snapshot
+    return { ...snapshot, vehicles: withRegisterLabels(snapshot.vehicles, rows) }
+  }, [snapshot, rows])
+}
+
+/**
  * The live fleet, scoped to what the signed-in account may see.
  *
  * In real mode the proxy already answers with this account's devices only — that
@@ -381,5 +401,5 @@ function getSnapshot() {
  */
 export function useFlespiMQTT() {
   const snap = useSyncExternalStore(subscribe, getSnapshot)
-  return useScopedSnapshot(snap)
+  return useRegisterLabels(useScopedSnapshot(snap))
 }

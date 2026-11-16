@@ -27,6 +27,7 @@ import { buildAcl } from '../lib/flespiGrant.js'
 import { ROLES } from '../lib/scope.js'
 import * as flespi from '../lib/flespi.js'
 import { telemetryResponse } from '../lib/telemetry.js'
+import { currentLabelForDevice } from '../lib/vehicleLabel.js'
 
 /** A live location may be shared for at most this long. */
 export const MAX_SHARE_HOURS = 7 * 24
@@ -147,7 +148,9 @@ publicRouter.get(
     if (!share || share.revokedAt) throw new HttpError(404, 'This link does not exist or was switched off')
     if (share.expiresAt.getTime() <= Date.now()) throw new HttpError(410, 'This link has expired')
     const position = await latestPosition(share.deviceId)
-    res.json({ data: { vehicleName: share.vehicleName, expiresAt: share.expiresAt, refreshSec: CACHE_MS / 1000, position } })
+    // The vehicle's number now, so a rename after the link was made shows on it.
+    const vehicleName = await currentLabelForDevice(share.deviceId, share.vehicleName)
+    res.json({ data: { vehicleName, expiresAt: share.expiresAt, refreshSec: CACHE_MS / 1000, position } })
   })
 )
 

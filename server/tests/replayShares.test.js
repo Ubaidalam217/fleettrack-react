@@ -83,7 +83,9 @@ describe('GET /api/public/replay/:token', () => {
     const { token } = (await make()).body.data
     const res = await request(app).get(`/api/public/replay/${token}`)
     expect(res.status).toBe(200)
-    expect(res.body.data).toMatchObject({ vehicleName: 'AD 12345', fromTs: FROM, toTs: TO })
+    // Named by the vehicle's number now (PLATE-1 had device 101 throughout),
+    // not by the name the link was made with (lib/vehicleLabel.js).
+    expect(res.body.data).toMatchObject({ vehicleName: 'PLATE-1', fromTs: FROM, toTs: TO })
     expect(res.body.data.points[0]).toEqual([FROM + 60, 24.45, 54.37, 40, 90, 1])
     expect(res.body.data.points[1]).toEqual([FROM + 120, 24.46, 54.38, 0, null, 0])
   })

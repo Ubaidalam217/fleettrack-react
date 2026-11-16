@@ -3,6 +3,8 @@
  * header bell and the Notifications page.
  */
 
+import { vehicleLabel } from '../../utils/vehicleLabel'
+
 const UAE_TIME = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Dubai',
   day: '2-digit', month: 'short', year: 'numeric',
@@ -30,9 +32,14 @@ export function relativeTime(iso, now = Date.now()) {
   return uaeDateTime(new Date(t).toISOString()).split(',')[0]
 }
 
-/** The vehicle as the server names it in messages: plate, fleet no., then IMEI. */
+/**
+ * The vehicle's name NOW (utils/vehicleLabel.js): plate, fleet no., then IMEI,
+ * read from the vehicle row the event points at, so a vehicle renamed after the
+ * event shows its current number. The message text keeps the name it had when
+ * the alert fired (it is what the e-mail and push said).
+ */
 export function eventVehicleName(e) {
-  return e?.vehicle?.plateNo || e?.vehicle?.fleetNo || e?.vehicle?.imei || ''
+  return e?.vehicleLabel || (e?.vehicle ? vehicleLabel(e.vehicle) : '')
 }
 
 /**

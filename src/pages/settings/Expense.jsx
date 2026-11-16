@@ -631,7 +631,7 @@ export default function Expense(props) {
                           {access.canDelete && (
                             <td>
                               <input type="checkbox" checked={selected.has(e.id)} onChange={() => toggle(e.id)}
-                                aria-label={`Select ${e.type} expense of ${e.vehicle?.plateNo || e.vehicleLabel}`} style={{ accentColor: 'var(--ft-accent)' }} />
+                                aria-label={`Select ${e.type} expense of ${(e.vehicle && vehicleLabel(e.vehicle)) || e.vehicleLabel}`} style={{ accentColor: 'var(--ft-accent)' }} />
                             </td>
                           )}
                           <td>
@@ -639,7 +639,7 @@ export default function Expense(props) {
                             {e.category === 'Fix' && <div className="exp-sub">to {formatExpiryDate(e.toDate)}</div>}
                           </td>
                           <td>
-                            <div className="exp-main">{e.vehicle?.plateNo || e.vehicleLabel}</div>
+                            <div className="exp-main">{(e.vehicle && vehicleLabel(e.vehicle)) || e.vehicleLabel}</div>
                             <div className="exp-sub">{branchOf(e)}</div>
                           </td>
                           <td><span className={`exp-pill ${e.category === 'Fix' ? 'fix' : 'var'}`}>{e.category}</span></td>
@@ -654,7 +654,7 @@ export default function Expense(props) {
                           <td>
                             {e.bills?.length ? (
                               <button type="button" className="exp-bill" onClick={() => openExpenseBill(e.id, e.bills[0].id).catch(err => push(err.message, { tone: 'error' }))}
-                                title={e.bills.map(b => b.fileName).join(', ')} aria-label={`Open bill of ${e.vehicle?.plateNo || e.vehicleLabel}`}>
+                                title={e.bills.map(b => b.fileName).join(', ')} aria-label={`Open bill of ${(e.vehicle && vehicleLabel(e.vehicle)) || e.vehicleLabel}`}>
                                 <Paperclip size={13} /> {e.bills.length}
                               </button>
                             ) : <span style={{ color: 'var(--c-text3)' }}>—</span>}

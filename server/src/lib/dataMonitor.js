@@ -35,6 +35,7 @@ import {
   deviceSnapshot, unflushedDeviceHours, requestSnapshot, unflushedRequestHours, flespiLoad, takeLoadPeak, sqlTs,
   pruneIdleDevices,
 } from './trafficMonitor.js'
+import { vehicleLabel } from './vehicleLabel.js'
 
 export const DATA_OVERLOAD = 'data_overload'
 export const REQUEST_OVERLOAD = 'request_overload'
@@ -275,7 +276,7 @@ const CAUSE_TEXT = {
 
 async function openDeviceEpisode(deviceId, ident, m, c, s, startMs) {
   const v = await vehicleForIdent(ident)
-  const name = v ? (v.plateNo || v.fleetNo || ident) : `Device ${deviceId}${ident ? ` (${ident})` : ''}`
+  const name = v ? (vehicleLabel(v) || ident) : `Device ${deviceId}${ident ? ` (${ident})` : ''}`
   const why = c.causes.map(k => CAUSE_TEXT[k](m, c, s)).join('; ')
   const fix = diagnose(m, s, { normalPerHour: baselines.get(deviceId)?.median ?? null })
   return prisma.alertEvent.create({
@@ -630,7 +631,7 @@ export async function requestsView(nowMs = Date.now()) {
     if (key === 'several') return 'Several devices'
     if (key === '-') return 'Not a device call'
     const v = vByImei.get(imeiOf.get(key))
-    return v ? `${v.plateNo || v.fleetNo} (${key})` : `Device ${key}`
+    return v ? `${vehicleLabel(v)} (${key})` : `Device ${key}`
   }
 
   const peak = b.perMinute.reduce((p, x) => (x.calls > (p?.calls ?? -1) ? x : p), null)

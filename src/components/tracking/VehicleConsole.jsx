@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { createPortal } from 'react-dom'
 import { saveMaster, cachedVehicleTypes } from '../../services/vehicleMaster'
 import VehicleTypeSelect from '../VehicleTypeSelect'
@@ -438,7 +439,7 @@ export default function VehicleConsole({ vehicle, onClose, onSaved, onError }) {
               Parameters
             </h2>
             <span style={{ fontSize: 11, color: 'var(--c-text3)' }}>
-              {vehicle.name || vehicle.ident || `Device ${vehicle.id}`}
+              {vehicleLabel(vehicle)}
               {vehicle.ident && ` · IMEI ${vehicle.ident}`}
             </span>
           </div>

@@ -28,6 +28,7 @@
  */
 
 import { createDistanceStepper } from './distance.js'
+import { vehicleLabel } from './vehicleLabel.js'
 
 export const DEFAULT_USAGE_OPTS = Object.freeze({
   maxGapSec: 30 * 60,
@@ -318,7 +319,7 @@ export function sumTrips(trips) {
  * @param {object[]} vehicles  from useFlespiData (id, name, master)
  */
 export function tripsByVehicle(byDevice, vehicles, opts = {}) {
-  const nameOf = v => v.master?.plateNo || v.name || String(v.id)
+  const nameOf = v => vehicleLabel(v) || String(v.id)
   const out = []
   for (const [deviceId, entry] of byDevice ?? []) {
     const vehicle = vehicles.find(v => v.id === deviceId) ?? { id: deviceId, name: String(deviceId) }

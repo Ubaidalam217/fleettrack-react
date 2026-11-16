@@ -39,6 +39,8 @@
  * agree, and the cuts come out at 10:04, 11:11, 12:39-14:14 and 14:25 UAE.
  */
 
+import { vehicleLabel } from './vehicleLabel.js'
+
 export const DEFAULT_POWER_OPTS = Object.freeze({
   cutBelowV: 6,
   minCutMin: 0,
@@ -177,7 +179,7 @@ export function visibleCuts(cuts, minCutMin) {
  * @param {object} [opts]  { cutBelowV, periodEndTs }
  */
 export function powerCutsByVehicle(byDevice, vehicles, opts = {}) {
-  const nameOf = v => v.master?.plateNo || v.name || String(v.id)
+  const nameOf = v => vehicleLabel(v) || String(v.id)
   const out = []
   for (const [deviceId, entry] of byDevice ?? []) {
     const vehicle = vehicles.find(v => v.id === deviceId) ?? { id: deviceId, name: String(deviceId) }

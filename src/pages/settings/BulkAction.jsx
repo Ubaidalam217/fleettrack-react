@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { Save, RotateCcw, Search, Gauge, Link2, Unlink } from 'lucide-react'
 import SettingsLayout from './SettingsLayout'
 import { PRIMARY_BTN, SECONDARY_BTN, CARD_SURFACE } from './formStyles'
@@ -93,7 +94,7 @@ export default function BulkAction(props) {
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const list = [...vehicles].sort((a, b) => (a.vehicleNumber || a.imei).localeCompare(b.vehicleNumber || b.imei))
+    const list = [...vehicles].sort((a, b) => vehicleLabel(a).localeCompare(vehicleLabel(b)))
     if (!q) return list
     return list.filter(v => [v.vehicleNumber, v.vehicleId, v.imei, v.make, v.model, companyNameFor(v.companyId)]
       .some(x => String(x ?? '').toLowerCase().includes(q)))

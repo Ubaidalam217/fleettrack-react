@@ -18,6 +18,7 @@ import prisma from '../prisma.js'
 import { asyncHandler } from '../lib/http.js'
 import { scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { vehicleLabel } from '../lib/vehicleLabel.js'
 
 const router = Router()
 
@@ -63,7 +64,10 @@ router.get(
       prisma.alertEvent.count({ where: { AND: [scope, { readAt: null }] } }),
     ])
     res.set('Cache-Control', 'no-store')
-    res.json({ data: rows, unreadCount })
+    // The vehicle's name now, not as it was when the alert fired: the message
+    // keeps that (it is what the e-mail and push said); this is for the
+    // vehicle column and badge, so a rename shows at once.
+    res.json({ data: rows.map(r => ({ ...r, vehicleLabel: r.vehicle ? vehicleLabel(r.vehicle) : null })), unreadCount })
   })
 )
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { vehicleLabel, flespiNameNote } from '../../utils/vehicleLabel'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
@@ -91,7 +92,7 @@ export default function EventOccurrenceReport(props) {
   const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
   const { data } = useFlespiData()
   const vehicles = useMemo(
-    () => (data?.vehicles ?? []).slice().sort((a, b) => (a.master?.plateNo || a.name).localeCompare(b.master?.plateNo || b.name)),
+    () => (data?.vehicles ?? []).slice().sort((a, b) => vehicleLabel(a).localeCompare(vehicleLabel(b))),
     [data]
   )
 
@@ -129,7 +130,7 @@ export default function EventOccurrenceReport(props) {
   const rangeValid = Number.isFinite(fromTs) && Number.isFinite(toTs) && fromTs < toTs
   const rangeTooLong = rangeValid && rangeDays > MAX_RANGE_DAYS
 
-  const vehicleName = v => v.master?.plateNo || v.name
+  const vehicleName = v => vehicleLabel(v)
   const selectionLabel = allSelected
     ? `All (${vehicles.length})`
     : effectiveIds.length === 0 ? 'Select vehicles'
@@ -282,7 +283,7 @@ export default function EventOccurrenceReport(props) {
               <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
               {vehicles.map(v => (
                 <CheckRow key={v.id} checked={effectiveIds.includes(v.id)} onChange={() => toggleVehicle(v.id)}
-                  note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}>
+                  note={flespiNameNote(v)}>
                   {vehicleName(v)}
                 </CheckRow>
               ))}

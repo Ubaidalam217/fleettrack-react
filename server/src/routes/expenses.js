@@ -18,6 +18,7 @@ import { fromBase64, sniffDocument } from '../lib/files.js'
 import { optionalDate, optionalNumber, optionalText, requiredId, requiredText } from '../lib/fields.js'
 import { assertCanWrite, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
+import { vehicleLabel } from '../lib/vehicleLabel.js'
 
 const router = Router()
 
@@ -178,7 +179,7 @@ router.post(
         ...toRow(req.body),
         bgId: vehicle.bgId,
         vehicleId: vehicle.id,
-        vehicleLabel: vehicle.plateNo || vehicle.fleetNo || vehicle.imei,
+        vehicleLabel: vehicleLabel(vehicle),
         createdById: req.user.id,
         createdByName: req.user.shortName || req.user.email,
       },
@@ -201,7 +202,7 @@ router.put(
         ...toRow(req.body),
         bgId: vehicle.bgId,
         vehicleId: vehicle.id,
-        vehicleLabel: vehicle.plateNo || vehicle.fleetNo || vehicle.imei,
+        vehicleLabel: vehicleLabel(vehicle),
       },
       include: INCLUDE,
     })

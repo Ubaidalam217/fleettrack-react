@@ -21,6 +21,7 @@ import { coverageStart, messagesBetween } from './telemetry.js'
 import { scopedWhere } from './scope.js'
 import { deriveTrips, sumTrips } from '../../../src/utils/usageReports.js'
 import { createDriverHistory, creditAt } from '../../../src/utils/driverHistory.js'
+import { vehicleLabel } from './vehicleLabel.js'
 
 const UAE_OFFSET_SEC = 4 * 3600
 const DAY = 86_400
@@ -230,7 +231,7 @@ export async function computePerformance(scope, fromTs, toTs, { fatigue = FATIGU
       const c = creditTrip(t, v.id, ctx)
       if (c.driverId && tripsByDriver.has(c.driverId)) {
         tripsByDriver.get(c.driverId).push(t)
-        vehiclesByDriver.get(c.driverId).add(v.plateNo || v.fleetNo || v.imei)
+        vehiclesByDriver.get(c.driverId).add(vehicleLabel(v))
         viaCount.get(c.driverId)[c.via] += 1
       } else {
         loose.push({ ...t, tag: c.tag ?? null })
@@ -239,7 +240,7 @@ export async function computePerformance(scope, fromTs, toTs, { fatigue = FATIGU
     if (loose.length) {
       const s = sumTrips(loose)
       unidentified.push({
-        vehicleId: v.id, vehicle: v.plateNo || v.fleetNo || v.imei, trips: s.trips, distanceKm: s.distanceKm, driveSec: s.driveSec,
+        vehicleId: v.id, vehicle: vehicleLabel(v), trips: s.trips, distanceKm: s.distanceKm, driveSec: s.driveSec,
         unknownTags: [...new Set(loose.map(t => t.tag).filter(Boolean))],
       })
     }

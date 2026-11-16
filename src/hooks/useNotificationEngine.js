@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { vehicleLabel } from '../utils/vehicleLabel'
 import { generateNotifications } from '../services/notificationEngine'
 import * as store from '../services/notificationStore'
 import { sendPushNotification } from '../services/pushNotifications'
@@ -20,7 +21,7 @@ function writeSession(key, val) {
 function toSnapshot(vehicles) {
   return vehicles.map(v => ({
     id:       v.id,
-    name:     v.name,
+    name:     vehicleLabel(v),
     speed:    v.speed ?? 0,
     ignition: v.ignition ?? false,
     lat:      v.lat ?? null,
@@ -40,7 +41,7 @@ function devLog(snap, ruleResults, newNotifs) {
 
   console.table(snap.map(v => ({
     id:                  v.id,
-    name:                v.name,
+    name:                vehicleLabel(v),
     speed_kmh:           v.speed,
     ignition:            v.ignition,
     lat:                 v.lat !== null ? +v.lat.toFixed(5) : null,

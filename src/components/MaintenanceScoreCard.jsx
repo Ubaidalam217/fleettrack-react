@@ -1,4 +1,5 @@
 import { computeAtRisk } from '../utils/fleetAnalytics'
+import { vehicleLabel } from '../utils/vehicleLabel'
 
 /**
  * Fleet Reliability, from recorded data only: live uptime and the vehicles
@@ -23,8 +24,8 @@ function findings(vehicles, stats) {
     .sort((a, b) => (a.lastTs ?? 0) - (b.lastTs ?? 0))
   for (const v of quiet.slice(0, 2)) {
     out.push(v.lastTs == null
-      ? `${v.name} has never reported — check its tracker.`
-      : `${v.name} has not reported for ${ago(nowSec - v.lastTs)} — check its power and GPS connection.`)
+      ? `${vehicleLabel(v)} has never reported — check its tracker.`
+      : `${vehicleLabel(v)} has not reported for ${ago(nowSec - v.lastTs)} — check its power and GPS connection.`)
   }
   if (quiet.length > 2) out.push(`${quiet.length - 2} more vehicle${quiet.length - 2 > 1 ? 's are' : ' is'} not reporting.`)
   for (const r of stats?.maintenance?.overdue?.slice(0, 2) ?? []) {

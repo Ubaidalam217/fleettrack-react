@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import PaperTable from '../../components/reports/PaperTable'
@@ -287,12 +288,12 @@ function UtilizationDetails(props) {
   const companies = useCompanies()
   const dims = useDriverDimension()
   const liveVehicles = data?.vehicles ?? []
-  const vehiclesKey = liveVehicles.map(v => `${v.id}:${v.master?.plateNo || v.name}:${v.ident}`).sort().join('|')
+  const vehiclesKey = liveVehicles.map(v => `${v.id}:${vehicleLabel(v)}:${v.ident}`).sort().join('|')
   const vehicles = useMemo(() => liveVehicles.map(v => {
     const profile = settingsProfileForImei(v.ident)
     return {
       id: v.id,
-      label: profile.plateNo || v.master?.plateNo || profile.fleetNo || v.name,
+      label: vehicleLabel(v),
       company: profile.linked ? (profile.bgName || NOT_ASSIGNED) : NOT_ASSIGNED,
       // Site = the vehicle's own Site, else its branch (utils/vehicleSite).
       site: siteOf(profile.linked ? profile.vehicle : null),
@@ -601,12 +602,12 @@ function UtilizationSummary({ variant, ...props }) {
   // The live feed hands over a new vehicle array on every poll; the report
   // keys on which vehicles there are, not on their live position.
   const liveVehicles = data?.vehicles ?? []
-  const vehiclesKey = liveVehicles.map(v => `${v.id}:${v.master?.plateNo || v.name}:${v.ident}`).sort().join('|')
+  const vehiclesKey = liveVehicles.map(v => `${v.id}:${vehicleLabel(v)}:${v.ident}`).sort().join('|')
   const vehicles = useMemo(() => liveVehicles.map(v => {
     const profile = settingsProfileForImei(v.ident)
     return {
       id: v.id,
-      label: profile.plateNo || v.master?.plateNo || profile.fleetNo || v.name,
+      label: vehicleLabel(v),
       company: profile.linked ? (profile.bgName || NOT_ASSIGNED) : NOT_ASSIGNED,
       branch: profile.linked ? (profile.branchName || '—') : '—',
     }

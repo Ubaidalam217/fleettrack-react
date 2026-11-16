@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { MapContainer, TileLayer, Marker, Tooltip, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -92,12 +93,12 @@ export default function HeatMapReport(props) {
   const settingsVehicles = useVehicles()
   const companies = useCompanies()
   const liveVehicles = data?.vehicles ?? []
-  const vehiclesKey = liveVehicles.map(v => `${v.id}:${v.master?.plateNo || v.name}:${v.ident}`).sort().join('|')
+  const vehiclesKey = liveVehicles.map(v => `${v.id}:${vehicleLabel(v)}:${v.ident}`).sort().join('|')
   const vehicles = useMemo(() => liveVehicles.map(v => {
     const profile = settingsProfileForImei(v.ident)
     return {
       id: v.id,
-      label: profile.plateNo || v.master?.plateNo || profile.fleetNo || v.name,
+      label: vehicleLabel(v),
       company: profile.linked ? (profile.bgName || NOT_ASSIGNED) : NOT_ASSIGNED,
     }
   }).sort((a, b) => a.label.localeCompare(b.label)),

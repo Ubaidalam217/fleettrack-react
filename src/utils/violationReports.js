@@ -13,6 +13,7 @@
 // the violation began), as the samples are.
 
 import { violationEpisode } from './violationEpisodes'
+import { vehicleLabel } from './vehicleLabel.js'
 import { driverIdentity, driverPasses, NO_DRIVER } from './driverAtTime.js'
 
 /** Alert types that report a state, not a violation: left out unless picked. */
@@ -126,7 +127,7 @@ export function buildViolations(events, byDevice, opts = {}) {
     if (ep.fromTs == null) continue
 
     const meta = metaById.get(deviceId)
-    const asset = meta?.master?.plateNo || e.vehicle?.plateNo || e.vehicle?.fleetNo || meta?.name || `Device ${deviceId}`
+    const asset = (e.vehicle && vehicleLabel(e.vehicle)) || (meta && vehicleLabel(meta)) || `Device ${deviceId}`
     const who = driverIdentity(e.driver) ?? timelineOf(deviceId, meta)?.(ep.fromTs) ?? assignedFor?.(meta, ep.fromTs) ?? NO_DRIVER
     if (!driverPasses(who, driverFilter)) continue
     const site = siteOf(meta) || ''

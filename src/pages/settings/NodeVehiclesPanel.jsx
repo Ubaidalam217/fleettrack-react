@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { X, Plus, Car, ArrowRightLeft, Link2, Unlink, Search } from 'lucide-react'
@@ -37,7 +38,7 @@ import { isOwned, sharedFromText } from '../../utils/vehiclePlacement'
 
 const NOUN = { ggb: 'Group Global Admin', group: 'Group', bg: 'Business Group', branch: 'Branch' }
 
-const label = v => v.vehicleNumber || v.vehicleId || v.imei
+const label = v => vehicleLabel(v)
 
 /** Which vehicles belong to a node — their home, not a share. */
 function belongs(kind, node, v, companyOf) {

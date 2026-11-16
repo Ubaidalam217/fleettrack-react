@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { vehicleLabel, flespiNameNote } from '../utils/vehicleLabel'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle, MapPin } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import Header  from '../components/Header'
@@ -172,7 +173,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
     : effectiveIds.length === 0
       ? 'Select vehicles'
       : effectiveIds.length === 1
-      ? (vehicles.find(v => v.id === effectiveIds[0])?.master?.plateNo || vehicles.find(v => v.id === effectiveIds[0])?.name || '1 vehicle')
+      ? (vehicleLabel(vehicles.find(v => v.id === effectiveIds[0])) || '1 vehicle')
       : `${effectiveIds.length} vehicles`
 
   const statusesLabel = statuses.length === AVAILABLE_STATUS_KEYS.length
@@ -436,9 +437,9 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                         key={v.id}
                         checked={effectiveIds.includes(v.id)}
                         onChange={() => toggleVehicle(v.id)}
-                        note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}
+                        note={flespiNameNote(v)}
                       >
-                        {v.master?.plateNo || v.name}
+                        {vehicleLabel(v)}
                       </CheckRow>
                     ))}
                   </MultiSelect>

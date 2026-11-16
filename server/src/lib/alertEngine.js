@@ -42,6 +42,7 @@ import { bgFleetWhere } from './scope.js'
 import { SHARED_BG_RULES_APPLY } from './sharePolicy.js'
 import { liveTemperature } from '../../../src/utils/sensorReadings.js'
 import { runAsJob } from './requestSource.js'
+import { vehicleLabel } from './vehicleLabel.js'
 
 const UAE_OFFSET_SEC = 4 * 3600
 /** Telemetry older than this is not evaluated for speed / ignition / position rules. */
@@ -604,7 +605,7 @@ export async function fetchTelemetry() {
   return byDevice
 }
 
-const vehicleName = v => v.plateNo || v.fleetNo || v.imei
+const vehicleName = v => vehicleLabel(v)
 
 /**
  * The devices' messages between two times, oldest first: from our own history

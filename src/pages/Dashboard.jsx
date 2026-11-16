@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { vehicleLabel } from '../utils/vehicleLabel'
 import Sidebar               from '../components/Sidebar'
 import Header                from '../components/Header'
 import FleetHealthScore      from '../components/FleetHealthScore'
@@ -256,7 +257,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
     if (!data?.vehicles) return []
     const q = filterSearch.trim().toLowerCase()
     return q
-      ? data.vehicles.filter(v => v.name.toLowerCase().includes(q) || v.ident.toLowerCase().includes(q))
+      ? data.vehicles.filter(v => [vehicleLabel(v), v.flespiName, v.ident].some(x => String(x ?? '').toLowerCase().includes(q)))
       : data.vehicles
   }, [data?.vehicles, filterSearch])
 
@@ -722,7 +723,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
                       />
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 12, color: 'var(--c-text1)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {v.name}
+                          {vehicleLabel(v)}
                         </div>
                         {v.ident && (
                           <div style={{ fontSize: 10, color: 'var(--c-text3)', fontFamily: 'monospace' }}>

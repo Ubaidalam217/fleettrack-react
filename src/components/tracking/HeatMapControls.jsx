@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { flespiNameNote } from '../../utils/vehicleLabel'
 import { ChevronDown, Maximize2, Search, X } from 'lucide-react'
 import { Chip, CheckRow } from '../reports/controls'
 import { ALERT_TYPES, alertTypeLabel } from '../../data/settings'
@@ -141,7 +142,7 @@ export default function HeatMapControls({ heat, fleet, onShowAll, raised = false
   const picks = useMemo(() => {
     const q = query.trim().toLowerCase()
     return fleet
-      .map(v => ({ id: v.id, label: vehicleLabel(v), note: v.name && v.name !== vehicleLabel(v) ? v.name : null, ident: v.ident || '' }))
+      .map(v => ({ id: v.id, label: vehicleLabel(v), note: flespiNameNote(v), ident: v.ident || '' }))
       .filter(v => !q || v.label.toLowerCase().includes(q) || (v.note || '').toLowerCase().includes(q) || v.ident.includes(q))
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [fleet, query])

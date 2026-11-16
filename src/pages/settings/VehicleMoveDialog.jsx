@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { createPortal } from 'react-dom'
 import { ArrowRightLeft, X } from 'lucide-react'
 import { Field } from './FormKit'
@@ -27,7 +28,7 @@ export default function VehicleMoveDialog({ vehicle, onClose, push }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, saving])
 
-  const label = vehicle.vehicleNumber || vehicle.vehicleId || vehicle.imei
+  const label = vehicleLabel(vehicle)
   const here = companies.find(c => c.id === vehicle.companyId)?.name ?? '—'
   const targets = useMemo(
     () => companies.filter(c => c.id !== vehicle.companyId).sort((a, b) => a.name.localeCompare(b.name)),

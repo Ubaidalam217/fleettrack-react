@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { vehicleLabel } from '../utils/vehicleLabel'
 import Sidebar from '../components/Sidebar'
 import Header  from '../components/Header'
 import { useFlespiData } from '../hooks/useFlespiData'
@@ -90,7 +91,7 @@ export default function Charts({ isDark, toggleTheme, themeMode, setTheme }) {
       const group = p.linked && !NO_GROUP_NAMES.has(p.groupName ?? '') ? p.groupName : NO_GROUP
       return {
         id: v.id,
-        label: p.plateNo || v.master?.plateNo || p.fleetNo || v.name,
+        label: vehicleLabel(v),
         bg,
         group,
         status: v.status,

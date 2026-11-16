@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { createPortal } from 'react-dom'
 import {
   X, Pencil, Plus, Trash2, Copy, Check, Truck, Fingerprint, Hash, Cpu, CalendarClock,
@@ -327,7 +328,7 @@ export default function VehicleInfoDialog({ vehicle, title, onClose, onSaved, on
   }
 
   // The same name the Live Map list shows for this vehicle.
-  const vehicleTitle = title || profile.plateNo || vehicle.master?.plateNo || vehicle.name || `Device ${vehicle.id}`
+  const vehicleTitle = title || profile.plateNo || vehicleLabel(vehicle)
   const place = [profile.linked && profile.bgName, profile.linked && profile.groupName !== 'Business Group is its own group' && profile.groupName, profile.linked && !profile.branchIsBg && profile.branchName]
     .filter(v => v && v !== '—')
   const validity = row?.validUntil ? validityState(row.validUntil) : null

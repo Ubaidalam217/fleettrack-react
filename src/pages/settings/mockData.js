@@ -5,6 +5,7 @@ import { isoDateFromToday } from '../../utils/licenceExpiry'
 // See the note above the localStorage section for what that changes.
 import { IS_REAL as REAL_MODE } from '../../data/mode'
 import { displayPlacement, isOwned, vehicleInCompany } from '../../utils/vehiclePlacement'
+import { vehicleLabel as labelFor } from '../../utils/vehicleLabel'
 
 /**
  * Phase 2 mock backend for the Settings module.
@@ -363,10 +364,12 @@ export function emptyVehicle() {
  * Centralised because those panels previously read `v.name || v.plateNo`
  * directly, and both of those fields have now been replaced — a hardcoded
  * field name there is how a shape change silently blanks every row.
+ *
+ * The rule is the app-wide one (utils/vehicleLabel.js): vehicle number, then
+ * fleet no. (`vehicleId`), then IMEI; '—' when there is none.
  */
 export function vehicleLabel(v) {
-  if (!v) return '—'
-  return v.vehicleNumber || v.vehicleId || v.imei || '—'
+  return labelFor(v) || '—'
 }
 
 /** Secondary identifiers for the same panels; skips whatever is not set. */

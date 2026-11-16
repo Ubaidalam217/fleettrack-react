@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Plus, FileBadge, BellPlus, ArrowRightLeft } from 'lucide-react'
+import { Plus, FileBadge, BellPlus, ArrowRightLeft, Radio, Unplug } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
@@ -25,6 +25,8 @@ import VehicleMoveDialog from './VehicleMoveDialog'
 import { ObjectTabs } from './OrgTabs'
 import { IS_REAL } from '../../data/mode'
 import { get } from '../../data/http'
+import { useFlespiMQTT } from '../../hooks/useFlespiMQTT'
+import { flespiStatusFor } from '../../utils/vehicleLabel'
 
 // The fleet register. Writes to the same vehicle store the sub-user assignment
 // panel and the alert scope picker read, so a vehicle added here is immediately
@@ -70,6 +72,52 @@ const COLUMNS = [
     },
   }] : []),
 ]
+
+/**
+ * A read-only word on how the row stands against Flespi (client, 2026-11-16:
+ * "Vehicles numbers should be auto updated everywhere"). The app shows the
+ * vehicle number everywhere; these only say where Flespi disagrees, so the
+ * register can be put right. Nothing is ever renamed or written in Flespi from
+ * here — renaming the client's Flespi devices needs the client's go-ahead.
+ */
+function FlespiHint({ status, imei }) {
+  if (!status) return null
+  const missing = status.state === 'missing'
+  const tone = missing ? '#d97706' : 'var(--c-text3)'
+  const title = missing
+    ? `No tracker in Flespi has IMEI ${imei}. It was removed, or its Flespi device now carries another IMEI (a tracker moved in the Flespi panel), so this vehicle gets no live data. Correct the IMEI here, or delete the vehicle if the tracker is gone.`
+    : `In Flespi this tracker is named “${status.flespiName}”. FleetmaxX shows the vehicle number everywhere; the Flespi device is not renamed from here.`
+  return (
+    <span
+      title={title}
+      aria-label={title}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, maxWidth: 220,
+        padding: '1px 7px', borderRadius: 999, fontSize: 10, fontWeight: 600,
+        color: tone,
+        background: missing ? 'color-mix(in srgb, #d97706 10%, transparent)' : 'var(--c-input)',
+        border: `1px solid ${missing ? 'color-mix(in srgb, #d97706 40%, transparent)' : 'var(--c-border2)'}`,
+      }}
+    >
+      {missing ? <Unplug size={11} strokeWidth={2.4} aria-hidden="true" /> : <Radio size={11} strokeWidth={2.4} aria-hidden="true" />}
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {missing ? 'Not in Flespi' : `Flespi name: ${status.flespiName}`}
+      </span>
+    </span>
+  )
+}
+
+/**
+ * Live devices by IMEI, once the device list has loaded (real mode only: the
+ * demo's register IMEIs are made up and match no tracker).
+ */
+function useLiveByImei() {
+  const { vehicles: live, devicesLoaded } = useFlespiMQTT()
+  return useMemo(() => {
+    if (!IS_REAL || !devicesLoaded) return null
+    return new Map(live.map(d => [String(d.ident ?? '').replace(/\D/g, ''), d]).filter(([k]) => k))
+  }, [live, devicesLoaded])
+}
 
 /** The vehicle record's own fields, as the form edits them (what PUT /api/vehicles/:id saves). */
 const RECORD_KEYS = ['companyId', 'branchId', 'groupId', 'subGroup', 'vehicleNumber', 'vehicleId', 'imei', 'odometer', 'make', 'model', 'deviceType', 'mobileNo', 'vehicleType', 'validUntil']
@@ -172,6 +220,21 @@ export default function Vehicle(props) {
     groups: new Map(groupList.map(g => [g.id, g])),
     branches: new Map(branchList.map(b => [b.id, b])),
   }), [companies, groupList, branchList])
+
+  // The Vehicle Number column carries a hint where Flespi disagrees (FlespiHint).
+  const liveByImei = useLiveByImei()
+  const columns = useMemo(() => COLUMNS.map(c => (c.key !== 'vehicleNumber' ? c : {
+    ...c,
+    render: row => {
+      const status = flespiStatusFor(row, liveByImei)
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {row.vehicleNumber || '—'}
+          <FlespiHint status={status} imei={row.imei} />
+        </span>
+      )
+    },
+  })), [liveByImei])
 
   const { toasts, push, dismiss } = useToasts()
   // Client, 2026-11-10: one vehicle can move to another Business Group.
@@ -658,18 +721,18 @@ export default function Vehicle(props) {
               <UnregisteredTrackers rows={unregistered} onAdd={openAddTracker} />
 
               <SettingsTable
-                columns={COLUMNS}
+                columns={columns}
                 rows={vehicles}
                 // Rows are identified by their Vehicle Number, not a `name` field.
                 labelKey="vehicleNumber"
                 // A vehicle shared into this account: its owner edits it, not this one.
                 rowReadOnly={row => !isOwned(row)}
                 extraActions={row => [{
-                  label: `Create alert for ${row.vehicleNumber || row.imei}`,
+                  label: `Create alert for ${vehicleLabel(row)}`,
                   icon: <BellPlus size={13} />,
                   onClick: () => navigate(`/settings/alerts?imei=${encodeURIComponent(row.imei)}`),
                 }, ...(access.canWrite && isOwned(row) ? [{
-                  label: `Move ${row.vehicleNumber || row.imei} to another Business Group`,
+                  label: `Move ${vehicleLabel(row)} to another Business Group`,
                   icon: <ArrowRightLeft size={13} />,
                   onClick: () => setMoving(row),
                 }] : [])]}

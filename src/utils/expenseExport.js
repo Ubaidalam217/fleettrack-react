@@ -1,4 +1,5 @@
 import { download, fileStamp } from './reportExport'
+import { vehicleLabel } from './vehicleLabel.js'
 import { expenseDay } from '../data/expenses'
 
 /**
@@ -38,7 +39,7 @@ export async function exportExpensesExcel(rows, { branchOf, title = 'Expenses' }
       to: e.category === 'Fix' ? e.toDate : '',
       bg: e.bg?.name ?? '',
       branch: branchOf ? branchOf(e) : (e.vehicle?.branch?.name ?? ''),
-      vehicle: e.vehicle?.plateNo || e.vehicleLabel,
+      vehicle: (e.vehicle && vehicleLabel(e.vehicle)) || e.vehicleLabel,
       category: e.category,
       type: e.type,
       subType: e.subType ?? '',

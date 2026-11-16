@@ -443,7 +443,7 @@ function DriverAssignments({ driver, canWrite, push }) {
   const drop = async a => {
     try { await deleteDriverAssignment(driver.id, a.id); await load() } catch (err) { handleApiError(err, { push }) }
   }
-  const vName = v => (v ? (v.plateNo || v.fleetNo || v.imei) : '—')
+  const vName = v => vehicleLabel(v)
 
   return (
     <>
@@ -664,7 +664,7 @@ function DriverIncidents({ driver, canWrite, push }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text1)' }}>{i.description || i.type}</div>
                 <div style={{ fontSize: 11, color: 'var(--c-text3)' }}>
-                  {formatExpiryDate(i.date)}{i.vehicle ? ` · ${i.vehicle.plateNo || i.vehicle.fleetNo || i.vehicle.imei}` : ''}{i.cost != null ? ` · AED ${i.cost.toLocaleString()}` : ''}
+                  {formatExpiryDate(i.date)}{i.vehicle ? ` · ${vehicleLabel(i.vehicle)}` : ''}{i.cost != null ? ` · AED ${i.cost.toLocaleString()}` : ''}
                 </div>
               </div>
               {canWrite && <button type="button" className="ft-btn" onClick={() => drop(i)} style={SMALL_BTN} aria-label={`Delete ${i.type}`} title="Delete"><Trash2 size={13} /></button>}

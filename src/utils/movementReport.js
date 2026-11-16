@@ -25,6 +25,7 @@
 // group row's total), NOT the absolute odometer — so that is what is computed.
 
 import { driverPasses } from './driverAtTime.js'
+import { vehicleLabel } from './vehicleLabel.js'
 import { fetchFleetMessages, isAbortError } from './replay'
 import { reverseGeocodeMany, geocodeKey, shortenAddress, countUncached } from './geocode'
 import { haversineMeters, createDistanceStepper } from './distance'
@@ -360,8 +361,7 @@ export function deriveMovementReport(byDevice, opts = {}) {
     if (deviceTruncated) truncated = true
 
     const meta   = metaById.get(deviceId)
-    const master = meta?.master
-    const vehicleId = master?.plateNo || meta?.name || `Device ${deviceId}`
+    const vehicleId = (meta && vehicleLabel(meta)) || `Device ${deviceId}`
     const driverId  = (meta && driverNameFor(meta)) || ''
 
     const allRows = deriveRows(messages, { applyTolerance, toleranceMeters, intervalSec })

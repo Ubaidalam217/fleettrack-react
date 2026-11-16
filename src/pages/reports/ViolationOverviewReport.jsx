@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { useLocation } from 'react-router-dom'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
@@ -74,12 +75,12 @@ export default function ViolationOverviewReport(props) {
   const alertRules = useMemo(() => (oilGas ? allRules.filter(r => isOilGasViolation(r.type)) : allRules), [allRules, oilGas])
   const dims = useDriverDimension()
   const liveVehicles = data?.vehicles ?? []
-  const vehiclesKey = liveVehicles.map(v => `${v.id}:${v.master?.plateNo || v.name}:${v.ident}`).sort().join('|')
+  const vehiclesKey = liveVehicles.map(v => `${v.id}:${vehicleLabel(v)}:${v.ident}`).sort().join('|')
   const vehicles = useMemo(() => liveVehicles.map(v => {
     const profile = settingsProfileForImei(v.ident)
     return {
       id: v.id,
-      label: profile.plateNo || v.master?.plateNo || profile.fleetNo || v.name,
+      label: vehicleLabel(v),
       company: profile.linked ? (profile.bgName || NOT_ASSIGNED) : NOT_ASSIGNED,
       live: { id: v.id, ident: v.ident, master: v.master },
     }

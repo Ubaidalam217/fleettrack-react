@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { vehicleLabel, flespiNameNote } from '../../utils/vehicleLabel'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle, MapPin } from 'lucide-react'
 import Sidebar from '../../components/Sidebar'
 import Header  from '../../components/Header'
@@ -218,7 +219,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
     : effectiveVehicleIds.length === 0
       ? 'Select vehicles'
       : effectiveVehicleIds.length === 1
-      ? (vehicles.find(v => v.id === effectiveVehicleIds[0])?.master?.plateNo || vehicles.find(v => v.id === effectiveVehicleIds[0])?.name || '1 vehicle')
+      ? (vehicleLabel(vehicles.find(v => v.id === effectiveVehicleIds[0])) || '1 vehicle')
       : `${effectiveVehicleIds.length} vehicles`
 
   const geoSelectionLabel = selectedGeoIds === null ? `All (${geofenceZones.length})` : `${selectedGeoIds.size} selected`
@@ -465,8 +466,8 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                     <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
                     {vehicles.map(v => (
                       <CheckRow key={v.id} checked={effectiveVehicleIds.includes(v.id)} onChange={() => toggleVehicle(v.id)}
-                        note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}>
-                        {v.master?.plateNo || v.name}
+                        note={flespiNameNote(v)}>
+                        {vehicleLabel(v)}
                       </CheckRow>
                     ))}
                   </MultiSelect>

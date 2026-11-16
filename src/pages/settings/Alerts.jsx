@@ -796,7 +796,7 @@ export default function Alerts(props) {
     // A vehicle shared into this account: its rule is this account's own BG's.
     const bgId = v.owned === false ? settingsProfileForImei(v.imei).bgId || v.companyId : v.companyId
     open({ ...emptyAlert(), companyId: bgId, allVehicles: false, vehicleIds: [v.id] })
-    push(`New alert for ${v.vehicleNumber || v.imei}`, { tone: 'info' })
+    push(`New alert for ${vehicleLabel(v)}`, { tone: 'info' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forImei, access.loading, access.canAdd, fleet])
 

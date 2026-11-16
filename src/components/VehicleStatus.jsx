@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { vehicleLabel } from '../utils/vehicleLabel'
 
 const STATUS_STYLE = {
   Running:  { label: 'Moving',  textColor: 'text-emerald-600', bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.2)', dot: '#22c55e', blink: true  },
@@ -106,7 +107,7 @@ export default function VehicleStatus({ vehicles, loading }) {
                   >
                     {/* Vehicle name */}
                     <td className="px-2 py-2.5 font-bold" style={{ color: 'var(--c-text1)', whiteSpace: 'nowrap' }}>
-                      {v.name || v.ident || `Device ${v.id}`}
+                      {vehicleLabel(v)}
                     </td>
 
                     {/* Status badge */}

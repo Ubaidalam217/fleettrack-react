@@ -23,6 +23,7 @@
 
 import { HttpError } from './http.js'
 import * as flespi from './flespi.js'
+import { vehicleLabel } from './vehicleLabel.js'
 
 // Teltonika and Concox (Jimi IoT): the two channels the account receives on.
 const PROTOCOLS = [14, 13]
@@ -157,7 +158,7 @@ export async function unregisteredDevices(registeredImeis) {
 }
 
 /** The Flespi name for a vehicle: what the live map shows when nothing else is set. */
-export const deviceName = v => (v.plateNo || v.fleetNo || v.imei || '').trim()
+export const deviceName = v => vehicleLabel(v)
 
 /** Test seam. */
 export function __resetFlespiDevices() {

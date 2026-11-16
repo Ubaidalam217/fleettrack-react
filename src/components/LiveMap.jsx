@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { vehicleLabel } from '../utils/vehicleLabel'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 
 // Forces Leaflet to recalculate its container size after mount.
@@ -137,7 +138,7 @@ export default function LiveMap({ fleetData, loading }) {
             >
               <Popup>
                 <div style={{ fontSize: 12, lineHeight: 1.6, minWidth: 130 }}>
-                  <strong style={{ fontSize: 13 }}>{v.name}</strong><br />
+                  <strong style={{ fontSize: 13 }}>{vehicleLabel(v)}</strong><br />
                   <span style={{ color: STATUS_COLOR[v.status] ?? '#94a3b8' }}>● {v.status}</span>
                   {v.speed != null && <><br />Speed: <strong>{v.speed} km/h</strong></>}
                   {v.ident       && <><br />IMEI: <span style={{ fontFamily: 'monospace', fontSize: 11 }}>{v.ident}</span></>}

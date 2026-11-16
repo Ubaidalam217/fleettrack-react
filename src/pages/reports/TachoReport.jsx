@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { vehicleLabel, flespiNameNote } from '../../utils/vehicleLabel'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import PaperTable from '../../components/reports/PaperTable'
@@ -126,13 +127,13 @@ function TachoPage({ variant, ...props }) {
   const { data } = useFlespiData()
   // Keyed on what the report uses (ids and names), not on each live poll's new array.
   const liveVehicles = data?.vehicles ?? []
-  const vehiclesKey = liveVehicles.map(v => `${v.id}:${v.master?.plateNo || v.name}:${v.ident}`).sort().join('|')
+  const vehiclesKey = liveVehicles.map(v => `${v.id}:${vehicleLabel(v)}:${v.ident}`).sort().join('|')
   const vehicles = useMemo(
-    () => liveVehicles.slice().sort((a, b) => (a.master?.plateNo || a.name).localeCompare(b.master?.plateNo || b.name)),
+    () => liveVehicles.slice().sort((a, b) => vehicleLabel(a).localeCompare(vehicleLabel(b))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [vehiclesKey]
   )
-  const vehicleName = v => v?.master?.plateNo || v?.name || ''
+  const vehicleName = v => vehicleLabel(v)
 
   const now = useRef(new Date()).current
   const [graphId, setGraphId] = useState(null)       // graph: the one vehicle (first by default)
@@ -289,7 +290,7 @@ function TachoPage({ variant, ...props }) {
               <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
               {vehicles.map(v => (
                 <CheckRow key={v.id} checked={effectiveIds.includes(v.id)} onChange={() => toggleVehicle(v.id)}
-                  note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}>
+                  note={flespiNameNote(v)}>
                   {vehicleName(v)}
                 </CheckRow>
               ))}
@@ -402,7 +403,7 @@ function TachoData({ raw, vehicles, intervalSec, addressMode, V }) {
   const series = useMemo(() => applied.ids.map(id => {
     const vehicle = vehicles.find(v => v.id === id)
     return {
-      deviceId: id, name: vehicle?.master?.plateNo || vehicle?.name || String(id), tacho: buildTacho(raw.byDevice.get(id)?.messages ?? []),
+      deviceId: id, name: vehicleLabel(vehicle) || String(id), tacho: buildTacho(raw.byDevice.get(id)?.messages ?? []),
       odoOffset: register.find(r => imeiKey(r.imei) === imeiKey(vehicle?.ident))?.odometerOffsetKm ?? null,
     }
   }).sort((a, b) => a.name.localeCompare(b.name)), [raw, applied, vehicles, register])

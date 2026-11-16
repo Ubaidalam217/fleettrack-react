@@ -27,6 +27,7 @@ import { buildAcl } from '../lib/flespiGrant.js'
 import { ROLES } from '../lib/scope.js'
 import * as flespi from '../lib/flespi.js'
 import { messagesResponse } from '../lib/telemetry.js'
+import { currentLabelForDevice } from '../lib/vehicleLabel.js'
 
 const DAY = 86_400
 /** The longest replay a link may carry, and how far ahead its expiry may be set. */
@@ -178,9 +179,12 @@ publicRouter.get(
     const share = /^[A-Za-z0-9_-]{20,64}$/.test(token) ? await prisma.replayShare.findUnique({ where: { token } }) : null
     if (!share || share.revokedAt) throw new HttpError(404, 'This link does not exist or was switched off')
     if (share.expiresAt.getTime() <= Date.now()) throw new HttpError(410, 'This link has expired')
+    // The vehicle's number now, if that vehicle already had this tracker when
+    // the replay starts; the name stored with the link otherwise.
+    const vehicleName = await currentLabelForDevice(share.deviceId, share.vehicleName, { since: share.fromTs })
     res.json({
       data: {
-        vehicleName: share.vehicleName,
+        vehicleName,
         fromTs: share.fromTs,
         toTs: share.toTs,
         expiresAt: share.expiresAt,

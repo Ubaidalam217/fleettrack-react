@@ -17,6 +17,7 @@
  */
 
 import { ZERO_KM, sumTrips } from './usageReports.js'
+import { vehicleLabel } from './vehicleLabel.js'
 
 /** A vehicle-day counts as "used" from this distance. */
 export const USED_DAY_KM = 1
@@ -266,7 +267,7 @@ export function normalizeAlertEvents(rows, deviceIds = null) {
       type: e.type,
       severity: e.severity,
       read: !!e.readAt,
-      vehicleName: e.vehicle?.plateNo || e.vehicle?.fleetNo || e.vehicle?.imei || '',
+      vehicleName: e.vehicle ? vehicleLabel(e.vehicle) : '',
     }))
     .filter(e => Number.isFinite(e.ts))
     .sort((a, b) => b.ts - a.ts)

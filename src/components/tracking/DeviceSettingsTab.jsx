@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { AlertTriangle, RotateCcw, Send } from 'lucide-react'
 import ConfirmDialog from './ConfirmDialog'
 import { getDeviceSettings, setDeviceSetting, resetDevice } from '../../data/settings'
@@ -244,7 +245,7 @@ export default function DeviceSettingsTab({ v }) {
       {askReset && (
         <ConfirmDialog
           title="Restart this tracker?"
-          body={`${v.master?.plateNo || v.name} will reboot when it next connects. It stops reporting for a minute or two.`}
+          body={`${vehicleLabel(v)} will reboot when it next connects. It stops reporting for a minute or two.`}
           confirmLabel="Restart"
           onConfirm={doReset}
           onClose={() => setAskReset(false)}

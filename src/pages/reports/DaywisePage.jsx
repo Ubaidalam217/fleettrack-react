@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle, Search } from 'lucide-react'
 import Sidebar from '../../components/Sidebar'
 import Header from '../../components/Header'
@@ -165,7 +166,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
       return {
         id: v.id,
         ident: v.ident,
-        label: profile.plateNo || v.master?.plateNo || profile.fleetNo || v.name,
+        label: vehicleLabel(v),
         company: profile.linked ? (profile.bgName || NOT_ASSIGNED) : NOT_ASSIGNED,
         driver: driverNameForDevice(v),
         // The live vehicle's metadata, for the driver history lookup (useDriverDimension).

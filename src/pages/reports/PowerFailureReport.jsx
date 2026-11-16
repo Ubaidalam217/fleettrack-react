@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { vehicleLabel, flespiNameNote } from '../../utils/vehicleLabel'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
 import CtrackPaper from '../../components/reports/CtrackPaper'
@@ -81,9 +82,9 @@ export default function PowerFailureReport(props) {
   // The live feed hands over a new vehicle array on every poll. The report only
   // cares which vehicles there are and what they are called, so it keys on that.
   const liveVehicles = data?.vehicles ?? []
-  const vehiclesKey = liveVehicles.map(v => `${v.id}:${v.master?.plateNo || v.name}:${v.ident}`).sort().join('|')
+  const vehiclesKey = liveVehicles.map(v => `${v.id}:${vehicleLabel(v)}:${v.ident}`).sort().join('|')
   const vehicles = useMemo(
-    () => liveVehicles.slice().sort((a, b) => (a.master?.plateNo || a.name).localeCompare(b.master?.plateNo || b.name)),
+    () => liveVehicles.slice().sort((a, b) => vehicleLabel(a).localeCompare(vehicleLabel(b))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [vehiclesKey]
   )
@@ -112,7 +113,7 @@ export default function PowerFailureReport(props) {
   const rangeValid = Number.isFinite(fromTs) && Number.isFinite(toTs) && fromTs < toTs
   const rangeTooLong = rangeValid && (toTs - fromTs) / 86400 > MAX_RANGE_DAYS
 
-  const vehicleName = v => v.master?.plateNo || v.name
+  const vehicleName = v => vehicleLabel(v)
   const selectionLabel = allSelected
     ? `All (${vehicles.length})`
     : effectiveIds.length === 0 ? 'Select vehicles'
@@ -250,7 +251,7 @@ export default function PowerFailureReport(props) {
             <div style={{ height: 1, background: 'var(--c-border)', margin: '4px 2px' }} />
             {vehicles.map(v => (
               <CheckRow key={v.id} checked={effectiveIds.includes(v.id)} onChange={() => toggleVehicle(v.id)}
-                note={v.master?.plateNo && v.master.plateNo !== v.name ? v.name : null}>
+                note={flespiNameNote(v)}>
                 {vehicleName(v)}
               </CheckRow>
             ))}

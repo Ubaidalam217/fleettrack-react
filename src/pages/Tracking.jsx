@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { vehicleLabel } from '../utils/vehicleLabel'
 import { MapContainer, TileLayer, Polyline, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -125,12 +126,9 @@ function fmtShort(ts) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-// Plate number is the spec's primary identifier; fall back to the Flespi
-// device name until vehicle master data has been filled in.
-function vehicleName(v) {
-  if (!v) return ''
-  return v.master?.plateNo || v.name || v.ident || `Device ${v.id}`
-}
+// Our register's plate (else fleet no.) first; the Flespi device name only for
+// a tracker nobody has registered (utils/vehicleLabel.js).
+const vehicleName = v => vehicleLabel(v)
 
 function MapFlyTo({ target }) {
   const map = useMap()
@@ -970,6 +968,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
         (v.ident            || '').toLowerCase().includes(q) ||
         (v.master?.plateNo  || '').toLowerCase().includes(q) ||
         (v.master?.fleetNo  || '').toLowerCase().includes(q) ||
+        (v.flespiName       || '').toLowerCase().includes(q) ||
         driverNameForDevice(v).toLowerCase().includes(q)
       )
     })

@@ -18,6 +18,7 @@ import prisma from '../prisma.js'
 import { sendAlertEmail } from './mailer.js'
 import { pushEvents } from './push.js'
 import { vehicleKm } from './odometer.js'
+import { vehicleLabel } from './vehicleLabel.js'
 
 /** The reference's grouped Reminder Type list; any other text is accepted. */
 export const REMINDER_TYPES = Object.freeze({
@@ -159,7 +160,7 @@ async function countEngineHours(vehicles, telemetry, deviceByImei, now) {
   }
 }
 
-const vehicleName = v => v.plateNo || v.fleetNo || v.imei
+const vehicleName = v => vehicleLabel(v)
 
 /**
  * One pass, run by the alert engine's timer with the telemetry it already has.

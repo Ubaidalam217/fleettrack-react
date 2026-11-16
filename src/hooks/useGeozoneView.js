@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { vehicleLabel } from '../utils/vehicleLabel'
 import { normalizeGeoOptions, ruleGeofenceIds, shownGeozones, geoTypeCounts, geozoneCaption, geozoneBounds } from '../utils/geozones'
 
 function readStore(key) {
@@ -65,6 +66,6 @@ export function useGeozoneView({ userId, geofences, alerts, vehicle }) {
     shown, total: (geofences ?? []).length, typeCounts, ruleIds,
     caption: geozoneCaption(shown.length, (geofences ?? []).length),
     bounds, fitTick, requestFit,
-    vehicleName: vehicle?.name ?? null,
+    vehicleName: vehicle ? vehicleLabel(vehicle) : null,
   }
 }

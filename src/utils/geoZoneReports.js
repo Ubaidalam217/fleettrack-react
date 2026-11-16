@@ -23,6 +23,7 @@
 // "no reading" is 0.0, not a blank cell, so that is what every vehicle without
 // sensor data gets too.
 import { analyzeVehicle } from './geoZoneEngine'
+import { vehicleLabel } from './vehicleLabel.js'
 import { probeTemperature } from './sensorReadings'
 import { settingsProfileForImei } from '../data/settings'
 import { reverseGeocodeMany, geocodeKey, shortenAddress, countUncached } from './geocode'
@@ -133,7 +134,7 @@ export function vehicleMeta(vehicle) {
   const profile = settingsProfileForImei(vehicle.ident)
   return {
     deviceId: vehicle.id,
-    vehicleId: vehicle.master?.plateNo || vehicle.name || `Device ${vehicle.id}`,
+    vehicleId: vehicleLabel(vehicle),
     company: profile.linked ? profile.bgName : '—',
     branch: profile.linked ? profile.branchName : '—',
     bgId: profile.linked ? profile.bgId : null,

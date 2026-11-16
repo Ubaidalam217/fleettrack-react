@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { Truck, Cpu, Building2, MapPin, ListChecks, Pencil, Plus, Copy, Check } from 'lucide-react'
 import { validityState } from '../../utils/liveMapFilters'
 import { valueParts } from '../../utils/customFields'
@@ -414,7 +415,7 @@ function DriverInfo({ v }) {
         {registering && (
           <UnregisteredDriverDialog
             code={unregistered}
-            vehicleName={v.master?.plateNo || v.name}
+            vehicleName={vehicleLabel(v)}
             bgId={profile.linked ? profile.bgId : ''}
             onClose={() => setRegistering(false)}
           />
@@ -1246,7 +1247,7 @@ export default function VehicleDetailPanel({
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', minHeight: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text1)', marginBottom: 14 }}>
-          {vehicle.master.plateNo || vehicle.name}
+          {vehicleLabel(vehicle)}
           {vehicle.master.fleetNo && (
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-text3)', marginLeft: 8 }}>
               Fleet {vehicle.master.fleetNo}

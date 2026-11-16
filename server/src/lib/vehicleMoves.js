@@ -13,11 +13,10 @@
  */
 
 import prisma from '../prisma.js'
+import { vehicleLabel } from './vehicleLabel.js'
 
 /** Who made the change, as the history shows them. */
 export const actorOf = req => ({ id: req.user?.id ?? null, name: req.user?.shortName || req.user?.email || null })
-
-const vehicleLabel = v => v.plateNo || v.fleetNo || v.imei
 
 const VEHICLE_SELECT = { id: true, bgId: true, plateNo: true, fleetNo: true, imei: true, groupId: true }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 import { createPortal } from 'react-dom'
 import { haversineMeters } from '../../utils/movementReport'
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
@@ -12,9 +13,7 @@ import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 const RADII_KM = [1, 5, 10, 25, 50]
 const DEFAULT_RADIUS_KM = 10
 
-function label(v) {
-  return v.master?.plateNo || v.name || v.ident || `Device ${v.id}`
-}
+const label = v => vehicleLabel(v)
 
 export default function NearestAssetsModal({ origin, vehicles, onClose, onSelect }) {
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM)
