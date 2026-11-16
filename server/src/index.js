@@ -8,6 +8,7 @@ import { createApp } from './app.js'
 import { startDailyUsageJob } from './lib/dailyUsage.js'
 import { startAlertEngine } from './lib/alertEngine.js'
 import { startTelemetry } from './lib/telemetry.js'
+import { startDataMonitor } from './lib/dataMonitor.js'
 
 const app = createApp()
 
@@ -26,6 +27,8 @@ const stopDailyUsage = startDailyUsageJob()
 const stopAlertEngine = startAlertEngine()
 // Batches the Flespi webhook's messages into Postgres; keeps daily partitions.
 const stopTelemetry = startTelemetry()
+// Device Data Monitor: overloads checked every minute, counts saved hourly (lib/dataMonitor.js).
+const stopDataMonitor = startDataMonitor()
 
 /**
  * Graceful shutdown.
@@ -44,6 +47,7 @@ async function shutdown(signal) {
   stopDailyUsage()
   stopAlertEngine()
   await stopTelemetry()
+  await stopDataMonitor()
 
   const forceExit = setTimeout(() => {
     console.error('[fleetmax] shutdown timed out, exiting')

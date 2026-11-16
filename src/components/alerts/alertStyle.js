@@ -14,7 +14,7 @@
 import {
   Gauge, Hourglass, LogIn, LogOut, MapPin, Power, PowerOff, WifiOff,
   Thermometer, Moon, IdCard, Bell, SlidersHorizontal, UserX, CircleGauge, Wrench, ChevronsDown, ChevronsUp,
-  ShieldAlert, BatteryWarning, Siren,
+  ShieldAlert, BatteryWarning, Siren, Activity, ServerCrash,
 } from 'lucide-react'
 
 export const SEVERITY_TONE = {
@@ -48,6 +48,9 @@ export const ALERT_TYPE_ICON = {
   tamper:         ShieldAlert,
   battery_tamper: BatteryWarning,
   panic:          Siren,
+  // Not rules: raised by the Device Data Monitor (server lib/dataMonitor.js), Super Admin only.
+  data_overload:    Activity,
+  request_overload: ServerCrash,
 }
 
 export const alertTypeIcon = type => ALERT_TYPE_ICON[type] ?? Bell

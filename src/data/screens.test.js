@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { levelIn, screenForPath, atLeast, ALL_SCREENS, openCount } from './screens'
+import { levelIn, screenForPath, atLeast, ALL_SCREENS, openCount, SUPER_ADMIN_SCREENS } from './screens'
 
 describe('screen permissions (frontend)', () => {
   it('reads an unset map or screen as unrestricted', () => {
@@ -14,6 +14,12 @@ describe('screen permissions (frontend)', () => {
     expect(screenForPath('/settings/company-subuser')).toBe('users')
     expect(screenForPath('/settings')).toBeNull()
     expect(screenForPath('/reports')).toBeNull()
+  })
+
+  it('keeps the Super-Admin-only screens out of the permission editor', () => {
+    expect(screenForPath('/settings/data-monitor')).toBe('/settings/data-monitor')
+    expect(SUPER_ADMIN_SCREENS.map(s => s.id)).toContain('/settings/data-monitor')
+    expect(ALL_SCREENS.some(s => s.id === '/settings/data-monitor')).toBe(false)
   })
 
   it('orders the levels', () => {

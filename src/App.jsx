@@ -31,6 +31,7 @@ import TachoReport            from './pages/reports/TachoReport'
 import ReallocationHistoryReport from './pages/reports/ReallocationHistoryReport'
 import HeatMapReport          from './pages/reports/HeatMapReport'
 import SettingsBulkAction     from './pages/settings/BulkAction'
+import SettingsDataMonitor    from './pages/settings/DataMonitor'
 // Reports module — Movement Report, plus the two Daywise sheets (step 2)
 import WorkingHourReport       from './pages/reports/WorkingHourReport'
 import SummaryUsageReport      from './pages/reports/SummaryUsageReport'
@@ -200,6 +201,8 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         {/* Technician was removed from Settings (client, 2026-11-02); old links land on Settings. */}
         <Route path="/settings/technician"      element={<Navigate to="/settings" replace />} />
         <Route path="/settings/bulk-action"     element={guard(<SettingsBulkAction     {...themeProps} />)} />
+        {/* Super Admin only (client, 2026-11-16): trackers sending too much, and our Flespi usage. */}
+        <Route path="/settings/data-monitor"    element={guard(<SettingsDataMonitor    {...themeProps} />)} />
 
         {/* Reports module — Movement Report is the page that already existed… */}
         <Route path="/reports/movement"      element={guard(<Reports            {...themeProps} />)} />

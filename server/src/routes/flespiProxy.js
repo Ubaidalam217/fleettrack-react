@@ -19,6 +19,12 @@
  *
  * The device scope is the same one buildAcl() always computed for the token ACL,
  * so what each role can see through Flespi has not changed.
+ *
+ * Device Data Monitor (2026-11-16): every read answered here from our own copy
+ * is counted as "local", and when our Flespi usage nears the plan's per-minute
+ * limit (or Flespi has just answered 429) a browser read is held back with a
+ * 429 "busy, retry" of our own — lib/trafficMonitor.js flespiGate — which the
+ * browser already backs off on. Writes are never held back.
  */
 
 import { Router } from 'express'
@@ -26,6 +32,7 @@ import { asyncHandler, HttpError, notFound } from '../lib/http.js'
 import { buildAcl } from '../lib/flespiGrant.js'
 import * as flespi from '../lib/flespi.js'
 import { EXTRA_FIELDS, FIELD_MAP, messagesResponse, telemetryResponse } from '../lib/telemetry.js'
+import { flespiGate, recordFlespiLocal, recordFlespiShed } from '../lib/trafficMonitor.js'
 
 const router = Router()
 
@@ -111,9 +118,19 @@ router.use(
       if (storedTelemetryOnly(rest)) local = telemetryResponse(ids)
       else if (rest === '/messages') local = await messagesResponse(ids, req.query.data)
       if (local) {
+        recordFlespiLocal(method, `/gw/devices/${effective}${rest}`)
         res.set('Cache-Control', 'no-store')
         res.set('X-FleetmaxX-Source', 'local')
         res.json(local)
+        return
+      }
+      const busy = flespiGate(rest)
+      if (busy) {
+        recordFlespiShed(method, `/gw/devices/${effective}${rest}`)
+        res.set('Retry-After', String(busy.retryAfter))
+        res.set('Cache-Control', 'no-store')
+        res.set('X-FleetmaxX-Source', 'held-back')
+        res.status(429).json({ error: { message: busy.message, code: 'FLESPI_BUSY' } })
         return
       }
     }

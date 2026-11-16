@@ -1,6 +1,6 @@
 import {
   Layers, Users, Car, Bell, IdCard,
-  Database, MapPinned, ListChecks, Receipt, BellRing,
+  Database, MapPinned, ListChecks, Receipt, BellRing, Activity,
 } from 'lucide-react'
 import { filterMenu, ancestorIdsIn, labelForPathIn } from './navTree'
 
@@ -58,6 +58,9 @@ export const SETTINGS_MENU = [
   },
   { id: 'geofence',   label: 'Address - Geofence', icon: MapPinned,  path: '/settings/geofence' },
   { id: 'bulk',       label: 'Bulk Action',        icon: ListChecks, path: '/settings/bulk-action' },
+  // Super Admin only (data/permissions.js PAGE_ROLES): trackers sending too much
+  // data, and FleetmaxX's own Flespi usage (client, 2026-11-16).
+  { id: 'data-monitor', label: 'Device Data Monitor', icon: Activity, path: '/settings/data-monitor' },
 ]
 
 /** Id of the root row, so callers can expand/collapse the whole tree. */

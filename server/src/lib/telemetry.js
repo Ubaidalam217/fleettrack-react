@@ -28,6 +28,8 @@ import prisma from '../prisma.js'
 import env from '../env.js'
 import { Prisma } from '@prisma/client'
 import * as flespi from './flespi.js'
+import { noteMessage, __resetDeviceCounters } from './trafficMonitor.js'
+import { runAsJob } from './requestSource.js'
 
 /** Flespi field → our column. */
 export const FIELD_MAP = Object.freeze({
@@ -139,7 +141,7 @@ let loaded = false
 let flushing = null
 let flushTimer = null
 let partitionTimer = null
-let stats = { received: 0, stored: 0, lastIngestAt: null, lastError: null }
+let stats = { received: 0, stored: 0, duplicatesDropped: 0, lastIngestAt: null, lastError: null }
 
 export const getLatest = deviceId => latest.get(deviceId) ?? null
 export const allLatest = () => latest
@@ -158,14 +160,22 @@ export const canAccept = () => queue.length < MAX_QUEUE
  * Accept a batch from the webhook. Synchronous and cheap: it only normalises,
  * updates memory and queues; the database write happens in flush().
  *
- * @returns {{ accepted: number, skipped: number }}
+ * Every message is counted for the Device Data Monitor (lib/trafficMonitor.js),
+ * which also says when one is an exact copy of a message this device already
+ * sent (a Flespi retry, a tracker resending): that one is dropped here rather
+ * than queued, written and pushed to the live map again.
+ *
+ * @returns {{ accepted: number, skipped: number, duplicates: number }}
  */
 export function ingest(messages) {
   const rows = []
   let skipped = 0
+  let duplicates = 0
+  const now = Date.now()
   for (const m of Array.isArray(messages) ? messages : []) {
     const row = normalize(m)
     if (!row) { skipped++; continue }
+    if (!noteMessage(m, row, now)) { duplicates++; continue }
     rows.push(row)
     const prev = latest.get(row.deviceId)
     if (!prev || row.ts >= prev.ts) {
@@ -189,12 +199,13 @@ export function ingest(messages) {
   }
   queue.push(...rows)
   stats.received += rows.length
+  stats.duplicatesDropped += duplicates
   stats.lastIngestAt = new Date().toISOString()
   if (queue.length >= MAX_ROWS_PER_INSERT * 5) flush().catch(() => {})
   for (const fn of listeners) {
     try { fn(rows) } catch { /* a listener must not break ingest */ }
   }
-  return { accepted: rows.length, skipped }
+  return { accepted: rows.length, skipped, duplicates }
 }
 
 // ── database ─────────────────────────────────────────────────────────────────
@@ -384,7 +395,8 @@ export async function seedFromFlespi() {
   return added
 }
 
-const seedQuietly = () => seedFromFlespi().catch(err => console.error('[telemetry] seed:', err?.message))
+const seedQuietly = () => runAsJob('telemetry-seed', 'Live-state refresh (every 10 min)', () => seedFromFlespi())
+  .catch(err => console.error('[telemetry] seed:', err?.message))
 
 // ── lifecycle ────────────────────────────────────────────────────────────────
 
@@ -416,7 +428,8 @@ export function __resetTelemetry() {
   latest.clear()
   queue = []
   dirty.clear()
-  stats = { received: 0, stored: 0, lastIngestAt: null, lastError: null }
+  stats = { received: 0, stored: 0, duplicatesDropped: 0, lastIngestAt: null, lastError: null }
+  __resetDeviceCounters()
   coverage = { at: 0, ts: null }
   seededAt = 0
   loaded = false

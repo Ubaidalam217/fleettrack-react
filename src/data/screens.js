@@ -69,12 +69,24 @@ export const ALL_SCREENS = SCREEN_MODULES.flatMap(m => m.screens.map(s => ({ ...
 const SCREEN_IDS = new Set(ALL_SCREENS.map(s => s.id))
 
 /**
+ * Screens only a Super Admin opens. Not in SCREEN_MODULES, so the permission
+ * editor never offers them: a Super Admin is never restricted, and nobody else
+ * may be given one. Every other role's level on them is "No Access", so the
+ * route gate (components/ScreenGate.jsx) closes them; the server answers 403.
+ */
+export const SUPER_ADMIN_SCREENS = [
+  // Every tracker in the account and every user's Flespi usage (client, 2026-11-16).
+  { id: '/settings/data-monitor', label: 'Device Data Monitor', kind: 'page' },
+]
+const SUPER_ADMIN_IDS = new Set(SUPER_ADMIN_SCREENS.map(s => s.id))
+
+/**
  * Which screen a route belongs to. The sub-user pages are part of "User
  * accounts"; paths with no screen (account settings, the report hub, the
  * public map page) return null and are never blocked.
  */
 export function screenForPath(pathname) {
-  if (SCREEN_IDS.has(pathname)) return pathname
+  if (SCREEN_IDS.has(pathname) || SUPER_ADMIN_IDS.has(pathname)) return pathname
   if (pathname === '/settings/user' || pathname === '/settings/company-subuser') return 'users'
   if (pathname === '/reports/usage-summary') return '/reports/daywise-distance'
   return null
@@ -88,7 +100,9 @@ export function levelIn(access, screenId) {
 
 /** The signed-in user's level on a screen. Mock mode and Super Admin: Full. */
 export function sessionLevel(user, screenId) {
-  if (!IS_REAL || !user || user.role === 'SUPER_ADMIN' || !screenId) return FULL
+  if (!IS_REAL || !user || !screenId) return FULL
+  if (SUPER_ADMIN_IDS.has(screenId)) return user.role === 'SUPER_ADMIN' ? FULL : 'none'
+  if (user.role === 'SUPER_ADMIN') return FULL
   return levelIn(user.screenAccess, screenId)
 }
 

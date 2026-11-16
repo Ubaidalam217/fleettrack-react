@@ -658,7 +658,10 @@ model AlertEvent {
   id        String  @id @default(cuid())
   /// Null once the rule is deleted; the history stays.
   alertId   String?
-  bgId      String
+  /// Null for a system event (Device Data Monitor, lib/dataMonitor.js): only a
+  /// Super Admin's scope matches a row with no BG, so the bell of every other
+  /// account never shows it.
+  bgId      String?
   vehicleId String?
   deviceId  Int?
   driverId  String?
@@ -686,13 +689,14 @@ model AlertEvent {
   /// Set once the notification email went out; null when none was due or SMTP is off.
   emailedAt  DateTime?
 
-  alert   Alert?        @relation(fields: [alertId], references: [id], onDelete: SetNull)
-  bg      BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
-  vehicle Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  driver  Driver?       @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  alert   Alert?         @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  bg      BusinessGroup? @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicle Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  driver  Driver?        @relation(fields: [driverId], references: [id], onDelete: SetNull)
 
   @@index([bgId, occurredAt])
   @@index([alertId, occurredAt])
+  @@index([type, endedAt])
 }
 
 /// What the alert engine remembers per rule and subject (a device, or a driver
@@ -998,6 +1002,61 @@ model TelemetryMessage {
   extra       Json?
 
   @@id([deviceId, ts])
+}
+
+// ── Device Data Monitor (client, 2026-11-16) ────────────────────────────────
+// "If a device sends a lot of data, report it in the app and take some action",
+// and "see which device or source makes a lot of requests". lib/trafficMonitor.js
+// counts in memory and adds its counts to these hourly rows every few minutes;
+// rows older than 30 days are deleted. Read by Settings › Device Data Monitor.
+
+/// What one tracker sent in one hour (by the hour it ARRIVED at our webhook).
+model DeviceTrafficStat {
+  deviceId        Int
+  /// The start of the hour, UTC.
+  hour            DateTime
+  msgs            Int      @default(0)
+  /// Approximate: the JSON size of each message as Flespi delivered it.
+  bytes           BigInt   @default(0)
+  /// Messages whose timestamp this device had already sent (same device + ts).
+  duplicates      Int      @default(0)
+  /// Of those, exact copies (same content too) — dropped at the webhook.
+  exactDuplicates Int      @default(0)
+  /// Messages less than the monitor's minimum interval after the previous one.
+  fast            Int      @default(0)
+  /// Sum and count of the gaps between consecutive messages (by device time), seconds.
+  intervalSum     BigInt   @default(0)
+  intervalCount   Int      @default(0)
+  /// Messages more than 10 minutes old when they arrived (a backlog upload).
+  late            Int      @default(0)
+  /// Messages sent while standing still with the ignition off.
+  parked          Int      @default(0)
+  /// Changes of the tracker's connection (Flespi `peer`), when it reports one.
+  reconnects      Int      @default(0)
+
+  @@id([deviceId, hour])
+  @@index([hour])
+}
+
+/// FleetmaxX's own calls to the Flespi REST API in one hour, three ways:
+/// kind = 'source' (a user, or a server job), 'endpoint' or 'device'. Each kind
+/// counts every call once, so the rows of one kind add up to the hour's total.
+model FlespiRequestStat {
+  hour      DateTime
+  kind      String
+  key       String
+  calls     Int      @default(0)
+  /// Response plus request body size.
+  bytes     BigInt   @default(0)
+  /// Answered 429 by Flespi.
+  throttled Int      @default(0)
+  /// Browser reads held back by us near the Flespi limit (never sent).
+  shed      Int      @default(0)
+  /// Browser reads answered from our own telemetry copy (never sent).
+  local     Int      @default(0)
+
+  @@id([hour, kind, key])
+  @@index([hour])
 }
 
 /// A public link to one vehicle's replay (client, 2026-11-09): anyone with the

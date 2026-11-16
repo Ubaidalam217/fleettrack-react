@@ -46,6 +46,7 @@
 import env from '../env.js'
 import prisma from '../prisma.js'
 import * as flespi from './flespi.js'
+import { runAsJob } from './requestSource.js'
 import { geocodeKey, reverseGeocodePoints } from './geocoder.js'
 import { messagesResponse } from './telemetry.js'
 import {
@@ -336,9 +337,11 @@ export function requestDays(keys) {
 export function startDailyUsageJob() {
   if (env.isTest || !env.DAILY_USAGE_ENABLED || !flespi.isConfigured()) return () => {}
 
-  kick = () => setTimeout(tick, 0)
-  const first = setTimeout(tick, 5000)
-  const timer = setInterval(tick, env.DAILY_USAGE_REFRESH_MS)
+  // Its Flespi calls are counted under its own name (Device Data Monitor).
+  const job = () => runAsJob('daily-usage', 'Daywise figures job', tick)
+  kick = () => setTimeout(job, 0)
+  const first = setTimeout(job, 5000)
+  const timer = setInterval(job, env.DAILY_USAGE_REFRESH_MS)
   return () => {
     clearTimeout(first)
     clearInterval(timer)

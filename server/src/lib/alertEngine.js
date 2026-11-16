@@ -41,6 +41,7 @@ import { runReminderPass } from './reminders.js'
 import { bgFleetWhere } from './scope.js'
 import { SHARED_BG_RULES_APPLY } from './sharePolicy.js'
 import { liveTemperature } from '../../../src/utils/sensorReadings.js'
+import { runAsJob } from './requestSource.js'
 
 const UAE_OFFSET_SEC = 4 * 3600
 /** Telemetry older than this is not evaluated for speed / ignition / position rules. */
@@ -1015,8 +1016,10 @@ async function tick() {
 /** Start the background engine. Returns a stop function. No-op under test or when off. */
 export function startAlertEngine() {
   if (env.isTest || !env.ALERT_ENGINE_ENABLED || !flespi.isConfigured()) return () => {}
-  const first = setTimeout(tick, 10_000)
-  const timer = setInterval(tick, env.ALERT_ENGINE_INTERVAL_MS)
+  // Its Flespi calls are counted under its own name (Device Data Monitor).
+  const job = () => runAsJob('alert-engine', 'Alert engine', tick)
+  const first = setTimeout(job, 10_000)
+  const timer = setInterval(job, env.ALERT_ENGINE_INTERVAL_MS)
   return () => {
     clearTimeout(first)
     clearInterval(timer)

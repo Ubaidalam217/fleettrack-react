@@ -45,8 +45,9 @@ router.post('/flespi', (req, res) => {
   }
   const body = req.body
   const messages = Array.isArray(body) ? body : Array.isArray(body?.messages) ? body.messages : body && typeof body === 'object' ? [body] : []
-  const { accepted, skipped } = ingest(messages)
-  res.json({ data: { accepted, skipped } })
+  // duplicates: exact copies of messages already received, dropped (lib/trafficMonitor.js).
+  const { accepted, skipped, duplicates } = ingest(messages)
+  res.json({ data: { accepted, skipped, duplicates } })
 })
 
 router.get('/flespi/status', (req, res) => {

@@ -30,6 +30,7 @@
  */
 
 import env from '../env.js'
+import { recordFlespiCall } from './trafficMonitor.js'
 
 const BASE = 'https://flespi.io'
 
@@ -105,15 +106,17 @@ async function call(path, { method = 'GET', body, timeoutMs = env.FLESPI_TIMEOUT
   }
 
   let res
+  const sent = body === undefined ? undefined : JSON.stringify(body)
   try {
     res = await fetch(`${BASE}${path}`, {
       method,
       headers: masterHeaders(body !== undefined),
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: sent,
       signal: AbortSignal.timeout(timeoutMs),
     })
   } catch (err) {
     const timedOut = err?.name === 'TimeoutError'
+    recordFlespiCall({ method, path, status: timedOut ? 504 : 502, bytes: sent?.length ?? 0 })
     throw new FlespiError(
       timedOut ? 504 : 502,
       timedOut ? `Flespi did not respond within ${timeoutMs}ms` : `Cannot reach Flespi: ${err?.message}`,
@@ -122,6 +125,8 @@ async function call(path, { method = 'GET', body, timeoutMs = env.FLESPI_TIMEOUT
   }
 
   const text = await res.text()
+  // Counted for the Device Data Monitor: who asked, what, and how big (lib/trafficMonitor.js).
+  recordFlespiCall({ method, path, status: res.status, bytes: text.length + (sent?.length ?? 0) })
   let payload = null
   if (text) {
     try {
@@ -158,25 +163,29 @@ export async function forward(pathWithQuery, { method = 'GET', body, timeoutMs =
     throw err
   }
   let res
+  const sent = body === undefined ? undefined : JSON.stringify(body)
   try {
     res = await fetch(`${BASE}${pathWithQuery}`, {
       method,
       headers: masterHeaders(body !== undefined),
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: sent,
       signal: AbortSignal.timeout(timeoutMs),
     })
   } catch (err) {
     const timedOut = err?.name === 'TimeoutError'
+    recordFlespiCall({ method, path: pathWithQuery, status: timedOut ? 504 : 502, bytes: sent?.length ?? 0 })
     throw new FlespiError(
       timedOut ? 504 : 502,
       timedOut ? `Flespi did not respond within ${timeoutMs}ms` : `Cannot reach Flespi: ${err?.message}`,
       pathWithQuery
     )
   }
+  const text = await res.text()
+  recordFlespiCall({ method, path: pathWithQuery, status: res.status, bytes: text.length + (sent?.length ?? 0) })
   return {
     status: res.status,
     contentType: res.headers.get('content-type') || 'application/json',
-    text: await res.text(),
+    text,
   }
 }
 

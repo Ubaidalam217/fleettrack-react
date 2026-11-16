@@ -67,7 +67,7 @@ describe('POST /api/ingest/flespi', () => {
     const batch = [msg({ timestamp: NOW - 120 }), msg({ timestamp: NOW - 60 }), { nonsense: true }]
     const res = await post(batch)
     expect(res.status).toBe(200)
-    expect(res.body.data).toEqual({ accepted: 2, skipped: 1 })
+    expect(res.body.data).toEqual({ accepted: 2, skipped: 1, duplicates: 0 })
     await post(batch) // a retry of the same batch
     await T.flush()
     expect(await prisma.telemetryMessage.count()).toBe(2)

@@ -74,6 +74,8 @@ const PAGE_ROLES = Object.freeze({
   // The same for expenses: a sub-user reads those of its own vehicles.
   expense: ALL,
   'reminder-rule': ALL,
+  // Every tracker in the account and every user's Flespi usage (client, 2026-11-16).
+  'data-monitor': [ROLE.SUPER_ADMIN],
 })
 
 /** Settings page id → the entity its Add/Edit/Delete buttons write. */

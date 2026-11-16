@@ -204,6 +204,9 @@ const LEGACY_ALERT_TYPES = {
   geofence_exit:  { label: 'Geofence Exit',  direction: 'exit' },
   // Not an alert rule: raised by Settings › Master › Reminder Rule (lib/reminders.js).
   reminder:       { label: 'Maintenance Reminder' },
+  // Not alert rules: raised by Settings › Device Data Monitor (server lib/dataMonitor.js).
+  data_overload:    { label: 'Device Data Overload' },
+  request_overload: { label: 'Flespi Request Overload' },
 }
 
 /** Geo Zone directions, in the order the form shows them. */

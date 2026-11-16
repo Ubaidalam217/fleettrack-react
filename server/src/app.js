@@ -52,6 +52,8 @@ import { router as locationShareRoutes, publicRouter as publicLocationRoutes } f
 import ingestRoutes from './routes/ingest.js'
 import appUpdateRoutes from './routes/appUpdates.js'
 import liveRoutes from './routes/live.js'
+import dataMonitorRoutes from './routes/dataMonitor.js'
+import { tagSource, tagUserSource } from './lib/requestSource.js'
 
 /**
  * CORS, from FRONTEND_ORIGINS.
@@ -111,6 +113,9 @@ export function createApp() {
   app.use('/api/node-logos', nodeLogoRoutes)
   // Public: the mobile app's over-the-air updates (routes/appUpdates.js).
   app.use('/api/app-updates', appUpdateRoutes)
+  // The Device Data Monitor counts Flespi calls by who they were made for
+  // (lib/requestSource.js): the public share pages under one name.
+  app.use('/api/public', tagSource('public', 'Public share links'))
   // Public: a shared replay, opened without signing in (routes/replayShares.js).
   // Its own limiter, since anyone on the internet can reach it.
   app.use('/api/public/replay', rateLimit({
@@ -170,6 +175,8 @@ export function createApp() {
    * both without anyone having to remember.
    */
   app.use('/api', requireAuth, requirePasswordChanged)
+  // From here on a Flespi call is counted as this user's (Device Data Monitor).
+  app.use('/api', tagUserSource)
 
   app.use('/api/me', meRoutes)
   app.use('/api/ggbs', requireScreen(WRITE_SCREENS['/api/ggbs']), ggbRoutes)
@@ -205,6 +212,8 @@ export function createApp() {
   // Live push of vehicle updates from the Flespi webhook (routes/live.js).
   app.use('/api/live', liveRoutes)
   app.use('/api/assistant', assistantRoutes)
+  // Settings › Device Data Monitor — Super Admin only (routes/dataMonitor.js).
+  app.use('/api/data-monitor', dataMonitorRoutes)
 
   app.use(notFoundHandler)
   app.use(errorHandler)
