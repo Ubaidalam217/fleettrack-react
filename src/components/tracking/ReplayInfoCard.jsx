@@ -14,13 +14,10 @@ import { REPLAY_FIELDS } from './replayFields'
 // plain card over the map (ReplayDockedCard). Both wear the teal-to-coral
 // vehicle card (index.css --ft-card-*), as the live marker's popup does.
 export const REPLAY_INFO_CSS = `
+  /* The gradient, colours and arrows are the shared map card's
+     (index.css .ft-mapcard); the layout is here. */
   .replay-info-tip.leaflet-tooltip, .rp-card-dock {
-    background: var(--ft-card-bg);
-    border: none;
     border-radius: 9px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-    color: var(--ft-card-text);
-    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22);
     padding: 8px 11px;
     font-size: 11.5px;
     line-height: 1.55;
@@ -39,8 +36,6 @@ export const REPLAY_INFO_CSS = `
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .replay-info-tip.leaflet-tooltip-right::before { border-right-color: var(--ft-card-tip-mid); }
-  .replay-info-tip.leaflet-tooltip-left::before  { border-left-color:  var(--ft-card-tip-mid); }
   /* The card is free to slide up or down its own height to stay on the map
      (see useEdgeAwarePlacement), which would leave Leaflet's arrow — pinned at
      top:50% — pointing at empty space. --tip-y puts it back on the marker. */
@@ -59,10 +54,10 @@ export const REPLAY_INFO_CSS = `
   .rp-card-head { display: flex; align-items: center; gap: 8px; }
   .rp-card-tools { display: flex; gap: 3px; margin-left: auto; flex-shrink: 0; }
   .rp-card-tools button {
-    display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px;
-    background: rgba(255, 255, 255, 0.14); color: var(--ft-card-text); cursor: pointer;
+    display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border-radius: 5px;
+    border: 1px solid var(--ft-card-glass-border); background: var(--ft-card-glass); color: var(--ft-card-text); cursor: pointer;
   }
-  .rp-card-tools button:hover { background: rgba(255, 255, 255, 0.26); }
+  .rp-card-tools button:hover { background: var(--ft-card-glass-hover); }
   .rp-card-tools button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
   /* Leaflet paints every link in its container blue (.leaflet-container a),
      which on the gradient read as a faint grey-blue (client, 2026-11-16). The
@@ -316,7 +311,7 @@ export default function ReplayInfoCard({ point, fields, prefs, onPrefs, driver }
     // pin / hide buttons on it can be clicked.
     <Tooltip
       ref={tipRef} permanent interactive direction="right" offset={[MARKER_GAP, 0]}
-      className="replay-info-tip"
+      className="replay-info-tip ft-mapcard"
     >
       <CardBody point={point} fields={fields} prefs={prefs} onPrefs={onPrefs} docked={false} driver={driver} />
     </Tooltip>
@@ -327,7 +322,7 @@ export default function ReplayInfoCard({ point, fields, prefs, onPrefs, driver }
 export function ReplayDockedCard({ point, fields, prefs, onPrefs, driver }) {
   if (!prefs.compact && !anyField(fields)) return null
   return (
-    <div className="rp-card-dock" data-corner={prefs.dock} data-compact={prefs.compact ? 'true' : 'false'} role="status" aria-label="Replay vehicle card">
+    <div className="rp-card-dock ft-mapcard" data-corner={prefs.dock} data-compact={prefs.compact ? 'true' : 'false'} role="status" aria-label="Replay vehicle card">
       <CardBody point={point} fields={fields} prefs={prefs} onPrefs={onPrefs} docked driver={driver} />
     </div>
   )

@@ -12,30 +12,20 @@ import { headingLabel } from '../../utils/heading'
 // panning, because Leaflet only guards the popup's own box and still lets the
 // card overhang once the reverse-geocoded address grows it.
 export const VEHICLE_POPUP_CSS = `
-  /* The teal-to-coral vehicle card (index.css --ft-card-*, client 2026-11-16),
-     shared with the replay card (ReplayInfoCard.jsx). */
-  .veh-popup .leaflet-popup-content-wrapper {
-    background: var(--ft-card-bg);
-    color: var(--ft-card-text);
-    border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.42);
-    padding: 0;
-    text-shadow: 0 1px 1px rgba(0,0,0,0.22);
-  }
+  /* The gradient, the arrow and the close ✕ are the shared map card's
+     (index.css .ft-mapcard); only this card's own layout is here. */
+  .veh-popup .leaflet-popup-content-wrapper { border-radius: 10px; padding: 0; }
   .veh-popup .leaflet-popup-content {
     margin: 0;
     padding: 9px 11px 10px;
     font-size: 11.5px;
     line-height: 1.5;
   }
-  .veh-popup .leaflet-popup-tip { background: var(--ft-card-tip-end); box-shadow: none; }
-  .veh-popup a.leaflet-popup-close-button {
-    color: var(--ft-card-label);
+  .leaflet-container .veh-popup a.leaflet-popup-close-button {
     top: 3px; right: 3px;
     width: 18px; height: 18px;
     font-size: 15px; line-height: 16px;
   }
-  .veh-popup a.leaflet-popup-close-button:hover { color: #fff; background: none; }
 
   /* The address is the only field that can run long. Two lines places the
      vehicle; without the clamp a full Nominatim display_name turns the card
@@ -47,21 +37,8 @@ export const VEHICLE_POPUP_CSS = `
     overflow: hidden;
     font-weight: 600;
   }
-  .veh-popup-replay {
-    margin-top: 8px;
-    width: 100%;
-    display: flex; align-items: center; justify-content: center; gap: 5px;
-    background: var(--ft-accent);
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 5px 8px;
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: background 0.15s ease;
-  }
-  .veh-popup-replay:hover { background: var(--ft-accent-hover); }
+  /* A frosted-glass button (.ft-mapcard-btn), full width. */
+  .veh-popup-replay { margin-top: 8px; width: 100%; font-size: 11px; padding: 5px 8px; }
 `
 
 function fmtClock(ts) {
@@ -94,7 +71,7 @@ export default function VehiclePopup({ v, name, open, onReplay }) {
   const hasCoords = v.lat != null && v.lng != null
 
   return (
-    <Popup className="veh-popup" maxWidth={260} minWidth={196} autoPan={false}>
+    <Popup className="veh-popup ft-mapcard" maxWidth={260} minWidth={196} autoPan={false}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 238 }}>
         <div style={{
           fontWeight: 700, fontSize: 12.5, color: '#fff',
@@ -127,7 +104,7 @@ export default function VehiclePopup({ v, name, open, onReplay }) {
         </div>
 
         {onReplay && (
-          <button className="veh-popup-replay" onClick={() => onReplay(v)}>
+          <button className="veh-popup-replay ft-mapcard-btn" onClick={() => onReplay(v)}>
             <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <polygon points="6 4 20 12 6 20" />
             </svg>

@@ -35,18 +35,26 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
   --ft-navy-soft:  #0b3a50;
   --ft-sea:        #0a8fb0;
 
-  /* The vehicle card that follows a marker on the Live Map and in a replay
-     (client, 2026-11-16: "Teal to Coral Gradient Wallpaper"): the sampled
-     #024060 → #08557C → #587C9E → #B57286 → #F85A60, under a navy veil that
-     deepens towards the coral end so white text stays at WCAG AA (≥ 4.5:1)
-     all the way down. -tip-mid / -tip-end colour the tooltip / popup arrows. */
-  --ft-card-veil:     linear-gradient(180deg, rgba(1,18,32,.10) 0%, rgba(1,18,32,.24) 55%, rgba(1,18,32,.38) 100%);
-  --ft-card-gradient: linear-gradient(180deg, #024060 0%, #08557C 30%, #587C9E 62%, #B57286 84%, #F85A60 100%);
+  /* Every card on the map — the live vehicle card, the replay vehicle card,
+     event cards, geofence cards (.ft-mapcard below). The client's reference
+     (2026-11-16, the FAB Business ad), sampled top to bottom:
+     #0D3F58 → #0F4A68 → #245D7B → #4E738E → #72879A → #8D8592 → #AC777F →
+     #C96E73 → #DE696F, under a navy veil that deepens towards the coral end
+     so white text stays at WCAG AA (≥ 4.5:1, ~6:1 at the lightest stops)
+     all the way down. -tip-top / -mid / -end colour the arrows by where they
+     leave the card. */
+  --ft-card-veil:     linear-gradient(180deg, rgba(4,20,32,.08) 0%, rgba(4,20,32,.27) 37.5%, rgba(4,20,32,.30) 50%, rgba(4,20,32,.36) 75%, rgba(4,20,32,.40) 100%);
+  --ft-card-gradient: linear-gradient(180deg, #0D3F58 0%, #0F4A68 12.5%, #245D7B 25%, #4E738E 37.5%, #72879A 50%, #8D8592 62.5%, #AC777F 75%, #C96E73 87.5%, #DE696F 100%);
   --ft-card-bg:       var(--ft-card-veil), var(--ft-card-gradient);
-  --ft-card-tip-mid:  #3f6688;
-  --ft-card-tip-end:  #a2434b;
+  --ft-card-tip-top:  #0c3b52;
+  --ft-card-tip-mid:  #516475;
+  --ft-card-tip-end:  #874750;
   --ft-card-text:     #f8fafc;
   --ft-card-label:    rgba(248,250,252,.86);
+  /* Frosted-glass tiles and buttons inside a map card (the reference's tiles). */
+  --ft-card-glass:        rgba(255,255,255,.10);
+  --ft-card-glass-hover:  rgba(255,255,255,.20);
+  --ft-card-glass-border: rgba(255,255,255,.26);
 
   --c-page:    #f2f8fa;
   --c-sidebar: var(--ft-navy);
@@ -119,10 +127,11 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
   --ft-accent:       #17b08f;
   --ft-accent-hover: #2fd3ad;
 
-  /* The vehicle card: the same gradient, a touch deeper on the dark map page. */
-  --ft-card-veil:     linear-gradient(180deg, rgba(1,14,24,.18) 0%, rgba(1,14,24,.30) 55%, rgba(1,14,24,.44) 100%);
-  --ft-card-tip-mid:  #385c7c;
-  --ft-card-tip-end:  #923b44;
+  /* Map cards: the same gradient, a touch deeper on the dark map page. */
+  --ft-card-veil:     linear-gradient(180deg, rgba(2,12,20,.14) 0%, rgba(2,12,20,.33) 37.5%, rgba(2,12,20,.36) 50%, rgba(2,12,20,.42) 75%, rgba(2,12,20,.46) 100%);
+  --ft-card-tip-top:  #0b3549;
+  --ft-card-tip-mid:  #4a5c6c;
+  --ft-card-tip-end:  #7c4149;
 
   --c-sb-bg:                  linear-gradient(180deg, #071819 0%, #0a2425 60%, #0d3231 100%);
   --c-sb-elev:                #0d2a2b;
@@ -229,6 +238,56 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
    content — not the container — decides where the slack goes (use
    `.ft-push` / `mt-auto` to pin a footer to the bottom).
    ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Map cards ────────────────────────────────────────────────────────────
+   One look for every card on the Live Map and the replay map: add
+   `ft-mapcard` to a Leaflet Popup's or Tooltip's className, or to a plain
+   element (the pinned replay card). The tokens are above. */
+.ft-mapcard .leaflet-popup-content-wrapper,
+.ft-mapcard.leaflet-tooltip,
+div.ft-mapcard:not(.leaflet-popup):not(.leaflet-tooltip) {
+  background: var(--ft-card-bg);
+  color: var(--ft-card-text);
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.36);
+  text-shadow: 0 1px 1px rgba(0,0,0,.25);
+}
+.ft-mapcard .leaflet-popup-tip { background: var(--ft-card-tip-end); box-shadow: none; }
+.ft-mapcard.leaflet-tooltip-top::before    { border-top-color: var(--ft-card-tip-end); }
+.ft-mapcard.leaflet-tooltip-bottom::before { border-bottom-color: var(--ft-card-tip-top); }
+.ft-mapcard.leaflet-tooltip-left::before   { border-left-color: var(--ft-card-tip-mid); }
+.ft-mapcard.leaflet-tooltip-right::before  { border-right-color: var(--ft-card-tip-mid); }
+/* Leaflet paints links in the map blue (.leaflet-container a) and the close
+   ✕ grey: on the gradient both are near-white. */
+.leaflet-container .ft-mapcard a,
+.ft-mapcard a { color: var(--ft-card-text); }
+.leaflet-container .ft-mapcard a.leaflet-popup-close-button { color: var(--ft-card-label); text-shadow: none; }
+.leaflet-container .ft-mapcard a.leaflet-popup-close-button:hover,
+.leaflet-container .ft-mapcard a.leaflet-popup-close-button:focus { color: #fff; background: none; }
+.ft-mapcard-label { color: var(--ft-card-label); }
+/* Frosted-glass tile: a group of rows inside the card. */
+.ft-mapcard-glass {
+  background: var(--ft-card-glass);
+  border: 1px solid var(--ft-card-glass-border);
+  border-radius: 9px;
+}
+/* Frosted-glass button: "Play from here", "Replay Route". */
+.ft-mapcard-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  border: 1px solid var(--ft-card-glass-border); border-radius: 8px;
+  background: var(--ft-card-glass); color: var(--ft-card-text);
+  font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer;
+  padding: 5px 10px; text-shadow: inherit;
+  transition: background .15s ease, border-color .15s ease;
+}
+.ft-mapcard-btn:hover { background: var(--ft-card-glass-hover); border-color: rgba(255,255,255,.45); }
+.ft-mapcard-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* An event type's own colour, ringed so even grey and yellow read on the gradient. */
+.ft-mapcard-dot {
+  display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.9);
+}
 
 .ft-card {
   position: relative;

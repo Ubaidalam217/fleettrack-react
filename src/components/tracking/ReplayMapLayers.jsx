@@ -6,27 +6,18 @@ import { fmtHms } from '../../utils/replayTrips'
 import { useAddress } from '../../hooks/useAddress'
 import { shortenAddress } from '../../utils/geocode'
 
-// Popup and START/END label look. Themed with the app's tokens so the card
-// follows light and dark.
+// Event cards wear the shared map card (index.css .ft-mapcard — the client's
+// gradient, 2026-11-16), with the type's own colour as the ringed dot. The
+// START/END labels stay plain: they are labels, not cards.
 export const REPLAY_LAYERS_CSS = `
-  .replay-ev-popup .leaflet-popup-content-wrapper {
-    background: var(--c-card); color: var(--c-text1); border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.28);
-  }
-  .replay-ev-popup .leaflet-popup-tip { background: var(--c-card); }
-  .replay-ev-popup .leaflet-popup-content { margin: 11px 14px 10px; font-size: 12px; line-height: 1.5; min-width: 210px; }
-  .replay-ev-popup a.leaflet-popup-close-button { color: var(--c-text3); }
-  .rep-pop-h { font-weight: 800; font-size: 13px; display: flex; align-items: center; gap: 6px; margin: 0 14px 4px 0; }
+  .replay-ev-popup .leaflet-popup-content { margin: 11px 14px 11px; font-size: 12px; line-height: 1.5; min-width: 214px; }
+  .rep-pop-h { font-weight: 800; font-size: 13px; display: flex; align-items: center; gap: 7px; margin: 0 16px 7px 0; }
+  .rep-pop-rows { padding: 6px 9px; }
   .rep-pop-r { display: flex; justify-content: space-between; gap: 14px; }
-  .rep-pop-r > span:first-child { color: var(--c-text3); flex-shrink: 0; }
+  .rep-pop-r > span:first-child { color: var(--ft-card-label); flex-shrink: 0; }
   .rep-pop-r > b { text-align: right; min-width: 0; overflow-wrap: anywhere; }
-  .rep-pop-note { margin-top: 4px; font-size: 10.5px; color: var(--c-text3); }
-  .rep-pop-go {
-    margin-top: 7px; padding: 0; border: none; background: none; cursor: pointer;
-    font-size: 11.5px; font-weight: 700; color: var(--ft-accent);
-  }
-  .rep-pop-go:hover { text-decoration: underline; }
-  .rep-pop-go:focus-visible { outline: 2px solid var(--ft-accent); outline-offset: 2px; border-radius: 4px; }
+  .rep-pop-note { margin-top: 6px; font-size: 10.5px; color: var(--ft-card-label); }
+  .rep-pop-go { margin-top: 8px; }
   .replay-se-tip.leaflet-tooltip {
     background: var(--c-card); color: var(--c-text1); border: 1px solid var(--c-border2);
     border-radius: 7px; padding: 3px 8px; font-size: 11px; font-weight: 700;
@@ -79,9 +70,10 @@ function EventPopup({ e, open, driver, limitKmh, multiDay, onPlay }) {
   return (
     <div>
       <div className="rep-pop-h">
-        <span style={{ width: 9, height: 9, borderRadius: '50%', background: e.color, display: 'inline-block' }} aria-hidden="true" />
+        <span className="ft-mapcard-dot" style={{ background: e.color }} aria-hidden="true" />
         {e.label}
       </div>
+      <div className="rep-pop-rows ft-mapcard-glass">
       <Row k="Time">
         {instant || e.toTs <= e.fromTs
           ? clockS(e.fromTs, multiDay)
@@ -94,8 +86,9 @@ function EventPopup({ e, open, driver, limitKmh, multiDay, onPlay }) {
       {e.title && e.title !== e.label && <Row k="Rule">{e.title}</Row>}
       <Row k="Driver">{driver ?? '—'}</Row>
       <Row k="Location">{address ? shortenAddress(address, 3) : open ? '…' : '—'}</Row>
+      </div>
       {e.source === 'track' && <div className="rep-pop-note">Read off the track — no alert rule raised it.</div>}
-      <button className="rep-pop-go" onClick={() => onPlay(e)}>▶ Play from here</button>
+      <button type="button" className="rep-pop-go ft-mapcard-btn" onClick={() => onPlay(e)}>▶ Play from here</button>
     </div>
   )
 }
@@ -129,7 +122,7 @@ const EventDots = memo(function EventDots({ events, activeEventId, onActiveEvent
         {/* pane: react-leaflet would otherwise put the card in the dots' own
             pane (z 450), under the later dots and every marker (client,
             2026-11-16). popupPane (700) is above them all. */}
-        <Popup pane="popupPane" className="replay-ev-popup" autoPan={false} maxWidth={280}>
+        <Popup pane="popupPane" className="replay-ev-popup ft-mapcard" autoPan={false} maxWidth={290}>
           <EventPopup
             e={e}
             open={openId === e.id}

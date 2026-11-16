@@ -16,6 +16,8 @@ export const GEOZONE_LAYER_CSS = `
     white-space: nowrap;
   }
   .gz-name.leaflet-tooltip::before { display: none; }
+  .gz-tip.leaflet-tooltip { padding: 7px 10px; font-size: 11.5px; line-height: 1.45; white-space: nowrap; }
+  .gz-card-name { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 12px; margin-bottom: 1px; }
 `
 
 /** Zooms to the geofences shown when asked (`tick` is a counter). */
@@ -28,9 +30,31 @@ function GeozoneFit({ bounds, tick }) {
   return null
 }
 
+/** "Zone", "Address · Depot", "Speed zone · 60 km/h" — what a geofence is. */
+function geozoneKind(g) {
+  const limit = Number(g.speedLimitKmh)
+  const parts = [g.kind === 'ADDRESS' ? 'Address' : limit > 0 ? 'Speed zone' : 'Zone']
+  if (g.category) parts.push(g.category)
+  if (limit > 0) parts.push(`${Math.round(limit)} km/h`)
+  return parts.join(' · ')
+}
+
+/** The hover card of a geofence: the shared map card (index.css .ft-mapcard). */
+function GeozoneCard({ g }) {
+  return (
+    <div className="gz-card">
+      <div className="gz-card-name">
+        <span className="ft-mapcard-dot" style={{ background: g.color || '#2563eb' }} aria-hidden="true" />
+        {g.name || 'Geofence'}
+      </div>
+      <div className="ft-mapcard-label">{geozoneKind(g)}</div>
+    </div>
+  )
+}
+
 /**
  * The geofences the options leave on (hooks/useGeozoneView.js), with their
- * names when asked. Hovering a shape still shows its name.
+ * names when asked. Hovering a shape shows its card.
  */
 export default function GeozoneLayer({ geo }) {
   if (!geo.on) return null
@@ -43,7 +67,7 @@ export default function GeozoneLayer({ geo }) {
         const label = geo.opts.labels
           // Leaflet centres a bound tooltip on the shape itself.
           ? <Tooltip permanent direction="center" className="gz-name">{name}</Tooltip>
-          : <Tooltip sticky>{name}</Tooltip>
+          : <Tooltip sticky direction="top" offset={[0, -6]} className="gz-tip ft-mapcard"><GeozoneCard g={g} /></Tooltip>
         if (g.shape === 'POLYGON' && Array.isArray(g.points) && g.points.length >= 3) {
           return (
             <Polygon key={`${g.id}-${geo.opts.labels}`} positions={g.points.map(p => [p.lat, p.lng])} pathOptions={pathOptions}>
