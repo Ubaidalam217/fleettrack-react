@@ -4,14 +4,20 @@
 //
 // Kept out of the component files so neither of them exports data alongside a
 // component, which would cost React Fast Refresh in dev.
+//
+// Client, 2026-11-16: "In replay map, remove heading and show the driver name
+// and Mobile number" — Driver and Mobile on by default, Heading off but still
+// offered.
 export const REPLAY_FIELDS = [
   { key: 'status',    label: 'Status' },
   { key: 'speed',     label: 'Speed' },
   { key: 'timestamp', label: 'Timestamp' },
+  { key: 'driver',    label: 'Driver' },
+  { key: 'mobile',    label: 'Mobile' },
   { key: 'address',   label: 'Address' },
   { key: 'heading',   label: 'Heading' },
 ]
 
 export const DEFAULT_REPLAY_FIELDS = {
-  status: true, speed: true, timestamp: true, address: true, heading: true,
+  status: true, speed: true, timestamp: true, driver: true, mobile: true, address: true, heading: false,
 }

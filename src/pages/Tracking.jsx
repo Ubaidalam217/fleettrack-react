@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { MapContainer, TileLayer, Polyline, Polygon, Circle, Tooltip, ZoomControl, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Polyline, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import Sidebar from '../components/Sidebar'
@@ -13,7 +13,11 @@ import { useLiveRefreshSec, useThrottledValue, vehiclesGained, liveRefreshTag } 
 import ReplayPanel from '../components/tracking/ReplayPanel'
 import ReplayPlayerBar from '../components/tracking/ReplayPlayerBar'
 import ReplayMapLayers, { REPLAY_LAYERS_CSS } from '../components/tracking/ReplayMapLayers'
-import ReplayInfoCard, { REPLAY_INFO_CSS } from '../components/tracking/ReplayInfoCard'
+import ReplayInfoCard, { ReplayDockedCard, REPLAY_INFO_CSS } from '../components/tracking/ReplayInfoCard'
+import GeozoneControls from '../components/tracking/GeozoneControls'
+import GeozoneLayer, { GEOZONE_LAYER_CSS } from '../components/tracking/GeozoneLayer'
+import { useGeozoneView } from '../hooks/useGeozoneView'
+import { loadCardPrefs, saveCardPrefs, normalizeCardPrefs } from '../utils/replayCard'
 import { useReplayView } from '../hooks/useReplayView'
 import { DEFAULT_REPLAY_FIELDS } from '../components/tracking/replayFields'
 import VehicleActionMenu from '../components/tracking/VehicleActionMenu'
@@ -32,10 +36,10 @@ import {
 } from '../utils/vehicleStatus'
 import { fetchDeviceTrack } from '../utils/replay'
 import { tripPoints, localDay } from '../utils/replayTrips'
-import { indexAtTime } from '../utils/replayTimeline'
+import { indexAtTime, replayStateOf } from '../utils/replayTimeline'
 import { MAX_TRACES, nextTraceColor, appendPoint, createTrace } from '../utils/traces'
 import { ACTIONS, DELIVERED, sendDeviceAction, logCommand } from '../services/deviceCommands'
-import { useGeofences, useDrivers, useVehicles, useCompanies, useBranches, useGroups, driverNameForDevice, driverDisplayForDevice, settingsProfileForImei, vehicleByImei } from '../data/settings'
+import { useGeofences, useAlerts, useDrivers, useVehicles, useCompanies, useBranches, useGroups, driverNameForDevice, driverDisplayForDevice, settingsProfileForImei, vehicleByImei } from '../data/settings'
 import { useSession } from '../data/session'
 import { IS_REAL } from '../data/mode'
 import FleetTreeHeader, { GroupsToggle } from '../components/tracking/FleetTreeHeader'
@@ -62,7 +66,9 @@ const REPLAY_BASE_STEP_MS = 400
 const MAX_TICKS_PER_SEC = 8
 
 const DESKTOP_MIN = 1024
-const FIELDS_KEY  = 'ft-replay-fields'
+// v2 (2026-11-16): Driver and Mobile added, Heading off by default — a new key
+// so the old default saved as "heading on" does not override that.
+const FIELDS_KEY  = 'ft-replay-fields.v2'
 
 // ── Detail sheet sizing ──
 // Height is stored in vh rather than px so a saved size still means the same
@@ -439,14 +445,14 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     () => typeof window !== 'undefined' && window.innerWidth >= DESKTOP_MIN
   )
 
-  // Off by default — most sessions are not drawing geofences, and an extra
-  // polygon/circle layer on every render is pure cost until asked for.
   // Backed by the same scoped store Settings > Address - Geofence reads (see
   // data/settings.js): a BG user sees its own BG's shapes, Super Admin sees
   // every tenant's (consistent with how it sees every device — see
-  // data/fleetScope.js), mock mode sees the seeded demo shapes.
-  const [showGeofences, setShowGeofences] = useState(false)
+  // data/fleetScope.js), mock mode sees the seeded demo shapes. Which of them
+  // the map draws is useGeozoneView's (off by default, remembered per user).
   const geofences = useGeofences()
+  // "Vehicle rules" in the geofence options reads the alert rules already loaded.
+  const alertRules = useAlerts()
   // Subscribed so the list's Driver line and the driver search follow edits on
   // Settings > Driver; the names themselves come from driverNameForDevice.
   useDrivers()
@@ -457,6 +463,19 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // The list tree (Group → BG → Branch) reads these too.
   const groupsList = useGroups()
   const { user: me } = useSession()
+  // The replay's vehicle card: shown, pinned, compact (utils/replayCard.js).
+  const [cardPrefs, setCardPrefsState] = useState(() => loadCardPrefs(me?.id))
+  const cardPrefsFor = useRef(me?.id)
+  useEffect(() => {
+    if (cardPrefsFor.current === me?.id) return
+    cardPrefsFor.current = me?.id
+    setCardPrefsState(loadCardPrefs(me?.id))
+  }, [me?.id])
+  const setCardPrefs = useCallback(next => {
+    const p = normalizeCardPrefs(next)
+    setCardPrefsState(p)
+    saveCardPrefs(me?.id, p)
+  }, [me?.id])
   // Marker clustering (15.2): on unless this user turned it off in this browser.
   const clusterKey = `fm.liveMap.cluster.${me?.id ?? 'demo'}`
   const [clusterOn, setClusterOn] = useState(() => {
@@ -660,10 +679,18 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // you merely pick a different vehicle (see selectVehicle), and zooming out to
   // the whole of the UAE on every row click would be unusable.
   const [liveViewTick, setLiveViewTick] = useState(0)
+  // "‹ Live Map" (client, 2026-11-16): back to live with THAT vehicle still
+  // selected and centred — not the whole country.
   const exitReplayToLive = useCallback(() => {
+    const v = vehicles.find(x => x.id === replayVehicleId)
     clearReplay()
-    setLiveViewTick(n => n + 1)
-  }, [clearReplay])
+    if (v && v.lat != null && v.lng != null) {
+      setFocusId(v.id)
+      setFlyTarget({ lat: v.lat, lng: v.lng, n: ++flyCount.current })
+    } else {
+      setLiveViewTick(n => n + 1)
+    }
+  }, [clearReplay, vehicles, replayVehicleId])
 
   // Playback starts: fold the detail sheet down to its tab strip so the map has
   // the column to itself.
@@ -739,8 +766,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
 
   // Play one trip (from the panel's list) or, with null, the whole range again —
   // a slice of what is loaded, then the map is framed on it. Back on the whole
-  // range the playhead stays on the point it was on inside the trip.
-  //   opts.play  start playing (a trip card plays its trip)
+  // range the playhead stays on the point it was on inside the trip. Paused
+  // unless asked (client, 2026-11-16): only ▶ and "Play from here" play.
+  //   opts.play  start playing ("Play from here")
   //   opts.atTs  put the playhead on this moment instead
   //   opts.fit   false: leave the map where it is
   const selectReplayTrip = useCallback((trip, opts = {}) => {
@@ -991,6 +1019,34 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
 
   const selected = vehicles.find(v => v.id === focusId) ?? null
 
+  // Geofences on the map and their options (client, 2026-11-16: the heat
+  // map's button-with-options). "Vehicle rules" is the selected vehicle's.
+  const geoVehicle = useMemo(() => {
+    if (!selected) return null
+    return {
+      settingsId: vehicleByImei(selected.ident)?.id ?? null,
+      bgId: settingsProfileForImei(selected.ident)?.bgId || null,
+      name: vehicleName(selected),
+    }
+  }, [selected?.id, selected?.ident, settingsVehicles]) // eslint-disable-line react-hooks/exhaustive-deps
+  const geo = useGeozoneView({ userId: me?.id ?? 'demo', geofences, alerts: alertRules, vehicle: geoVehicle })
+
+  // Esc leaves the selected vehicle (with "Show all" and the ✕ on its chip,
+  // the only ways to — clicking the map only closes an open popup). Not while
+  // a replay is open, a dialog or menu has the key, or the user is typing.
+  useEffect(() => {
+    if (focusId == null || replayVehicleId != null) return
+    const onKey = e => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      const t = e.target
+      if (t?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"], .leaflet-popup')) return
+      if (document.querySelector('[role="dialog"], [role="menu"], .leaflet-popup')) return
+      setFocusId(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [focusId, replayVehicleId])
+
   // The sheet keeps rendering its vehicle for the length of the slide-down, so
   // deselecting animates away instead of vanishing mid-transition.
   const [sheetVehicleId, setSheetVehicleId] = useState(null)
@@ -1046,11 +1102,14 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // replay marker below so there's only ever one car for that vehicle.
   const replayActive  = replayVehicleId != null
   const replayShowing = replayActive && replayPoints.length > 0
+  // During a replay only the replayed vehicle is on the map (client,
+  // 2026-11-16: "During replay other vehicles should hide"); its live marker
+  // gives way to the replay car once a route is loaded.
   const mapped = inFilters
     .filter(v => v.lat != null && v.lng != null)
     .filter(v => !hiddenIds.has(v.id))
-    .filter(v => !(replayShowing && v.id === replayVehicleId))
-    .filter(v => heat.showsMarker(v.id))
+    .filter(v => !replayActive || (v.id === replayVehicleId && !replayShowing))
+    .filter(v => replayActive || heat.showsMarker(v.id))
   // Never inside a cluster bubble: the selected vehicle and the followed one.
   const pinnedIds = new Set([focusId, followId].filter(id => id != null))
 
@@ -1090,6 +1149,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     range: replayRange,
     allPoints: replayAllPoints,
   })
+  // Who was driving at the playhead, and their mobile number — the replay card.
+  const replayDriver = replayPoint ? replayView.driverInfoAt(replayPoint.ts) : null
   const replayMultiDay = replayAllPoints.length > 0 &&
     localDay(replayAllPoints[0].ts) !== localDay(replayAllPoints[replayAllPoints.length - 1].ts)
 
@@ -1127,15 +1188,22 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     }
   }
 
-  // Clicking the already-open row closes its card and the detail sheet with it.
+  // Clicking the selected vehicle's row again re-centres on it. It no longer
+  // drops the selection (client, 2026-11-16: "if I click in Live Map it shows
+  // the all-vehicle page") — leaving the vehicle is "Show all", its ✕, or Esc.
   const handleRowClick = (v) => {
     if (focusId === v.id) {
-      setFocusId(null)
-      clearReplay()
+      flyTo(v)
+      if (!isDesktop) setListOpen(false)
       return
     }
     selectVehicle(v)
   }
+
+  const showAllVehicles = useCallback(() => {
+    setFocusId(null)
+    clearReplay()
+  }, [clearReplay])
 
   // Every entry here does something on click. Immobilise, Force Override,
   // Digital Output, High Update and Find Nearest > Operators are absent rather
@@ -1226,6 +1294,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       selectReplayTrip(trip, opts)
       if (!isDesktop) setListOpen(false)
     },
+    cardPrefs,
+    onCardPrefs:    setCardPrefs,
     view:           replayView,
     activeEventId:  replayActiveEvent,
     onEventClick:   (e) => {
@@ -1451,6 +1521,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
         ${VEHICLE_POPUP_CSS}
         ${LIST_CARD_CSS}
         ${REPLAY_INFO_CSS}
+        ${GEOZONE_LAYER_CSS}
         ${REPLAY_LAYERS_CSS}
 
         /* ── Vehicle list ──
@@ -1623,6 +1694,26 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
         }
 
         .track-panel[data-replay="true"] .track-panel-inner { width: 340px; }
+
+        /* The selected vehicle, and the way back to all of them. */
+        .track-focus-chip {
+          position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 895;
+          display: flex; align-items: center; gap: 6px; max-width: calc(100% - 340px);
+          padding: 5px 6px 5px 12px; border-radius: 999px;
+          border: 1px solid var(--c-border2); background-color: var(--c-card); color: var(--c-text1);
+          box-shadow: 0 2px 12px rgba(0,0,0,0.18); font-size: 12px; font-weight: 700;
+        }
+        .track-focus-chip[data-low="true"] { top: 60px; }
+        .track-focus-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .track-focus-chip button {
+          display: flex; align-items: center; gap: 4px; border: 0; border-radius: 999px; padding: 4px 9px;
+          background: var(--c-hover); color: var(--c-text2); font: inherit; font-size: 11.5px; cursor: pointer; flex-shrink: 0;
+        }
+        .track-focus-chip button:hover { background: color-mix(in srgb, var(--ft-accent) 14%, var(--c-hover)); color: var(--c-text1); }
+        .track-focus-chip button:focus-visible { outline: 2px solid var(--ft-accent); outline-offset: 1px; }
+        @media (max-width: ${DESKTOP_MIN - 1}px) {
+          .track-focus-chip { top: 60px; max-width: calc(100% - 24px); }
+        }
 
         /* Replay player — across the bottom of the map, above the sheet. */
         .track-replay-bar {
@@ -1907,19 +1998,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                     : (replayActive ? 'Replay' : `Vehicles (${filtered.length})`)}
                 </button>
 
-                <button
-                  type="button"
-                  className="track-geofence-toggle"
-                  data-on={showGeofences ? 'true' : 'false'}
-                  onClick={() => setShowGeofences(v => !v)}
-                  title={showGeofences ? 'Hide geofences' : 'Show geofences'}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-                    <circle cx="12" cy="10" r="2.5" />
-                  </svg>
-                  Geofences
-                </button>
+                {/* Geofences: the heat map's pattern — button, options, count. */}
+                <GeozoneControls geo={geo} geofences={geofences} />
 
                 <button
                   type="button"
@@ -1941,9 +2021,23 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                 <HeatMapControls
                   heat={heat}
                   fleet={vehicles}
-                  onShowAll={() => { setFocusId(null); clearReplay() }}
+                  onShowAll={showAllVehicles}
                   raised={replayShowing}
+                  suspended={replayActive}
                 />
+
+                {/* The vehicle the map is about, and the way back to all of them. */}
+                {selected && !replayActive && (
+                  <div className="track-focus-chip" data-low={statusMessage || noVehicles ? 'true' : 'false'} role="status">
+                    <span title={vehicleName(selected)}>{vehicleName(selected)}</span>
+                    <button type="button" onClick={showAllVehicles} title="Show all vehicles (Esc)" aria-label="Show all vehicles">
+                      Show all
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
 
                 {/* Status banner — live connection errors only. Non-blocking:
                     the map stays interactive underneath. */}
@@ -2000,26 +2094,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   {/* Keeps whichever popup is open clear of every map edge. */}
                   <PopupFit />
 
-                  {showGeofences && geofences.map(g => {
-                    const pathOptions = { color: g.color || '#2563eb', weight: 2, fillOpacity: 0.12 }
-                    if (g.shape === 'POLYGON' && Array.isArray(g.points) && g.points.length >= 3) {
-                      return (
-                        <Polygon key={g.id} positions={g.points.map(p => [p.lat, p.lng])} pathOptions={pathOptions}>
-                          <Tooltip sticky>{g.name}</Tooltip>
-                        </Polygon>
-                      )
-                    }
-                    if (g.shape === 'CIRCLE' && g.centerLat != null && g.centerLng != null && g.radius) {
-                      return (
-                        <Circle key={g.id} center={[g.centerLat, g.centerLng]} radius={g.radius} pathOptions={pathOptions}>
-                          <Tooltip sticky>{g.name}</Tooltip>
-                        </Circle>
-                      )
-                    }
-                    return null
-                  })}
+                  <GeozoneLayer geo={geo} />
 
-                  {heat.on && <LiveHeatLayer points={heat.result?.cells ?? []} fitTick={heat.fitTick} />}
+                  {heat.on && !replayActive && <LiveHeatLayer points={heat.result?.cells ?? []} fitTick={heat.fitTick} />}
 
                   {clusterOn ? (
                     <>
@@ -2033,7 +2110,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   {/* Live traces. Drawn under the replay track, which is the
                       one the user is actively scrubbing. A single point is not
                       a line, so those are skipped until a second fix lands. */}
-                  {Object.entries(traces).map(([id, t]) => (
+                  {!replayActive && Object.entries(traces).map(([id, t]) => (
                     t.points.length > 1 && (
                       <Polyline
                         key={`trace-${id}`}
@@ -2057,6 +2134,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       focus={replayFocus}
                       multiDay={replayMultiDay}
                       onActiveEvent={setReplayActiveEvent}
+                      onDotClick={id => { setReplayPlaying(false); setReplayActiveEvent(id) }}
                       onPlayFrom={playReplayFrom}
                       eventDriver={replayView.eventDriver}
                     />
@@ -2071,19 +2149,30 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                   {replayPoint && (
                     <VehicleMarker
                       position={[replayPoint.lat, replayPoint.lng]}
-                      color={statusColor(replayPoint.status)}
+                      // The replay's own state (driving / idle / stopped), not the
+                      // vehicle's live status — that kept the live "Off" red.
+                      color={replayStateOf(replayPoint).color}
                       type={replayVehicleType}
                       heading={replayPoint.heading}
                       zIndexOffset={1000}
                     >
                       {/* Folded away while an event's card is open, so the two never overlap. */}
-                      {!replayActiveEvent && <ReplayInfoCard point={replayPoint} fields={replayFields} />}
+                      {!replayActiveEvent && cardPrefs.show && cardPrefs.dock === 'follow' && (
+                        <ReplayInfoCard point={replayPoint} fields={replayFields} prefs={cardPrefs} onPrefs={setCardPrefs} driver={replayDriver} />
+                      )}
                     </VehicleMarker>
                   )}
                 </MapContainer>
 
+                {replayPoint && cardPrefs.show && (cardPrefs.dock === 'tl' || cardPrefs.dock === 'tr') && (
+                  <ReplayDockedCard point={replayPoint} fields={replayFields} prefs={cardPrefs} onPrefs={setCardPrefs} driver={replayDriver} />
+                )}
+
                 {replayShowing && (
                   <div className="track-replay-bar">
+                    {replayPoint && cardPrefs.show && cardPrefs.dock === 'bl' && (
+                      <ReplayDockedCard point={replayPoint} fields={replayFields} prefs={cardPrefs} onPrefs={setCardPrefs} driver={replayDriver} />
+                    )}
                     <ReplayPlayerBar
                       points={replayPoints}
                       index={replayIndex}
@@ -2096,6 +2185,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       onSeek={replay.onSeek}
                       onSpeedChange={setReplaySpeed}
                       onEventClick={focusReplayEvent}
+                      cardShown={cardPrefs.show}
+                      onToggleCard={() => setCardPrefs({ ...cardPrefs, show: !cardPrefs.show })}
                     />
                   </div>
                 )}

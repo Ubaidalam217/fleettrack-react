@@ -35,6 +35,19 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
   --ft-navy-soft:  #0b3a50;
   --ft-sea:        #0a8fb0;
 
+  /* The vehicle card that follows a marker on the Live Map and in a replay
+     (client, 2026-11-16: "Teal to Coral Gradient Wallpaper"): the sampled
+     #024060 → #08557C → #587C9E → #B57286 → #F85A60, under a navy veil that
+     deepens towards the coral end so white text stays at WCAG AA (≥ 4.5:1)
+     all the way down. -tip-mid / -tip-end colour the tooltip / popup arrows. */
+  --ft-card-veil:     linear-gradient(180deg, rgba(1,18,32,.10) 0%, rgba(1,18,32,.24) 55%, rgba(1,18,32,.38) 100%);
+  --ft-card-gradient: linear-gradient(180deg, #024060 0%, #08557C 30%, #587C9E 62%, #B57286 84%, #F85A60 100%);
+  --ft-card-bg:       var(--ft-card-veil), var(--ft-card-gradient);
+  --ft-card-tip-mid:  #3f6688;
+  --ft-card-tip-end:  #a2434b;
+  --ft-card-text:     #f8fafc;
+  --ft-card-label:    rgba(248,250,252,.86);
+
   --c-page:    #f2f8fa;
   --c-sidebar: var(--ft-navy);
   /* Dark in both themes, like the sidebar; .ft-topbar re-tints its contents. */
@@ -105,6 +118,11 @@ html, body, #root { margin: 0; padding: 0; overflow-x: hidden; }
      on accent buttons across the website stay readable. */
   --ft-accent:       #17b08f;
   --ft-accent-hover: #2fd3ad;
+
+  /* The vehicle card: the same gradient, a touch deeper on the dark map page. */
+  --ft-card-veil:     linear-gradient(180deg, rgba(1,14,24,.18) 0%, rgba(1,14,24,.30) 55%, rgba(1,14,24,.44) 100%);
+  --ft-card-tip-mid:  #385c7c;
+  --ft-card-tip-end:  #923b44;
 
   --c-sb-bg:                  linear-gradient(180deg, #071819 0%, #0a2425 60%, #0d3231 100%);
   --c-sb-elev:                #0d2a2b;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  GAP_SEC, pointState, timelineSegments, timeFraction, indexAtTime, indexAtFraction,
+  GAP_SEC, pointState, replayStateOf, REPLAY_STATES, timelineSegments, timeFraction, indexAtTime, indexAtFraction,
   speedSeries, overLimitRuns,
 } from './replayTimeline'
 
@@ -13,6 +13,14 @@ describe('pointState', () => {
     expect(pointState({ status: 'Running', speed: 40 })).toBe('driving')
     expect(pointState({ status: 'Idle', speed: 0 })).toBe('idle')
     expect(pointState({ status: 'Stopped', speed: 0 })).toBe('stopped')
+  })
+
+  it('counts a moving reading as driving even with the ignition reported off', () => {
+    expect(pointState({ status: 'Stopped', speed: 42 })).toBe('driving')
+    expect(pointState({ status: 'Stopped', speed: 2 })).toBe('stopped')
+    expect(pointState({ status: 'Idle', speed: 1 })).toBe('idle')
+    expect(replayStateOf({ status: 'Stopped', speed: 0 })).toEqual(REPLAY_STATES.stopped)
+    expect(replayStateOf({ status: 'Running', speed: 30 }).color).toBe('#43a047')
   })
 
   it('falls back to movement when the tracker reports no ignition', () => {

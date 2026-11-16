@@ -101,7 +101,7 @@ function EventPopup({ e, open, driver, limitKmh, multiDay, onPlay }) {
 }
 
 /** The event dots — memoised, so a playback tick does not touch them. */
-const EventDots = memo(function EventDots({ events, activeEventId, onActiveEvent, onPlayFrom, eventDriver, limitKmh, multiDay, layerRefs }) {
+const EventDots = memo(function EventDots({ events, activeEventId, onActiveEvent, onDotClick, onPlayFrom, eventDriver, limitKmh, multiDay, layerRefs }) {
   const map = useMap()
   const [openId, setOpenId] = useState(null)
   return events.map(e => {
@@ -117,7 +117,8 @@ const EventDots = memo(function EventDots({ events, activeEventId, onActiveEvent
         radius={active ? 10 : 8}
         pathOptions={{ color: active ? '#0f2a3a' : '#fff', weight: 2.5, fillColor: e.color, fillOpacity: 1 }}
         eventHandlers={{
-          click: () => onActiveEvent(e.id),
+          // Opens its card only — never plays (client, 2026-11-16).
+          click: () => (onDotClick ?? onActiveEvent)(e.id),
           popupopen: () => { setOpenId(e.id); onActiveEvent(e.id) },
           popupclose: () => {
             setOpenId(id => (id === e.id ? null : id))
@@ -125,7 +126,10 @@ const EventDots = memo(function EventDots({ events, activeEventId, onActiveEvent
           },
         }}
       >
-        <Popup className="replay-ev-popup" autoPan={false} maxWidth={280}>
+        {/* pane: react-leaflet would otherwise put the card in the dots' own
+            pane (z 450), under the later dots and every marker (client,
+            2026-11-16). popupPane (700) is above them all. */}
+        <Popup pane="popupPane" className="replay-ev-popup" autoPan={false} maxWidth={280}>
           <EventPopup
             e={e}
             open={openId === e.id}
@@ -151,7 +155,7 @@ const EventDots = memo(function EventDots({ events, activeEventId, onActiveEvent
  */
 export default function ReplayMapLayers({
   points, index, highlightKmh, events, activeEventId, focus, multiDay,
-  onActiveEvent, onPlayFrom, eventDriver,
+  onActiveEvent, onDotClick, onPlayFrom, eventDriver,
 }) {
   const map = useMap()
   const layerRefs = useRef(new Map())
@@ -223,7 +227,9 @@ export default function ReplayMapLayers({
       {over.map(r => <Polyline key={`over-${highlightKmh}-${r.key}`} positions={r.positions} pathOptions={OVER} />)}
       {activeSpan && <Polyline positions={activeSpan} pathOptions={spanStyle} />}
 
-      {/* Its own pane above the route, so a red stretch drawn later never covers a dot. */}
+      {/* Its own pane above the route, so a red stretch drawn later never covers
+          a dot. START / END labels stay in it too (over the dots, under the
+          markers and the vehicle card); the event card goes to popupPane. */}
       <Pane name="replay-events" style={{ zIndex: 450 }}>
         {first && (
           <CircleMarker center={[first.lat, first.lng]} radius={9} pathOptions={START} interactive={false}>
@@ -239,6 +245,7 @@ export default function ReplayMapLayers({
           events={onMap}
           activeEventId={activeEventId}
           onActiveEvent={onActiveEvent}
+          onDotClick={onDotClick}
           onPlayFrom={onPlayFrom}
           eventDriver={eventDriver}
           limitKmh={highlightKmh}

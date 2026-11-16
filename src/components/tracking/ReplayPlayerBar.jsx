@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
+import { EyeOff, IdCard } from 'lucide-react'
 import {
-  timelineSegments, timeFraction, indexAtFraction, speedSeries, pointState,
+  timelineSegments, timeFraction, indexAtFraction, speedSeries, pointState, REPLAY_STATES,
 } from '../../utils/replayTimeline'
 import { eventSummary } from '../../utils/replayEvents'
 import { useSettledAddress } from '../../hooks/useAddress'
@@ -8,11 +9,7 @@ import { shortenAddress } from '../../utils/geocode'
 
 const SPEEDS = [0.5, 1, 2, 5, 10]
 
-const STATE = {
-  driving: { label: 'Driving', color: '#43a047' },
-  idle:    { label: 'Idle',    color: '#f2b705' },
-  stopped: { label: 'Stopped', color: '#b0bec5' },
-}
+const STATE = REPLAY_STATES
 const GAP_BG = 'repeating-linear-gradient(135deg, color-mix(in srgb, var(--c-text3) 22%, transparent) 0 3px, transparent 3px 6px)'
 
 // The chart's drawing box; the SVG stretches it to the bar's width.
@@ -50,6 +47,8 @@ const CSS = `
     color: var(--c-text2); font-size: 11px; font-weight: 600; cursor: pointer;
   }
   .rpb-speeds button[aria-pressed="true"] { background: var(--ft-accent); color: #fff; border-color: var(--ft-accent); }
+  .rpb-speeds .rpb-card { display: grid; place-items: center; margin-left: 4px; padding: 3px 6px; }
+  .rpb-speeds .rpb-card[aria-pressed="true"] { background: transparent; color: var(--ft-accent); border-color: var(--ft-accent); }
   .rpb-speeds button:focus-visible, .rpb-play:focus-visible { outline: 2px solid var(--ft-accent); outline-offset: 2px; }
   .rpb-info {
     display: flex; align-items: center; gap: 4px 16px; margin-top: 7px; padding-left: 44px;
@@ -124,6 +123,7 @@ export default function ReplayPlayerBar({
   points, index, playing, speed, limitKmh,
   events, activeEventId,
   onPlayToggle, onSeek, onSpeedChange, onEventClick,
+  cardShown = true, onToggleCard,
 }) {
   const trackRef = useRef(null)
   const chartRef = useRef(null)
@@ -167,6 +167,9 @@ export default function ReplayPlayerBar({
 
   const step = Math.max(1, Math.round(points.length / 200))
   const onKeyDown = e => {
+    // Keys on an event dot are the dot's own (Enter / Space open its card):
+    // they must never reach play / pause here.
+    if (e.target !== e.currentTarget) return
     let next = null
     if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = index + step
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = index - step
@@ -243,6 +246,16 @@ export default function ReplayPlayerBar({
           {SPEEDS.map(s => (
             <button key={s} aria-pressed={speed === s} onClick={() => onSpeedChange(s)}>{s}x</button>
           ))}
+          {onToggleCard && (
+            // The vehicle card ("info flag") on and off; how it sits is on the card itself.
+            <button
+              className="rpb-card" aria-pressed={cardShown} onClick={onToggleCard}
+              title={cardShown ? 'Hide the vehicle card' : 'Show the vehicle card'}
+              aria-label={cardShown ? 'Hide the vehicle card' : 'Show the vehicle card'}
+            >
+              {cardShown ? <IdCard size={13} /> : <EyeOff size={13} />}
+            </button>
+          )}
         </div>
       </div>
 

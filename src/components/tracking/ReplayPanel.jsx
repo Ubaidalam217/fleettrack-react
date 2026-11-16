@@ -4,6 +4,7 @@ import { REPLAY_FIELDS } from './replayFields'
 import ShareReplayDialog from './ShareReplayDialog'
 import ReplayTripsList from './ReplayTripsList'
 import ReplayExportMenu from './ReplayExportMenu'
+import { CARD_DOCKS } from '../../utils/replayCard'
 
 // replay.js issues one request per calendar day of range, sequentially. Past
 // roughly a week that is slow enough — and rate-limit-prone enough — to be
@@ -149,6 +150,10 @@ const CSS = `
   }
   .rp-opt:hover { background: var(--c-hover); }
   .rp-opt[aria-checked="true"] { color: var(--ft-accent); }
+  .rp-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 4px 6px 4px; padding: 3px; border-radius: 8px; background: var(--c-input); border: 1px solid var(--c-border); }
+  .rp-seg button { border: 0; border-radius: 6px; padding: 4px 2px; background: transparent; color: var(--c-text2); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  .rp-seg button[aria-checked="true"] { background: var(--ft-accent); color: #fff; }
+  .rp-seg button:focus-visible { outline: 2px solid var(--ft-accent); outline-offset: 1px; }
   .rp-msg { font-size: 11px; margin-top: 8px; line-height: 1.45; }
   .rp-back:focus-visible, .rp-date:focus-visible, .rp-tool:focus-visible, .rp-chip:focus-visible,
   .rp-pill:focus-visible, .rp-opt:focus-visible { outline: 2px solid var(--ft-accent); outline-offset: 1px; }
@@ -175,10 +180,43 @@ function useDismiss(ref, open, onClose) {
   }, [ref, open, onClose])
 }
 
-function CustomizeMenu({ fields, onChange }) {
+function CustomizeMenu({ fields, onChange, card, onCard }) {
   return (
-    <div className="rp-pop" style={{ width: 186, padding: '9px 6px 7px' }}>
-      <div className="rp-h5" style={{ padding: '0 9px 4px', fontSize: 9.5 }}>Show on map card</div>
+    <div className="rp-pop" style={{ width: 214, padding: '9px 6px 7px' }}>
+      {card && onCard && (
+        <>
+          <div className="rp-h5" style={{ padding: '0 9px 4px', fontSize: 9.5 }}>Vehicle card</div>
+          <label className="rp-opt" style={{ justifyContent: 'flex-start', gap: 9 }}>
+            <input
+              type="checkbox"
+              checked={card.show}
+              onChange={e => onCard({ ...card, show: e.target.checked })}
+              style={{ accentColor: 'var(--ft-accent)', width: 13, height: 13, cursor: 'pointer' }}
+            />
+            Show the card
+          </label>
+          <label className="rp-opt" style={{ justifyContent: 'flex-start', gap: 9 }}>
+            <input
+              type="checkbox"
+              checked={card.compact}
+              onChange={e => onCard({ ...card, compact: e.target.checked })}
+              style={{ accentColor: 'var(--ft-accent)', width: 13, height: 13, cursor: 'pointer' }}
+            />
+            Compact (one line)
+          </label>
+          <div className="rp-seg" role="radiogroup" aria-label="Where the card sits">
+            {CARD_DOCKS.map(([key, text]) => (
+              <button
+                key={key} type="button" role="radio" aria-checked={card.dock === key}
+                onClick={() => onCard({ ...card, dock: key })}
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="rp-h5" style={{ padding: '6px 9px 4px', fontSize: 9.5 }}>Show on map card</div>
       {REPLAY_FIELDS.map(f => (
         <label key={f.key} className="rp-opt" style={{ justifyContent: 'flex-start', gap: 9 }}>
           <input
@@ -213,7 +251,7 @@ export default function ReplayPanel({ replay, vehicleName }) {
     // `points` is what plays: the whole loaded range (allPoints), or the trip
     // picked in the list (trip; null = whole range).
     trip: playingTrip = null, allPoints = points, onSelectTrip,
-    view, activeEventId, onEventClick,
+    view, activeEventId, onEventClick, cardPrefs, onCardPrefs,
   } = replay
 
   const [presetKey, setPresetKey] = useState('today')
@@ -368,7 +406,7 @@ export default function ReplayPanel({ replay, vehicleName }) {
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
                 </svg>
               </button>
-              {gearOpen && <CustomizeMenu fields={fields} onChange={onFieldsChange} />}
+              {gearOpen && <CustomizeMenu fields={fields} onChange={onFieldsChange} card={cardPrefs} onCard={onCardPrefs} />}
             </div>
           </div>
         </div>
@@ -545,7 +583,9 @@ export default function ReplayPanel({ replay, vehicleName }) {
               driverOf={view.driverOf}
               multiDay={multiDay}
               activeEventId={activeEventId}
-              onSelectTrip={t => onSelectTrip(t, { play: true })}
+              // Selects, frames and parks the playhead at the start — paused
+              // (client, 2026-11-16). Only ▶ and "Play from here" play.
+              onSelectTrip={t => onSelectTrip(t)}
               onEventClick={onEventClick}
               zeroCount={view.zeroCount}
               showZero={view.showZero}

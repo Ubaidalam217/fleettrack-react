@@ -17,16 +17,36 @@ export const GAP_SEC = 10 * 60
 
 const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
-/** A replay point's state on the timeline: driving, idle or stopped. */
-export function pointState(p) {
-  switch (p?.status) {
-    case 'Running': return 'driving'
-    case 'Idle':    return 'idle'
-    case 'Stopped': return 'stopped'
-    // No ignition reported: movement is the only thing to go on.
-    default:        return (num(p?.speed) ?? 0) > 0 ? 'driving' : 'stopped'
-  }
+/** At or above this a reading is moving, whatever the ignition says (violationEpisodes STILL_KMH). */
+export const MOVING_KMH = 3
+
+/**
+ * The replay's own states and colours — the timeline, its legend, the replay
+ * marker's ring and its card all use these (client, 2026-11-16: the replay
+ * car kept its live "Off" red while it drove). Not the live statuses: a
+ * moment in a replay is driving, idle or stopped, never "offline".
+ */
+export const REPLAY_STATES = {
+  driving: { label: 'Driving', color: '#43a047' },
+  idle:    { label: 'Idle',    color: '#f2b705' },
+  stopped: { label: 'Stopped', color: '#b0bec5' },
 }
+
+/**
+ * A replay point's state: driving, idle or stopped. A reading that is moving
+ * counts as driving even when the tracker reports the ignition off — some
+ * units drop it for a few seconds mid-drive (the iTriangle's daily restart).
+ */
+export function pointState(p) {
+  if (p?.status === 'Running' || (num(p?.speed) ?? 0) >= MOVING_KMH) return 'driving'
+  if (p?.status === 'Idle') return 'idle'
+  if (p?.status === 'Stopped') return 'stopped'
+  // No ignition reported: movement is the only thing to go on.
+  return (num(p?.speed) ?? 0) > 0 ? 'driving' : 'stopped'
+}
+
+/** {label, color} of a replay point's state. */
+export const replayStateOf = p => REPLAY_STATES[pointState(p)]
 
 /** First and last timestamp, and the span between them (at least 1 s). */
 function bounds(points) {

@@ -12,12 +12,15 @@ import { headingLabel } from '../../utils/heading'
 // panning, because Leaflet only guards the popup's own box and still lets the
 // card overhang once the reverse-geocoded address grows it.
 export const VEHICLE_POPUP_CSS = `
+  /* The teal-to-coral vehicle card (index.css --ft-card-*, client 2026-11-16),
+     shared with the replay card (ReplayInfoCard.jsx). */
   .veh-popup .leaflet-popup-content-wrapper {
-    background: var(--ft-navy);
-    color: #f1f5f9;
+    background: var(--ft-card-bg);
+    color: var(--ft-card-text);
     border-radius: 10px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.42);
     padding: 0;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.22);
   }
   .veh-popup .leaflet-popup-content {
     margin: 0;
@@ -25,9 +28,9 @@ export const VEHICLE_POPUP_CSS = `
     font-size: 11.5px;
     line-height: 1.5;
   }
-  .veh-popup .leaflet-popup-tip { background: var(--ft-navy); box-shadow: none; }
+  .veh-popup .leaflet-popup-tip { background: var(--ft-card-tip-end); box-shadow: none; }
   .veh-popup a.leaflet-popup-close-button {
-    color: rgba(255,255,255,0.45);
+    color: var(--ft-card-label);
     top: 3px; right: 3px;
     width: 18px; height: 18px;
     font-size: 15px; line-height: 16px;
@@ -69,7 +72,7 @@ function fmtClock(ts) {
 function Line({ label, children }) {
   return (
     <div style={{ display: 'flex', gap: 7, alignItems: 'baseline' }}>
-      <span style={{ color: 'rgba(241,245,249,0.5)', flexShrink: 0, minWidth: 46, fontSize: 10.5 }}>
+      <span style={{ color: 'var(--ft-card-label)', flexShrink: 0, minWidth: 46, fontSize: 10.5 }}>
         {label}
       </span>
       <span style={{ fontWeight: 600, minWidth: 0, whiteSpace: 'nowrap' }}>{children}</span>
@@ -100,8 +103,10 @@ export default function VehiclePopup({ v, name, open, onReplay }) {
         }}>
           {name}
         </div>
-        <div style={{ color: statusColor(v.status), fontWeight: 700, marginBottom: 2, fontSize: 11 }}>
-          ● {statusLabel(v.status)}
+        {/* The coloured dot carries the status; the word stays white so it
+            reads on every part of the gradient. */}
+        <div style={{ fontWeight: 700, marginBottom: 2, fontSize: 11 }}>
+          <span style={{ color: statusColor(v.status), textShadow: 'none' }}>●</span> {statusLabel(v.status)}
         </div>
 
         <Line label="Speed">{v.speed != null ? `${v.speed} km/h` : '—'}</Line>
@@ -111,7 +116,7 @@ export default function VehiclePopup({ v, name, open, onReplay }) {
         {/* Full width rather than a label/value row: an address squeezed into
             the value column wraps to one word per line. */}
         <div style={{ marginTop: 2 }}>
-          <span style={{ color: 'rgba(241,245,249,0.5)', fontSize: 10.5 }}>Address</span>
+          <span style={{ color: 'var(--ft-card-label)', fontSize: 10.5 }}>Address</span>
           <div className="veh-popup-addr" title={address ?? undefined}>
             {!hasCoords
               ? 'No position'

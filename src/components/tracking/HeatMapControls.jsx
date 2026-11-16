@@ -112,8 +112,10 @@ const FlameIcon = () => (
  * @param {object[]} p.fleet      every vehicle on the account, for the custom pick
  * @param {Function} p.onShowAll  clears the selection
  * @param {boolean}  p.raised     the replay bar is up: the legend sits above it
+ * @param {boolean}  p.suspended  a replay is open: the heat and its legend give way
+ *                                to the replayed vehicle (client, 2026-11-16)
  */
-export default function HeatMapControls({ heat, fleet, onShowAll, raised = false }) {
+export default function HeatMapControls({ heat, fleet, onShowAll, raised = false, suspended = false }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [kindsOpen, setKindsOpen] = useState(false)
@@ -211,7 +213,7 @@ export default function HeatMapControls({ heat, fleet, onShowAll, raised = false
       <div ref={btnRef} className="track-geofence-toggle is-heat lh-split" data-on={on ? 'true' : 'false'}>
         <button
           type="button" onClick={toggleOn} aria-pressed={on}
-          title={on ? 'Hide the heat map' : 'Show where the vehicles have been'}
+          title={suspended && on ? 'The heat map is hidden while a replay is open' : on ? 'Hide the heat map' : 'Show where the vehicles have been'}
         >
           <FlameIcon />
           {label}
@@ -315,7 +317,7 @@ export default function HeatMapControls({ heat, fleet, onShowAll, raised = false
         </div>
       )}
 
-      {on && (
+      {on && !suspended && (
         <div className="lh-legend" data-raised={raised ? 'true' : 'false'} role="status" aria-live="polite">
           <div className="lh-legend-top">
             <span className="lh-caption" title={heat.caption}>{heat.caption}</span>

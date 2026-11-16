@@ -93,6 +93,20 @@ export function useReplayView({ deviceId, vehicle, range, allPoints }) {
     return who && who.key !== NO_DRIVER.key ? who.label : null
   }, [driverAt])
 
+  /**
+   * The driver at a moment and their mobile number, for the replay card
+   * (client, 2026-11-16: "show the driver name and Mobile number"). A tag no
+   * driver holds, or a name from the old device metadata, has no number.
+   * @returns {{ name: string, mobile: string|null } | null}
+   */
+  const driverInfoAt = useCallback(ts => {
+    const who = driverAt(ts)
+    if (!who || who.key === NO_DRIVER.key) return null
+    const d = who.key.startsWith('d:') ? driverDim.driverById(who.key.slice(2)) : null
+    const mobile = [d?.mobile, d?.contactNumber2].map(x => String(x ?? '').trim()).find(Boolean) || null
+    return { name: who.label, mobile }
+  }, [driverAt, driverDim])
+
   /** An event's driver: the one the alert engine recorded (removed drivers too), else whoever drove then. */
   const eventDriver = useCallback(e => {
     const d = e?.driverId ? driverDim.driverById(e.driverId) : null
@@ -104,6 +118,6 @@ export function useReplayView({ deviceId, vehicle, range, allPoints }) {
     events, shown, groups, hidden, toggleGroup, byTrip, outside,
     eventsLoading, eventsError, eventsTruncated,
     highlightKmh, setHighlightKmh,
-    driverOf, eventDriver,
+    driverOf, driverInfoAt, eventDriver,
   }
 }
