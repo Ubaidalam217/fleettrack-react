@@ -7,8 +7,11 @@ import ConfirmDialog from '../../components/tracking/ConfirmDialog'
 import VehicleMoveDialog from './VehicleMoveDialog'
 import {
   useVehicles, useCompanies, useBranches, assignVehicleBranch, transferVehicle, branchNameFor,
+  SHARING_AVAILABLE, shareVehicles, unshareVehicles,
 } from '../../data/settings'
 import { usePageAccess, handleApiError } from './pageChrome'
+import SharedChip from '../../components/SharedChip'
+import { isOwned, sharedFromText } from '../../utils/vehiclePlacement'
 
 /**
  * Vehicles of a GGB, Group, Business Group or Branch, managed from its own row
@@ -23,6 +26,12 @@ import { usePageAccess, handleApiError } from './pageChrome'
  *                                 (POST /api/vehicles/:id/transfer)
  *   Each row          Branch: take it out of the branch; others: move it on
  *
+ * One vehicle in several places (client, 2026-11-13): "Assign" offers both
+ *   Also show here    a share — the vehicle keeps its own BG and branch and
+ *                     also shows in this Group / BG / Branch (no Flespi call)
+ *   Move here         the owner changes, as above
+ * and a "Shared here" list with Remove (for the vehicle's owner side).
+ *
  * Every change lands in the Reallocation History Report.
  */
 
@@ -30,13 +39,32 @@ const NOUN = { ggb: 'Group Global Admin', group: 'Group', bg: 'Business Group', 
 
 const label = v => v.vehicleNumber || v.vehicleId || v.imei
 
-/** Which vehicles belong to a node. */
+/** Which vehicles belong to a node — their home, not a share. */
 function belongs(kind, node, v, companyOf) {
+  if (!isOwned(v)) return false // shared in: its home is not this account's to see
   if (kind === 'branch') return v.branchId === node.id
   if (kind === 'bg') return v.companyId === node.id
   const c = companyOf(v.companyId)
   if (kind === 'group') return (c?.groupId || v.groupId) === node.id
   return c?.resellerId === node.id
+}
+
+/** The level a node takes a share at; a GGB takes none (its admins see its whole tree). */
+const SHARE_LEVEL = { branch: 'branch', bg: 'bg', group: 'group' }
+
+/**
+ * The share that puts a vehicle in this node, if any: the node's own share,
+ * else (on a BG or Group) a share to one of its branches or BGs.
+ */
+function shareHere(kind, node, v, companyOf) {
+  const list = v.shares ?? []
+  if (kind === 'branch') return list.find(s => s.level === 'branch' && s.branchId === node.id) ?? null
+  if (kind === 'bg') return list.find(s => s.level === 'bg' && s.companyId === node.id) ?? list.find(s => s.level === 'branch' && s.companyId === node.id) ?? null
+  if (kind === 'group') {
+    return list.find(s => s.level === 'group' && s.groupId === node.id)
+      ?? list.find(s => s.companyId && companyOf(s.companyId)?.groupId === node.id) ?? null
+  }
+  return list.find(s => s.companyId && companyOf(s.companyId)?.resellerId === node.id) ?? null
 }
 
 /** The "Vehicles (n)" button for a table row. */
@@ -64,7 +92,9 @@ export function useNodeVehicleCount(kind) {
   const companies = useCompanies()
   return useMemo(() => {
     const byId = new Map(companies.map(c => [c.id, c]))
-    return node => vehicles.filter(v => belongs(kind, node, v, id => byId.get(id))).length
+    const companyOf = id => byId.get(id)
+    // Its own and those shared into it, each once.
+    return node => vehicles.filter(v => belongs(kind, node, v, companyOf) || shareHere(kind, node, v, companyOf)).length
   }, [kind, vehicles, companies])
 }
 
@@ -123,6 +153,9 @@ export default function NodeVehiclesPanel({ kind, node, onClose, push }) {
   const [pending, setPending] = useState(null) // { title, body, run }
   const [busy, setBusy] = useState(false)
   const [moving, setMoving] = useState(null)
+  // "Also show here" (a share; the default where a node can take one) or "Move here".
+  const canShareHere = SHARING_AVAILABLE && !!SHARE_LEVEL[kind]
+  const [mode, setMode] = useState(canShareHere ? 'share' : 'move')
 
   const companyOf = useMemo(() => {
     const byId = new Map(companies.map(c => [c.id, c]))
@@ -139,14 +172,28 @@ export default function NodeVehiclesPanel({ kind, node, onClose, push }) {
     () => vehicles.filter(v => belongs(kind, node, v, companyOf)).sort((a, b) => label(a).localeCompare(label(b))),
     [vehicles, kind, node, companyOf]
   )
-  // A branch takes vehicles of its own BG; the higher levels take any other BG's.
+  // Shown here through a share (not its home).
+  const sharedRows = useMemo(
+    () => vehicles
+      .filter(v => !belongs(kind, node, v, companyOf))
+      .map(v => ({ v, share: shareHere(kind, node, v, companyOf) }))
+      .filter(r => r.share)
+      .sort((a, b) => label(a.v).localeCompare(label(b.v))),
+    [vehicles, kind, node, companyOf]
+  )
+  // Move: a branch takes vehicles of its own BG; the higher levels take any
+  // other BG's. Share: any vehicle of this account's own that is not here yet.
+  // Only this account's own vehicles either way — one shared into it is not its to move or pass on.
   const candidates = useMemo(() => {
     const q = query.trim().toLowerCase()
+    const sharedIds = new Set(sharedRows.filter(r => r.share.targetId === node.id).map(r => r.v.id))
     return vehicles
-      .filter(v => (kind === 'branch' ? v.companyId === node.companyId : true) && !belongs(kind, node, v, companyOf))
+      .filter(isOwned)
+      .filter(v => !belongs(kind, node, v, companyOf))
+      .filter(v => (mode === 'share' ? !sharedIds.has(v.id) && !(kind === 'group' && companyOf(v.companyId)?.groupId === node.id) : kind === 'branch' ? v.companyId === node.companyId : true))
       .filter(v => !q || [label(v), v.imei, companyOf(v.companyId)?.name].some(x => String(x ?? '').toLowerCase().includes(q)))
       .sort((a, b) => label(a).localeCompare(label(b)))
-  }, [vehicles, kind, node, companyOf, query])
+  }, [vehicles, kind, node, companyOf, query, mode, sharedRows])
   // A Group or GGB holds vehicles through its Business Groups: choose which.
   const bgsHere = useMemo(() => (kind === 'group' || kind === 'ggb')
     ? companies.filter(c => (kind === 'group' ? c.groupId === node.id : c.resellerId === node.id)).sort((a, b) => a.name.localeCompare(b.name))
@@ -191,6 +238,18 @@ export default function NodeVehiclesPanel({ kind, node, onClose, push }) {
     })
   }
 
+  // Also show here: a share. Nothing moves, so no confirmation.
+  const shareHereNow = v => run(
+    () => shareVehicles([v.id], SHARE_LEVEL[kind], node.id),
+    `${label(v)} also shows in ${node.name} now`,
+  )
+
+  const unshare = (v, share) => setPending({
+    title: `Stop showing ${label(v)} in ${node.name}?`,
+    body: `It stays in ${v.ownerName || companyOf(v.companyId)?.name || 'its own Business Group'}. ${node.name}'s accounts stop seeing it, and its sub-users and alert rules there lose it.`,
+    run: () => run(() => unshareVehicles([v.id], share.level, share.targetId), `${label(v)} no longer shows in ${node.name}`),
+  })
+
   const takeOut = v => setPending({
     title: `Take ${label(v)} out of ${node.name}?`,
     body: `It stays in its Business Group with no branch — the Business Group counts as its branch.`,
@@ -203,7 +262,7 @@ export default function NodeVehiclesPanel({ kind, node, onClose, push }) {
     navigate(`/settings/vehicle?${params}`)
   }
 
-  const canPick = intoBg && access.canWrite
+  const canPick = mode === 'share' ? access.canWrite : intoBg && access.canWrite
 
   return createPortal(
     <div onClick={() => !pending && !moving && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(5,20,28,0.45)' }}>
@@ -242,12 +301,33 @@ export default function NodeVehiclesPanel({ kind, node, onClose, push }) {
 
           {picking && access.canWrite && (
             <section style={{ border: '1px solid var(--ft-accent)', borderRadius: 12, padding: 12, marginBottom: 14, background: 'var(--c-card)' }}>
+              {canShareHere && (
+                <div role="radiogroup" aria-label="Assign how" style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                  {[['share', 'Also show here', Link2], ['move', 'Move here', ArrowRightLeft]].map(([key, text, Icon]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      role="radio"
+                      aria-checked={mode === key}
+                      onClick={() => setMode(key)}
+                      style={{
+                        ...ROW_BTN, padding: '6px 12px', fontSize: 12,
+                        ...(mode === key ? { background: 'var(--ft-accent)', color: '#fff', borderColor: 'var(--ft-accent)' } : {}),
+                      }}
+                    >
+                      <Icon size={13} /> {text}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div style={{ fontSize: 12, color: 'var(--c-text2)', marginBottom: 8, lineHeight: 1.5 }}>
-                {kind === 'branch'
-                  ? `Vehicles of this branch's Business Group that are not in ${node.name}.`
-                  : `Vehicles of other Business Groups — choosing one moves it to ${kind === 'bg' ? node.name : 'the Business Group below'}.`}
+                {mode === 'share'
+                  ? `It stays where it is and also shows in ${node.name} — on the Live Map, in reports and for its own alerts. Only its own Business Group can edit it.`
+                  : kind === 'branch'
+                    ? `Vehicles of this branch's Business Group that are not in ${node.name}.`
+                    : `Vehicles of other Business Groups — choosing one moves it to ${kind === 'bg' ? node.name : 'the Business Group below'}.`}
               </div>
-              {(kind === 'group' || kind === 'ggb') && (
+              {mode === 'move' && (kind === 'group' || kind === 'ggb') && (
                 <select value={targetBg} onChange={e => setTargetBg(e.target.value)} aria-label="Into Business Group" style={{ ...inputStyle(false), marginBottom: 8 }}>
                   <option value="">{bgsHere.length ? '— Into which Business Group —' : '— No Business Groups here —'}</option>
                   {bgsHere.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -262,8 +342,8 @@ export default function NodeVehiclesPanel({ kind, node, onClose, push }) {
                 {candidates.map(v => (
                   <VehicleRow key={v.id} v={v} where={companyOf(v.companyId)?.name + (v.branchId ? ` / ${branchNameFor(v.branchId)}` : '')}
                     action={(
-                      <button type="button" style={{ ...ROW_BTN, opacity: canPick ? 1 : 0.5, cursor: canPick ? 'pointer' : 'not-allowed' }} disabled={!canPick || busy} onClick={() => assign(v)}>
-                        {kind === 'branch' ? <><Link2 size={12} /> Assign</> : <><ArrowRightLeft size={12} /> Move here</>}
+                      <button type="button" style={{ ...ROW_BTN, opacity: canPick ? 1 : 0.5, cursor: canPick ? 'pointer' : 'not-allowed' }} disabled={!canPick || busy} onClick={() => (mode === 'share' ? shareHereNow(v) : assign(v))}>
+                        {mode === 'share' ? <><Link2 size={12} /> Also show here</> : kind === 'branch' ? <><Link2 size={12} /> Assign</> : <><ArrowRightLeft size={12} /> Move here</>}
                       </button>
                     )}
                   />
@@ -282,10 +362,34 @@ export default function NodeVehiclesPanel({ kind, node, onClose, push }) {
             ))}
           </Section>
 
+          {sharedRows.length > 0 && (
+            <Section title="Shared here" count={sharedRows.length} empty="">
+              {sharedRows.map(({ v, share }) => {
+                // The node's own share can be removed here, by the vehicle's owner side.
+                const removable = access.canWrite && isOwned(v) && share.targetId === node.id
+                return (
+                  <VehicleRow
+                    key={v.id}
+                    v={v}
+                    where={share.targetId === node.id ? sharedFromText(v) : `via ${share.label}`}
+                    action={(
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <SharedChip title={`${sharedFromText(v)} — ${share.label}`} />
+                        {removable && (
+                          <button type="button" style={ROW_BTN} onClick={() => unshare(v, share)} disabled={busy}><Unlink size={12} /> Remove</button>
+                        )}
+                      </span>
+                    )}
+                  />
+                )
+              })}
+            </Section>
+          )}
+
           <p style={{ fontSize: 11.5, color: 'var(--c-text3)', margin: '0 2px', lineHeight: 1.5 }}>
             {kind === 'branch'
-              ? 'A vehicle is in one branch of its Business Group, or in none (then the Business Group counts as its branch).'
-              : 'A vehicle belongs to one Business Group. Every change here is kept in the Reallocation History Report.'}
+              ? 'A vehicle is in one branch of its Business Group, or in none (then the Business Group counts as its branch). It can also be shown in other places — those are shared, not moved.'
+              : 'A vehicle belongs to one Business Group and can also be shown in others (shared). Every change here is kept in the Reallocation History Report.'}
           </p>
         </div>
       </aside>

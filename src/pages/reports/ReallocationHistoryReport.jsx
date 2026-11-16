@@ -31,8 +31,17 @@ const LEVELS = [
   { key: 'group',  label: 'Group' },
   { key: 'ggb',    label: 'Group Global Admin' },
   { key: 'device', label: 'Tracker' },
+  { key: 'share',  label: 'Shared' },
 ]
 const LEVEL_LABEL = { bg: 'Business Group', branch: 'Branch', group: 'Group', ggb: 'Group Global Admin' }
+
+/**
+ * A share row (client, 2026-11-13: one vehicle in several places): the vehicle
+ * also shown in a Group / BG / Branch (toName), or no longer (fromName). It
+ * did not move — it stays in its own Business Group.
+ */
+const shareAdded = m => m.level === 'share' && !!m.toName
+const shareText = m => (shareAdded(m) ? 'Also shown in' : 'No longer shown in')
 
 /** A tracker row: installed in a vehicle (toName) or taken out of one (fromName). */
 const installed = m => m.level === 'device' && !!m.toName
@@ -160,12 +169,14 @@ export default function ReallocationHistoryReport(props) {
             when: formatDateTime(Math.floor(Date.parse(m.movedAt) / 1000)),
             imei: m.imei || '—',
             bg: m.bg?.name || '—',
-            level: m.level === 'device' ? deviceText(m) : LEVEL_LABEL[m.level] ?? m.level,
+            level: m.level === 'device' ? deviceText(m) : m.level === 'share' ? shareText(m) : LEVEL_LABEL[m.level] ?? m.level,
             // A tracker row names the tracker; the vehicle is the group.
             from: m.level === 'device' ? (installed(m) ? '—' : `IMEI ${m.imei}`) : m.fromName || '—',
             to: m.level === 'device' ? (installed(m) ? `IMEI ${m.imei}` : '—') : m.toName || '—',
             by: m.movedByName || '—',
-            cellStyle: { to: { fontWeight: 700 } },
+            cellStyle: m.level === 'share'
+              ? { level: { fontWeight: 700, color: shareAdded(m) ? 'var(--ft-accent)' : '#b45309' }, to: { fontWeight: 700 } }
+              : { to: { fontWeight: 700 } },
           })),
         total: `Moves : ${v.moves.length}`,
       }))
