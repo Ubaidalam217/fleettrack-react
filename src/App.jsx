@@ -47,6 +47,13 @@ import UsageReportPage         from './pages/reports/UsageReportPage'
 import ViolationReportPage     from './pages/reports/ViolationReportPage'
 import ReportPlaceholder       from './pages/reports/ReportPlaceholder'
 import DriverPerformanceReport from './pages/reports/DriverPerformanceReport'
+// Journey Management (client 2026-11-13/16/17)
+import JourneyList             from './pages/journeys/JourneyList'
+import JourneyForm             from './pages/journeys/JourneyForm'
+import JourneyDetail           from './pages/journeys/JourneyDetail'
+import LiveJourneys            from './pages/journeys/LiveJourneys'
+import HseApprovals            from './pages/journeys/HseApprovals'
+import JourneySettings         from './pages/journeys/JourneySettings'
 import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
 import AuthGate            from './components/AuthGate'
@@ -249,6 +256,15 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/reports/drivers"       element={guard(<DriverListReport   {...themeProps} />)} />
         <Route path="/reports/gyr"           element={guard(<UsageReportPage variant="gyr" {...themeProps} />)} />
         <Route path="/reports/driver-performance" element={guard(<DriverPerformanceReport {...themeProps} />)} />
+
+        {/* Journey Management (client 2026-11-13/16/17, design §A.7). */}
+        <Route path="/journeys"            element={guard(<JourneyList     {...themeProps} />)} />
+        <Route path="/journeys/live"       element={guard(<LiveJourneys    {...themeProps} />)} />
+        <Route path="/journeys/new"        element={guard(<JourneyForm     key="new" {...themeProps} />)} />
+        <Route path="/journeys/approvals"  element={guard(<HseApprovals    {...themeProps} />)} />
+        <Route path="/journeys/settings"   element={guard(<JourneySettings {...themeProps} />)} />
+        <Route path="/journeys/:id"        element={guard(<JourneyDetail   {...themeProps} />)} />
+        <Route path="/journeys/:id/edit"   element={guard(<JourneyForm     key="edit" {...themeProps} />)} />
 
         <Route path="*"               element={<Navigate to="/login" replace />} />
       </Routes>

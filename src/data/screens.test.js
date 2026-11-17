@@ -32,6 +32,7 @@ describe('screen permissions (frontend)', () => {
     expect(ALL_SCREENS.some(s => s.id === '/reports/event')).toBe(true)
     const closed = Object.fromEntries(ALL_SCREENS.map(s => [s.id, 'none']))
     expect(openCount(closed)).toBe(0)
-    expect(openCount({})).toBe(ALL_SCREENS.length)
+    // Journey approval (HSE) is the one screen closed until given.
+    expect(openCount({})).toBe(ALL_SCREENS.length - 1)
   })
 })

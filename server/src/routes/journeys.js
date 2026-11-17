@@ -377,19 +377,23 @@ router.get(
     const t0 = moving[0]?.timestamp ?? pts[0][2]
     const t1 = moving[moving.length - 1]?.timestamp ?? pts[pts.length - 1][2]
     const trip = pts.filter(p => p[2] >= t0 - 60 && p[2] <= t1 + 60)
-    const path = simplifyPath(trip.length >= 2 ? trip : pts, 25)
+    // Driving seconds so far at each message (moving, gaps under 10 min): a
+    // leg copied from this trip takes its DRIVING time, not the hours it was parked.
+    const driveAt = new Map()
     let driveSec = 0
-    for (let i = 1; i < msgs.length; i++) {
-      const dt = msgs[i].timestamp - msgs[i - 1].timestamp
+    for (let i = 0; i < msgs.length; i++) {
+      const dt = i ? msgs[i].timestamp - msgs[i - 1].timestamp : 0
       if (dt > 0 && dt <= 600 && (msgs[i]['position.speed'] ?? 0) > 3) driveSec += dt
+      driveAt.set(msgs[i].timestamp, driveSec)
     }
+    const path = simplifyPath((trip.length >= 2 ? trip : pts).map(p => [...p, driveAt.get(p[2]) ?? 0]), 25)
     res.json({
       data: {
         vehicleId: vehicle.id,
         vehicleLabel: vehicleLabel(vehicle),
         from: new Date(path[0][2] * 1000).toISOString(),
         to: new Date(path[path.length - 1][2] * 1000).toISOString(),
-        path, // [lat, lng, unix seconds]
+        path, // [lat, lng, unix seconds, driving seconds so far]
         distanceKm: Math.round(pathKm(path) * 10) / 10,
         driveMin: Math.round(driveSec / 60),
         points: pts.length,

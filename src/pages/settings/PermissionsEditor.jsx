@@ -81,9 +81,11 @@ export default function PermissionsEditor({ account, onSave, onClose }) {
 
   const cap = id => grantCap(editor, id)
   const set = (id, level) => setMap(m => ({ ...m, [id]: level }))
-  const preset = kind => setMap(() => {
+  const preset = kind => setMap(prev => {
     const out = {}
     for (const m of SCREEN_MODULES) for (const s of m.screens) {
+      // The HSE approval right is given one by one, never by a preset.
+      if (s.kind === 'approval') { out[s.id] = prev[s.id] ?? 'none'; continue }
       const top = kind === 'full' ? 'addDelete' : kind === 'view' ? 'view' : 'none'
       // Never above what this screen offers or what the editor holds.
       const offered = levelsFor(s.kind).map(l => l.value)

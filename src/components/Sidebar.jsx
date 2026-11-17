@@ -3,12 +3,13 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, BarChart2,
   MessageCircle, Bell, Megaphone, ChevronDown,
+  Route, Radio, CirclePlus, ShieldCheck, Settings2,
 } from 'lucide-react'
 import { useCurrentUser, initials, firstName } from '../services/authUser'
 import SettingsMenu from './sidebar/SettingsMenu'
 import ReportsMenu from './sidebar/ReportsMenu'
 import { ALL_REPORTS } from './sidebar/reportsNav'
-import { useCanOpen } from '../data/screens'
+import { useCanOpen, useScreenLevel, atLeast } from '../data/screens'
 
 export const SIDEBAR_WIDTH = 260
 
@@ -29,6 +30,19 @@ const NAV_SECTIONS = [
       // Oil & Gas is a tab inside it (client, 2026-11-10), not a menu of its own.
       { id: 'reports', custom: 'reports-menu' },
       { label: 'Charts',    icon: BarChart2,       path: '/charts' },
+    ],
+  },
+  {
+    // Journey Management (client 2026-11-13/16/17, design §A.7).
+    id: 'journeys',
+    title: 'Journey Management',
+    items: [
+      // Also lit on a journey's own page (/journeys/<id>).
+      { label: 'Journeys',        icon: Route,       path: '/journeys', match: p => p === '/journeys' || (/^\/journeys\/[^/]+(\/edit)?$/.test(p) && !['/journeys/live', '/journeys/new', '/journeys/approvals', '/journeys/settings'].includes(p)) },
+      { label: 'Live Journeys',   icon: Radio,       path: '/journeys/live' },
+      { label: 'New Journey',     icon: CirclePlus,  path: '/journeys/new', minLevel: 'modify' },
+      { label: 'HSE Approvals',   icon: ShieldCheck, path: '/journeys/approvals' },
+      { label: 'Journey Settings', icon: Settings2,  path: '/journeys/settings' },
     ],
   },
   {
@@ -299,6 +313,7 @@ export default function Sidebar({ sidebarOpen }) {
   )
   const user = useCurrentUser()
   const canOpen = useCanOpen()
+  const screenLevel = useScreenLevel()
 
   // Put the menu back where it was before this page mounted (see savedNavScroll).
   // Before paint, so it never flashes at the top; once more on the next frame in
@@ -407,7 +422,8 @@ export default function Sidebar({ sidebarOpen }) {
 
                     // Permissions: a screen this user has No Access to is not listed.
                     if (!canOpen(item.path)) return null
-                    const active = location.pathname === item.path
+                    if (item.minLevel && !atLeast(screenLevel('journeys'), item.minLevel)) return null
+                    const active = item.match ? item.match(location.pathname) : location.pathname === item.path
                     return (
                       <Link
                         key={item.path}

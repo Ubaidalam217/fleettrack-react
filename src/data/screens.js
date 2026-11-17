@@ -27,8 +27,17 @@ const FULL = 'addDelete'
 
 export const atLeast = (level, need) => (RANK[level] ?? 3) >= RANK[need]
 
-/** Levels a screen of this kind offers. */
-export const levelsFor = kind => (kind === 'page' ? LEVELS.slice(0, 2) : LEVELS)
+/** Levels a screen of this kind offers. An approval right is off or on. */
+export const levelsFor = kind => (kind === 'page' ? LEVELS.slice(0, 2)
+  : kind === 'approval' ? [LEVELS[0], { ...LEVELS[2], label: 'Can approve', short: 'Approve' }]
+    : LEVELS)
+
+/**
+ * Screens closed unless given (design §A.6): 'HSE must approve' only holds if
+ * an account with no permission map cannot approve. Mirror of DENY_BY_DEFAULT
+ * in server/src/lib/permissions.js.
+ */
+export const DENY_BY_DEFAULT = new Set(['journey-approval'])
 
 /** The catalogue, grouped the way the permission editor shows it. */
 export const SCREEN_MODULES = [
@@ -46,6 +55,15 @@ export const SCREEN_MODULES = [
     id: 'reports', label: 'Reports',
     // Normal and Oil & Gas reports, each page once; a "Coming soon" one has no page to allow.
     screens: ALL_REPORTS.filter(r => r.ready).map(r => ({ id: r.path, label: r.label, kind: 'page' })),
+  },
+  {
+    // Journey Management (client 2026-11-13/16/17).
+    id: 'journeys', label: 'Journey Management',
+    screens: [
+      { id: 'journeys', label: 'Journeys', kind: 'data', hint: 'View = list and live map · Edit = plan, edit and send for approval · Full = also cancel and delete drafts' },
+      { id: 'journey-approval', label: 'Journey approval (HSE)', kind: 'approval', hint: 'Off unless given. Nobody approves a journey they created.' },
+      { id: '/settings/journey', label: 'Journey settings', kind: 'data' },
+    ],
   },
   {
     id: 'settings', label: 'Settings',
@@ -89,13 +107,16 @@ export function screenForPath(pathname) {
   if (SCREEN_IDS.has(pathname) || SUPER_ADMIN_IDS.has(pathname)) return pathname
   if (pathname === '/settings/user' || pathname === '/settings/company-subuser') return 'users'
   if (pathname === '/reports/usage-summary') return '/reports/daywise-distance'
+  if (pathname === '/journeys/settings') return '/settings/journey'
+  if (pathname === '/journeys' || pathname.startsWith('/journeys/')) return 'journeys'
   return null
 }
 
 /** One account's level on one screen. */
 export function levelIn(access, screenId) {
   const v = access && typeof access === 'object' ? access[screenId] : undefined
-  return v in RANK ? (v === 'customize' ? FULL : v) : FULL
+  if (v in RANK) return v === 'customize' ? FULL : v
+  return DENY_BY_DEFAULT.has(screenId) ? 'none' : FULL
 }
 
 /** The signed-in user's level on a screen. Mock mode and Super Admin: Full. */
@@ -103,6 +124,8 @@ export function sessionLevel(user, screenId) {
   if (!IS_REAL || !user || !screenId) return FULL
   if (SUPER_ADMIN_IDS.has(screenId)) return user.role === 'SUPER_ADMIN' ? FULL : 'none'
   if (user.role === 'SUPER_ADMIN') return FULL
+  // A sub-user is read-only elsewhere: Journeys is View unless given (server: journeysLevel).
+  if (screenId === 'journeys' && user.role === 'SUB_USER' && !(user.screenAccess?.journeys in RANK)) return 'view'
   return levelIn(user.screenAccess, screenId)
 }
 
