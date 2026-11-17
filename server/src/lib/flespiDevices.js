@@ -94,7 +94,9 @@ function friendly(err, what) {
  * @param oldImei   its IMEI before this edit; null on add
  * @param name      the device name to show in Flespi (plate, else fleet no, else IMEI)
  * @param deviceType the vehicle's device type text
- * @param requireType true on add: no device and no known type is an error
+ * @param requireType true on add and on Change tracker: a tracker that is not
+ *        on a Flespi device yet needs a known type — to create its device, or
+ *        to re-type the old device it moves onto (another tracker model)
  */
 export async function syncVehicleDevice({ imei, oldImei = null, name, deviceType, requireType = false }) {
   if (!flespi.isConfigured() || !imei) return null
@@ -102,6 +104,9 @@ export async function syncVehicleDevice({ imei, oldImei = null, name, deviceType
     const byImei = await flespi.deviceMap({ force: true })
     const type = await typeByTitle(deviceType)
     const deviceId = byImei.get(imei) ?? (oldImei ? byImei.get(oldImei) : undefined)
+    if (requireType && !type && deviceId && deviceId !== byImei.get(imei)) {
+      throw new HttpError(400, 'Choose the new tracker’s device type so Flespi can read it', { deviceType: 'Choose the device type' })
+    }
 
     if (deviceId) {
       const [cur] = (await flespi.request(`/gw/devices/${deviceId}?fields=name,device_type_id,configuration`))?.result ?? []
@@ -155,6 +160,26 @@ export async function unregisteredDevices(registeredImeis) {
       deviceType: titleOf.get(d.device_type_id)?.title ?? '',
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/**
+ * One Flespi device as the tracker dialogs show it: { deviceId, name, imei,
+ * deviceType }, or null when there is no such device. GET only.
+ */
+export async function deviceById(deviceId) {
+  if (!flespi.isConfigured() || !deviceId) return null
+  const [payload, types] = await Promise.all([
+    flespi.request(`/gw/devices/${Number(deviceId)}?fields=id,name,device_type_id,configuration`),
+    deviceTypes(),
+  ])
+  const d = payload?.result?.[0]
+  if (!d) return null
+  return {
+    deviceId: d.id,
+    name: d.name ?? '',
+    imei: String(d.configuration?.ident ?? '').replace(/\D/g, ''),
+    deviceType: types.find(t => t.id === d.device_type_id)?.title ?? '',
+  }
 }
 
 /** The Flespi name for a vehicle: what the live map shows when nothing else is set. */

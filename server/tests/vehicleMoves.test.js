@@ -17,7 +17,7 @@ beforeEach(async () => {
 })
 
 const moves = (token, query = {}) => request(app).get('/api/vehicle-moves').query(query).set(auth(token))
-const put = (v, body) => request(app).put(`/api/vehicles/${v.id}`).set(auth(fx.tokens.bgUserA1a)).send({ imei: v.imei, plateNo: v.plateNo, ...body })
+const put = (v, body) => request(app).put(`/api/vehicles/${v.id}`).set(auth(fx.tokens.bgUserA1a)).send({ imei: v.imei, plateNo: v.plateNo, fleetNo: v.fleetNo, ...body })
 
 describe('vehicle edit', () => {
   it('records a new branch, naming the BG when the vehicle had none', async () => {

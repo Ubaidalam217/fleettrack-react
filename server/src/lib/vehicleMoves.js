@@ -7,6 +7,11 @@
  * "device wise" view, each time a tracker is installed in a vehicle or taken
  * out of one: on add, on an IMEI change and on delete.
  *
+ * Since 2026-11-17 (client: "keep the history of change and we can search
+ * it") also each rename (plate or fleet no.), each Change / Remove tracker made
+ * in the app (lib/trackers.js) with the user's note, and each merge of a stale
+ * vehicle into another, with the archive of the one merged.
+ *
  * The rows are written in the same transaction as the change itself, so the
  * history cannot miss a move or record one that did not happen. Names are
  * copied as they read at the time.
@@ -36,9 +41,38 @@ async function namesOf(delegate, ids) {
 }
 
 /** A tracker installed in a vehicle (toName is the vehicle) or taken out of it (fromName). */
-export function deviceRow(v, imei, installed, by) {
+export function deviceRow(v, imei, installed, by, note = null) {
   const label = vehicleLabel(v)
-  return { ...row(v, 'device', installed ? null : label, installed ? label : null, by), imei: imei ?? null }
+  return { ...row(v, 'device', installed ? null : label, installed ? label : null, by), imei: imei ?? null, note: note || null }
+}
+
+const clean = s => (s == null ? '' : String(s).trim())
+
+/**
+ * A rename: the plate (fromName → toName) and/or the fleet no. (in the note,
+ * or as from → to when only it changed). null when neither changed.
+ * `after` is the row as it reads after the edit.
+ */
+export function renameRow(before, after, by) {
+  const plate = [clean(before.plateNo), clean(after.plateNo)]
+  const fleet = [clean(before.fleetNo), clean(after.fleetNo)]
+  const plateChanged = plate[0] !== plate[1]
+  const fleetChanged = fleet[0] !== fleet[1]
+  if (!plateChanged && !fleetChanged) return null
+  const fleetText = `Fleet no. ${fleet[0] || '—'} → ${fleet[1] || '—'}`
+  const v = { ...before, ...after, id: before.id, bgId: before.bgId, imei: after.imei ?? before.imei }
+  if (!plateChanged) return { ...row(v, 'rename', `Fleet no. ${fleet[0] || '—'}`, `Fleet no. ${fleet[1] || '—'}`, by) }
+  return { ...row(v, 'rename', plate[0] || '—', plate[1] || '—', by), note: fleetChanged ? fleetText : null }
+}
+
+/** `source` merged into `target`: on the target, so its history explains where the rows came from. */
+export function mergeRow(source, target, by, note) {
+  return { ...row(target, 'merge', vehicleLabel(source), vehicleLabel(target), by), imei: source.imei ?? null, note: note || null }
+}
+
+/** The merged vehicle put away (kept, never deleted), on its own id. */
+export function archiveRow(source, target, by, note) {
+  return { ...row(source, 'archive', vehicleLabel(source), `Merged into ${vehicleLabel(target)}`, by), imei: source.imei ?? null, note: note || null }
 }
 
 /**
@@ -76,7 +110,11 @@ export async function editMoves(before, vehicle, { branchId, groupId }, by) {
 
   const label = { ...before, ...vehicle }
   const out = []
-  if (swapped) out.push(deviceRow(label, before.imei, false, by), deviceRow(label, vehicle.imei, true, by))
+  if (swapped) {
+    // A vehicle with no tracker getting one has nothing to take out.
+    if (before.imei) out.push(deviceRow(label, before.imei, false, by))
+    out.push(deviceRow(label, vehicle.imei, true, by))
+  }
   if (branchChanged) {
     const names = await namesOf('branch', [before.branchId, branchId])
     out.push(row(label, 'branch', names.get(before.branchId) ?? bg?.name, names.get(branchId) ?? bg?.name, by))
@@ -90,7 +128,7 @@ export async function editMoves(before, vehicle, { branchId, groupId }, by) {
 
 /** The rows for moving a BG — every vehicle in it — to another group and/or GGB. */
 export async function bgMoves(bg, target, by) {
-  const vehicles = await prisma.vehicle.findMany({ where: { bgId: bg.id }, select: VEHICLE_SELECT })
+  const vehicles = await prisma.vehicle.findMany({ where: { bgId: bg.id, deletedAt: null }, select: VEHICLE_SELECT })
   if (!vehicles.length) return []
   const groups = await namesOf('group', [bg.groupId, target.groupId, ...vehicles.map(v => v.groupId)])
   const ggbs = await namesOf('ggb', [bg.ggbId, target.ggbId])
@@ -108,7 +146,7 @@ export async function bgMoves(bg, target, by) {
 
 /** The rows for moving a group — every vehicle of its BGs — to another GGB. */
 export async function groupMoves(group, targetGgbId, by) {
-  const vehicles = await prisma.vehicle.findMany({ where: { bg: { groupId: group.id } }, select: VEHICLE_SELECT })
+  const vehicles = await prisma.vehicle.findMany({ where: { bg: { groupId: group.id }, deletedAt: null }, select: VEHICLE_SELECT })
   if (!vehicles.length) return []
   const ggbs = await namesOf('ggb', [group.ggbId, targetGgbId])
   return vehicles.map(v => row(v, 'ggb', ggbs.get(group.ggbId), ggbs.get(targetGgbId), by))

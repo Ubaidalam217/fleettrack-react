@@ -269,12 +269,22 @@ export function shareTargetWhere(scope) {
  * with the owner (lib/sharePolicy.js, question 1).
  */
 export function ownedVehicleWhere(scope) {
-  const base = childBgWhere(scope)
+  const base = notArchived(childBgWhere(scope))
   if (!isSubUser(scope)) return base
   // The join IS the scope. The bgId constraint stays in the AND as a second
   // line: an assignment row that somehow points outside the sub-user's own BG
   // still must not widen what they can see.
   return { AND: [base, { id: { in: scope.assignedVehicleIds ?? [] } }] }
+}
+
+/**
+ * A vehicle merged into another (client, 2026-11-17) is archived, not deleted:
+ * kept for its history, gone from every list, picker and write. The history
+ * names it by the label copied at the time.
+ */
+export const ARCHIVED_VEHICLE_FILTER = { deletedAt: null }
+function notArchived(where) {
+  return where && Object.keys(where).length ? { AND: [where, ARCHIVED_VEHICLE_FILTER] } : ARCHIVED_VEHICLE_FILTER
 }
 
 /**
@@ -285,7 +295,7 @@ export function ownedVehicleWhere(scope) {
 export function vehicleWhere(scope) {
   const owned = childBgWhere(scope)
   const target = shareTargetWhere(scope)
-  const base = target ? { OR: [owned, { shares: { some: target } }] } : owned
+  const base = notArchived(target ? { OR: [owned, { shares: { some: target } }] } : owned)
   if (!isSubUser(scope)) return base
   return { AND: [base, { id: { in: scope.assignedVehicleIds ?? [] } }] }
 }

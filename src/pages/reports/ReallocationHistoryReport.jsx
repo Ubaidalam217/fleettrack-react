@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { FileDown, FileSpreadsheet, Printer, Search, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
@@ -12,6 +12,7 @@ import { formatDateTime, formatPrintDate } from '../../utils/movementReport'
 import { PRESETS, presetRange, dateStr, timeStr } from '../../utils/reportRange'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
+import { HISTORY_LEVELS, moveEvent, moveFromTo, moveMatches, moveTone, trackerInstalled } from '../../utils/vehicleHistory'
 
 /**
  * Reallocation History Report (client report list, 2026-11-10): each time a
@@ -20,66 +21,58 @@ import { useReportTitle, fileNameOf } from '../../components/reports/useReportTi
  * which vehicles each tracker was installed in. The server records them
  * (server/src/lib/vehicleMoves.js) from the day this shipped; earlier moves
  * were never kept, so there is nothing to show before then.
+ *
+ * Also the vehicle & tracker history (client, 2026-11-17: "keep the history of
+ * change and we can search it"): tracker changes made in FleetmaxX with their
+ * note, renames, merges of a stale vehicle into another and its archive.
+ * Searchable by plate (as it was then), old or new IMEI, place, note and user.
  */
 
 const MAX_RANGE_DAYS = 366
 const MOVE_LIMIT = 5000
-const LEVELS = [
-  { key: 'all',    label: 'All' },
-  { key: 'bg',     label: 'Business Group' },
-  { key: 'branch', label: 'Branch' },
-  { key: 'group',  label: 'Group' },
-  { key: 'ggb',    label: 'Group Global Admin' },
-  { key: 'device', label: 'Tracker' },
-  { key: 'share',  label: 'Shared' },
-]
-const LEVEL_LABEL = { bg: 'Business Group', branch: 'Branch', group: 'Group', ggb: 'Group Global Admin' }
-
-/**
- * A share row (client, 2026-11-13: one vehicle in several places): the vehicle
- * also shown in a Group / BG / Branch (toName), or no longer (fromName). It
- * did not move — it stays in its own Business Group.
- */
-const shareAdded = m => m.level === 'share' && !!m.toName
-const shareText = m => (shareAdded(m) ? 'Also shown in' : 'No longer shown in')
-
-/** A tracker row: installed in a vehicle (toName) or taken out of one (fromName). */
-const installed = m => m.level === 'device' && !!m.toName
-const deviceText = m => (installed(m) ? 'Tracker installed' : 'Tracker taken out')
+const LEVELS = HISTORY_LEVELS
+const installed = trackerInstalled
 
 // Per tracker (client: "if we select by device wise then where this device installed history").
 const DEVICE_COLUMNS = [
-  { key: 'when',    label: 'Date / Time',     width: '16%', pdf: 15 },
-  { key: 'event',   label: 'Event',           width: '15%', pdf: 14 },
-  { key: 'vehicle', label: 'Vehicle',         width: '18%', pdf: 17 },
-  { key: 'bg',      label: 'Business Group',  width: '25%', pdf: 24 },
-  { key: 'by',      label: 'By',              width: '26%', pdf: 24 },
+  { key: 'when',    label: 'Date / Time',     width: '15%', pdf: 14 },
+  { key: 'event',   label: 'Event',           width: '13%', pdf: 13 },
+  { key: 'vehicle', label: 'Vehicle',         width: '15%', pdf: 15 },
+  { key: 'bg',      label: 'Business Group',  width: '17%', pdf: 17 },
+  { key: 'by',      label: 'By',              width: '17%', pdf: 17 },
+  { key: 'note',    label: 'Note',            width: '23%', pdf: 24 },
 ]
 
 const COLUMNS = [
-  { key: 'when',  label: 'Date / Time',     width: '15%', pdf: 14 },
-  { key: 'imei',  label: 'IMEI',            width: '12%', pdf: 12 },
-  { key: 'bg',    label: 'Business Group',  width: '14%', pdf: 13 },
-  { key: 'level', label: 'Moved',           width: '11%', pdf: 10 },
-  { key: 'from',  label: 'From',            width: '17%', pdf: 17 },
-  { key: 'to',    label: 'To',              width: '17%', pdf: 17 },
-  { key: 'by',    label: 'Moved By',        width: '14%', pdf: 14 },
+  { key: 'when',  label: 'Date / Time',     width: '13%', pdf: 12 },
+  { key: 'imei',  label: 'IMEI',            width: '11%', pdf: 11 },
+  { key: 'bg',    label: 'Business Group',  width: '11%', pdf: 11 },
+  { key: 'level', label: 'Change',          width: '10%', pdf: 10 },
+  { key: 'from',  label: 'From',            width: '13%', pdf: 13 },
+  { key: 'to',    label: 'To',              width: '13%', pdf: 13 },
+  { key: 'by',    label: 'By',              width: '11%', pdf: 11 },
+  { key: 'note',  label: 'Note',            width: '18%', pdf: 19 },
 ]
+
+const YEAR_DAYS = 365
 
 export default function ReallocationHistoryReport(props) {
   const now = useRef(new Date()).current
-  const [preset, setPreset] = useState('d30')
-  const [fromDate, setFromDate] = useState(() => dateStr(presetRange('d30', now).from))
+  const { state: linkState } = useLocation()
+  const fromLink = !!linkState?.search
+  const [preset, setPreset] = useState(fromLink ? 'custom' : 'd30')
+  const [fromDate, setFromDate] = useState(() => dateStr(fromLink ? new Date(now.getTime() - YEAR_DAYS * 86400000) : presetRange('d30', now).from))
   const [toDate, setToDate] = useState(() => dateStr(now))
   const [fromTime, setFromTime] = useState('00:00')
   const [toTime, setToTime] = useState(() => timeStr(now))
   const [level, setLevel] = useState('all')
-  // Oil & Gas's Device Installation History opens straight on the tracker view.
-  const { state: linkState } = useLocation()
   // Under its Oil & Gas name ("Device Installation History") when opened from there.
   const title = useReportTitle('Reallocation History Report')
+  // Oil & Gas's Device Installation History opens straight on the tracker view.
   const [per, setPer] = useState(linkState?.per === 'device' ? 'device' : 'vehicle') // 'vehicle' | 'device'
-  const [search, setSearch] = useState('')
+  // "Open full history" in the Vehicle information dialog opens on one vehicle's name, over a year.
+  const [search, setSearch] = useState(() => linkState?.search ?? '')
+  const [user, setUser] = useState('')
   const [hiddenCols, setHiddenCols] = useHiddenColumns(`reallocation-history-${per}`)
   const columns = per === 'device' ? DEVICE_COLUMNS : COLUMNS
   const shownCols = useVisibleColumns(columns, hiddenCols)
@@ -120,13 +113,22 @@ export default function ReallocationHistoryReport(props) {
     }
   }, [rangeValid, rangeTooLong, fromTs, toTs])
 
+  // Opened from a vehicle's History: run it straight away.
+  const autoRan = useRef(false)
+  useEffect(() => {
+    if (!fromLink || autoRan.current) return
+    autoRan.current = true
+    generate()
+  }, [fromLink, generate])
+
   // Level and search filter what was fetched; one vehicle (or tracker) per group, oldest first.
   const groups = useMemo(() => {
     if (!raw) return []
-    const q = search.trim().toLowerCase()
+    const who = user.trim().toLowerCase()
     const kept = raw.moves.filter(m =>
       (per === 'device' ? m.level === 'device' : level === 'all' || m.level === level) &&
-      (!q || [m.vehicleLabel, m.imei, m.fromName, m.toName, m.bg?.name, m.movedByName].some(x => String(x ?? '').toLowerCase().includes(q))))
+      moveMatches(m, search) &&
+      (!who || String(m.movedByName ?? '').toLowerCase().includes(who)))
     if (per === 'device') {
       const byImei = new Map()
       for (const m of kept) {
@@ -138,11 +140,12 @@ export default function ReallocationHistoryReport(props) {
         const rows = list.sort((a, b) => Date.parse(a.movedAt) - Date.parse(b.movedAt)).map(m => ({
           key: m.id,
           when: formatDateTime(Math.floor(Date.parse(m.movedAt) / 1000)),
-          event: deviceText(m),
+          event: moveEvent(m),
           vehicle: (installed(m) ? m.toName : m.fromName) || m.vehicleLabel,
           bg: m.bg?.name || '—',
           by: m.movedByName || '—',
-          cellStyle: { event: { fontWeight: 700, color: installed(m) ? '#15803d' : '#b91c1c' } },
+          note: m.note || '—',
+          cellStyle: { event: { fontWeight: 700, color: moveTone(m) } },
         }))
         const last = list[list.length - 1]
         return {
@@ -151,36 +154,43 @@ export default function ReallocationHistoryReport(props) {
         }
       })
     }
+    // The server sends newest first, so a vehicle's group takes the name it
+    // has now (a merged vehicle's rows read under the vehicle it went into).
     const byVehicle = new Map()
     for (const m of kept) {
       const key = m.vehicleId || `${m.vehicleLabel}|${m.imei}`
-      if (!byVehicle.has(key)) byVehicle.set(key, { key, label: m.vehicleLabel, deleted: !m.vehicleId, moves: [] })
-      byVehicle.get(key).moves.push(m)
+      if (!byVehicle.has(key)) byVehicle.set(key, { key, label: m.vehicleLabel, deleted: !m.vehicleId, archived: false, moves: [] })
+      const g = byVehicle.get(key)
+      if (m.level === 'archive') g.archived = true
+      g.moves.push(m)
     }
     return [...byVehicle.values()]
       .sort((a, b) => a.label.localeCompare(b.label))
       .map(v => ({
         key: v.key,
-        label: v.deleted ? `${v.label} (deleted)` : v.label,
+        label: v.deleted ? `${v.label} (deleted)` : v.archived ? `${v.label} (archived)` : v.label,
         rows: v.moves
           .sort((a, b) => Date.parse(a.movedAt) - Date.parse(b.movedAt))
-          .map(m => ({
-            key: m.id,
-            when: formatDateTime(Math.floor(Date.parse(m.movedAt) / 1000)),
-            imei: m.imei || '—',
-            bg: m.bg?.name || '—',
-            level: m.level === 'device' ? deviceText(m) : m.level === 'share' ? shareText(m) : LEVEL_LABEL[m.level] ?? m.level,
+          .map(m => {
+            const tone = moveTone(m)
             // A tracker row names the tracker; the vehicle is the group.
-            from: m.level === 'device' ? (installed(m) ? '—' : `IMEI ${m.imei}`) : m.fromName || '—',
-            to: m.level === 'device' ? (installed(m) ? `IMEI ${m.imei}` : '—') : m.toName || '—',
-            by: m.movedByName || '—',
-            cellStyle: m.level === 'share'
-              ? { level: { fontWeight: 700, color: shareAdded(m) ? 'var(--ft-accent)' : '#b45309' }, to: { fontWeight: 700 } }
-              : { to: { fontWeight: 700 } },
-          })),
-        total: `Moves : ${v.moves.length}`,
+            const { from, to } = moveFromTo(m)
+            return {
+              key: m.id,
+              when: formatDateTime(Math.floor(Date.parse(m.movedAt) / 1000)),
+              imei: m.imei || '—',
+              bg: m.bg?.name || '—',
+              level: moveEvent(m),
+              from,
+              to,
+              by: m.movedByName || '—',
+              note: m.note || '—',
+              cellStyle: { ...(tone ? { level: { fontWeight: 700, color: tone } } : {}), to: { fontWeight: 700 } },
+            }
+          }),
+        total: `Changes : ${v.moves.length}`,
       }))
-  }, [raw, level, search, per])
+  }, [raw, level, search, user, per])
 
   const applied = raw?.applied
   const dataRows = groups.reduce((n, g) => n + g.rows.length, 0)
@@ -188,8 +198,9 @@ export default function ReallocationHistoryReport(props) {
     ['From Date', formatDateTime(applied.fromTs)],
     ['To Date', formatDateTime(applied.toTs)],
     ['Per', per === 'device' ? 'Tracker' : 'Vehicle'],
-    ...(per === 'vehicle' ? [['Moved', LEVELS.find(l => l.key === level)?.label ?? 'All']] : []),
+    ...(per === 'vehicle' ? [['Change', LEVELS.find(l => l.key === level)?.label ?? 'All']] : []),
     ...(search.trim() ? [['Search', search.trim()]] : []),
+    ...(user.trim() ? [['User', user.trim()]] : []),
   ] : []
 
   const exportOpts = () => ({
@@ -208,7 +219,7 @@ export default function ReallocationHistoryReport(props) {
   return (
     <ReportFrame
       title={title}
-      desc="Each time a vehicle moved to another Business Group, branch, group or Group Global Admin, and where each tracker has been installed: when, from where to where, and by whom."
+      desc="Each time a vehicle moved to another Business Group, branch, group or Group Global Admin, was renamed, had its tracker changed or removed, or was merged into another vehicle, and where each tracker has been installed: when, from what to what, by whom, and the note."
       {...props}
     >
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
@@ -238,10 +249,17 @@ export default function ReallocationHistoryReport(props) {
             <div style={{ position: 'relative' }}>
               <Search size={14} aria-hidden="true" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-text3)' }} />
               <input
-                id="realloc-search" type="search" placeholder="Vehicle, IMEI, branch…" value={search}
+                id="realloc-search" type="search" placeholder="Plate, old or new IMEI, place, note…" value={search}
                 onChange={e => setSearch(e.target.value)} style={{ ...FIELD, paddingLeft: 30 }}
               />
             </div>
+          </div>
+          <div>
+            <label style={LABEL} htmlFor="realloc-user">USER</label>
+            <input
+              id="realloc-user" type="search" placeholder="Who made the change" value={user}
+              onChange={e => setUser(e.target.value)} style={FIELD}
+            />
           </div>
         </div>
 
@@ -254,7 +272,7 @@ export default function ReallocationHistoryReport(props) {
             </div>
             {per === 'vehicle' && (
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ ...LABEL, marginBottom: 0, marginRight: 4 }}>MOVED</span>
+                <span style={{ ...LABEL, marginBottom: 0, marginRight: 4 }}>CHANGE</span>
                 {LEVELS.map(l => <Chip key={l.key} active={level === l.key} onClick={() => setLevel(l.key)}>{l.label}</Chip>)}
               </div>
             )}
@@ -298,7 +316,7 @@ export default function ReallocationHistoryReport(props) {
         <>
           <div className="report-screen-only" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
             <div style={{ fontSize: 12.5, color: 'var(--c-text2)' }}>
-              <strong style={{ color: 'var(--c-text1)' }}>{dataRows}</strong> {per === 'device' ? 'event' : 'move'}{dataRows === 1 ? '' : 's'}
+              <strong style={{ color: 'var(--c-text1)' }}>{dataRows}</strong> {per === 'device' ? 'event' : 'change'}{dataRows === 1 ? '' : 's'}
               {' · '}{groups.length} {per === 'device' ? 'tracker' : 'vehicle'}{groups.length === 1 ? '' : 's'}
               {raw.moves.length >= MOVE_LIMIT && <span style={{ color: '#f97316' }}> · more moves than one report reads — narrow the range</span>}
             </div>
@@ -317,7 +335,7 @@ export default function ReallocationHistoryReport(props) {
             columns={shownCols}
             groups={groups}
             printDate={applied.printDate}
-            emptyText={per === 'device' ? 'No tracker was installed or taken out in this period.' : 'No vehicle was moved in this period.'}
+            emptyText={per === 'device' ? 'No tracker was installed or taken out in this period.' : 'No vehicle was changed in this period.'}
           />
         </>
       )}

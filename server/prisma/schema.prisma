@@ -192,7 +192,24 @@ model Vehicle {
   /// The join key against a Flespi device's configuration.ident. Digits only,
   /// normalised on the way in, so a hand-typed space or dash cannot produce a
   /// second row that every human would call the same device.
-  imei String @unique
+  ///
+  /// Null = no tracker (client, 2026-11-17): the tracker was taken out ("Remove
+  /// tracker", "No tracker") and the vehicle stays with its history. Postgres
+  /// lets any number of rows hold NULL under the unique index.
+  imei String? @unique
+
+  /// The Flespi device this vehicle was last linked to (add, edit, Change
+  /// tracker, or seen carrying its IMEI). A record, not the join key: the IMEI
+  /// still is. It lets "Resolve" name the device a stale row used, when the
+  /// tracker in it was changed outside FleetmaxX.
+  flespiDeviceId Int?
+
+  /// Archived (client, 2026-11-17: "keep the history of change"): a vehicle
+  /// merged into another (mergedIntoId) is kept, never deleted, so its history
+  /// still names it. Hidden from every list and picker (lib/scope.js).
+  deletedAt    DateTime?
+  deletedBy    String?
+  mergedIntoId String?
 
   make        String?
   model       String?
@@ -1264,10 +1281,15 @@ model VehicleMove {
   /// What changed: 'branch', 'group', 'ggb', 'bg', or 'device' — a tracker
   /// installed (toName is the vehicle) or taken out (fromName is the vehicle) —
   /// or 'share': the vehicle also shown in another place (toName) or no
-  /// longer (fromName), see VehicleShare.
+  /// longer (fromName), see VehicleShare. Since 2026-11-17 also 'rename' (plate
+  /// or fleet no., from → to), 'merge' (fromName merged into toName, with its
+  /// history) and 'archive' (the merged vehicle put away).
   level    String
   fromName String?
   toName   String?
+  /// What the user typed with the change ("tracker faulty"), and for a
+  /// 'merge' / 'archive' row what moved with it.
+  note     String?
 
   movedById   String?
   movedByName String?
@@ -1280,6 +1302,7 @@ model VehicleMove {
   @@index([fromBgId])
   @@index([vehicleId])
   @@index([imei])
+  @@index([movedByName])
 }
 
 /// Live location share (client, 2026-11-10): a link that shows one vehicle's

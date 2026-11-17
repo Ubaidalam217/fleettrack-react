@@ -180,7 +180,10 @@ export const vehicle = {
     subGroup: orBlank(r.subGroup),
     vehicleNumber: orBlank(r.plateNo),
     vehicleId: orBlank(r.fleetNo),
+    // '' = no tracker (Remove tracker / No tracker, 2026-11-17).
     imei: r.imei ?? '',
+    // The Flespi device the vehicle was last linked to; a record, the IMEI is the join key.
+    flespiDeviceId: r.flespiDeviceId ?? null,
     odometer: orBlank(r.odometer),
     make: orBlank(r.make),
     model: orBlank(r.model),
@@ -218,7 +221,12 @@ export const vehicle = {
     bgId: r.companyId,
     ...vehicle.fields(r),
   }),
-  toApiUpdate: r => vehicle.fields(r),
+  // A vehicle with no tracker is saved without one: the server keeps what it
+  // has. Trackers change through changeVehicleTracker (data/settings.js).
+  toApiUpdate: r => {
+    const { imei, ...rest } = vehicle.fields(r)
+    return String(imei ?? '').trim() ? { ...rest, imei } : rest
+  },
   /** Everything except bgId, which only a create may set. */
   fields: r => ({
     branchId: orNull(r.branchId),

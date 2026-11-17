@@ -19,12 +19,14 @@ import { z } from 'zod'
 import prisma from '../prisma.js'
 import { asyncHandler, badRequest, conflict } from '../lib/http.js'
 import { imeiField, optionalDate, optionalId, optionalText, requiredId } from '../lib/fields.js'
-import { assertCanWrite, assertWritableParent, findScopedOrThrow, isSuperAdmin, scopedWhere } from '../lib/scope.js'
+import { assertCanWrite, assertWritableParent, findScoped, findScopedOrThrow, isSuperAdmin, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { revokeGrantsForBg } from '../lib/flespiGrant.js'
-import { actorOf, bgMoveRow, deviceRow, editMoves } from '../lib/vehicleMoves.js'
+import { actorOf, bgMoveRow, deviceRow, editMoves, renameRow } from '../lib/vehicleMoves.js'
 import * as flespi from '../lib/flespi.js'
-import { channelAddresses, deviceName, deviceTypes, syncVehicleDevice, unregisteredDevices } from '../lib/flespiDevices.js'
+import { channelAddresses, deviceById, deviceName, deviceTypes, syncVehicleDevice, unregisteredDevices } from '../lib/flespiDevices.js'
+import { assertSameBg, mergeInto, mergePlan, planView, removeRow, swapRows } from '../lib/trackers.js'
+import { vehicleLabel } from '../lib/vehicleLabel.js'
 import { deviceOdometers, odometerRow, adjustmentRow } from '../lib/odometer.js'
 import { SHARES_INCLUDE, dropSharesForTransfer, stripLostAccess, withShares, withSharesOne } from '../lib/vehicleShares.js'
 
@@ -98,6 +100,10 @@ const createSchema = z.object({
 const updateSchema = z.object({
   branchId: optionalId(),
   ...vehicleFields,
+  // A vehicle with no tracker (Remove tracker, 2026-11-17) is edited without
+  // one: an omitted or blank IMEI keeps what the vehicle has. Trackers are
+  // changed through POST /:id/tracker, which keeps the history and a note.
+  imei: z.preprocess(v => (v === '' || v === null ? undefined : v), imeiField().optional()),
 })
 
 const listQuerySchema = z.object({
@@ -226,10 +232,44 @@ router.get(
       res.json({ data: [] })
       return
     }
-    const vehicles = await prisma.vehicle.findMany({ select: { imei: true } })
-    res.json({ data: await unregisteredDevices(vehicles.map(v => v.imei)) })
+    const vehicles = await prisma.vehicle.findMany({ where: { imei: { not: null } }, select: { id: true, imei: true, flespiDeviceId: true } })
+    const rows = await unregisteredDevices(vehicles.map(v => v.imei))
+    await recordDeviceIds(vehicles)
+    // The vehicle each tracker was last in, from the history, so a tracker taken
+    // out of a vehicle reads "was in AD 149" rather than as a stranger.
+    const last = rows.length
+      ? await prisma.vehicleMove.findMany({
+        where: { level: 'device', imei: { in: rows.map(r => r.imei) } },
+        orderBy: { movedAt: 'desc' },
+        select: { imei: true, vehicleLabel: true, movedAt: true, toName: true },
+      })
+      : []
+    const lastOf = new Map()
+    for (const m of last) if (!lastOf.has(m.imei)) lastOf.set(m.imei, m)
+    res.json({
+      data: rows.map(r => {
+        const m = lastOf.get(r.imei)
+        return m ? { ...r, lastVehicle: { label: m.vehicleLabel, at: m.movedAt, installed: !!m.toName } } : r
+      }),
+    })
   })
 )
+
+/**
+ * Keep Vehicle.flespiDeviceId in step with the device that carries each
+ * vehicle's IMEI now (the cached device list; no extra Flespi call). A record
+ * only — the IMEI stays the join key — so a tracker later moved in the Flespi
+ * panel can still be traced to the device the vehicle used.
+ */
+async function recordDeviceIds(vehicles) {
+  try {
+    const byImei = await flespi.deviceMap()
+    const stale = vehicles.filter(v => byImei.has(v.imei) && byImei.get(v.imei) !== v.flespiDeviceId)
+    for (const v of stale) {
+      await prisma.vehicle.update({ where: { id: v.id }, data: { flespiDeviceId: byImei.get(v.imei) } })
+    }
+  } catch { /* a record only: never fail the list for it */ }
+}
 
 const ODOMETER_SELECT = { id: true, imei: true, odometerOffsetKm: true, odometerSetAt: true, odometerSetBy: true }
 
@@ -271,6 +311,7 @@ router.post(
     const { bgId: _bgId, branchId, groupId, ...rest } = req.body
     const data = {
       ...rest,
+      flespiDeviceId: flespiDevice?.deviceId ?? null,
       bgId: bg.id,
       branchId: await resolveBranch(branchId, bg.id),
       groupId: await resolveGroup(groupId, bg.id),
@@ -295,7 +336,7 @@ router.put(
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
     const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
-    await assertImeiFree(req.body.imei, existing.id)
+    if (req.body.imei) await assertImeiFree(req.body.imei, existing.id)
     const flespiDevice = await syncVehicleDevice({
       imei: req.body.imei ?? existing.imei,
       oldImei: existing.imei,
@@ -312,12 +353,15 @@ router.put(
       branchId: await resolveBranch(branchId, existing.bgId),
       groupId: await resolveGroup(groupId, existing.bgId),
     }
-    // A new branch or group goes into the Reallocation History with the edit.
+    // A new branch or group goes into the Reallocation History with the edit,
+    // and so does a new plate or fleet no. (client, 2026-11-17).
     const history = await editMoves(existing, rest, next, actorOf(req))
+    const renamed = renameRow(existing, { ...existing, ...rest }, actorOf(req))
+    if (renamed) history.unshift(renamed)
     const [row] = await prisma.$transaction([
       prisma.vehicle.update({
         where: { id: existing.id },
-        data: { ...rest, ...next },
+        data: { ...rest, ...next, ...(flespiDevice ? { flespiDeviceId: flespiDevice.deviceId } : {}) },
         include: VEHICLE_INCLUDE,
       }),
       prisma.vehicleMove.createMany({ data: history }),
@@ -557,6 +601,181 @@ router.patch(
   })
 )
 
+// ── Trackers: changed here, never in the Flespi panel (client, 2026-11-17) ──
+//
+// lib/trackers.js says what each one does on the Flespi side and in our
+// database. Every one writes a history row (Reallocation History) with the
+// user's note, and drops the BG's live Flespi grants, whose device list changed.
+
+const noteField = optionalText(300)
+
+/**
+ * How the vehicle's tracker stands against Flespi, for the tracker dialog:
+ *   state 'ok'       its IMEI is on a Flespi device (device = that device)
+ *         'missing'  no Flespi device has its IMEI
+ *         'none'     the vehicle has no tracker
+ *         'unknown'  Flespi is not set up on this server
+ * and, when it is not 'ok' and the device it last used is known, what that
+ * device carries now (suggestion): another vehicle's tracker → merge into it;
+ * a tracker nobody registered → link to it. GETs only.
+ */
+router.get(
+  '/:id/tracker-status',
+  asyncHandler(async (req, res) => {
+    const v = await findScopedOrThrow('vehicle', req.params.id, req.scope)
+    const out = { imei: v.imei ?? null, flespiDeviceId: v.flespiDeviceId ?? null, state: v.imei ? 'missing' : 'none', device: null, suggestion: null }
+    if (!flespi.isConfigured()) {
+      res.json({ data: { ...out, state: v.imei ? 'unknown' : 'none' } })
+      return
+    }
+    const byImei = await flespi.deviceMap()
+    const id = v.imei ? byImei.get(v.imei) : undefined
+    if (id) {
+      out.state = 'ok'
+      out.device = await deviceById(id)
+    } else if (v.flespiDeviceId) {
+      const was = await deviceById(v.flespiDeviceId).catch(() => null)
+      if (was?.imei && was.imei !== v.imei) {
+        const owner = await prisma.vehicle.findUnique({ where: { imei: was.imei }, select: { id: true } })
+        const seen = owner ? await findScoped('vehicle', owner.id, req.scope, { select: { id: true, plateNo: true, fleetNo: true, imei: true } }) : null
+        out.suggestion = owner
+          ? { kind: 'merge', deviceId: was.deviceId, imei: was.imei, target: seen ? { id: seen.id, label: vehicleLabel(seen) } : null }
+          : { kind: 'link', deviceId: was.deviceId, imei: was.imei, name: was.name, deviceType: was.deviceType }
+      }
+    }
+    res.json({ data: out })
+  })
+)
+
+/**
+ * Change tracker: the vehicle gets another IMEI and keeps everything else.
+ * `imei` is an unregistered tracker already in Flespi, or a new one (then
+ * `deviceType` is needed whenever Flespi has no device for it).
+ */
+router.post(
+  '/:id/tracker',
+  validate(z.object({ imei: imeiField(), deviceType: optionalText(120), note: noteField })),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
+    const { imei, note } = req.body
+    if (imei === existing.imei) throw badRequest('This is already the vehicle’s tracker', { imei: 'Same IMEI' })
+    await assertImeiFree(imei)
+    // A tracker already in Flespi keeps its own device type, whatever was
+    // typed; a tracker new to Flespi needs one, to re-type the vehicle's device
+    // (another model) or to create one.
+    // (The device's type is never sent for it: a type outside our channels'
+    // list, such as an iTriangle's, must not be overwritten with a guess.)
+    let deviceType = req.body.deviceType ?? existing.deviceType
+    let alreadyInFlespi = false
+    if (flespi.isConfigured()) {
+      const onDevice = (await flespi.deviceMap({ force: true })).get(imei)
+      if (onDevice) {
+        alreadyInFlespi = true
+        deviceType = (await deviceById(onDevice))?.deviceType || req.body.deviceType || null
+      } else if (!req.body.deviceType) {
+        throw badRequest('Choose the new tracker’s device type so Flespi can read it', { deviceType: 'Choose the device type' })
+      }
+    }
+    // Flespi first, so a refused tracker changes nothing here.
+    const flespiDevice = await syncVehicleDevice({
+      imei, oldImei: existing.imei, name: deviceName(existing), deviceType: alreadyInFlespi ? null : deviceType, requireType: true,
+    })
+    const by = actorOf(req)
+    const [row] = await prisma.$transaction([
+      prisma.vehicle.update({
+        where: { id: existing.id },
+        data: { imei, deviceType, flespiDeviceId: flespiDevice?.deviceId ?? null },
+        include: VEHICLE_INCLUDE,
+      }),
+      prisma.vehicleMove.createMany({ data: swapRows(existing, { ...existing, imei }, by, note) }),
+    ])
+    await revokeGrantsForBg(existing.bgId)
+    res.json({ data: await withSharesOne(row, req.scope), flespi: flespiDevice })
+  })
+)
+
+/**
+ * Remove tracker: the vehicle stays, with no tracker and its history. Flespi
+ * is not touched — the device keeps its IMEI and messages and, if it is still
+ * there, shows as an unregistered tracker that can go into another vehicle.
+ */
+router.post(
+  '/:id/tracker/remove',
+  validate(z.object({ note: noteField })),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
+    if (!existing.imei) throw badRequest('This vehicle has no tracker')
+    const [row] = await prisma.$transaction([
+      prisma.vehicle.update({ where: { id: existing.id }, data: { imei: null, flespiDeviceId: null }, include: VEHICLE_INCLUDE }),
+      prisma.vehicleMove.create({ data: removeRow(existing, actorOf(req), req.body.note) }),
+    ])
+    await revokeGrantsForBg(existing.bgId)
+    res.json({ data: await withSharesOne(row, req.scope) })
+  })
+)
+
+/**
+ * Put the vehicle's number on its Flespi device again ("Flespi name differs"):
+ * the same rename every vehicle save makes. Only the name; the IMEI and the
+ * device type stay.
+ */
+router.post(
+  '/:id/tracker/sync',
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
+    if (!existing.imei) throw badRequest('This vehicle has no tracker')
+    if (!flespi.isConfigured()) throw badRequest('Flespi is not set up on this server')
+    const byImei = await flespi.deviceMap({ force: true })
+    if (!byImei.has(existing.imei)) throw badRequest('No Flespi device has this IMEI — change the tracker instead')
+    const flespiDevice = await syncVehicleDevice({ imei: existing.imei, name: deviceName(existing) })
+    await prisma.vehicle.update({ where: { id: existing.id }, data: { flespiDeviceId: flespiDevice?.deviceId ?? null } })
+    res.json({ data: { flespi: flespiDevice } })
+  })
+)
+
+/**
+ * Merge this vehicle into `targetId`, the vehicle that has its tracker now
+ * (lib/trackers.js): history, drivers, papers, expenses, reminders, shares
+ * and memberships move over, and this one is archived. `dryRun` answers what
+ * would move without changing anything. Same Business Group only.
+ */
+router.post(
+  '/:id/merge',
+  validate(z.object({
+    targetId: requiredId('Vehicle'),
+    note: noteField,
+    dryRun: z.boolean().default(false),
+    // The target keeps its number and takes this vehicle's tracker: "AD 149
+    // stays, the tracker registered as iTriangle is its tracker now".
+    takeTracker: z.boolean().default(false),
+  })),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const source = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
+    const target = await findScopedOrThrow('ownedVehicle', req.body.targetId, req.scope)
+    const bg = source.bgId !== target.bgId
+      ? await prisma.businessGroup.findUnique({ where: { id: target.bgId }, select: { name: true } })
+      : null
+    assertSameBg(source, target, bg?.name)
+    const takeTracker = req.body.takeTracker && !!source.imei
+    const plan = await mergePlan(source, target, { takeTracker })
+    const view = { source: { id: source.id, label: vehicleLabel(source) }, target: { id: target.id, label: vehicleLabel(target) }, plan: planView(plan) }
+    if (req.body.dryRun) {
+      res.json({ data: view })
+      return
+    }
+    // The tracker's Flespi device takes the name of the vehicle it is in now.
+    const flespiDevice = takeTracker ? await syncVehicleDevice({ imei: source.imei, name: deviceName(target) }) : null
+    await prisma.$transaction(tx => mergeInto(tx, source, target, plan, actorOf(req), req.body.note, { flespiDeviceId: flespiDevice?.deviceId ?? source.flespiDeviceId ?? null }))
+    await revokeGrantsForBg(source.bgId)
+    const row = await prisma.vehicle.findUnique({ where: { id: target.id }, include: VEHICLE_INCLUDE })
+    res.json({ data: await withSharesOne(row, req.scope), merge: view })
+  })
+)
+
 /**
  * Delete.
  *
@@ -578,7 +797,7 @@ router.delete(
 
     // Its tracker comes out in the Reallocation History; the row outlives the vehicle.
     await prisma.$transaction([
-      prisma.vehicleMove.create({ data: deviceRow(existing, existing.imei, false, actorOf(req)) }),
+      ...(existing.imei ? [prisma.vehicleMove.create({ data: deviceRow(existing, existing.imei, false, actorOf(req)) })] : []),
       prisma.vehicle.delete({ where: { id: existing.id } }),
     ])
     // Revoked so a token minted before the delete cannot keep reading a device the

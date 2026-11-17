@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Plus, FileBadge, BellPlus, ArrowRightLeft, Radio, Unplug } from 'lucide-react'
+import { Plus, FileBadge, BellPlus, ArrowRightLeft, Radio, Unplug, Cpu, Info } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
@@ -14,8 +14,9 @@ import {
   companyNameFor, branchTreeForCompany, branchOptionLabel,
   groupsForCompany, groupIdForCompany,
   groupNameFor, vehicleLabel, emptyVehicle, isImeiTaken,
-  SHARING_AVAILABLE, setVehicleShares,
+  SHARING_AVAILABLE, setVehicleShares, TRACKER_ACTIONS_AVAILABLE,
 } from '../../data/settings'
+import TrackerDialog from './TrackerDialog'
 import ShareTargetsField from './ShareTargetsField'
 import SharedChip from '../../components/SharedChip'
 import { isOwned, sharedFromText, shareTargetsOf, sharesChanged } from '../../utils/vehiclePlacement'
@@ -74,24 +75,31 @@ const COLUMNS = [
 ]
 
 /**
- * A read-only word on how the row stands against Flespi (client, 2026-11-16:
- * "Vehicles numbers should be auto updated everywhere"). The app shows the
- * vehicle number everywhere; these only say where Flespi disagrees, so the
- * register can be put right. Nothing is ever renamed or written in Flespi from
- * here — renaming the client's Flespi devices needs the client's go-ahead.
+ * A word on how the row stands against Flespi (client, 2026-11-16: "Vehicles
+ * numbers should be auto updated everywhere"): not in Flespi, a different
+ * Flespi name, or no tracker. With `onResolve` (2026-11-17: trackers are
+ * changed here, never in the Flespi panel) it is a button that opens the
+ * tracker dialog — change the tracker, merge into the vehicle that has it now,
+ * mark no tracker, or rename the Flespi device.
  */
-function FlespiHint({ status, imei }) {
+function FlespiHint({ status, imei, onResolve }) {
   if (!status) return null
   const missing = status.state === 'missing'
+  const none = status.state === 'none'
   const tone = missing ? '#d97706' : 'var(--c-text3)'
-  const title = missing
-    ? `No tracker in Flespi has IMEI ${imei}. It was removed, or its Flespi device now carries another IMEI (a tracker moved in the Flespi panel), so this vehicle gets no live data. Correct the IMEI here, or delete the vehicle if the tracker is gone.`
-    : `In Flespi this tracker is named “${status.flespiName}”. FleetmaxX shows the vehicle number everywhere; the Flespi device is not renamed from here.`
+  const title = none
+    ? 'This vehicle has no tracker. It keeps its history; install one from the tracker dialog.'
+    : missing
+      ? `No tracker in Flespi has IMEI ${imei}. It was removed, or its Flespi device now carries another IMEI (a tracker changed in the Flespi panel), so this vehicle gets no live data. Resolve: change the tracker, merge into the vehicle that has it now, or mark it as having no tracker.`
+      : `In Flespi this tracker is named “${status.flespiName}”. FleetmaxX shows the vehicle number everywhere.${onResolve ? ' Click to rename the Flespi device or change the tracker.' : ''}`
+  const Tag = onResolve ? 'button' : 'span'
   return (
-    <span
+    <Tag
+      {...(onResolve ? { type: 'button', onClick: e => { e.stopPropagation(); onResolve() } } : {})}
       title={title}
       aria-label={title}
       style={{
+        cursor: onResolve ? 'pointer' : 'default', font: 'inherit',
         display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, maxWidth: 220,
         padding: '1px 7px', borderRadius: 999, fontSize: 10, fontWeight: 600,
         color: tone,
@@ -99,11 +107,12 @@ function FlespiHint({ status, imei }) {
         border: `1px solid ${missing ? 'color-mix(in srgb, #d97706 40%, transparent)' : 'var(--c-border2)'}`,
       }}
     >
-      {missing ? <Unplug size={11} strokeWidth={2.4} aria-hidden="true" /> : <Radio size={11} strokeWidth={2.4} aria-hidden="true" />}
+      {missing || none ? <Unplug size={11} strokeWidth={2.4} aria-hidden="true" /> : <Radio size={11} strokeWidth={2.4} aria-hidden="true" />}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {missing ? 'Not in Flespi' : `Flespi name: ${status.flespiName}`}
+        {none ? 'No tracker' : missing ? 'Not in Flespi' : `Flespi name: ${status.flespiName}`}
       </span>
-    </span>
+      {onResolve && !none && <span style={{ textDecoration: 'underline', flexShrink: 0 }}>{missing ? 'Resolve' : 'Fix'}</span>}
+    </Tag>
   )
 }
 
@@ -221,25 +230,30 @@ export default function Vehicle(props) {
     branches: new Map(branchList.map(b => [b.id, b])),
   }), [companies, groupList, branchList])
 
-  // The Vehicle Number column carries a hint where Flespi disagrees (FlespiHint).
+  const { toasts, push, dismiss } = useToasts()
+  // Client, 2026-11-10: one vehicle can move to another Business Group.
+  const [moving, setMoving] = useState(null)
+  // Client, 2026-11-17: trackers are changed here ({ vehicle, tab }).
+  const [tracker, setTracker] = useState(null)
+  const access = usePageAccess('vehicle')
+  const canTracker = row => TRACKER_ACTIONS_AVAILABLE && access.canWrite && isOwned(row)
+
+  // The Vehicle Number column carries a hint where Flespi disagrees (FlespiHint),
+  // which opens the tracker dialog for a vehicle this account may change.
   const liveByImei = useLiveByImei()
   const columns = useMemo(() => COLUMNS.map(c => (c.key !== 'vehicleNumber' ? c : {
     ...c,
     render: row => {
-      const status = flespiStatusFor(row, liveByImei)
+      const status = !row.imei ? (TRACKER_ACTIONS_AVAILABLE ? { state: 'none' } : null) : flespiStatusFor(row, liveByImei)
       return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           {row.vehicleNumber || '—'}
-          <FlespiHint status={status} imei={row.imei} />
+          <FlespiHint status={status} imei={row.imei} onResolve={status && canTracker(row) ? () => setTracker({ vehicle: row }) : undefined} />
         </span>
       )
     },
-  })), [liveByImei])
-
-  const { toasts, push, dismiss } = useToasts()
-  // Client, 2026-11-10: one vehicle can move to another Business Group.
-  const [moving, setMoving] = useState(null)
-  const access = usePageAccess('vehicle')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  })), [liveByImei, access.canWrite])
 
   const [draft,   setDraft]   = useState(null)
   const [errors,  setErrors]  = useState({})
@@ -255,7 +269,7 @@ export default function Vehicle(props) {
   const unregistered = useUnregistered(!editing && !access.loading && access.canAdd, vehicles.length)
   const openAddTracker = r => {
     setErrors({})
-    setDraft({ ...emptyVehicle(), vehicleNumber: r.name, imei: r.imei, deviceType: r.deviceType })
+    setDraft({ ...emptyVehicle(), vehicleNumber: r.name, imei: r.imei, deviceType: r.deviceType, shareTargets: [], sharesBefore: [], sharesFixed: [] })
   }
 
   useEffect(() => {
@@ -276,6 +290,17 @@ export default function Vehicle(props) {
   // Acted on once, so the save itself cannot reopen the form.
   const [params, setParams] = useSearchParams()
   const handledLink = useRef(null)
+  // ?tracker=<IMEI> (Device Data Monitor's "No vehicle"): Add with that
+  // unregistered tracker filled in, once the list of them has loaded.
+  useEffect(() => {
+    const imei = params.get('tracker')
+    if (!imei || editing) return
+    const hit = unregistered.find(r => r.imei === imei.replace(/\D/g, ''))
+    if (!hit) return
+    setParams({}, { replace: true })
+    openAddTracker(hit)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, unregistered])
   useEffect(() => {
     const key = params.toString()
     if (!key || handledLink.current === key || !params.get('new')) return
@@ -325,7 +350,11 @@ export default function Vehicle(props) {
     const next = {}
     if (!draft.companyId)              next.companyId     = 'Business Group is required'
     if (!draft.vehicleNumber.trim())   next.vehicleNumber = 'Vehicle Number is required'
-    if (!draft.imei.trim())            next.imei          = 'IMEI Number is required'
+    // An existing vehicle's tracker changes through the tracker dialog, and a
+    // vehicle may have none (Remove tracker), so only Add requires it.
+    const imeiLocked = IS_REAL && !!draft.id
+    if (imeiLocked) { /* kept as the server has it */ }
+    else if (!draft.imei.trim())       next.imei          = 'IMEI Number is required'
     // Digits-only is a hard stop; an unusual *length* is only a warning, so it
     // never appears here.
     else if (!/^\d+$/.test(draft.imei.trim())) next.imei = 'IMEI must be digits only'
@@ -542,17 +571,43 @@ export default function Vehicle(props) {
               {/* The soft warning renders under the input itself rather than
                   through Field's `error` slot, which is styled for hard
                   validation failures and would overstate this. */}
-              <Field label="IMEI Number" required error={errors.imei}>
-                <input
-                  name="imei"
-                  inputMode="numeric"
-                  value={draft.imei}
-                  onChange={e => set('imei', e.target.value)}
-                  aria-invalid={!!errors.imei || undefined}
-                  placeholder="863071011234501"
-                  style={inputStyle(!!errors.imei)}
-                />
-                {!errors.imei && notice && (
+              <Field
+                label="IMEI Number"
+                required={!(IS_REAL && draft.id)}
+                error={errors.imei}
+                hint={IS_REAL && draft.id ? 'Change or remove the tracker with Change tracker — FleetmaxX updates Flespi and keeps the history.' : undefined}
+              >
+                {IS_REAL && draft.id ? (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      name="imei"
+                      value={draft.imei || 'No tracker'}
+                      readOnly
+                      tabIndex={-1}
+                      aria-readonly="true"
+                      style={{ ...inputStyle(false), background: 'var(--c-thead)', color: 'var(--c-text3)', cursor: 'not-allowed', flex: 1, minWidth: 0 }}
+                    />
+                    <button
+                      type="button"
+                      className="ft-btn"
+                      onClick={() => { const row = vehicles.find(v => v.id === draft.id); closeForm(); if (row) setTracker({ vehicle: row }) }}
+                      style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                    >
+                      <Cpu size={13} />{draft.imei ? 'Change tracker' : 'Install tracker'}
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    name="imei"
+                    inputMode="numeric"
+                    value={draft.imei}
+                    onChange={e => set('imei', e.target.value)}
+                    aria-invalid={!!errors.imei || undefined}
+                    placeholder="863071011234501"
+                    style={inputStyle(!!errors.imei)}
+                  />
+                )}
+                {!errors.imei && notice && !(IS_REAL && draft.id) && (
                   <span style={{
                     display: 'block', marginTop: 3, fontSize: 10.5,
                     color: notice.tone === 'error' ? '#ef4444' : '#d97706',
@@ -688,6 +743,21 @@ export default function Vehicle(props) {
         <>
           <ObjectTabs />
           <PageNotice {...access} />
+          {TRACKER_ACTIONS_AVAILABLE && access.canWrite && (
+            <div style={{
+              display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 12, padding: '9px 12px', borderRadius: 10,
+              fontSize: 12, lineHeight: 1.5, color: 'var(--c-text2)',
+              background: 'color-mix(in srgb, var(--ft-accent) 7%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--ft-accent) 28%, transparent)',
+            }}>
+              <Info size={14} style={{ flexShrink: 0, marginTop: 2, color: 'var(--ft-accent)' }} aria-hidden="true" />
+              <span>
+                <b style={{ color: 'var(--c-text1)' }}>Add and change trackers here; FleetmaxX updates Flespi for you.</b>{' '}
+                There is no need to open the Flespi panel — a tracker changed there is not known here. Use <b>Change tracker</b> in a vehicle’s menu,
+                and <b>Resolve</b> on a vehicle marked “Not in Flespi”. Every change is kept in the Reallocation History report.
+              </span>
+            </div>
+          )}
 
           {!access.loading && (
             <>
@@ -731,7 +801,11 @@ export default function Vehicle(props) {
                   label: `Create alert for ${vehicleLabel(row)}`,
                   icon: <BellPlus size={13} />,
                   onClick: () => navigate(`/settings/alerts?imei=${encodeURIComponent(row.imei)}`),
-                }, ...(access.canWrite && isOwned(row) ? [{
+                }, ...(canTracker(row) ? [{
+                  label: row.imei ? `Change tracker of ${vehicleLabel(row)}` : `Install a tracker in ${vehicleLabel(row)}`,
+                  icon: <Cpu size={13} />,
+                  onClick: () => setTracker({ vehicle: row }),
+                }] : []), ...(access.canWrite && isOwned(row) ? [{
                   label: `Move ${vehicleLabel(row)} to another Business Group`,
                   icon: <ArrowRightLeft size={13} />,
                   onClick: () => setMoving(row),
@@ -767,6 +841,7 @@ export default function Vehicle(props) {
       )}
 
       {moving && <VehicleMoveDialog vehicle={moving} push={push} onClose={() => setMoving(null)} />}
+      {tracker && <TrackerDialog vehicle={tracker.vehicle} initialTab={tracker.tab} push={push} onClose={() => setTracker(null)} />}
       <ToastStack toasts={toasts} onDismiss={dismiss} />
     </SettingsLayout>
   )

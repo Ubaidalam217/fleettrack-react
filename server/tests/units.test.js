@@ -151,6 +151,9 @@ describe('field normalisers', () => {
 })
 
 describe('scopedWhere per role', () => {
+  // A vehicle merged into another is archived (deletedAt), kept for its
+  // history and out of every vehicle read and write (2026-11-17).
+  const live = where => ({ AND: [where, { deletedAt: null }] })
   const scopeFor = role =>
     buildScope({
       id: 'u1',
@@ -164,9 +167,12 @@ describe('scopedWhere per role', () => {
 
   it('SUPER_ADMIN filters nothing', () => {
     const s = scopeFor(ROLES.SUPER_ADMIN)
-    for (const e of ['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert']) {
+    for (const e of ['ggb', 'group', 'bg', 'branch', 'user', 'alert']) {
       expect(scopedWhere(e, s), e).toEqual({})
     }
+    // Every vehicle but the archived ones.
+    expect(scopedWhere('vehicle', s)).toEqual({ deletedAt: null })
+    expect(scopedWhere('ownedVehicle', s)).toEqual({ deletedAt: null })
   })
 
   it('narrows by GGB, group and BG respectively', () => {
@@ -178,20 +184,20 @@ describe('scopedWhere per role', () => {
   it('uses the scalar bgId column for the two single-BG roles', () => {
     // Hits the bgId index instead of an EXISTS subquery — these are the roles with
     // the most traffic. The owner's rule: what every vehicle write goes through.
-    expect(scopedWhere('ownedVehicle', scopeFor(ROLES.BG_USER))).toEqual({ bgId: 'bg1' })
-    expect(scopedWhere('ownedVehicle', scopeFor(ROLES.GGB_ADMIN))).toEqual({ bg: { ggbId: 'ggb1' } })
+    expect(scopedWhere('ownedVehicle', scopeFor(ROLES.BG_USER))).toEqual(live({ bgId: 'bg1' }))
+    expect(scopedWhere('ownedVehicle', scopeFor(ROLES.GGB_ADMIN))).toEqual(live({ bg: { ggbId: 'ggb1' } }))
   })
 
   it('lets a role SEE the vehicles shared into its scope as well (VehicleShare)', () => {
-    expect(scopedWhere('vehicle', scopeFor(ROLES.BG_USER))).toEqual({
+    expect(scopedWhere('vehicle', scopeFor(ROLES.BG_USER))).toEqual(live({
       OR: [{ bgId: 'bg1' }, { shares: { some: { bgId: 'bg1' } } }],
-    })
-    expect(scopedWhere('vehicle', scopeFor(ROLES.GROUP_ADMIN))).toEqual({
+    }))
+    expect(scopedWhere('vehicle', scopeFor(ROLES.GROUP_ADMIN))).toEqual(live({
       OR: [{ bg: { groupId: 'grp1' } }, { shares: { some: { OR: [{ bg: { groupId: 'grp1' } }, { groupId: 'grp1' }] } } }],
-    })
-    expect(scopedWhere('vehicle', scopeFor(ROLES.GGB_ADMIN))).toEqual({
+    }))
+    expect(scopedWhere('vehicle', scopeFor(ROLES.GGB_ADMIN))).toEqual(live({
       OR: [{ bg: { ggbId: 'ggb1' } }, { shares: { some: { OR: [{ bg: { ggbId: 'ggb1' } }, { group: { ggbId: 'ggb1' } }] } } }],
-    })
+    }))
   })
 
   it('gives roles below GGB no GGB or group visibility', () => {
@@ -206,10 +212,10 @@ describe('scopedWhere per role', () => {
   it('narrows a SUB_USER to its assignments, keeping the BG constraint as well', () => {
     const s = scopeFor(ROLES.SUB_USER)
     expect(scopedWhere('ownedVehicle', s)).toEqual({
-      AND: [{ bgId: 'bg1' }, { id: { in: ['v1'] } }],
+      AND: [live({ bgId: 'bg1' }), { id: { in: ['v1'] } }],
     })
     expect(scopedWhere('vehicle', s)).toEqual({
-      AND: [{ OR: [{ bgId: 'bg1' }, { shares: { some: { bgId: 'bg1' } } }] }, { id: { in: ['v1'] } }],
+      AND: [live({ OR: [{ bgId: 'bg1' }, { shares: { some: { bgId: 'bg1' } } }] }), { id: { in: ['v1'] } }],
     })
     expect(scopedWhere('branch', s)).toEqual({
       AND: [{ bgId: 'bg1' }, { id: { in: ['b1'] } }],
@@ -219,7 +225,7 @@ describe('scopedWhere per role', () => {
 
   it('a SUB_USER with no assignments matches nothing, not everything', () => {
     const s = buildScope({ id: 'u1', role: ROLES.SUB_USER, bgId: 'bg1', vehicles: [], branches: [] })
-    expect(scopedWhere('ownedVehicle', s)).toEqual({ AND: [{ bgId: 'bg1' }, { id: { in: [] } }] })
+    expect(scopedWhere('ownedVehicle', s)).toEqual({ AND: [live({ bgId: 'bg1' }), { id: { in: [] } }] })
     expect(scopedWhere('vehicle', s).AND[1]).toEqual({ id: { in: [] } })
   })
 
@@ -228,14 +234,15 @@ describe('scopedWhere per role', () => {
     // corrupt scope data is the empty set.
     const broken = buildScope({ id: 'u1', role: ROLES.GGB_ADMIN, ggbId: null })
     expect(scopedWhere('bg', broken)).toEqual({ id: { in: [] } })
-    expect(scopedWhere('vehicle', broken)).toEqual({ id: { in: [] } })
+    expect(scopedWhere('vehicle', broken)).toEqual(live({ id: { in: [] } }))
   })
 
   it('an unrecognised role sees nothing', () => {
     const alien = buildScope({ id: 'u1', role: 'MARKETING_INTERN' })
-    for (const e of ['ggb', 'group', 'bg', 'branch', 'vehicle', 'user', 'alert']) {
+    for (const e of ['ggb', 'group', 'bg', 'branch', 'user', 'alert']) {
       expect(scopedWhere(e, alien), e).toEqual({ id: { in: [] } })
     }
+    expect(scopedWhere('vehicle', alien)).toEqual(live({ id: { in: [] } }))
   })
 
   it('ANDs a route filter after the scope rather than merging over it', () => {
@@ -243,7 +250,7 @@ describe('scopedWhere per role', () => {
     expect(scopedWhere('ownedVehicle', s, { bgId: 'someone-elses-bg' })).toEqual({
       // Both constraints survive, so the result is empty rather than the other
       // tenant's fleet. A spread merge would have let the second bgId win.
-      AND: [{ bgId: 'bg1' }, { bgId: 'someone-elses-bg' }],
+      AND: [live({ bgId: 'bg1' }), { bgId: 'someone-elses-bg' }],
     })
     expect(scopedWhere('vehicle', s, { bgId: 'someone-elses-bg' }).AND[1]).toEqual({ bgId: 'someone-elses-bg' })
   })

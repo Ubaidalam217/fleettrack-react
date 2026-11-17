@@ -492,6 +492,56 @@ export function updateVehicle(id, patch) {
   )
 }
 
+// Trackers (client, 2026-11-17: FleetmaxX is the master; nobody changes a
+// tracker in the Flespi panel). Each keeps a history row with the note.
+// Server only: the demo has no Flespi and no history.
+export const TRACKER_ACTIONS_AVAILABLE = IS_REAL
+
+/** How the tracker stands against Flespi, and what its old device carries now. */
+export function getTrackerStatus(id) {
+  return get(`/api/vehicles/${id}/tracker-status`)
+}
+
+/** Change tracker: `imei` an unregistered Flespi tracker or a new IMEI (+ deviceType). */
+export function changeVehicleTracker(id, { imei, deviceType, note }) {
+  return write(async () => A.vehicle.toFe(await post(`/api/vehicles/${id}/tracker`, { imei, deviceType: deviceType || null, note: note || null })))
+}
+
+/** Remove tracker / No tracker: the vehicle stays, with no tracker. */
+export function removeVehicleTracker(id, note) {
+  return write(async () => A.vehicle.toFe(await post(`/api/vehicles/${id}/tracker/remove`, { note: note || null })))
+}
+
+/** Put the vehicle number on its Flespi device again. */
+export function syncVehicleTrackerName(id) {
+  return post(`/api/vehicles/${id}/tracker/sync`, {})
+}
+
+/**
+ * What merging `id` into `targetId` would move ({ source, target, plan }).
+ * Changes nothing. `takeTracker`: the target also takes `id`'s tracker.
+ */
+export function previewVehicleMerge(id, targetId, { takeTracker = false } = {}) {
+  return post(`/api/vehicles/${id}/merge`, { targetId, dryRun: true, takeTracker })
+}
+
+/** Merge `id` into `targetId`; `id` is archived with its history moved over. */
+export function mergeVehicle(id, targetId, note, { takeTracker = false } = {}) {
+  return write(() => post(`/api/vehicles/${id}/merge`, { targetId, note: note || null, takeTracker }))
+}
+
+/** One vehicle's latest changes, newest first (the Vehicle information dialog). */
+export function listVehicleHistory(id, limit = 8) {
+  if (!IS_REAL) return Promise.resolve([])
+  return get('/api/vehicle-moves', { vehicleId: id, limit })
+}
+
+/** Trackers in Flespi that no vehicle points at (Super Admin; [] for others). */
+export function listUnregisteredTrackers() {
+  if (!IS_REAL) return Promise.resolve([])
+  return get('/api/vehicles/unregistered')
+}
+
 export function removeVehicle(id) {
   if (!IS_REAL) return done(mock.removeVehicle(id))
   return write(() => del(`/api/vehicles/${id}`))

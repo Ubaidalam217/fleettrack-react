@@ -3,6 +3,7 @@ import {
   Activity, AlertTriangle, CircleCheck, OctagonAlert, RefreshCw, Server, User, ChevronDown, ChevronRight,
   Save, RotateCcw, Gauge, Info, HardDrive, Repeat,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import SettingsLayout from './SettingsLayout'
 import { PRIMARY_BTN, SECONDARY_BTN } from './formStyles'
 import ToastStack from '../../components/tracking/Toasts'
@@ -200,6 +201,15 @@ function DeviceRow({ d, open, onToggle }) {
           <div className="dm-name"><Chevron size={14} aria-hidden="true" style={{ color: 'var(--c-text3)' }} />{deviceTitle(d)}</div>
           <div className="dm-sub" style={{ marginLeft: 20 }}>
             {d.vehicle?.bgName ? `${d.vehicle.bgName} · ` : d.vehicle ? '' : 'No vehicle · '}#{d.deviceId}{d.ident ? ` · ${d.ident}` : ''}
+            {/* A tracker no vehicle has: register it, or fit it to a vehicle, in Settings › Object (2026-11-17). */}
+            {!d.vehicle && d.ident && (
+              <>
+                {' · '}
+                <Link to={`/settings/vehicle?tracker=${encodeURIComponent(d.ident)}`} onClick={e => e.stopPropagation()} style={{ color: 'var(--ft-accent)', fontWeight: 700 }}>
+                  Register
+                </Link>
+              </>
+            )}
           </div>
         </td>
         <td>
