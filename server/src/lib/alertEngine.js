@@ -38,6 +38,7 @@ import { haversineMeters } from '../../../src/utils/distance.js'
 import { telemetryResponse, isServing, coverageStart, messagesBetween } from './telemetry.js'
 import { harshEpisodes, describeHarsh, HARSH_MS2 } from '../../../src/utils/harshEvents.js'
 import { runReminderPass } from './reminders.js'
+import { runJourneyPass } from './journeyEngine.js'
 import { bgFleetWhere } from './scope.js'
 import { SHARED_BG_RULES_APPLY } from './sharePolicy.js'
 import { liveTemperature } from '../../../src/utils/sensorReadings.js'
@@ -1006,6 +1007,14 @@ async function tick() {
       if (reminders.length) console.log(`[fleetmax] reminders: ${reminders.length} raised`)
     } catch (err) {
       console.error(`[fleetmax] reminder pass failed: ${err.message}`)
+    }
+    // Journey Management (lib/journeyEngine.js): the same IMEI map, one
+    // messages read for every journey being watched.
+    try {
+      const j = await runJourneyPass(undefined, pre)
+      if (j.events) console.log(`[fleetmax] journeys: ${j.events} events`)
+    } catch (err) {
+      console.error(`[fleetmax] journey pass failed: ${err.message}`)
     }
   } catch (err) {
     console.error(`[fleetmax] telemetry read failed: ${err.message}`)
