@@ -22,13 +22,38 @@ export const LEVELS = Object.freeze(['none', 'view', 'modify', 'addDelete'])
 const RANK = Object.freeze({ none: 0, view: 1, modify: 2, addDelete: 3, customize: 3 })
 const FULL = 'addDelete'
 
+/**
+ * Screens that are closed unless granted (design §A.6): "HSE must approve" is
+ * true from day one only if an account with no permission map cannot approve.
+ * A Super Admin still can, and assigns the approvers.
+ */
+export const DENY_BY_DEFAULT = Object.freeze(new Set(['journey-approval']))
+
 /** An account's level on one screen. */
 export function levelOf(screenAccess, screenId) {
   const v = screenAccess && typeof screenAccess === 'object' ? screenAccess[screenId] : undefined
-  return v in RANK ? (v === 'customize' ? FULL : v) : FULL
+  if (v in RANK) return v === 'customize' ? FULL : v
+  return DENY_BY_DEFAULT.has(screenId) ? 'none' : FULL
 }
 
 export const atLeast = (level, need) => RANK[level] >= RANK[need]
+
+/**
+ * A user's level on the Journeys screen. A sub-user is read-only everywhere
+ * else, so unless the screen is given to it explicitly it may look, not plan.
+ */
+export function journeysLevel(user, role) {
+  if (role === ROLES.SUPER_ADMIN) return FULL
+  const access = user?.screenAccess && typeof user.screenAccess === 'object' ? user.screenAccess : null
+  if (role === ROLES.SUB_USER && !(access?.journeys in RANK)) return 'view'
+  return levelOf(access, 'journeys')
+}
+
+/** May this account approve or reject journeys at all (journey-approval ≥ Edit)? */
+export function canApproveJourneys(user, role) {
+  if (role === ROLES.SUPER_ADMIN) return true
+  return atLeast(levelOf(user?.screenAccess, 'journey-approval'), 'modify')
+}
 
 /** API prefix → the Settings screen whose level governs writes there. */
 export const WRITE_SCREENS = Object.freeze({
@@ -45,6 +70,9 @@ export const WRITE_SCREENS = Object.freeze({
   // Mark done is a change to the reminder.
   '/api/reminders': '/settings/reminder-rule',
   '/api/users': 'users',
+  // /api/journeys and /api/route-templates check the Journeys screen in their
+  // routes: there, creating needs Edit, not Full (design §A.6).
+  '/api/journey-settings': '/settings/journey',
 })
 
 /**

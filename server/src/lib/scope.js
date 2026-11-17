@@ -94,6 +94,8 @@ const ENTITIES = Object.freeze({
   reminderRule: { delegate: 'reminderRule', label: 'Reminder' },
   reminderAck: { delegate: 'reminderAck', label: 'Reminder record' },
   vehicleMove: { delegate: 'vehicleMove', label: 'Reallocation record' },
+  journey: { delegate: 'journey', label: 'Journey' },
+  routeTemplate: { delegate: 'routeTemplate', label: 'Route' },
 })
 
 /**
@@ -417,6 +419,10 @@ const WHERE_BUILDERS = Object.freeze({
   reminderAck: alertEventWhere,
   // Reallocation History follows the vehicles, like alert events.
   vehicleMove: alertEventWhere,
+  // A journey belongs to its creator's BG and follows its vehicle for a
+  // sub-user, like alert events. Saved routes are BG-wide like geofences.
+  journey: alertEventWhere,
+  routeTemplate: geofenceWhere,
 })
 
 /**

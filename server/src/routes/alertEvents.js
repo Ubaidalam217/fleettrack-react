@@ -19,6 +19,7 @@ import { asyncHandler } from '../lib/http.js'
 import { scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { vehicleLabel } from '../lib/vehicleLabel.js'
+import { journeysLevel } from '../lib/permissions.js'
 
 const router = Router()
 
@@ -36,6 +37,12 @@ const readBody = z.object({
   ids: z.array(z.string().trim().min(1)).max(500).optional(),
 })
 
+/** Journey alerts (type journey_*) only for accounts that may open Journeys. */
+function journeyFilter(req, where) {
+  if (journeysLevel(req.user, req.scope.role) !== 'none') return where
+  return { AND: [where, { NOT: { type: { startsWith: 'journey_' } } }] }
+}
+
 const INCLUDE = {
   vehicle: { select: { id: true, plateNo: true, fleetNo: true, imei: true } },
   driver: { select: { id: true, name: true } },
@@ -47,7 +54,7 @@ router.get(
   validate(listQuery, 'query'),
   asyncHandler(async (req, res) => {
     const { limit, before, unread, type, from, to, deviceIds } = req.validatedQuery
-    const scope = scopedWhere('alertEvent', req.scope)
+    const scope = journeyFilter(req, scopedWhere('alertEvent', req.scope))
     const where = {
       AND: [
         scope,
@@ -77,7 +84,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { ids } = req.body
     const { count } = await prisma.alertEvent.updateMany({
-      where: { AND: [scopedWhere('alertEvent', req.scope), { readAt: null }, ids ? { id: { in: ids } } : {}] },
+      where: { AND: [journeyFilter(req, scopedWhere('alertEvent', req.scope)), { readAt: null }, ids ? { id: { in: ids } } : {}] },
       data: { readAt: new Date() },
     })
     res.json({ data: { updated: count } })

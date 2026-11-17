@@ -132,6 +132,9 @@ model BusinessGroup {
   vehicleMoves  VehicleMove[]
   logo NodeLogo?
   vehicleShares VehicleShare[]
+  journeys       Journey[]
+  routeTemplates RouteTemplate[]
+  journeySetting JourneySetting?
 
   @@index([ggbId])
   @@index([groupId])
@@ -281,6 +284,7 @@ model Vehicle {
   odometerAdjustments OdometerAdjustment[]
   /// The other Groups, BGs and Branches it also shows in (VehicleShare).
   shares            VehicleShare[]
+  journeys          Journey[]
 
   @@index([bgId])
   @@index([branchId])
@@ -812,6 +816,7 @@ model Driver {
   tagHistory  DriverTagHistory[]
   incidents   DriverIncident[]
   leaves      DriverLeave[]
+  journeys    Journey[]
 
   @@index([bgId])
 }
@@ -1392,4 +1397,260 @@ model OdometerAdjustment {
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
   @@index([vehicleId, setAt])
+}
+
+// ── Journey Management (client 2026-11-13/16/17; design journey-design.md §A) ──
+
+/// The 8 states of the client's spec. "Pending approval" and "Rejected" are
+/// Draft with approvalStatus PENDING / REJECTED (shown as their own chips).
+enum JourneyStatus {
+  Draft
+  Scheduled
+  Started
+  InProgress
+  Delayed
+  Completed
+  Cancelled
+  Interrupted
+}
+
+/// A planned vehicle journey. Separate from trips: a trip is an ignition run
+/// derived from telemetry; a journey is a plan the engine measures telemetry
+/// against (lib/journeyEngine.js). Its BG is its creator's BG; the vehicle may
+/// be one shared into that BG.
+model Journey {
+  id        String @id @default(cuid())
+  bgId      String
+  /// Running number, never reused. Shown as JRN-<year of plannedStart>-<0000>.
+  journeyNo Int    @unique @default(autoincrement())
+
+  title        String
+  /// Free text with suggestions (earlier values in the BG); no customer table.
+  customer     String?
+  priority     String        @default("Normal") // Normal | High | Urgent
+  type         String        @default("ONE_WAY") // ONE_WAY | ROUND_TRIP | MULTI_STOP
+  status       JourneyStatus @default(Draft)
+  instructions String?
+
+  // Assignment, with name snapshots so history reads after a rename or delete.
+  vehicleId    String?
+  vehicleLabel String
+  driverId     String?
+  driverName   String?
+
+  // The plan. plannedStart = leave the first stop; expectedArrival = the
+  // chained arrival at the last stop (src/utils/journeySchedule.js).
+  plannedStart      DateTime
+  expectedArrival   DateTime
+  plannedDistanceKm Float?
+  plannedDriveMin   Int?
+  plannedStayMin    Int?
+  /// PAST_TRIP | DRAWN | STRAIGHT (legs between the stops).
+  routeSource       String   @default("STRAIGHT")
+  routeTemplateId   String?
+  /// [[lat, lng], …] simplified, copied onto the journey so a template edit
+  /// never rewrites history.
+  plannedPath       Json?
+  /// { vehicleId, vehicleLabel, from, to } for PAST_TRIP.
+  recordedFrom      Json?
+
+  // HSE approval (design §A.2).
+  approvalStatus  String    @default("NONE") // NONE | PENDING | APPROVED | REJECTED
+  submittedAt     DateTime?
+  submittedById   String?
+  submittedByName String?
+  decidedById     String?
+  decidedByName   String?
+  decidedAt       DateTime?
+  rejectReason    String?
+
+  // Actuals, written by the engine.
+  actualStart      DateTime?
+  actualArrival    DateTime?
+  completedAt      DateTime?
+  progressKm       Float?
+  remainingKm      Float?
+  etaAt            DateTime?
+  /// ETA (or the arrival) against expectedArrival, minutes; + is late.
+  delayMin         Int?
+  offRouteCount    Int       @default(0)
+  offRouteSec      Int       @default(0)
+  maxOffRouteM     Int?
+  unplannedStops   Int       @default(0)
+  unplannedStopSec Int       @default(0)
+  lastLat          Float?
+  lastLng          Float?
+  lastSpeed        Float?
+  lastFixAt        DateTime?
+  /// The engine's memory between passes (lib/journeyEngine.js).
+  engineState      Json?
+
+  createdById     String?
+  createdByName   String?
+  cancelledAt     DateTime?
+  cancelReason    String?
+  cancelledByName String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  bg      BusinessGroup  @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicle Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  driver  Driver?        @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  stops   JourneyStop[]
+  events  JourneyEvent[]
+
+  @@index([bgId, plannedStart])
+  @@index([bgId, approvalStatus])
+  @@index([status, plannedStart])
+  @@index([vehicleId, plannedStart])
+  @@index([driverId, plannedStart])
+}
+
+/// Origin (seq 0), stops in order, destination (last).
+model JourneyStop {
+  id          String  @id @default(cuid())
+  journeyId   String
+  seq         Int
+  kind        String // ORIGIN | STOP | DESTINATION
+  name        String
+  /// GEOFENCE (a Settings geofence's shape, snapshotted) | RADIUS (point + radius).
+  arrivalType String  @default("RADIUS")
+  geofenceId  String?
+  lat         Float
+  lng         Float
+  radiusM     Int     @default(300)
+  /// The geofence polygon at planning time, [{ lat, lng }]; null for a circle.
+  polygon     Json?
+  stayMin     Int     @default(0)
+
+  // The chained schedule (src/utils/journeySchedule.js).
+  legKm         Float?
+  legDriveMin   Int?
+  /// SPEED | TRIP | MANUAL — where legDriveMin came from.
+  legSource     String?
+  alongKm       Float?
+  plannedArrive DateTime?
+  plannedDepart DateTime?
+
+  /// Proof of delivery (client, 2026-11-17): the driver signs here.
+  signatureRequired Boolean @default(false)
+
+  // Actuals, written by the engine.
+  status          String    @default("PENDING") // PENDING | ARRIVED | DEPARTED | PASSED | SKIPPED
+  actualArrive    DateTime?
+  actualDepart    DateTime?
+  dwellSec        Int?
+  /// EARLY | ON_TIME | LATE and the minutes against the plan (+ is late).
+  arriveTiming    String?
+  arriveDiffMin   Int?
+  departTiming    String?
+  departDiffMin   Int?
+  detectedBy      String? // INSIDE | PASS_BY
+  checkInSource   String? // AUTO | DRIVER (phase 2) | OFFICE
+  checkedInAt     DateTime?
+  checkedInByName String?
+
+  journey   Journey           @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  signature JourneySignature?
+
+  @@unique([journeyId, seq])
+  @@index([geofenceId])
+}
+
+/// A stop's delivery signature (an image), kept apart so stop reads never carry bytes.
+model JourneySignature {
+  id             String   @id @default(cuid())
+  stopId         String   @unique
+  signedByName   String?
+  /// WEB (the office "Sign here" pad) | DRIVER_APP (phase 2).
+  source         String   @default("WEB")
+  mimeType       String
+  size           Int
+  data           Bytes
+  signedAt       DateTime @default(now())
+  uploadedByName String?
+
+  stop JourneyStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+}
+
+/// Everything that happened to a journey: status changes, the six arrival and
+/// departure events, violations, notes, approvals.
+model JourneyEvent {
+  id           String         @id @default(cuid())
+  journeyId    String
+  bgId         String
+  /// lib/journeyEngine.js EVENT_TYPES.
+  type         String
+  severity     String?
+  fromStatus   JourneyStatus?
+  toStatus     JourneyStatus?
+  stopSeq      Int?
+  message      String
+  /// Minutes early/late, metres off route, minutes stopped…
+  value        Float?
+  lat          Float?
+  lng          Float?
+  occurredAt   DateTime       @default(now())
+  endedAt      DateTime?
+  durationSec  Int?
+  auto         Boolean        @default(true)
+  actorId      String?
+  actorName    String?
+  /// The bell entry raised for it (AlertEvent with alertId null), if any.
+  alertEventId String?
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  @@index([journeyId, occurredAt])
+  @@index([bgId, occurredAt])
+  @@index([alertEventId])
+}
+
+/// A saved route ("Checkpoints & Routes"), reused by many journeys.
+model RouteTemplate {
+  id            String   @id @default(cuid())
+  bgId          String
+  name          String
+  source        String // PAST_TRIP | DRAWN | STRAIGHT
+  path          Json?
+  distanceKm    Float?
+  driveMin      Int?
+  /// [{ name, arrivalType, geofenceId?, lat, lng, radiusM, polygon?, stayMin, legDriveMin?, legSource?, signatureRequired? }]
+  stops         Json     @default("[]")
+  recordedFrom  Json?
+  createdByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bg BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+
+  @@unique([bgId, name])
+  @@index([bgId])
+}
+
+/// Journey settings per Business Group; missing keys fall back to the defaults
+/// in lib/journeySettings.js.
+model JourneySetting {
+  bgId          String   @id
+  value         Json
+  updatedAt     DateTime @updatedAt
+  updatedByName String?
+
+  bg BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+}
+
+/// One delivery of one journey alert to one person on one channel: the
+/// two-stage escalation's memory and the (future) WhatsApp cost log.
+model JourneyNotice {
+  id             String   @id @default(cuid())
+  journeyEventId String
+  userId         String
+  channel        String // PUSH | WEB | WHATSAPP
+  stage          Int // 1 = creator + approver, 2 = BG admins
+  sentAt         DateTime @default(now())
+  status         String // SENT | FAILED | SKIPPED_NOT_CONFIGURED
+  error          String?
+
+  @@index([journeyEventId])
+  @@index([userId, sentAt])
 }

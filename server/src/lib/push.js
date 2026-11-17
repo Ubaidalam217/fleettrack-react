@@ -123,6 +123,46 @@ async function recipients() {
 }
 
 /**
+ * One message to named accounts' phones (journey alerts, design §A.5: the
+ * creator and the approver first, then the BG admins). Unlike pushEvents this
+ * does not go to everyone who can see the event. Returns { [userId]: status }
+ * with status SENT | FAILED | SKIPPED_NOT_CONFIGURED (no FCM key, or the
+ * account has no phone / turned Mobile off). Never throws.
+ */
+export async function pushToUsers(userIds, { title, body, data = {} }) {
+  const ids = [...new Set((userIds ?? []).filter(Boolean))]
+  const out = {}
+  if (!ids.length) return out
+  if (!isConfigured()) {
+    for (const id of ids) out[id] = 'SKIPPED_NOT_CONFIGURED'
+    return out
+  }
+  try {
+    const users = await prisma.user.findMany({
+      where: { id: { in: ids }, status: 'Active' },
+      select: { id: true, userSetting: true, pushDevices: { select: { token: true } } },
+    })
+    const byId = new Map(users.map(u => [u.id, u]))
+    const strData = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v ?? '')]))
+    for (const id of ids) {
+      const u = byId.get(id)
+      if (!u || !u.pushDevices.length || !wantsMobile(u.userSetting)) { out[id] = 'SKIPPED_NOT_CONFIGURED'; continue }
+      let any = false
+      for (const { token } of u.pushDevices) {
+        const result = await sendToToken(token, { title, body, data: strData })
+        if (result === 'sent') any = true
+        else if (result === 'gone') await prisma.pushDevice.deleteMany({ where: { token } })
+      }
+      out[id] = any ? 'SENT' : 'FAILED'
+    }
+  } catch (err) {
+    console.error(`[fleetmax] push: ${err.message}`)
+    for (const id of ids) out[id] ??= 'FAILED'
+  }
+  return out
+}
+
+/**
  * Sends each new event to the phones whose accounts can see it. Events already
  * marked read (a within-grace record, a reminder with in-app off) are skipped,
  * as the bell skips them. Never throws: a push failure must not touch alerting.
