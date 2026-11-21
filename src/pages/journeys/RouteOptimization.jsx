@@ -199,7 +199,7 @@ export default function RouteOptimization(props) {
               {vehicles.map(v => {
                 const on = v.id in picked
                 return (
-                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: '1px solid rgba(255,255,255,.06)', flexWrap: 'wrap' }}>
+                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: '1px solid var(--j-line)', flexWrap: 'wrap' }}>
                     <label style={{ display: 'flex', gap: 8, alignItems: 'center', flex: '1 1 160px', minWidth: 0, cursor: 'pointer' }}>
                       <input type="checkbox" checked={on} onChange={() => { setResult(null); setPicked(p => { const n = { ...p }; if (on) delete n[v.id]; else n[v.id] = v.capacity?.value ?? ''; return n }) }} />
                       <span style={{ minWidth: 0 }}><span className="j-strong" style={{ fontSize: 13 }}>{v.label}</span> <span className="j-label">{v.vehicleType ?? 'no type'}</span></span>
@@ -229,7 +229,7 @@ export default function RouteOptimization(props) {
             </div>
             {points.length === 0 && <div className="j-label">Click the map to add points, or add them from the address book or a sheet.</div>}
             {points.map((p, i) => (
-              <div key={p.key} className="j-pt-row" style={{ padding: '6px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
+              <div key={p.key} className="j-pt-row" style={{ padding: '6px 0', borderTop: '1px solid var(--j-line)' }}>
                 <span className="j-badge" style={{ width: 24, height: 24, fontSize: 11 }}>{i + 1}</span>
                 <input className="j-input j-input--sm" value={p.name} onChange={e => setPoint(p.key, { name: e.target.value })} aria-label="Point name" />
                 {byWeight ? <input className="j-input j-input--sm" type="number" min="0" value={p.weight} onChange={e => setPoint(p.key, { weight: e.target.value })} placeholder="Weight" aria-label="Weight" /> : <span />}

@@ -97,7 +97,7 @@ export default function JourneyAlerts(props) {
         {rows && shown.length === 0 && <div className="j-empty">Nothing in this period{kind || severity || q ? ' for these filters' : ''}.</div>}
         {shown.map(e => (
           <button key={e.id} type="button" onClick={() => navigate(`/journeys/${e.journey.id}`)}
-            style={{ display: 'flex', gap: 12, width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 0, borderTop: '1px solid rgba(255,255,255,.06)', color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
+            style={{ display: 'flex', gap: 12, width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 0, borderTop: '1px solid var(--j-line)', color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
             <span className="j-dot" data-tone={eventTone(e.type)} style={{ marginTop: 6 }} />
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

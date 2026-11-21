@@ -91,8 +91,8 @@ export default function LiveJourneys(props) {
             fitPadding={typeof window !== 'undefined' && window.innerWidth > 900 ? [[40, 60], [380, 40]] : undefined}
           />
           <div className="j-pill j-pill--plain" style={{ position: 'absolute', top: 12, left: 12, zIndex: 500, gap: 14 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, borderTop: '2px dashed #fff', display: 'inline-block' }} /> Planned route</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 3, background: '#fff', display: 'inline-block' }} /> Driven so far</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, borderTop: '2px dashed var(--j-text1)', display: 'inline-block' }} /> Planned route</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 3, background: 'var(--j-text1)', display: 'inline-block' }} /> Driven so far</span>
           </div>
           {j && (
             <div className="j-card j-live-card" style={{ position: 'absolute', top: 12, right: 12, zIndex: 500, width: 'min(330px, calc(100% - 24px))', padding: 16, maxHeight: 'calc(100% - 24px)', overflowY: 'auto' }}>
@@ -107,7 +107,7 @@ export default function LiveJourneys(props) {
                 <div><div className="j-label">Still to go</div><div className="j-num" style={{ fontSize: 18 }}>{Math.round(j.status === 'Completed' ? 0 : j.remainingKm ?? j.plannedDistanceKm ?? 0)} km</div></div>
               </div>
               {j.stops.map((s, i) => (
-                <div key={s.seq} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 0', borderTop: i ? '1px solid rgba(255,255,255,.06)' : 'none' }}>
+                <div key={s.seq} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 0', borderTop: i ? '1px solid var(--j-line)' : 'none' }}>
                   <span className="j-badge" style={{ width: 26, height: 26, fontSize: 11 }} data-s={s.status !== 'PENDING' ? 'done' : ''}>{stopMark(i, n)}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="j-strong" style={{ fontSize: 13 }}>{s.name}</div>

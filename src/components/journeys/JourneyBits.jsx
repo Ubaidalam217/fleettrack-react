@@ -58,8 +58,8 @@ export function Ring({ value = 0, size = 96, stroke = 6, children }) {
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,.14)" strokeWidth={stroke} strokeDasharray="3 4" />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f3f7f9" strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${c * v} ${c}`} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--j-line2)" strokeWidth={stroke} strokeDasharray="3 4" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--j-text1)" strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${c * v} ${c}`} />
       </svg>
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>{children}</div>
     </div>
@@ -78,8 +78,8 @@ export function HalfGauge({ value = 0, label, sub, tag }) {
   return (
     <div style={{ position: 'relative', width: '100%', maxWidth: W, margin: '0 auto' }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" aria-hidden="true">
-        <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`} fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="22" strokeDasharray="2 5" />
-        {v > 0 && <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${xv} ${yv}`} fill="none" stroke="#f3f7f9" strokeWidth="22" strokeLinecap="butt" />}
+        <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`} fill="none" stroke="var(--j-line2)" strokeWidth="22" strokeDasharray="2 5" />
+        {v > 0 && <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${xv} ${yv}`} fill="none" stroke="var(--j-text1)" strokeWidth="22" strokeLinecap="butt" />}
       </svg>
       {tag && <span className="j-pill j-pill--plain" style={{ position: 'absolute', top: -6, left: 0, fontSize: 10, letterSpacing: '.08em' }}>{tag}</span>}
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 4, textAlign: 'center' }}>

@@ -33,7 +33,7 @@ const EVENTS = [
 
 function NumRow({ label, help, unit, value, onChange, disabled, children }) {
   return (
-    <div className="j-set-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
+    <div className="j-set-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid var(--j-line)' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="j-strong" style={{ fontSize: 14 }}>{label}</div>
         <div className="j-label" style={{ fontSize: 12 }}>{help}</div>
@@ -127,7 +127,7 @@ export default function JourneySettings(props) {
                   </div>
                 ))}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 0 0', borderTop: '1px solid rgba(255,255,255,.06)', marginTop: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 0 0', borderTop: '1px solid var(--j-line)', marginTop: 8 }}>
                 <div><div className="j-strong" style={{ fontSize: 14 }}>Also at the stops in between</div><div className="j-label">Off: only the start and the destination alert</div></div>
                 <Toggle label="Also at stops" checked={v.eventAlerts.atStops} disabled={ro} onChange={x => setIn('eventAlerts', 'atStops', x)} />
               </div>
@@ -142,7 +142,7 @@ export default function JourneySettings(props) {
                 <div style={{ flex: 1 }}><div className="j-strong">First</div><div className="j-label">The person who created the journey, and the HSE approver</div></div>
                 <Toggle label="Creator and approver" checked={v.recipients.creatorAndApprover} disabled={ro} onChange={x => setIn('recipients', 'creatorAndApprover', x)} />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid var(--j-line)' }}>
                 <span className="j-badge">2</span>
                 <div style={{ flex: 1 }}>
                   <div className="j-strong" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -161,13 +161,13 @@ export default function JourneySettings(props) {
                 ['push', Smartphone, 'Mobile app', 'Push notification on the FleetmaxX app'],
                 ['web', Globe, 'Web app', 'The bell and the Notifications page'],
               ].map(([k, Icon, l, h]) => (
-                <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: k === 'web' ? '1px solid rgba(255,255,255,.06)' : 'none' }}>
+                <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: k === 'web' ? '1px solid var(--j-line)' : 'none' }}>
                   <span className="j-iconbtn" style={{ pointerEvents: 'none' }}><Icon size={16} /></span>
                   <div style={{ flex: 1 }}><div className="j-strong">{l}</div><div className="j-label">{h}</div></div>
                   <Toggle label={l} checked={v.channels[k]} disabled={ro} onChange={x => setIn('channels', k, x)} />
                 </div>
               ))}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid var(--j-line)' }}>
                 <span className="j-iconbtn" style={{ pointerEvents: 'none' }}><Send size={16} /></span>
                 <div style={{ flex: 1 }}>
                   <div className="j-strong" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>WhatsApp {!data.whatsappConfigured && <span className="j-pill" data-tone="warn">Setup needed</span>}</div>
@@ -181,7 +181,7 @@ export default function JourneySettings(props) {
               <div className="j-card-head"><Repeat size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Journeys, schedules and links</h2></div>
               <NumRow label="Force close" help="An unfinished journey closes itself this long after its planned arrival (0 = never)" unit="h" value={v.forceCloseHours} disabled={ro} onChange={x => set('forceCloseHours', x)} />
               <NumRow label="Start buffer" help="A start up to this long before the planned time counts (each journey may change it)" unit="min" value={v.startBufferMin} disabled={ro} onChange={x => set('startBufferMin', x)} />
-              <div className="j-set-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
+              <div className="j-set-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid var(--j-line)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="j-strong" style={{ fontSize: 14 }}>The destination is reached when</div>
                   <div className="j-label" style={{ fontSize: 12 }}>Driving through it never completes a journey</div>
@@ -196,7 +196,7 @@ export default function JourneySettings(props) {
               <NumRow label="Temperature alert after" help="Outside the journey's limits for this long" unit="min" value={v.tempAfterMin} disabled={ro} onChange={x => set('tempAfterMin', x)} />
               <NumRow label="Tracking link open for" help="A new customer tracking link expires after" unit="h" value={v.trackLinkHours} disabled={ro} onChange={x => set('trackLinkHours', x)} />
               <NumRow label="Driver link open for" help="A new driver link expires after" unit="h" value={v.driverLinkHours} disabled={ro} onChange={x => set('driverLinkHours', x)} />
-              <label className="j-field" style={{ paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.06)' }}>
+              <label className="j-field" style={{ paddingTop: 12, borderTop: '1px solid var(--j-line)' }}>
                 <span>Load states <span className="j-muted" style={{ fontWeight: 400 }}>separated by commas</span></span>
                 <input className="j-input" defaultValue={(v.loadStates ?? []).join(', ')} key={(v.loadStates ?? []).join('|')} disabled={ro} onBlur={e => set('loadStates', e.target.value.split(',').map(x => x.trim()).filter(Boolean))} />
               </label>
@@ -210,7 +210,7 @@ export default function JourneySettings(props) {
                 ['ORS', 'OpenRouteService', 'Needs OPENROUTESERVICE_API_KEY on the server. Free key, daily limits.'],
                 ['GOOGLE', 'Google Maps', 'Needs GOOGLE_MAPS_API_KEY on the server. Paid per request.'],
               ].map(([k, l, h]) => (
-                <label key={k} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '9px 0', borderTop: '1px solid rgba(255,255,255,.06)', cursor: ro ? 'default' : 'pointer' }}>
+                <label key={k} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '9px 0', borderTop: '1px solid var(--j-line)', cursor: ro ? 'default' : 'pointer' }}>
                   <input type="radio" name="routing" checked={v.routing.provider === k} disabled={ro} onChange={() => setIn('routing', 'provider', k)} style={{ marginTop: 3 }} />
                   <span style={{ flex: 1 }}>
                     <span className="j-strong" style={{ fontSize: 13.5, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{l} {k !== 'ESTIMATE' && !data.routingProviders?.[k] && <span className="j-pill" data-tone="warn">Setup needed</span>}</span>

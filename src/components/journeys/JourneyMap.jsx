@@ -66,12 +66,12 @@ export default function JourneyMap({
         />
         <FitTo points={fitPoints} padding={fitPadding} fitKey={fitKey ?? JSON.stringify(stops.map(s => [s.lat, s.lng]).slice(0, 4)) + line.length} />
         {onMapClick && <Clicks onClick={onMapClick} />}
-        {todo.length > 1 && <Polyline positions={todo} pathOptions={{ color: '#f3f7f9', weight: 3, opacity: 0.75, dashArray: '6 9' }} />}
-        {done.length > 1 && <Polyline positions={done} pathOptions={{ color: '#ffffff', weight: 5, opacity: 0.95 }} />}
-        {drawing?.length > 0 && drawing.map((p, i) => <Circle key={i} center={p} radius={40} pathOptions={{ color: '#fff', weight: 2, fillOpacity: 0.6 }} />)}
+        {todo.length > 1 && <Polyline positions={todo} pathOptions={{ color: 'var(--j-text1)', weight: 3, opacity: 0.75, dashArray: '6 9' }} />}
+        {done.length > 1 && <Polyline positions={done} pathOptions={{ color: 'var(--j-text1)', weight: 5, opacity: 0.95 }} />}
+        {drawing?.length > 0 && drawing.map((p, i) => <Circle key={i} center={p} radius={40} pathOptions={{ color: 'var(--j-text1)', weight: 2, fillOpacity: 0.6 }} />)}
         {showAreas && stops.map((s, i) => (Array.isArray(s.polygon) && s.polygon.length >= 3
-          ? <Polygon key={`a${i}`} positions={s.polygon.map(p => [p.lat, p.lng])} pathOptions={{ color: '#f3f7f9', weight: 1, fillOpacity: 0.08, dashArray: '3 4' }} />
-          : Number.isFinite(s.lat) && <Circle key={`a${i}`} center={[s.lat, s.lng]} radius={s.radiusM || 300} pathOptions={{ color: '#f3f7f9', weight: 1, fillOpacity: 0.08, dashArray: '3 4' }} />))}
+          ? <Polygon key={`a${i}`} positions={s.polygon.map(p => [p.lat, p.lng])} pathOptions={{ color: 'var(--j-text1)', weight: 1, fillOpacity: 0.08, dashArray: '3 4' }} />
+          : Number.isFinite(s.lat) && <Circle key={`a${i}`} center={[s.lat, s.lng]} radius={s.radiusM || 300} pathOptions={{ color: 'var(--j-text1)', weight: 1, fillOpacity: 0.08, dashArray: '3 4' }} />))}
         {stops.map((s, i) => Number.isFinite(s.lat) && (
           <Marker
             key={`s${i}-${s.lat}-${s.lng}`}

@@ -58,7 +58,7 @@ export default function PublicJourney({ driver = false }) {
           <img src="/logo/fleetmax-logo-sea.png" alt="FleetmaxX" style={{ height: 22, filter: 'brightness(0) invert(1)', opacity: 0.9 }} />
           <span className="j-crumb" style={{ margin: 0 }}>{driver ? 'Driver' : 'Live journey'}</span>
         </div>
-        {error && <div className="j-card" style={{ borderColor: 'rgba(255,143,128,.5)' }}><AlertTriangle size={16} /> {error}</div>}
+        {error && <div className="j-card" style={{ borderColor: 'var(--j-bad)' }}><AlertTriangle size={16} /> {error}</div>}
         {!j && !error && <div className="j-skel" style={{ height: 300 }} />}
         {j && (
           <>
@@ -89,7 +89,7 @@ export default function PublicJourney({ driver = false }) {
               <div className="j-label" style={{ padding: '8px 14px' }}>{j.position?.at ? `Position at ${dayTime(j.position.at)}` : 'The position shows once the journey has started.'} · updates every {data.refreshSec} s</div>
             </div>
 
-            {note && <div className="j-card" style={{ marginBottom: 12, padding: '10px 14px', borderColor: note.bad ? 'rgba(255,143,128,.5)' : 'rgba(126,226,168,.5)', fontSize: 13 }}>{note.text}</div>}
+            {note && <div className="j-card" style={{ marginBottom: 12, padding: '10px 14px', borderColor: note.bad ? 'var(--j-bad)' : 'rgba(126,226,168,.5)', fontSize: 13 }}>{note.text}</div>}
 
             <div className="j-card">
               <div className="j-card-head"><MapPin size={16} /><h2 className="j-card-title">Stops</h2></div>
@@ -126,7 +126,7 @@ function StopRow({ s, i, n, next, driver, token, onDone, onError }) {
   const timing = i === 0 ? { t: s.departTiming, d: s.departDiffMin } : { t: s.arriveTiming, d: s.arriveDiffMin }
 
   return (
-    <div style={{ padding: '12px 0', borderTop: i ? '1px solid rgba(255,255,255,.06)' : 'none' }}>
+    <div style={{ padding: '12px 0', borderTop: i ? '1px solid var(--j-line)' : 'none' }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <span className="j-badge" data-s={done ? 'done' : next ? 'now' : ''}>{stopMark(i, n)}</span>
         <div style={{ flex: 1, minWidth: 0 }}>

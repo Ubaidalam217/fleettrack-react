@@ -79,7 +79,7 @@ export default function HseApprovals(props) {
           const n = j.stops.length
           const blocked = j.ownJourney || !data.canApprove
           return (
-            <div key={j.id} className="j-card" style={{ padding: 20, borderColor: rejecting === j.id ? 'rgba(255,143,128,.5)' : undefined }}>
+            <div key={j.id} className="j-card" style={{ padding: 20, borderColor: rejecting === j.id ? 'var(--j-bad)' : undefined }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                 <div>
                   <Link to={`/journeys/${j.id}`} className="j-strong" style={{ fontSize: 18, textDecoration: 'none' }}>{j.title}</Link>

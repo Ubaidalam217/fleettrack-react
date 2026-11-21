@@ -146,9 +146,9 @@ export default function JourneyDetail(props) {
 
       <ErrorNote error={error} />
       {warnings.map(w => <div key={w} className="j-card" style={{ marginBottom: 12, padding: '10px 14px', fontSize: 13, borderColor: 'rgba(246,200,112,.5)' }}>{w}</div>)}
-      {j.display === 'ForceClosed' && <div className="j-card" style={{ marginBottom: 12, padding: '12px 16px', borderColor: 'rgba(255,143,128,.5)' }}><b>Force closed</b> at {dayTime(j.forceClosedAt)}: {j.cancelReason}</div>}
+      {j.display === 'ForceClosed' && <div className="j-card" style={{ marginBottom: 12, padding: '12px 16px', borderColor: 'var(--j-bad)' }}><b>Force closed</b> at {dayTime(j.forceClosedAt)}: {j.cancelReason}</div>}
       {j.templateId && <div className="j-label" style={{ marginBottom: 10 }}>Made by a {j.scheduleKind === 'AUTOMATIC' ? 'automatic' : 'repeating'} schedule ({j.createdByName}).</div>}
-      {j.display === 'Rejected' && j.rejectReason && <div className="j-card" style={{ marginBottom: 12, padding: '12px 16px', borderColor: 'rgba(255,143,128,.5)' }}><b>Rejected by {j.decidedByName}:</b> {j.rejectReason}</div>}
+      {j.display === 'Rejected' && j.rejectReason && <div className="j-card" style={{ marginBottom: 12, padding: '12px 16px', borderColor: 'var(--j-bad)' }}><b>Rejected by {j.decidedByName}:</b> {j.rejectReason}</div>}
 
       {cancelling && (
         <div className="j-card" style={{ marginBottom: 16 }}>
@@ -216,7 +216,7 @@ export default function JourneyDetail(props) {
             const plannedT = isFirst ? s.plannedDepart : s.plannedArrive
             const timing = isFirst ? { timing: s.departTiming, diff: s.departDiffMin } : { timing: s.arriveTiming, diff: s.arriveDiffMin }
             return (
-              <div key={s.seq} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderTop: i ? '1px solid rgba(255,255,255,.06)' : 'none' }}>
+              <div key={s.seq} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderTop: i ? '1px solid var(--j-line)' : 'none' }}>
                 <span className="j-badge" data-s={stopDone(s) || (isLast && s.status === 'ARRIVED') ? 'done' : s.status === 'ARRIVED' ? 'now' : ''}>{stopMark(i, n)}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="j-strong" style={{ fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
@@ -266,8 +266,8 @@ export default function JourneyDetail(props) {
       <div className="j-card j-card--flush" style={{ position: 'relative', marginBottom: 16 }}>
         <JourneyMap path={j.plannedPath} stops={j.stops} progressKm={j.status === 'Completed' ? 1e9 : j.progressKm ?? 0} vehicle={vehicle} height={440} fitKey={j.id} />
         <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 500, display: 'flex', gap: 14, fontSize: 12 }} className="j-pill j-pill--plain">
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 3, background: '#fff', display: 'inline-block' }} /> Driven</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 0, borderTop: '2px dashed #fff', display: 'inline-block' }} /> Planned, still to go</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 3, background: 'var(--j-text1)', display: 'inline-block' }} /> Driven</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 0, borderTop: '2px dashed var(--j-text1)', display: 'inline-block' }} /> Planned, still to go</span>
         </div>
       </div>
 
@@ -278,7 +278,7 @@ export default function JourneyDetail(props) {
           <div className="j-num"><b style={{ fontWeight: 500 }}>{Math.round(remaining)}</b> <span className="j-muted">/ {Math.round(planned)} km</span></div>
         </div>
         <div className="j-ticks j-hide-sm" style={{ flex: 1, minWidth: 120 }}>
-          <span style={{ position: 'absolute', top: -3, left: `calc(${planned ? (done / planned) * 100 : 0}% - ${planned ? (done / planned) * 28 : 0}px)`, width: 28, height: 28, borderRadius: '50%', border: '2px solid #fff', background: 'rgba(30,45,54,.9)', boxShadow: '0 0 0 4px rgba(255,255,255,.12)' }} />
+          <span style={{ position: 'absolute', top: -3, left: `calc(${planned ? (done / planned) * 100 : 0}% - ${planned ? (done / planned) * 28 : 0}px)`, width: 28, height: 28, borderRadius: '50%', border: '2px solid var(--j-text1)', background: 'var(--j-glass2)', boxShadow: '0 0 0 4px var(--j-line)' }} />
         </div>
         <div>
           <div className="j-label">{j.status === 'Completed' ? 'Arrived' : 'ETA'}</div>
@@ -361,7 +361,7 @@ export default function JourneyDetail(props) {
           {j.events.length === 0 && <div className="j-empty" style={{ padding: 20 }}>Nothing yet.</div>}
           <div style={{ display: 'flex', flexDirection: 'column-reverse' }}>
             {j.events.map(e => (
-              <div key={e.id} style={{ display: 'flex', gap: 10, padding: '9px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
+              <div key={e.id} style={{ display: 'flex', gap: 10, padding: '9px 0', borderTop: '1px solid var(--j-line)' }}>
                 <span className="j-dot" data-tone={eventTone(e.type)} style={{ marginTop: 6 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -377,7 +377,7 @@ export default function JourneyDetail(props) {
             <>
               <div className="j-caps" style={{ margin: '16px 0 6px' }}>Device and alert-rule violations in this journey</div>
               {j.violations.map(v => (
-                <div key={v.id} style={{ display: 'flex', gap: 10, padding: '7px 0', borderTop: '1px solid rgba(255,255,255,.06)', fontSize: 12.5 }}>
+                <div key={v.id} style={{ display: 'flex', gap: 10, padding: '7px 0', borderTop: '1px solid var(--j-line)', fontSize: 12.5 }}>
                   <span className="j-dot" data-tone={v.severity === 'High' || v.severity === 'Critical' ? 'bad' : 'warn'} style={{ marginTop: 5 }} />
                   <span style={{ flex: 1 }}><b>{v.title}</b> · {v.message}</span>
                   <span className="j-label">{hhmm(v.occurredAt)}</span>

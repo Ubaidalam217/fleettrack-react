@@ -175,7 +175,7 @@ function Routes({ canEdit, canDelete, onError }) {
       <div style={{ padding: '14px 16px' }}><span className="j-strong">{rows?.length ?? '—'} saved routes</span> <span className="j-label">· saved from New Journey ("Save this route for next time")</span></div>
       {rows?.length === 0 && <div className="j-empty">No saved routes yet.</div>}
       {rows?.map(r => (
-        <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,.06)', flexWrap: 'wrap' }}>
+        <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--j-line)', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 200 }}>
             {renaming?.id === r.id ? (
               <div style={{ display: 'flex', gap: 6 }}>
@@ -272,7 +272,7 @@ function Forms({ canEdit, canDelete, onError }) {
       </div>
       {rows?.length === 0 && <div className="j-empty">No forms yet. A form asks the driver for a seal number, the pallets delivered, a photo…</div>}
       {rows?.map(f => (
-        <div key={f.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,.06)', flexWrap: 'wrap' }}>
+        <div key={f.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--j-line)', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 200 }}>
             <div className="j-strong">{f.name}</div>
             <div className="j-label">{f.fields.map(x => `${x.label} (${FIELD_TYPE_LABEL[x.type]}${x.required ? ', required' : ''})`).join(' · ')}</div>
