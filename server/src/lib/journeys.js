@@ -424,6 +424,8 @@ export function publicJourney(j, { full = false } = {}) {
     hasPath: Array.isArray(plannedPath) && plannedPath.length >= 2,
     stopsDone: (stops ?? []).filter((s, i) => i > 0 && ['ARRIVED', 'DEPARTED', 'PASSED', 'SKIPPED'].includes(s.status)).length,
     nextBreakAt: engineState?.nextBreakAt ?? null,
+    drivenKm: engineState?.drivenKm != null ? Math.round(engineState.drivenKm * 10) / 10 : null,
+    priorDriveMin: engineState?.drive?.priorSec ? Math.round(engineState.drive.priorSec / 60) : null,
   }
   if (full) out.plannedPath = plannedPath ?? null
   return out

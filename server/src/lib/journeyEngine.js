@@ -29,6 +29,28 @@
  *   remaining km along the line ÷ (0.6 · recent moving speed + 0.4 · planned
  *   speed) + the stays still ahead.
  *
+ * The rest of the Uffizio Job module (client 2026-11-21):
+ *   - start logic: ANY_DATA (leaving the first stop starts it) or IGNITION_ON
+ *     (the ignition switched on at the first stop starts it; leaving it is
+ *     still the departure), from startBufferMin before the planned start;
+ *   - the destination completes the journey only after the vehicle stayed
+ *     inside it for arriveAfterMin, or its ignition went off there
+ *     (Journey settings › destinationRule) — driving through it never does
+ *     (a DESTINATION_PASSED note);
+ *   - the HSE break / daily limit count the driver's driving earlier the same
+ *     day: this vehicle's before the start, and the same driver's other
+ *     journeys (priorDriving, seeded once);
+ *   - route tolerance per journey (routeToleranceM), else the settings' km;
+ *   - convoy: each other vehicle further than convoyToleranceM from the lead
+ *     for convoyAfterMin → CONVOY_SEPARATED (and back → CONVOY_REJOINED);
+ *   - temperature: outside tempMin..tempMax for tempAfterMin →
+ *     TEMP_OUT_OF_RANGE (and back → TEMP_BACK), from the BLE probes;
+ *   - QR stops are not reached by position: the driver scans them (driver
+ *     link); a check-in made by the driver or the office between passes is
+ *     picked up (reconcile);
+ *   - the schedules (lib/journeySchedules.js): the Relative days are made,
+ *     Automatic ones watched, and unfinished journeys force closed.
+ *
  * stepJourney() is pure (tests drive it with recorded messages);
  * runJourneyPass() reads and writes.
  */
@@ -39,16 +61,26 @@ import { fetchRecent } from './alertEngine.js'
 import { getJourneySettings } from './journeySettings.js'
 import { getFatigueSettings } from './driverPerformance.js'
 import { recordEvent, sendNotices, bgAdminsOf, lineOf, ACTIVE } from './journeys.js'
+import { rollSchedules, forceClose, automaticTemplates, runAutomatic } from './journeySchedules.js'
 import { cumulativeKm, inStop, passThrough, project } from '../../../src/utils/journeyGeo.js'
 import { timingOf, diffText } from '../../../src/utils/journeySchedule.js'
 import { haversineMeters } from '../../../src/utils/distance.js'
+import { messageTemperature } from '../../../src/utils/sensorReadings.js'
 
-export const JOURNEY_FIELDS = 'device.id,timestamp,position.latitude,position.longitude,position.speed,engine.ignition.status'
+export const JOURNEY_FIELDS = [
+  'device.id', 'timestamp', 'position.latitude', 'position.longitude', 'position.speed', 'engine.ignition.status',
+  // Temperature limits (client 2026-11-21): the BLE probes and probe 1's companions.
+  'ble.sensor.temperature.1', 'ble.sensor.temperature.2', 'ble.sensor.temperature.3', 'ble.sensor.temperature.4',
+  'ble.sensor.humidity.1', 'ble.sensor.battery.voltage.1', 'ble.sensor.battery.level.1',
+].join(',')
+const PRIOR_FIELDS = 'device.id,timestamp,position.speed'
 
 const MOVING_KMH = 5
 const STILL_KMH = 3
-/** Before its planned start a journey only watches the origin from this early. */
+/** Before its planned start a journey watches the origin from this early, unless it sets its own start buffer. */
 const START_WINDOW_SEC = 60 * 60
+/** The longest start buffer a journey may have (the pass reads Scheduled journeys this far ahead). */
+const MAX_BUFFER_SEC = 12 * 3600
 /** A scheduled journey that never left stops being watched this long after its start. */
 const GIVE_UP_SEC = 24 * 3600
 /** The longest gap between two fixes counted as driving or resting. */
@@ -63,7 +95,32 @@ function fix(m) {
   const lat = num(m['position.latitude']), lng = num(m['position.longitude'])
   if (lat === null || lng === null || (lat === 0 && lng === 0)) return null
   const ign = m['engine.ignition.status']
-  return { lat, lng, ts: m.timestamp, speed: num(m['position.speed']) ?? 0, ign: typeof ign === 'boolean' ? ign : null }
+  return { lat, lng, ts: m.timestamp, speed: num(m['position.speed']) ?? 0, ign: typeof ign === 'boolean' ? ign : null, temp: messageTemperature(m) }
+}
+
+/**
+ * The HSE rules' memory of a day's driving before a journey started, from
+ * the vehicle's messages that day (oldest first): driving seconds, and the
+ * stint still running at the end (reset by a break of breakMin).
+ * Returns { daySec, stintSec, stintNo }.
+ */
+export function priorDriving(messages, fatigue) {
+  let daySec = 0, stintSec = 0, stintNo = 0, stillSec = 0, lastTs = null
+  for (const m of messages) {
+    const ts = m.timestamp
+    if (!Number.isFinite(ts)) continue
+    const dt = lastTs == null ? 0 : Math.min(MAX_DT_SEC, Math.max(0, ts - lastTs))
+    // A gap longer than a break is a break.
+    if (lastTs != null && ts - lastTs >= fatigue.breakMin * 60 && stintSec > 0) { stintNo++; stintSec = 0; stillSec = 0 }
+    lastTs = ts
+    if ((num(m['position.speed']) ?? 0) > MOVING_KMH) {
+      daySec += dt; stintSec += dt; stillSec = 0
+    } else {
+      stillSec += dt
+      if (stillSec >= fatigue.breakMin * 60 && stintSec > 0) { stintNo++; stintSec = 0 }
+    }
+  }
+  return { daySec, stintSec, stintNo }
 }
 
 const TIMING_TYPE = { arrive: { EARLY: 'ARRIVE_EARLY', ON_TIME: 'ARRIVE_ON_TIME', LATE: 'ARRIVE_LATE' }, depart: { EARLY: 'DEPART_EARLY', ON_TIME: 'DEPART_ON_TIME', LATE: 'DEPART_LATE' } }
@@ -82,8 +139,9 @@ export function initialState() {
     inside: null, // { seq, since, arrived }
     out: null, // { seq, since } — outside a stop it arrived at
     still: null, off: null, speeds: [],
-    drive: { lastTs: null, stintSec: 0, stintNo: 0, stillSec: 0, daySec: 0, breakRaised: false, dailyRaised: false },
+    drive: { lastTs: null, stintSec: 0, stintNo: 0, stillSec: 0, daySec: 0, ownSec: 0, priorSec: 0, seeded: false, breakRaised: false, dailyRaised: false },
     raised: {}, episodes: {}, before: null, nextBreakAt: null,
+    convoy: {}, temp: null, ignPrev: null,
   }
 }
 
@@ -99,11 +157,12 @@ export function initialState() {
  * @param {object} p.fatigue   the HSE driving rules
  * @returns {{ patch: object, stopPatches: Map<number, object>, events: object[], closes: object[], state: object }}
  */
-export function stepJourney({ journey, stops, messages, now, settings, fatigue }) {
+export function stepJourney({ journey, stops, messages, now, settings, fatigue, prior = null, convoyMessages = {} }) {
   const st = { ...initialState(), ...(journey.engineState ?? {}) }
   st.drive = { ...initialState().drive, ...(st.drive ?? {}) }
   st.raised = { ...(st.raised ?? {}) }
   st.episodes = { ...(st.episodes ?? {}) }
+  st.convoy = { ...(st.convoy ?? {}) }
   const j = { status: journey.status }
   const patch = {}
   const stopPatches = new Map()
@@ -118,9 +177,14 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
   // in the plan), so what is stored and shown is scaled to the planned km.
   const scale = totalKm > 0 && S[last]?.alongKm > 0 ? S[last].alongKm / totalKm : 1
   const hasLine = journey.routeSource !== 'STRAIGHT' && Array.isArray(journey.plannedPath) && journey.plannedPath.length >= 2
-  const corridorM = Math.max(500, settings.offRouteKm * 1000)
+  // Route tolerance: the journey's own (Uffizio's 50 m style), else the settings' km.
+  const offM = journey.routeToleranceM > 0 ? journey.routeToleranceM : settings.offRouteKm * 1000
+  const corridorM = Math.max(500, offM)
   const plannedStart = toSec(journey.plannedStart)
   const tol = settings.onTimeMin
+  const bufferSec = Number.isFinite(journey.startBufferMin) ? journey.startBufferMin * 60 : START_WINDOW_SEC
+  const ignitionStart = journey.startLogic === 'IGNITION_ON'
+  const destRule = settings.destinationRule ?? 'DWELL_OR_IGNITION'
 
   const setStop = (seq, data) => {
     Object.assign(S[seq], data)
@@ -191,6 +255,11 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
     setStop(seq, { status: 'DEPARTED', actualDepart: new Date(ts * 1000), dwellSec: Math.max(0, ts - arrivedAt) })
     timingEvent('depart', seq, ts, f)
   }
+  const destinationPassed = (ts, f) => {
+    if (st.raised.destPassedAt && ts - st.raised.destPassedAt < 1800) return
+    st.raised.destPassedAt = ts
+    events.push({ type: 'DESTINATION_PASSED', stopSeq: last, occurredAt: ts, lat: f?.lat, lng: f?.lng, message: `Drove past ${S[last].name} at ${hhmm(ts)} without stopping` })
+  }
   const passStop = (seq, ts, f) => {
     arrive(seq, ts, ts, f, 'PASS_BY')
     if (seq !== last) {
@@ -200,6 +269,44 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
   }
 
   const active = () => ACTIVE.includes(j.status)
+
+  // Check-ins made by the driver (driver link, QR) or the office since the
+  // last pass: the engine carries on from them.
+  for (const s of S) {
+    if (s.seq === 0 || s.status === 'PENDING' || s.seq < st.next) continue
+    st.next = s.seq + 1
+    if (s.status === 'ARRIVED' && s.seq < last) st.inside = { seq: s.seq, since: toSec(s.actualArrive) ?? now, arrived: true }
+    else if (st.inside && st.inside.seq < s.seq) st.inside = null
+  }
+
+  // The HSE rules count the day's driving before the journey (seeded once).
+  const d0 = st.drive
+  if (prior && !d0.seeded) {
+    d0.seeded = true
+    d0.priorSec = prior.daySec
+    d0.daySec += prior.daySec
+    d0.stintSec += prior.stintSec
+    d0.stintNo = Math.max(d0.stintNo, prior.stintNo)
+  }
+
+  // Departure from the origin once on the road (IGNITION_ON: the journey
+  // started when the ignition came on there; it departs when it leaves).
+  const departOrigin = (ts, f) => {
+    setStop(0, { status: 'DEPARTED', actualDepart: new Date(ts * 1000), checkInSource: S[0].checkInSource ?? 'AUTO' })
+    timingEvent('depart', 0, ts, f)
+  }
+
+  // Convoy: each member's fixes, oldest first, with a read pointer.
+  const convoy = (Array.isArray(journey.convoy) ? journey.convoy : []).map(c => ({
+    ...c, fixes: (convoyMessages[c.vehicleId] ?? []).map(fix).filter(Boolean), i: 0, last: null,
+  }))
+  const convoyTol = journey.convoyToleranceM || 200
+  const memberAt = (c, ts) => {
+    while (c.i < c.fixes.length && c.fixes[c.i].ts <= ts) { c.last = c.fixes[c.i]; c.i++ }
+    return c.last && ts - c.last.ts <= MAX_DT_SEC ? c.last : null
+  }
+  const hasTempLimits = journey.tempMin != null || journey.tempMax != null
+
   let prev = st.lastFix ?? null
   const fixes = messages.map(fix).filter(Boolean).filter(f => st.lastTs == null || f.ts > st.lastTs)
 
@@ -208,12 +315,18 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
     const p = project(line, cum, [f.lat, f.lng], st.seg, { corridorM })
 
     if (j.status === 'Scheduled') {
-      if (f.ts >= plannedStart - START_WINDOW_SEC) {
+      if (f.ts >= plannedStart - bufferSec) {
         const inOrigin = inStop(f.lat, f.lng, S[0])
         if (inOrigin) {
           st.originSeen = true
           st.outOrigin = null
           if (!S[0].actualArrive) setStop(0, { status: 'ARRIVED', actualArrive: new Date(f.ts * 1000), detectedBy: 'INSIDE', checkInSource: 'AUTO' })
+          // Job start logic "Ignition ON": the ignition coming on here starts it.
+          if (ignitionStart && f.ign === true && st.ignPrev !== true) {
+            patch.actualStart = new Date(f.ts * 1000)
+            status('Started', f.ts, `Ignition on at ${S[0].name} at ${hhmm(f.ts)}`)
+            st.next = 1
+          }
         } else if (st.originSeen) {
           st.outOrigin ??= f.ts
           if (f.ts - st.outOrigin >= settings.departAfterSec || haversineMeters(f.lat, f.lng, S[0].lat, S[0].lng) > (S[0].radiusM || 300) + 200) depart(st.outOrigin, f)
@@ -221,7 +334,20 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
           depart(f.ts, f)
         }
       }
+      st.ignPrev = f.ign
       if (j.status === 'Scheduled') { prev = f; continue }
+    }
+
+    // Started by the ignition, still at the first stop: its departure.
+    if (S[0].status !== 'DEPARTED' && S[0].status !== 'PASSED' && active()) {
+      if (inStop(f.lat, f.lng, S[0])) st.outOrigin = null
+      else {
+        st.outOrigin ??= f.ts
+        if (f.ts - st.outOrigin >= settings.departAfterSec || haversineMeters(f.lat, f.lng, S[0].lat, S[0].lng) > (S[0].radiusM || 300) + 200) {
+          departOrigin(st.outOrigin, f)
+          st.outOrigin = null
+        }
+      }
     }
 
     // ── on the road ──
@@ -248,29 +374,41 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
       for (let k = st.next; k <= Math.min(last, st.next + 2); k++) {
         const s = S[k]
         if (s.status !== 'PENDING') continue
+        // A QR stop is reached when the driver scans it, not by position.
+        if (s.visitVia === 'QR') continue
         const isIn = inStop(f.lat, f.lng, s)
-        const needStay = s.stayMin > 0 || k === last
+        const isDest = k === last
+        const needStay = s.stayMin > 0 || isDest
         if (isIn) {
           if (!st.inside || st.inside.seq !== k) {
             const entry = prev && !inStop(prev.lat, prev.lng, s) ? passThrough(prev, f, s) ?? f.ts : prev?.ts ?? f.ts
             st.inside = { seq: k, since: Math.round(entry), arrived: false }
           }
-          if (!needStay || f.ts - st.inside.since >= settings.arriveAfterMin * 60 || f.ign === false) {
+          const dwelt = f.ts - st.inside.since >= settings.arriveAfterMin * 60
+          const ignOff = f.ign === false
+          const reached = !needStay
+            || (isDest
+              ? (destRule === 'DWELL' ? dwelt : destRule === 'IGNITION_OFF' ? ignOff : dwelt || ignOff)
+              : dwelt || ignOff)
+          if (reached) {
             st.inside.arrived = true
             arrive(k, st.inside.since, f.ts, f, 'INSIDE')
-            if (k === last) st.inside = null
+            if (isDest) st.inside = null
           }
           break
         }
         if (st.inside?.seq === k && !st.inside.arrived) {
-          // In and out again before it counted: drove through.
-          passStop(k, st.inside.since, f)
+          // In and out again before it counted: drove through. The
+          // destination is never "reached" that way (client 2026-11-21).
+          if (isDest) destinationPassed(st.inside.since, f)
+          else passStop(k, st.inside.since, f)
           st.inside = null
           break
         }
         const through = prev ? passThrough(prev, f, s) : null
         if (through !== null) {
-          passStop(k, Math.round(through), f)
+          if (isDest) destinationPassed(Math.round(through), f)
+          else passStop(k, Math.round(through), f)
           break
         }
       }
@@ -300,16 +438,17 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
 
     // ── off route (only against a real line) ──
     if (hasLine) {
-      if (p.crossM > settings.offRouteKm * 1000) {
+      if (p.crossM > offM) {
         st.off ??= { since: f.ts, maxM: 0, raised: false }
         st.off.maxM = Math.max(st.off.maxM, Math.round(p.crossM))
         if (!st.off.raised && f.ts - st.off.since >= settings.offRouteMin * 60) {
           st.off.raised = true
           patch.offRouteCount = (journey.offRouteCount ?? 0) + 1
           journey = { ...journey, offRouteCount: patch.offRouteCount }
-          events.push({ type: 'OFF_ROUTE', occurredAt: st.off.since, lat: f.lat, lng: f.lng, episode: 'off', value: st.off.maxM, message: `${(st.off.maxM / 1000).toFixed(1)} km off the planned route since ${hhmm(st.off.since)}` })
+          const far = st.off.maxM >= 1000 ? `${(st.off.maxM / 1000).toFixed(1)} km` : `${st.off.maxM} m`
+          events.push({ type: 'OFF_ROUTE', occurredAt: st.off.since, lat: f.lat, lng: f.lng, episode: 'off', value: st.off.maxM, message: `${far} off the planned route since ${hhmm(st.off.since)}` })
         }
-      } else if (st.off && p.crossM < 0.8 * settings.offRouteKm * 1000) {
+      } else if (st.off && p.crossM < 0.8 * offM) {
         if (st.off.raised) {
           const dur = f.ts - st.off.since
           patch.offRouteSec = (journey.offRouteSec ?? 0) + dur
@@ -321,6 +460,13 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
       }
     }
 
+    // The km really driven (for planned vs actual distance in the reports).
+    if (prev && f.ts - prev.ts <= MAX_DT_SEC) {
+      const step = haversineMeters(prev.lat, prev.lng, f.lat, f.lng) / 1000
+      // A jump faster than 200 km/h is a bad fix, not driving.
+      if (step / Math.max(1, f.ts - prev.ts) * 3600 < 200) st.drivenKm = Math.round(((st.drivenKm ?? 0) + step) * 1000) / 1000
+    }
+
     // ── HSE driving rules, over this journey's driving ──
     const d = st.drive
     const dt = d.lastTs ? Math.min(MAX_DT_SEC, Math.max(0, f.ts - d.lastTs)) : 0
@@ -328,6 +474,7 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
     if (f.speed > MOVING_KMH) {
       d.stintSec += dt
       d.daySec += dt
+      d.ownSec = (d.ownSec ?? 0) + dt
       d.stillSec = 0
     } else {
       d.stillSec += dt
@@ -344,7 +491,59 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
     }
     if (settings.hseBreaks && !d.dailyRaised && d.daySec > fatigue.dailyMaxMin * 60) {
       d.dailyRaised = true
-      events.push({ type: 'DAILY_LIMIT', occurredAt: f.ts, lat: f.lat, lng: f.lng, value: Math.round(d.daySec / 60), message: `Driven ${Math.round(d.daySec / 60)} min today on this journey (HSE limit ${fatigue.dailyMaxMin} min)` })
+      const before = d.priorSec ? ` (${Math.round(d.priorSec / 60)} min of it before this journey)` : ''
+      events.push({ type: 'DAILY_LIMIT', occurredAt: f.ts, lat: f.lat, lng: f.lng, value: Math.round(d.daySec / 60), message: `Driven ${Math.round(d.daySec / 60)} min today${before} (HSE limit ${fatigue.dailyMaxMin} min)` })
+    }
+
+    // ── convoy ──
+    for (const c of convoy) {
+      const m = memberAt(c, f.ts)
+      const cs = st.convoy[c.vehicleId] ?? (st.convoy[c.vehicleId] = { farSince: null, raised: false, distanceM: null, at: null })
+      if (!m) continue
+      const dist = Math.round(haversineMeters(f.lat, f.lng, m.lat, m.lng))
+      cs.distanceM = dist
+      cs.at = f.ts
+      const moving = f.speed > MOVING_KMH || m.speed > MOVING_KMH
+      if (dist > convoyTol && moving) {
+        cs.farSince ??= f.ts
+        if (!cs.raised && f.ts - cs.farSince >= (settings.convoyAfterMin ?? 2) * 60) {
+          cs.raised = true
+          events.push({ type: 'CONVOY_SEPARATED', occurredAt: cs.farSince, lat: m.lat, lng: m.lng, value: dist, episode: `convoy:${c.vehicleId}`, message: `${c.vehicleLabel} is ${dist >= 1000 ? `${(dist / 1000).toFixed(1)} km` : `${dist} m`} from the lead (convoy tolerance ${convoyTol} m)` })
+        }
+      } else if (dist <= convoyTol * 0.8) {
+        if (cs.raised) {
+          closeEpisode(`convoy:${c.vehicleId}`, f.ts, { durationSec: f.ts - cs.farSince })
+          events.push({ type: 'CONVOY_REJOINED', occurredAt: f.ts, lat: m.lat, lng: m.lng, value: dist, message: `${c.vehicleLabel} is back with the convoy (${dist} m)` })
+        }
+        cs.farSince = null
+        cs.raised = false
+      }
+    }
+
+    // ── temperature ──
+    if (f.temp != null) {
+      patch.lastTemp = Math.round(f.temp * 10) / 10
+      patch.lastTempAt = new Date(f.ts * 1000)
+      if (hasTempLimits) {
+        const lo = journey.tempMin, hi = journey.tempMax
+        const out = (lo != null && f.temp < lo) || (hi != null && f.temp > hi)
+        const backIn = (lo == null || f.temp >= lo + 0.5) && (hi == null || f.temp <= hi - 0.5)
+        if (out) {
+          st.temp ??= { since: f.ts, raised: false, worst: f.temp }
+          st.temp.worst = hi != null && f.temp > hi ? Math.max(st.temp.worst, f.temp) : Math.min(st.temp.worst, f.temp)
+          if (!st.temp.raised && f.ts - st.temp.since >= (settings.tempAfterMin ?? 5) * 60) {
+            st.temp.raised = true
+            const lim = lo != null && hi != null ? `${lo}–${hi} °C` : lo != null ? `at least ${lo} °C` : `at most ${hi} °C`
+            events.push({ type: 'TEMP_OUT_OF_RANGE', occurredAt: st.temp.since, lat: f.lat, lng: f.lng, value: Math.round(f.temp * 10) / 10, episode: 'temp', message: `Temperature ${f.temp.toFixed(1)} °C since ${hhmm(st.temp.since)} (limits ${lim})` })
+          }
+        } else if (st.temp && backIn) {
+          if (st.temp.raised) {
+            closeEpisode('temp', f.ts, { durationSec: f.ts - st.temp.since, value: Math.round(st.temp.worst * 10) / 10 })
+            events.push({ type: 'TEMP_BACK', occurredAt: f.ts, value: Math.round(f.temp * 10) / 10, message: `Temperature back in range: ${f.temp.toFixed(1)} °C` })
+          }
+          st.temp = null
+        }
+      }
     }
     st.nextBreakAt = f.speed > MOVING_KMH ? new Date((f.ts + Math.max(0, limitMin * 60 - d.stintSec)) * 1000).toISOString() : st.nextBreakAt
 
@@ -352,6 +551,13 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue }
     if (f.speed > MOVING_KMH) st.speeds.push([f.ts, f.speed])
     st.speeds = st.speeds.filter(([t]) => t >= f.ts - 1800).slice(-60)
     prev = f
+  }
+
+  if (convoy.length) {
+    patch.convoyState = convoy.map(c => {
+      const cs = st.convoy[c.vehicleId] ?? {}
+      return { vehicleId: c.vehicleId, vehicleLabel: c.vehicleLabel, distanceM: cs.distanceM ?? null, at: cs.at ? new Date(cs.at * 1000).toISOString() : null, separated: Boolean(cs.raised) }
+    })
   }
 
   if (fixes.length) {
@@ -434,32 +640,48 @@ async function deviceMapOrOwn(pre) {
  * the replay check pass recorded messages). Returns { journeys, events }.
  */
 export async function runJourneyPass(now = Math.floor(Date.now() / 1000), pre = {}) {
-  const journeys = await prisma.journey.findMany({
+  // The schedules first: today's Relative days, and force close (lib/journeySchedules.js).
+  await housekeeping(now)
+  const found = await prisma.journey.findMany({
     where: {
       OR: [
         { status: { in: ACTIVE } },
-        { status: 'Scheduled', plannedStart: { lte: new Date((now + START_WINDOW_SEC) * 1000), gte: new Date((now - GIVE_UP_SEC) * 1000) } },
+        { status: 'Scheduled', plannedStart: { lte: new Date((now + MAX_BUFFER_SEC) * 1000), gte: new Date((now - GIVE_UP_SEC) * 1000) } },
       ],
     },
     include: { stops: { orderBy: { seq: 'asc' } }, vehicle: { select: { imei: true } } },
   })
-  if (!journeys.length) {
+  // A Scheduled journey is only watched from its start buffer on.
+  const journeys = found.filter(j => j.status !== 'Scheduled' || toSec(j.plannedStart) - bufferOf(j) <= now)
+  const autos = await automaticTemplates(now * 1000).catch(() => [])
+  if (!journeys.length && !autos.length) {
     await escalate(now)
     return { journeys: 0, events: 0 }
   }
   const byImei = await deviceMapOrOwn(pre)
   const deviceOf = new Map()
   let from = now
+  // Convoy members: their vehicles' trackers too.
+  const convoyIds = [...new Set(journeys.flatMap(j => (Array.isArray(j.convoy) ? j.convoy.map(c => c.vehicleId) : [])))]
+  const convoyVehicles = convoyIds.length ? await prisma.vehicle.findMany({ where: { id: { in: convoyIds } }, select: { id: true, imei: true } }) : []
+  const deviceOfVehicle = new Map(convoyVehicles.map(v => [v.id, byImei.get(digits(v.imei))]).filter(([, d]) => d !== undefined))
   for (const j of journeys) {
     const id = byImei.get(digits(j.vehicle?.imei))
     if (id === undefined) continue
     deviceOf.set(j.id, id)
-    const last = j.engineState?.lastTs ?? toSec(j.plannedStart) - START_WINDOW_SEC
+    const last = j.engineState?.lastTs ?? toSec(j.plannedStart) - bufferOf(j)
     from = Math.min(from, last - 60)
+  }
+  const autoDevice = new Map()
+  for (const t of autos) {
+    const id = byImei.get(digits(t.vehicle?.imei))
+    if (id === undefined) continue
+    autoDevice.set(t.id, id)
+    from = Math.min(from, (t.engineState?.lastTs ?? now - 300) - 60)
   }
   from = Math.max(from, now - 6 * 3600)
   let msgs = new Map()
-  const ids = [...new Set(deviceOf.values())]
+  const ids = [...new Set([...deviceOf.values(), ...deviceOfVehicle.values(), ...autoDevice.values()])]
   if (ids.length) {
     try {
       msgs = pre.fetchMessages ? await pre.fetchMessages(ids, from, now) : await fetchRecent(ids, from, now, JOURNEY_FIELDS)
@@ -474,14 +696,66 @@ export async function runJourneyPass(now = Math.floor(Date.now() / 1000), pre = 
     const settings = await getJourneySettings(j.bgId)
     const deviceId = deviceOf.get(j.id)
     const messages = deviceId === undefined ? [] : (msgs.get(deviceId) ?? []).filter(m => m.timestamp <= now)
+    const convoyMessages = {}
+    for (const c of Array.isArray(j.convoy) ? j.convoy : []) {
+      const d = deviceOfVehicle.get(c.vehicleId)
+      if (d !== undefined) convoyMessages[c.vehicleId] = (msgs.get(d) ?? []).filter(m => m.timestamp <= now)
+    }
     try {
-      count += await applyStep(j, stepJourney({ journey: j, stops: j.stops, messages, now, settings, fatigue }), settings)
+      const prior = ACTIVE.includes(j.status) && !j.engineState?.drive?.seeded
+        ? await priorFor(j, deviceId, fatigue, pre).catch(err => { console.error(`[fleetmax] journey ${j.id} prior driving: ${err.message}`); return null })
+        : null
+      count += await applyStep(j, stepJourney({ journey: j, stops: j.stops, messages, now, settings, fatigue, prior, convoyMessages }), settings)
     } catch (err) {
       console.error(`[fleetmax] journey ${j.id}: ${err.message}`)
     }
   }
+  if (autos.length) {
+    try {
+      count += await runAutomatic(autos.filter(t => autoDevice.has(t.id)), t => msgs.get(autoDevice.get(t.id)) ?? [], now)
+    } catch (err) {
+      console.error(`[fleetmax] automatic journeys: ${err.message}`)
+    }
+  }
   await escalate(now)
   return { journeys: journeys.length, events: count }
+}
+
+const bufferOf = j => (Number.isFinite(j.startBufferMin) ? j.startBufferMin * 60 : START_WINDOW_SEC)
+
+/** The Relative schedules' days and force close, every pass (each is cheap when nothing is due). */
+async function housekeeping(now) {
+  try { await rollSchedules(now * 1000) } catch (err) { console.error(`[fleetmax] journey schedules: ${err.message}`) }
+  try { await forceClose(now * 1000) } catch (err) { console.error(`[fleetmax] journey force close: ${err.message}`) }
+}
+
+/**
+ * The driving before this journey the same UAE day (HSE rules): this
+ * vehicle's before the start (when the journey's driver is its driver, or the
+ * journey names none), plus the same driver's other journeys that day.
+ */
+async function priorFor(j, deviceId, fatigue, pre) {
+  const startTs = toSec(j.actualStart) ?? toSec(j.plannedStart)
+  const dayStart = Math.floor((startTs * 1000 + UAE_MS) / 86_400_000) * 86_400 - UAE_MS / 1000
+  let out = { daySec: 0, stintSec: 0, stintNo: 0 }
+  let sameDriver = !j.driverId
+  if (j.driverId) {
+    const drv = await prisma.driver.findUnique({ where: { id: j.driverId }, select: { vehicleId: true } })
+    sameDriver = drv?.vehicleId === j.vehicleId
+  }
+  if (deviceId !== undefined && sameDriver && startTs > dayStart) {
+    const read = pre.fetchMessages ?? ((ids, f, t) => fetchRecent(ids, f, t, PRIOR_FIELDS))
+    const msgs = ((await read([deviceId], dayStart, startTs - 1)).get(deviceId) ?? []).filter(m => m.timestamp < startTs)
+    out = priorDriving(msgs, fatigue)
+  }
+  if (j.driverId) {
+    const others = await prisma.journey.findMany({
+      where: { driverId: j.driverId, id: { not: j.id }, vehicleId: { not: j.vehicleId }, actualStart: { gte: new Date(dayStart * 1000), lt: new Date(startTs * 1000) } },
+      select: { engineState: true },
+    })
+    out.daySec += others.reduce((s, o) => s + (o.engineState?.drive?.ownSec ?? 0), 0)
+  }
+  return out
 }
 
 /** Writes one step's result: the journey, its stops, its events (bell + push), closed episodes. */
