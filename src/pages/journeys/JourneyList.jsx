@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, ShieldCheck, CalendarClock, Truck, Clock, Flag, X, RefreshCw } from 'lucide-react'
+import { Plus, Search, ShieldCheck, CalendarClock, Truck, Clock, Flag, X, RefreshCw, FileDown, FileSpreadsheet } from 'lucide-react'
+import { exportCtrackPdf, exportCtrackExcel } from '../../utils/ctrackExport'
+import { listExport } from '../../utils/journeyReports'
 import JourneyShell from './JourneyShell'
 import { StatusPill, StopDots, ErrorNote } from '../../components/journeys/JourneyBits'
 import { listJourneys, hhmm, uaeDate, dayRange } from '../../data/journeys'
@@ -20,7 +22,7 @@ const KPIS = [
   { key: 'road', label: 'On the road', sub: 'Driving now', icon: Truck, statuses: ['Started', 'InProgress', 'Delayed', 'Interrupted'] },
   { key: 'Delayed', label: 'Late', sub: 'Will arrive after the plan', icon: Clock, statuses: ['Delayed'] },
   { key: 'Completed', label: 'Done', sub: 'Reached the destination', icon: Flag, statuses: ['Completed'] },
-  { key: 'Cancelled', label: 'Cancelled', sub: 'Called off', icon: X, statuses: ['Cancelled'] },
+  { key: 'Cancelled', label: 'Cancelled', sub: 'Called off or force closed', icon: X, statuses: ['Cancelled', 'ForceClosed'] },
 ]
 
 const DAYS = [
@@ -97,6 +99,8 @@ export default function JourneyList(props) {
             <input className="j-input j-input--sm" type="date" value={day} onChange={e => e.target.value && setDay(e.target.value)} aria-label="Pick a day" style={{ width: 150, minHeight: 34, border: 'none', background: 'transparent' }} />
           </div>
           <button type="button" className="j-iconbtn" onClick={load} title="Refresh" aria-label="Refresh"><RefreshCw size={15} /></button>
+          <button type="button" className="j-iconbtn" disabled={!shown.length} onClick={() => exportCtrackPdf(listExport(shown, { dayText: day }), `Journeys_${day}`).catch(e => setError(e.message))} title="Download PDF" aria-label="Download PDF"><FileDown size={15} /></button>
+          <button type="button" className="j-iconbtn" disabled={!shown.length} onClick={() => exportCtrackExcel(listExport(shown, { dayText: day }), `Journeys_${day}`).catch(e => setError(e.message))} title="Download Excel" aria-label="Download Excel"><FileSpreadsheet size={15} /></button>
           {atLeast(level, 'modify') && (
             <button type="button" className="j-btn j-btn--primary" onClick={() => navigate('/journeys/new')}><Plus size={16} /> New journey</button>
           )}

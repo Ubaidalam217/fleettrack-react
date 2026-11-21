@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, User, Bell, Smartphone, Globe, Send, ShieldCheck, Check, Clock } from 'lucide-react'
+import { AlertTriangle, User, Bell, Smartphone, Globe, Send, ShieldCheck, Check, Clock, Repeat, Map as MapIcon } from 'lucide-react'
 import JourneyShell from './JourneyShell'
 import { Toggle, ErrorNote } from '../../components/journeys/JourneyBits'
 import { getJourneySettings, saveJourneySettings, journeyOptions, duration } from '../../data/journeys'
@@ -33,7 +33,7 @@ const EVENTS = [
 
 function NumRow({ label, help, unit, value, onChange, disabled, children }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
+    <div className="j-set-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="j-strong" style={{ fontSize: 14 }}>{label}</div>
         <div className="j-label" style={{ fontSize: 12 }}>{help}</div>
@@ -104,7 +104,7 @@ export default function JourneySettings(props) {
       {!v ? <div className="j-skel" style={{ height: 420 }} /> : (
         <div className="j-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 440px), 1fr))', alignItems: 'start' }}>
           <div className="j-grid">
-            <div className="j-card" style={{ padding: 22 }}>
+            <div className="j-card j-form-card">
               <div className="j-card-head"><AlertTriangle size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Alert me when</h2></div>
               {LIMITS.map(([k, l, h, u]) => <NumRow key={k} label={l} help={h} unit={u} value={v[k]} disabled={ro} onChange={x => set(k, x)} />)}
               <NumRow label="Off route" help="It is further than this from the planned road" unit="min" value={v.offRouteMin} disabled={ro} onChange={x => set('offRouteMin', x)}>
@@ -115,7 +115,7 @@ export default function JourneySettings(props) {
               {STOPS.map(([k, l, h, u]) => <NumRow key={k} label={l} help={h} unit={u} value={v[k]} disabled={ro} onChange={x => set(k, x)} />)}
             </div>
 
-            <div className="j-card" style={{ padding: 22 }}>
+            <div className="j-card j-form-card">
               <div className="j-card-head"><Clock size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Departures and arrivals</h2></div>
               <NumRow label="On time means within" help="Earlier is early, later is late — for the start, every stop and the destination" unit="± min" value={v.onTimeMin} disabled={ro} onChange={x => set('onTimeMin', x)} />
               <div className="j-label" style={{ margin: '12px 0 6px' }}>Raise an alert (bell, Notifications, mobile app) for — every event is always shown on the journey:</div>
@@ -135,7 +135,7 @@ export default function JourneySettings(props) {
           </div>
 
           <div className="j-grid">
-            <div className="j-card" style={{ padding: 22 }}>
+            <div className="j-card j-form-card">
               <div className="j-card-head"><User size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Who gets journey alerts</h2></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
                 <span className="j-badge">1</span>
@@ -155,7 +155,7 @@ export default function JourneySettings(props) {
               </div>
             </div>
 
-            <div className="j-card" style={{ padding: 22 }}>
+            <div className="j-card j-form-card">
               <div className="j-card-head"><Bell size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>How alerts are sent</h2></div>
               {[
                 ['push', Smartphone, 'Mobile app', 'Push notification on the FleetmaxX app'],
@@ -177,7 +177,55 @@ export default function JourneySettings(props) {
               </div>
             </div>
 
-            <div className="j-card" style={{ padding: 22 }}>
+            <div className="j-card j-form-card">
+              <div className="j-card-head"><Repeat size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Journeys, schedules and links</h2></div>
+              <NumRow label="Force close" help="An unfinished journey closes itself this long after its planned arrival (0 = never)" unit="h" value={v.forceCloseHours} disabled={ro} onChange={x => set('forceCloseHours', x)} />
+              <NumRow label="Start buffer" help="A start up to this long before the planned time counts (each journey may change it)" unit="min" value={v.startBufferMin} disabled={ro} onChange={x => set('startBufferMin', x)} />
+              <div className="j-set-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="j-strong" style={{ fontSize: 14 }}>The destination is reached when</div>
+                  <div className="j-label" style={{ fontSize: 12 }}>Driving through it never completes a journey</div>
+                </div>
+                <select className="j-select" style={{ width: 'auto', maxWidth: '100%' }} value={v.destinationRule} disabled={ro} onChange={e => set('destinationRule', e.target.value)} aria-label="Destination rule">
+                  <option value="DWELL_OR_IGNITION">It stays {v.arriveAfterMin} min, or switches off there</option>
+                  <option value="DWELL">It stays {v.arriveAfterMin} min there</option>
+                  <option value="IGNITION_OFF">It switches off there</option>
+                </select>
+              </div>
+              <NumRow label="Convoy separated after" help="A convoy vehicle further than its tolerance for this long" unit="min" value={v.convoyAfterMin} disabled={ro} onChange={x => set('convoyAfterMin', x)} />
+              <NumRow label="Temperature alert after" help="Outside the journey's limits for this long" unit="min" value={v.tempAfterMin} disabled={ro} onChange={x => set('tempAfterMin', x)} />
+              <NumRow label="Tracking link open for" help="A new customer tracking link expires after" unit="h" value={v.trackLinkHours} disabled={ro} onChange={x => set('trackLinkHours', x)} />
+              <NumRow label="Driver link open for" help="A new driver link expires after" unit="h" value={v.driverLinkHours} disabled={ro} onChange={x => set('driverLinkHours', x)} />
+              <label className="j-field" style={{ paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.06)' }}>
+                <span>Load states <span className="j-muted" style={{ fontWeight: 400 }}>separated by commas</span></span>
+                <input className="j-input" defaultValue={(v.loadStates ?? []).join(', ')} key={(v.loadStates ?? []).join('|')} disabled={ro} onBlur={e => set('loadStates', e.target.value.split(',').map(x => x.trim()).filter(Boolean))} />
+              </label>
+            </div>
+
+            <div className="j-card j-form-card">
+              <div className="j-card-head"><MapIcon size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Route optimization distances</h2></div>
+              {[
+                ['ESTIMATE', 'Estimate', 'Straight-line distance × a road factor. Free, nothing to set up.'],
+                ['OSRM', 'OSRM (your own server)', 'Exact road distances from an OSRM server you run (UAE map, about 2 GB of memory). Free.'],
+                ['ORS', 'OpenRouteService', 'Needs OPENROUTESERVICE_API_KEY on the server. Free key, daily limits.'],
+                ['GOOGLE', 'Google Maps', 'Needs GOOGLE_MAPS_API_KEY on the server. Paid per request.'],
+              ].map(([k, l, h]) => (
+                <label key={k} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '9px 0', borderTop: '1px solid rgba(255,255,255,.06)', cursor: ro ? 'default' : 'pointer' }}>
+                  <input type="radio" name="routing" checked={v.routing.provider === k} disabled={ro} onChange={() => setIn('routing', 'provider', k)} style={{ marginTop: 3 }} />
+                  <span style={{ flex: 1 }}>
+                    <span className="j-strong" style={{ fontSize: 13.5, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{l} {k !== 'ESTIMATE' && !data.routingProviders?.[k] && <span className="j-pill" data-tone="warn">Setup needed</span>}</span>
+                    <span className="j-label">{h}</span>
+                  </span>
+                </label>
+              ))}
+              <div className="j-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: 10, marginTop: 8 }}>
+                <label className="j-field"><span>Road factor</span><input className="j-input" type="number" step="0.05" min="1" max="3" value={v.routing.roadFactor} disabled={ro} onChange={e => setIn('routing', 'roadFactor', e.target.value)} /></label>
+                <label className="j-field"><span>OSRM address</span><input className="j-input" value={v.routing.osrmUrl} disabled={ro} onChange={e => setIn('routing', 'osrmUrl', e.target.value)} placeholder="http://10.0.0.5:5000" /></label>
+              </div>
+              <div className="j-label" style={{ marginTop: 8 }}>A service that is picked but not set up, or does not answer, falls back to the estimate. A paid service is only called once its key is set.</div>
+            </div>
+
+            <div className="j-card j-form-card">
               <div className="j-card-head"><ShieldCheck size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Set by HSE</h2></div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <div className="j-strong">Driving hours and rest</div>

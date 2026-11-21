@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, Phone, MapPinned, Pencil, Send, Check, X, Ban, Trash2, PenTool, MessageSquarePlus, ShieldCheck } from 'lucide-react'
+import { ChevronLeft, Phone, MapPinned, Pencil, Send, Check, X, Ban, Trash2, PenTool, MessageSquarePlus, ShieldCheck, FileDown, FileSpreadsheet } from 'lucide-react'
+import { LinksCard, ExpensesCard, StopExtras, ConvoyTempCard } from '../../components/journeys/JourneyExtras'
+import { exportCtrackPdf, exportCtrackExcel } from '../../utils/ctrackExport'
+import { detailExport } from '../../utils/journeyReports'
 import JourneyShell from './JourneyShell'
 import JourneyMap from '../../components/journeys/JourneyMap'
 import SignaturePad from '../../components/journeys/SignaturePad'
@@ -91,6 +94,12 @@ export default function JourneyDetail(props) {
   }
 
   const comp = useMemo(() => (j ? compliance(j) : null), [j])
+  const onError = useCallback(msg => setError(msg), [])
+  const download = kind => {
+    const o = detailExport(j, { eventLabel: e => (e.type === 'STATUS' ? STATUS_META[e.toStatus]?.label ?? e.toStatus : EVENT_LABEL[e.type] ?? e.type) })
+    const name = `Journey_${j.ref}`
+    ;(kind === 'pdf' ? exportCtrackPdf(o, name) : exportCtrackExcel(o, name)).catch(e => setError(e.message))
+  }
 
   if (!j) {
     return (
@@ -130,11 +139,15 @@ export default function JourneyDetail(props) {
           {j.can.submit && <button type="button" className="j-btn j-btn--sm j-btn--primary" disabled={busy} onClick={() => act(() => submitJourney(j.id))}><Send size={13} /> Send for HSE approval</button>}
           {j.can.cancel && <button type="button" className="j-btn j-btn--sm" disabled={busy} onClick={() => setCancelling(c => !c)}><Ban size={13} /> Cancel journey</button>}
           {j.can.delete && <button type="button" className="j-btn j-btn--sm j-btn--danger" disabled={busy} onClick={() => window.confirm('Delete this draft?') && act(() => deleteJourney(j.id), () => navigate('/journeys'))}><Trash2 size={13} /> Delete</button>}
+          <button type="button" className="j-btn j-btn--sm" onClick={() => download('pdf')} title="Download PDF"><FileDown size={13} /> PDF</button>
+          <button type="button" className="j-btn j-btn--sm" onClick={() => download('xlsx')} title="Download Excel"><FileSpreadsheet size={13} /> Excel</button>
         </div>
       </div>
 
       <ErrorNote error={error} />
       {warnings.map(w => <div key={w} className="j-card" style={{ marginBottom: 12, padding: '10px 14px', fontSize: 13, borderColor: 'rgba(246,200,112,.5)' }}>{w}</div>)}
+      {j.display === 'ForceClosed' && <div className="j-card" style={{ marginBottom: 12, padding: '12px 16px', borderColor: 'rgba(255,143,128,.5)' }}><b>Force closed</b> at {dayTime(j.forceClosedAt)}: {j.cancelReason}</div>}
+      {j.templateId && <div className="j-label" style={{ marginBottom: 10 }}>Made by a {j.scheduleKind === 'AUTOMATIC' ? 'automatic' : 'repeating'} schedule ({j.createdByName}).</div>}
       {j.display === 'Rejected' && j.rejectReason && <div className="j-card" style={{ marginBottom: 12, padding: '12px 16px', borderColor: 'rgba(255,143,128,.5)' }}><b>Rejected by {j.decidedByName}:</b> {j.rejectReason}</div>}
 
       {cancelling && (
@@ -272,9 +285,21 @@ export default function JourneyDetail(props) {
           <div className="j-num">{hhmm(eta)}</div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div className="j-label">Cost</div>
+            <div className="j-num">{j.cost?.total ? j.cost.total.toFixed(2) : '0.00'}</div>
+          </div>
+          {j.drivenKm != null && <div><div className="j-label">Driven</div><div className="j-num">{Math.round(j.drivenKm)} km</div></div>}
           {j.driverMobile && <a className="j-btn j-btn--primary" href={`tel:${j.driverMobile}`} style={{ textDecoration: 'none' }}><Phone size={14} /> Call driver</a>}
           <Link className="j-btn" to="/tracking" style={{ textDecoration: 'none' }}><MapPinned size={14} /> View on Live Map</Link>
         </div>
+      </div>
+
+      {/* Share · expenses · convoy and temperature */}
+      <div className="j-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', alignItems: 'start', marginBottom: 16 }}>
+        <LinksCard j={j} onError={onError} />
+        <ExpensesCard j={j} onError={onError} onChange={load} />
+        <ConvoyTempCard j={j} />
       </div>
 
       {/* Timeline + proof of delivery · events */}
@@ -300,6 +325,7 @@ export default function JourneyDetail(props) {
                       <TimeLine label="Leave" planned={s.plannedDepart} actual={s.actualDepart} timing={s.departTiming} diff={s.departDiffMin} />
                     )}
                     {s.status === 'SKIPPED' && <div className="j-err" style={{ marginTop: 4 }}>Stop missed</div>}
+                    <StopExtras j={j} s={s} onError={onError} onDone={load} busy={busy} setBusy={setBusy} />
                     {!isFirst && s.signatureRequired && (
                       <div className="j-inset" style={{ marginTop: 8, padding: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

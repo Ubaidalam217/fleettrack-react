@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { History, PenLine, Route, Plus, X, ChevronDown, ChevronUp, Send, Check, AlertTriangle, MapPin, Undo2 } from 'lucide-react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { History, PenLine, Route, Plus, X, ChevronDown, ChevronUp, Send, Check, AlertTriangle, MapPin, Undo2, BookMarked, Upload, Copy, LayoutTemplate, Repeat, Thermometer, Truck } from 'lucide-react'
 import JourneyShell from './JourneyShell'
 import JourneyMap from '../../components/journeys/JourneyMap'
 import { ErrorNote } from '../../components/journeys/JourneyBits'
+import { JModal, AddressPicker, StopsImport } from '../../components/journeys/JourneyDialogs'
 import {
   journeyOptions, journeyAvailability, routeFromTrip, getJourney, createJourney, updateJourney, saveRouteTemplate,
-  hhmm, duration, toLocalInput, fromLocalInput, uaeDay,
-  stopMark,
+  hhmm, duration, toLocalInput, fromLocalInput, uaeDay, dayTime,
+  stopMark, recentJourneys, bulkAddresses, saveJourneyTemplate, PURPOSE_LABEL,
 } from '../../data/journeys'
+import { upcoming, scheduleErrors, describeSchedule, WEEKDAY_SHORT, uaeDateKey } from '../../utils/journeyRecurrence'
 import { errorMessage } from '../../data/http'
 import { computeSchedule, overrideArrival } from '../../utils/journeySchedule'
 import { stopsAlong, distM, pathKm } from '../../utils/journeyGeo'
@@ -25,8 +27,18 @@ import { stopsAlong, distM, pathKm } from '../../utils/journeyGeo'
 let keySeq = 0
 const newStop = (over = {}) => ({
   key: ++keySeq, name: '', arrivalType: 'RADIUS', geofenceId: null, lat: null, lng: null, radiusM: null,
-  stayMin: 0, legDriveMin: null, legSource: 'SPEED', signatureRequired: false, ...over,
+  stayMin: 0, legDriveMin: null, legSource: 'SPEED', signatureRequired: false,
+  visitVia: 'MAP', purpose: null, loadState: null, addressId: null, formId: null, ...over,
 })
+
+/** The plan part of a stop (no actuals), to copy from a journey, a template or a saved route. */
+const planOf = s => ({
+  name: s.name, arrivalType: s.arrivalType ?? 'RADIUS', geofenceId: s.geofenceId ?? null, lat: s.lat, lng: s.lng, radiusM: s.radiusM ?? null,
+  stayMin: s.stayMin ?? 0, legDriveMin: s.legDriveMin ?? null, legSource: s.legSource ?? 'SPEED', signatureRequired: Boolean(s.signatureRequired),
+  visitVia: s.visitVia ?? 'MAP', purpose: s.purpose ?? null, loadState: s.loadState ?? null, addressId: s.addressId ?? null, formId: s.formId ?? null,
+})
+
+const PURPOSES = ['LOADING', 'UNLOADING', 'DELIVERY', 'REST', 'OTHER']
 
 function defaultStart() {
   const d = new Date(Date.now() + 2 * 3600_000)
@@ -87,6 +99,22 @@ export default function JourneyForm(props) {
   const [tripBusy, setTripBusy] = useState(false)
   const [tripOpen, setTripOpen] = useState(false)
   const [avail, setAvail] = useState(null)
+  // The Uffizio Job-module options (client 2026-11-21).
+  const [startLogic, setStartLogic] = useState('ANY_DATA')
+  const [startBufferMin, setStartBufferMin] = useState('')
+  const [routeToleranceM, setRouteToleranceM] = useState('')
+  const [forceCloseH, setForceCloseH] = useState('')
+  const [convoy, setConvoy] = useState([])
+  const [convoyToleranceM, setConvoyToleranceM] = useState(200)
+  const [loadState, setLoadState] = useState('')
+  const [tempMin, setTempMin] = useState('')
+  const [tempMax, setTempMax] = useState('')
+  const [when, setWhen] = useState('FIXED') // FIXED | RELATIVE | AUTOMATIC
+  const [sched, setSched] = useState(() => ({ repeat: 'DAILY', weekdays: [], monthDays: [], validFrom: uaeDateKey(Date.now()), validTo: '', horizonDays: 7, name: '' }))
+  const [saveTemplate, setSaveTemplate] = useState(false)
+  const [templateName, setTemplateName] = useState('')
+  const [dialog, setDialog] = useState(null) // 'book' | 'import' | 'copy' | 'template'
+  const [recent, setRecent] = useState(null)
 
   useEffect(() => {
     journeyOptions().then(setOpts).catch(e => setError(errorMessage(e, 'Could not load vehicles and drivers')))
@@ -100,11 +128,22 @@ export default function JourneyForm(props) {
       setRouteSource(j.routeSource); setPath(j.plannedPath ?? null); setRecordedFrom(j.recordedFrom ?? null); setTemplateId(j.routeTemplateId ?? null)
       setStops(j.stops.map(s => newStop({ ...s, legSource: s.legSource ?? 'SPEED', polygon: undefined })))
       setInstructions(j.instructions ?? ''); setCustomer(j.customer ?? ''); setPriority(j.priority); setType(j.type)
+      applyOptions(j)
       setLoaded(true)
     }).catch(e => setError(errorMessage(e, 'Could not load the journey')))
   }, [editing, id])
 
   const settings = opts?.settings
+
+  // "Journey from it" (Checkpoints & Routes › Templates): /journeys/new?template=<id>.
+  const [params] = useSearchParams()
+  const fromTemplate = params.get('template')
+  useEffect(() => {
+    if (editing || !opts || !fromTemplate) return
+    const t = opts.journeyTemplates?.find(x => x.id === fromTemplate)
+    if (t) applyPlan(t.body, { vehicle: t.vehicleId })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opts, fromTemplate, editing])
   const geofenceById = useMemo(() => new Map((opts?.geofences ?? []).map(g => [g.id, g])), [opts])
   const driver = opts?.drivers.find(d => d.id === driverId)
 
@@ -161,6 +200,80 @@ export default function JourneyForm(props) {
   const onMapClick = ([lat, lng]) => {
     if (routeSource === 'DRAWN' && clickMode === 'draw') setPath(p => [...(p ?? []), [lat, lng]])
     else addStopAt(lat, lng)
+  }
+
+  /** The journey-level options of a journey or a template body. */
+  function applyOptions(b) {
+    setStartLogic(b.startLogic ?? 'ANY_DATA')
+    setStartBufferMin(b.startBufferMin ?? '')
+    setRouteToleranceM(b.routeToleranceM ?? '')
+    setForceCloseH(b.forceCloseMin != null ? Math.round((b.forceCloseMin / 60) * 10) / 10 : '')
+    setConvoy(Array.isArray(b.convoy) ? b.convoy.map(c => (typeof c === 'string' ? c : c.vehicleId)) : [])
+    setConvoyToleranceM(b.convoyToleranceM ?? 200)
+    setLoadState(b.loadState ?? '')
+    setTempMin(b.tempMin ?? '')
+    setTempMax(b.tempMax ?? '')
+    if (b.startLogic || b.startBufferMin != null || b.routeToleranceM || b.forceCloseMin != null || b.convoy?.length || b.loadState || b.tempMin != null || b.tempMax != null) setMore(true)
+  }
+
+  /** A template, a past journey: everything but the times (and the vehicle unless it has one). */
+  function applyPlan(b, { vehicle } = {}) {
+    setTitle(b.title ?? '')
+    setCustomer(b.customer ?? ''); setPriority(b.priority ?? 'Normal'); setType(b.type ?? ''); setInstructions(b.instructions ?? '')
+    setRouteSource(b.routeSource ?? 'STRAIGHT'); setPath(b.plannedPath ?? null); setRecordedFrom(b.recordedFrom ?? null); setTemplateId(b.routeTemplateId ?? null)
+    setTrip(null)
+    setStops((b.stops ?? []).map(x => newStop(planOf(x))))
+    applyOptions(b)
+    if (vehicle) setVehicleId(vehicle)
+  }
+
+  /** Address-book entries / uploaded rows as stops, before the destination (or filling empty start / end). */
+  function insertStops(list) {
+    setStops(cur => {
+      const out = cur.map(x => ({ ...x }))
+      const queue = list.map(a => newStop({
+        name: a.name, arrivalType: a.arrivalType ?? 'RADIUS', geofenceId: a.geofenceId ?? null, lat: a.lat, lng: a.lng,
+        radiusM: a.radiusM ?? null, stayMin: a.stayMin ?? (['DELIVERY', 'LOADING', 'UNLOADING'].includes(a.purpose) ? 15 : 0),
+        purpose: a.purpose ?? null, addressId: a.addressId ?? (a.id && !a.row ? a.id : null), visitVia: a.visitVia ?? 'MAP',
+        signatureRequired: Boolean(a.signatureRequired),
+      }))
+      // Empty slots first (a new journey's blank start and destination).
+      for (let i = 0; i < out.length && queue.length; i++) {
+        if (!Number.isFinite(out[i].lat) && out[i].arrivalType === 'RADIUS') out[i] = { ...queue.shift(), key: out[i].key }
+      }
+      if (queue.length) out.splice(out.length - 1, 0, ...queue)
+      return out
+    })
+  }
+
+  async function onImport(rows) {
+    setDialog(null)
+    insertStops(rows)
+    const save = rows.filter(r => r.saveAddress)
+    if (save.length) {
+      try {
+        const res = await bulkAddresses(save.map(r => ({ row: r.row, name: r.name, lat: r.lat, lng: r.lng, radiusM: r.radiusM, purpose: r.purpose })))
+        setOpts(o => ({ ...o, addresses: [...(o.addresses ?? []), ...res.data].sort((a, b) => a.name.localeCompare(b.name)) }))
+        if (res.errors?.length) setError(`Saved ${res.data.length} address${res.data.length === 1 ? '' : 'es'}; not saved: ${res.errors.map(e => `row ${e.row} (${e.message})`).join(', ')}`)
+      } catch (e) {
+        setError(errorMessage(e, 'The stops were added, but saving them as addresses failed'))
+      }
+    }
+  }
+
+  async function openCopy() {
+    setDialog('copy')
+    if (!recent) recentJourneys().then(setRecent).catch(e => setError(errorMessage(e, 'Could not load the journeys')))
+  }
+  async function copyJourney(jid) {
+    setDialog(null)
+    try {
+      const j = await getJourney(jid)
+      applyPlan({ ...j, convoy: j.convoy ?? [] }, { vehicle: vehicleId ? null : j.vehicleId })
+      if (!driverId && j.driverId) setDriverId(j.driverId)
+    } catch (e) {
+      setError(errorMessage(e, 'Could not copy that journey'))
+    }
   }
 
   async function copyTrip() {
@@ -243,22 +356,65 @@ export default function JourneyForm(props) {
         name: s.name.trim() || 'Stop', arrivalType: s.arrivalType, geofenceId: s.geofenceId || null, lat: s.lat, lng: s.lng,
         radiusM: s.arrivalType === 'RADIUS' ? Number(s.radiusM) || settings?.defaultRadiusM || 300 : undefined,
         stayMin: Number(s.stayMin) || 0, legDriveMin: s.legDriveMin, legSource: s.legSource, signatureRequired: Boolean(s.signatureRequired),
+        visitVia: s.visitVia ?? 'MAP', purpose: s.purpose || null, loadState: s.loadState || null, addressId: s.addressId || null, formId: s.formId || null,
       })),
       instructions: instructions.trim() || null, customer: customer.trim() || null, priority, type: type || undefined, submit: send,
+      ...optionFields(),
     }
     try {
       if (saveRoute && routeName.trim()) {
         await saveRouteTemplate({ name: routeName.trim(), source: body.routeSource, path: body.plannedPath, stops: body.stops, recordedFrom, driveMin: schedule?.driveMin ?? null })
       }
+      const { vehicleId: _v, driverId: _d, plannedStart: _p, submit: _s, ...plan } = body
+      if (!editing && when !== 'FIXED') {
+        // A schedule: the engine makes its journeys (they wait for HSE unless HSE approves the schedule).
+        const errs = scheduleErrors(scheduleBody())
+        if (Object.keys(errs).length) { setFieldErrors(errs); throw new Error(Object.values(errs)[0]) }
+        await saveJourneyTemplate({ name: sched.name.trim() || title.trim(), vehicleId, driverId: driverId || null, body: plan, ...scheduleBody() })
+        navigate('/journeys/checkpoints?tab=templates', { state: { saved: sched.name.trim() || title.trim() } })
+        return
+      }
+      if (saveTemplate && templateName.trim()) {
+        await saveJourneyTemplate({ name: templateName.trim(), vehicleId: null, driverId: null, body: plan, scheduleKind: 'NONE' })
+      }
       const res = editing ? await updateJourney(id, body) : await createJourney(body)
       navigate(`/journeys/${res.data.id}`, { state: { warnings: res.warnings } })
     } catch (e) {
-      setError(errorMessage(e, 'Could not save the journey'))
+      const first = e.details ? Object.values(e.details)[0] : null
+      setError(`${errorMessage(e, 'Could not save the journey')}${first && typeof first === 'string' ? `: ${first}` : ''}`)
       if (e.details) setFieldErrors(e.details)
     } finally {
       setBusy(false)
     }
   }
+
+  function optionFields() {
+    const int = v => (v === '' || v == null ? null : Math.round(Number(v)))
+    const flt = v => (v === '' || v == null ? null : Number(v))
+    return {
+      startLogic, startBufferMin: int(startBufferMin), routeToleranceM: int(routeToleranceM),
+      forceCloseMin: forceCloseH === '' ? null : Math.round(Number(forceCloseH) * 60),
+      convoy: convoy.filter(c => c && c !== vehicleId), convoyToleranceM: Number(convoyToleranceM) || 200,
+      loadState: loadState || null,
+      tempMin: vehicleHasTemp ? flt(tempMin) : null, tempMax: vehicleHasTemp ? flt(tempMax) : null,
+    }
+  }
+  function scheduleBody() {
+    const startUae = toLocalInput(fromLocalInput(start))
+    return {
+      scheduleKind: when, repeat: sched.repeat, weekdays: sched.weekdays, monthDays: sched.monthDays,
+      startTime: startUae.slice(11, 16),
+      validFrom: sched.validFrom ? new Date(Date.parse(`${sched.validFrom}T00:00:00Z`) - 4 * 3600_000).toISOString() : null,
+      validTo: sched.validTo ? new Date(Date.parse(`${sched.validTo}T00:00:00Z`) - 4 * 3600_000).toISOString() : null,
+      horizonDays: Number(sched.horizonDays) || 7,
+    }
+  }
+
+  const vehicle = opts?.vehicles.find(v => v.id === vehicleId)
+  const vehicleHasTemp = Boolean(vehicle?.hasTemperature)
+  const nextDays = useMemo(() => (when === 'RELATIVE' ? upcoming({ ...scheduleBody(), validFrom: scheduleBody().validFrom }, Date.now(), Math.max(14, Number(sched.horizonDays) || 7)).slice(0, 5) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [when, sched, start])
 
   const canSave = title.trim() && vehicleId && ready && schedule && !busy
   const n = stops.length
@@ -273,7 +429,14 @@ export default function JourneyForm(props) {
       <ErrorNote error={error} />
       {!opts || !loaded ? <div className="j-skel" style={{ height: 420 }} /> : (
         <div className="j-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', alignItems: 'start' }}>
-          <div className="j-card" style={{ padding: 22 }}>
+          <div className="j-card j-form-card">
+            {!editing && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                <span className="j-label" style={{ alignSelf: 'center' }}>Start from</span>
+                {(opts.journeyTemplates ?? []).length > 0 && <button type="button" className="j-btn j-btn--sm" onClick={() => setDialog('template')}><LayoutTemplate size={13} /> A template</button>}
+                <button type="button" className="j-btn j-btn--sm" onClick={openCopy}><Copy size={13} /> A previous journey</button>
+              </div>
+            )}
             <label className="j-field">
               <span>Journey name</span>
               <input className="j-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Diesel delivery to Ruwais" maxLength={160} />
@@ -362,15 +525,74 @@ export default function JourneyForm(props) {
               )}
             </div>
 
-            <label className="j-field" style={{ marginTop: 18 }}>
-              <span>Leaves at</span>
+            {!editing && (
+              <div style={{ marginTop: 18 }}>
+                <div className="j-field"><span>When</span></div>
+                <div className="j-seg" style={{ marginTop: 6, width: '100%', display: 'flex' }}>
+                  <button type="button" style={{ flex: 1 }} aria-pressed={when === 'FIXED'} onClick={() => setWhen('FIXED')}>Once</button>
+                  <button type="button" style={{ flex: 1 }} aria-pressed={when === 'RELATIVE'} onClick={() => setWhen('RELATIVE')}><Repeat size={13} /> Repeats</button>
+                  <button type="button" style={{ flex: 1 }} aria-pressed={when === 'AUTOMATIC'} onClick={() => setWhen('AUTOMATIC')}>Automatic</button>
+                </div>
+              </div>
+            )}
+
+            <label className="j-field" style={{ marginTop: 14 }}>
+              <span>{when === 'RELATIVE' ? 'First journey leaves at (the time repeats)' : when === 'AUTOMATIC' ? 'Times are worked out from when it leaves; this sets the plan' : 'Leaves at'}</span>
               <input className="j-input" type="datetime-local" value={start} onChange={e => setStart(e.target.value)} />
               {fieldErrors.plannedStart && <span className="j-err">{fieldErrors.plannedStart}</span>}
             </label>
 
+            {when !== 'FIXED' && (
+              <div className="j-inset" style={{ marginTop: 12 }}>
+                {when === 'RELATIVE' && (
+                  <>
+                    <div className="j-seg" style={{ display: 'flex', width: '100%' }}>
+                      {[['DAILY', 'Daily'], ['WEEKLY', 'Weekly'], ['MONTHLY', 'Monthly']].map(([k, l]) => (
+                        <button key={k} type="button" style={{ flex: 1 }} aria-pressed={sched.repeat === k} onClick={() => setSched(x => ({ ...x, repeat: k }))}>{l}</button>
+                      ))}
+                    </div>
+                    {sched.repeat === 'WEEKLY' && (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                        {WEEKDAY_SHORT.map((d, k) => (
+                          <button key={d} type="button" className="j-tab" style={{ border: '1px solid var(--j-line2)' }} aria-pressed={sched.weekdays.includes(k)}
+                            onClick={() => setSched(x => ({ ...x, weekdays: x.weekdays.includes(k) ? x.weekdays.filter(y => y !== k) : [...x.weekdays, k] }))}>{d}</button>
+                        ))}
+                      </div>
+                    )}
+                    {sched.repeat === 'MONTHLY' && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginTop: 10 }}>
+                        {Array.from({ length: 31 }, (_, k) => k + 1).map(d => (
+                          <button key={d} type="button" className="j-tab" style={{ justifyContent: 'center', padding: 0, height: 30, border: '1px solid var(--j-line)' }} aria-pressed={sched.monthDays.includes(d)}
+                            onClick={() => setSched(x => ({ ...x, monthDays: x.monthDays.includes(d) ? x.monthDays.filter(y => y !== d) : [...x.monthDays, d] }))}>{d}</button>
+                        ))}
+                      </div>
+                    )}
+                    {(fieldErrors.weekdays || fieldErrors.monthDays) && <div className="j-err" style={{ marginTop: 6 }}>{fieldErrors.weekdays || fieldErrors.monthDays}</div>}
+                  </>
+                )}
+                {when === 'AUTOMATIC' && <div className="j-label" style={{ fontSize: 12.5, lineHeight: 1.5 }}>A journey is made each time the vehicle leaves the first stop, on the valid days. It needs an HSE approver to approve the schedule first, because it is already on the road when it is made.</div>}
+                <div className="j-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: 10, marginTop: 10 }}>
+                  <label className="j-field"><span>Valid from</span><input className="j-input" type="date" value={sched.validFrom} onChange={e => setSched(x => ({ ...x, validFrom: e.target.value }))} /></label>
+                  <label className="j-field"><span>Valid to <span className="j-muted" style={{ fontWeight: 400 }}>optional</span></span><input className="j-input" type="date" value={sched.validTo} onChange={e => setSched(x => ({ ...x, validTo: e.target.value }))} /></label>
+                  {when === 'RELATIVE' && <label className="j-field"><span>Make days ahead</span><input className="j-input" type="number" min="0" max="62" value={sched.horizonDays} onChange={e => setSched(x => ({ ...x, horizonDays: e.target.value }))} /></label>}
+                </div>
+                <label className="j-field" style={{ marginTop: 10 }}><span>Schedule name</span><input className="j-input" value={sched.name} onChange={e => setSched(x => ({ ...x, name: e.target.value }))} placeholder={title || 'Daily Ruwais run'} /></label>
+                <div className="j-label" style={{ marginTop: 10, fontSize: 12.5 }}>
+                  {describeSchedule({ scheduleKind: when, ...scheduleBody() })}
+                  {nextDays.length > 0 && <> · next: {nextDays.map(o => dayTime(o.start)).join(', ')}</>}
+                </div>
+                <div className="j-label" style={{ marginTop: 6, fontSize: 12 }}>Each journey still goes to HSE for approval, unless an HSE approver approves the schedule (Checkpoints &amp; Routes › Templates &amp; schedules).</div>
+                {(fieldErrors.validFrom || fieldErrors.validTo || fieldErrors.vehicleId) && <div className="j-err">{fieldErrors.validFrom || fieldErrors.validTo || fieldErrors.vehicleId}</div>}
+              </div>
+            )}
+
             {/* The chained schedule: stops with their planned arrive / leave */}
             <div className="j-inset" style={{ marginTop: 16, padding: 14 }}>
-              <div className="j-caps" style={{ marginBottom: 12 }}>Stops and times</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                <div className="j-caps" style={{ flex: 1 }}>Stops and times</div>
+                <button type="button" className="j-btn j-btn--sm" onClick={() => setDialog('book')}><BookMarked size={13} /> Address book</button>
+                <button type="button" className="j-btn j-btn--sm" onClick={() => setDialog('import')}><Upload size={13} /> Excel / CSV</button>
+              </div>
               <div className="j-tl">
                 {stops.map((s, i) => {
                   const sc = schedule?.stops[i]
@@ -421,12 +643,35 @@ export default function JourneyForm(props) {
                             Delivery – signature required
                           </label>
                         )}
+                        {!isFirst && (
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                            <div className="j-seg" title="How the stop counts as reached">
+                              <button type="button" aria-pressed={s.visitVia !== 'QR'} onClick={() => setStop(i, { visitVia: 'MAP' })}>Map</button>
+                              <button type="button" aria-pressed={s.visitVia === 'QR'} onClick={() => setStop(i, { visitVia: 'QR' })}>QR scan</button>
+                            </div>
+                            <select className="j-select" style={{ width: 'auto', minHeight: 34, flex: '1 1 110px' }} value={s.purpose ?? ''} onChange={e => setStop(i, { purpose: e.target.value || null })} aria-label="State at this stop">
+                              <option value="">State…</option>
+                              {PURPOSES.map(x => <option key={x} value={x}>{PURPOSE_LABEL[x]}</option>)}
+                            </select>
+                            <select className="j-select" style={{ width: 'auto', minHeight: 34, flex: '1 1 110px' }} value={s.loadState ?? ''} onChange={e => setStop(i, { loadState: e.target.value || null })} aria-label="Load state after this stop">
+                              <option value="">Load…</option>
+                              {(settings?.loadStates ?? []).map(x => <option key={x} value={x}>{x}</option>)}
+                            </select>
+                            {(opts.forms ?? []).length > 0 && (
+                              <select className="j-select" style={{ width: 'auto', minHeight: 34, flex: '1 1 130px' }} value={s.formId ?? ''} onChange={e => setStop(i, { formId: e.target.value || null })} aria-label="Form filled at this stop">
+                                <option value="">No form</option>
+                                {opts.forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                              </select>
+                            )}
+                          </div>
+                        )}
+                        {s.visitVia === 'QR' && !isFirst && <div className="j-label" style={{ marginTop: 6 }}>The driver scans this stop's QR (from the journey's QR sheet) on the driver link.</div>}
                         {sc && (
                           <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end', marginTop: 8, flexWrap: 'wrap', fontSize: 12.5 }}>
                             {isFirst ? <span className="j-label">leave <b className="j-strong">{hhmm(sc.plannedDepart)}</b></span> : (
                               <>
                                 <span className="j-label">arrive</span>
-                                <input className="j-input j-input--sm" style={{ width: 215 }} type="datetime-local" value={toLocalInput(sc.plannedArrive)} onChange={e => setArrival(i, e.target.value)} aria-label="Planned arrival" />
+                                <input className="j-input j-input--sm" style={{ width: 215, maxWidth: '100%' }} type="datetime-local" value={toLocalInput(sc.plannedArrive)} onChange={e => setArrival(i, e.target.value)} aria-label="Planned arrival" />
                                 {!isLast && <span className="j-label">leave <b className="j-strong">{hhmm(sc.plannedDepart)}</b></span>}
                               </>
                             )}
@@ -450,8 +695,8 @@ export default function JourneyForm(props) {
             </label>
 
             <div className="j-inset" style={{ marginTop: 14 }}>
-              <button type="button" className="j-btn j-btn--ghost" style={{ padding: 0, height: 'auto' }} onClick={() => setMore(m => !m)}>
-                {more ? <ChevronUp size={15} /> : <ChevronDown size={15} />} More options <span className="j-muted" style={{ fontWeight: 400 }}>customer, priority, journey type, save the route</span>
+              <button type="button" className="j-btn j-btn--ghost" style={{ padding: 0, height: 'auto', whiteSpace: 'normal', textAlign: 'left', justifyContent: 'flex-start', display: 'block', lineHeight: 1.5 }} onClick={() => setMore(m => !m)}>
+                {more ? <ChevronUp size={15} /> : <ChevronDown size={15} />} More options <span className="j-muted" style={{ fontWeight: 400 }}>customer, priority, start logic, tolerance, convoy, load, temperature, force close</span>
               </button>
               {more && (
                 <div className="j-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginTop: 12 }}>
@@ -467,10 +712,71 @@ export default function JourneyForm(props) {
                       <option value="">Work it out</option><option value="ONE_WAY">One way</option><option value="ROUND_TRIP">Round trip</option><option value="MULTI_STOP">Multiple stops</option>
                     </select>
                   </label>
+                  <label className="j-field"><span>Journey starts when</span>
+                    <select className="j-select" value={startLogic} onChange={e => setStartLogic(e.target.value)}>
+                      <option value="ANY_DATA">It leaves the first stop</option><option value="IGNITION_ON">The ignition comes on there</option>
+                    </select>
+                  </label>
+                  <label className="j-field"><span>Start buffer (min)</span>
+                    <input className="j-input" type="number" min="0" max="720" value={startBufferMin} onChange={e => setStartBufferMin(e.target.value)} placeholder={String(settings?.startBufferMin ?? 60)} />
+                  </label>
+                  <label className="j-field"><span>Route tolerance (m)</span>
+                    <input className="j-input" type="number" min="20" step="10" value={routeToleranceM} onChange={e => setRouteToleranceM(e.target.value)} placeholder={String(Math.round((settings?.offRouteKm ?? 1) * 1000))} />
+                  </label>
+                  <label className="j-field"><span>Force close after (h)</span>
+                    <input className="j-input" type="number" min="0" step="0.5" value={forceCloseH} onChange={e => setForceCloseH(e.target.value)} placeholder={String(settings?.forceCloseHours ?? 12)} />
+                  </label>
+                  <label className="j-field"><span>Load state</span>
+                    <select className="j-select" value={loadState} onChange={e => setLoadState(e.target.value)}>
+                      <option value="">—</option>{(settings?.loadStates ?? []).map(x => <option key={x} value={x}>{x}</option>)}
+                    </select>
+                  </label>
+                  <div className="j-field" style={{ gridColumn: '1 / -1' }}>
+                    <span><Thermometer size={13} /> Temperature limits (°C)</span>
+                    {vehicleId && !vehicleHasTemp ? (
+                      <span className="j-label">No sensor: this vehicle does not report a temperature.</span>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input className="j-input" style={{ width: 110 }} type="number" step="0.5" value={tempMin} onChange={e => setTempMin(e.target.value)} placeholder="Lowest" aria-label="Lowest temperature" disabled={!vehicleId} />
+                        <span className="j-muted">to</span>
+                        <input className="j-input" style={{ width: 110 }} type="number" step="0.5" value={tempMax} onChange={e => setTempMax(e.target.value)} placeholder="Highest" aria-label="Highest temperature" disabled={!vehicleId} />
+                        {!vehicleId && <span className="j-label">Pick the vehicle first</span>}
+                      </div>
+                    )}
+                    {fieldErrors.tempMax && <span className="j-err">{fieldErrors.tempMax}</span>}
+                  </div>
+                  <div className="j-field" style={{ gridColumn: '1 / -1' }}>
+                    <span><Truck size={13} /> Convoy <span className="j-muted" style={{ fontWeight: 400 }}>vehicles that travel with this one</span></span>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {convoy.map(cid => (
+                        <span key={cid} className="j-pill j-pill--plain">{opts.vehicles.find(v => v.id === cid)?.label ?? 'Vehicle'}
+                          <button type="button" className="j-btn--ghost" style={{ background: 'none', border: 0, color: 'inherit', cursor: 'pointer', padding: 0 }} onClick={() => setConvoy(c => c.filter(x => x !== cid))} aria-label="Remove from convoy"><X size={12} /></button>
+                        </span>
+                      ))}
+                      {convoy.length < 5 && (
+                        <select className="j-select" style={{ width: 'auto', minHeight: 32 }} value="" onChange={e => e.target.value && setConvoy(c => [...new Set([...c, e.target.value])])} aria-label="Add a convoy vehicle">
+                          <option value="">Add a vehicle…</option>
+                          {opts.vehicles.filter(v => v.id !== vehicleId && !convoy.includes(v.id)).map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                        </select>
+                      )}
+                      {convoy.length > 0 && (
+                        <span className="j-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          within <input className="j-input j-input--sm j-input--num" type="number" min="50" step="50" value={convoyToleranceM} onChange={e => setConvoyToleranceM(e.target.value)} aria-label="Convoy tolerance in metres" /> m of the lead
+                        </span>
+                      )}
+                    </div>
+                    {fieldErrors.convoy && <span className="j-err">{fieldErrors.convoy}</span>}
+                  </div>
                   <label className="j-field" style={{ gridColumn: '1 / -1' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={saveRoute} onChange={e => setSaveRoute(e.target.checked)} /> Save this route for next time</span>
                     {saveRoute && <input className="j-input" value={routeName} onChange={e => setRouteName(e.target.value)} placeholder="Mussafah Yard → Ruwais Site B" />}
                   </label>
+                  {!editing && when === 'FIXED' && (
+                    <label className="j-field" style={{ gridColumn: '1 / -1' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={saveTemplate} onChange={e => setSaveTemplate(e.target.checked)} /> Also save as a template (without a vehicle) for any vehicle</span>
+                      {saveTemplate && <input className="j-input" value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder={title || 'Ruwais delivery'} />}
+                    </label>
+                  )}
                 </div>
               )}
             </div>
@@ -478,18 +784,24 @@ export default function JourneyForm(props) {
             <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', marginTop: 20, flexWrap: 'wrap', borderTop: '1px solid var(--j-line)', paddingTop: 18 }}>
               <button type="button" className="j-btn j-btn--ghost" onClick={() => navigate(editing ? `/journeys/${id}` : '/journeys')}>Cancel</button>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button type="button" className="j-btn" disabled={!canSave} onClick={() => submit(false)}>Save as draft</button>
-                <button type="button" className="j-btn j-btn--primary" disabled={!canSave || (avail && !avail.free)} onClick={() => submit(true)}><Send size={14} /> Send for HSE approval</button>
+                {when === 'FIXED' || editing ? (
+                  <>
+                    <button type="button" className="j-btn" disabled={!canSave} onClick={() => submit(false)}>Save as draft</button>
+                    <button type="button" className="j-btn j-btn--primary" disabled={!canSave || (avail && !avail.free)} onClick={() => submit(true)}><Send size={14} /> Send for HSE approval</button>
+                  </>
+                ) : (
+                  <button type="button" className="j-btn j-btn--primary" disabled={!canSave} onClick={() => submit(false)}><Repeat size={14} /> Save the schedule</button>
+                )}
               </div>
             </div>
           </div>
 
-          <div style={{ position: 'sticky', top: 0 }}>
+          <div className="j-form-map">
             <div className="j-card j-card--flush" style={{ position: 'relative' }}>
               <JourneyMap
                 path={line}
                 stops={placed}
-                height={560}
+                height={typeof window !== 'undefined' && window.innerWidth < 640 ? 320 : 560}
                 onMapClick={onMapClick}
                 showAreas
                 fitKey={`${templateId}|${recordedFrom?.from}|${loaded}`}
@@ -498,7 +810,7 @@ export default function JourneyForm(props) {
                 <MapPin size={12} /> {routeSource === 'DRAWN' && clickMode === 'draw' ? 'Click the map to draw the route' : 'Click the map to add a stop'}
               </span>
             </div>
-            <div className="j-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginTop: 12 }}>
+            <div className="j-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 120px), 1fr))', gap: 10, marginTop: 12 }}>
               {[
                 ['Distance', `${Math.round(distanceKm)} km`],
                 ['Driving', duration(schedule?.driveMin)],
@@ -513,6 +825,31 @@ export default function JourneyForm(props) {
             </div>
           </div>
         </div>
+      )}
+      {dialog === 'book' && <AddressPicker addresses={opts?.addresses ?? []} onClose={() => setDialog(null)} onPick={list => { setDialog(null); insertStops(list) }} />}
+      {dialog === 'import' && <StopsImport addresses={opts?.addresses ?? []} defaultRadiusM={settings?.defaultRadiusM} onClose={() => setDialog(null)} onImport={onImport} />}
+      {dialog === 'copy' && (
+        <JModal title="Copy a previous journey" sub="Its stops, route and options; you set the vehicle and the time." onClose={() => setDialog(null)}>
+          {!recent && <div className="j-skel" style={{ height: 120 }} />}
+          {recent?.length === 0 && <div className="j-empty">No journeys yet.</div>}
+          {recent?.map(r => (
+            <button key={r.id} type="button" className="j-card j-card--link" style={{ width: '100%', textAlign: 'left', color: 'inherit', font: 'inherit', padding: 12, marginBottom: 8 }} onClick={() => copyJourney(r.id)}>
+              <div className="j-strong">{r.title}</div>
+              <div className="j-label">{r.ref} · {r.vehicleLabel} · {dayTime(r.plannedStart)} · {r.stopCount} stops{r.plannedDistanceKm ? ` · ${Math.round(r.plannedDistanceKm)} km` : ''}</div>
+            </button>
+          ))}
+        </JModal>
+      )}
+      {dialog === 'template' && (
+        <JModal title="Start from a template" sub="Templates are kept in Checkpoints & Routes." onClose={() => setDialog(null)}>
+          {(opts?.journeyTemplates ?? []).map(t => (
+            <button key={t.id} type="button" className="j-card j-card--link" style={{ width: '100%', textAlign: 'left', color: 'inherit', font: 'inherit', padding: 12, marginBottom: 8 }}
+              onClick={() => { setDialog(null); applyPlan(t.body, { vehicle: t.vehicleId }) }}>
+              <div className="j-strong">{t.name}</div>
+              <div className="j-label">{t.body?.stops?.length ?? 0} stops · {t.vehicleId ? (opts.vehicles.find(v => v.id === t.vehicleId)?.label ?? 'a vehicle') : 'any vehicle'}{t.scheduleKind !== 'NONE' ? ' · a schedule' : ''}</div>
+            </button>
+          ))}
+        </JModal>
       )}
     </JourneyShell>
   )

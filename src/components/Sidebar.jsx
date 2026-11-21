@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, BarChart2,
   MessageCircle, Bell, Megaphone, ChevronDown,
-  Route, Radio, CirclePlus, ShieldCheck, Settings2,
+  Route, Radio, CirclePlus, ShieldCheck, Settings2, BookMarked, BellRing, Wand2,
 } from 'lucide-react'
 import { useCurrentUser, initials, firstName } from '../services/authUser'
 import SettingsMenu from './sidebar/SettingsMenu'
@@ -38,10 +38,13 @@ const NAV_SECTIONS = [
     title: 'Journey Management',
     items: [
       // Also lit on a journey's own page (/journeys/<id>).
-      { label: 'Journeys',        icon: Route,       path: '/journeys', match: p => p === '/journeys' || (/^\/journeys\/[^/]+(\/edit)?$/.test(p) && !['/journeys/live', '/journeys/new', '/journeys/approvals', '/journeys/settings'].includes(p)) },
+      { label: 'Journeys',        icon: Route,       path: '/journeys', match: p => p === '/journeys' || (/^\/journeys\/[^/]+(\/edit)?$/.test(p) && !['/journeys/live', '/journeys/new', '/journeys/approvals', '/journeys/settings', '/journeys/checkpoints', '/journeys/alerts', '/journeys/optimize'].includes(p)) },
       { label: 'Live Journeys',   icon: Radio,       path: '/journeys/live' },
       { label: 'New Journey',     icon: CirclePlus,  path: '/journeys/new', minLevel: 'modify' },
       { label: 'HSE Approvals',   icon: ShieldCheck, path: '/journeys/approvals' },
+      { label: 'Journey Alerts',  icon: BellRing,    path: '/journeys/alerts' },
+      { label: 'Checkpoints & Routes', icon: BookMarked, path: '/journeys/checkpoints' },
+      { label: 'Route Optimization', icon: Wand2,    path: '/journeys/optimize', minLevel: 'modify' },
       { label: 'Journey Settings', icon: Settings2,  path: '/journeys/settings' },
     ],
   },

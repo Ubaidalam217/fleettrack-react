@@ -160,7 +160,7 @@ describe('templates and schedules', () => {
   }
   const daily = (extra = {}) => ({
     name: 'Daily Ruwais run', vehicleId: fx.vehicles.v1.id, body: tplBody(), scheduleKind: 'RELATIVE', repeat: 'DAILY',
-    startTime: '06:00', validFrom: new Date(Date.now() - 86_400_000).toISOString(), horizonDays: 3, ...extra,
+    startTime: '06:00', validFrom: new Date(Date.now() - 86_400_000).toISOString(), validTo: null, horizonDays: 3, ...extra,
   })
 
   it('a template without a vehicle is fine; a schedule needs one, and its days', async () => {

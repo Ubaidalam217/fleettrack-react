@@ -100,6 +100,7 @@ export function scheduleErrors(s) {
 /** "Every day at 06:00", "Sun, Tue, Thu at 06:00", "On the 1st, 15th at 06:00". */
 export function describeSchedule(s) {
   if (s.scheduleKind === 'AUTOMATIC') return 'Automatic: each time the vehicle leaves the first stop'
+  if (s.scheduleKind === 'NONE') return 'No schedule: used from New Journey'
   if (s.scheduleKind !== 'RELATIVE') return 'One-off'
   const at = s.startTime ? ` at ${s.startTime}` : ''
   if (s.repeat === 'DAILY') return `Every day${at}`

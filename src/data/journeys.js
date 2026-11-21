@@ -31,6 +31,73 @@ export const deleteRouteTemplate = id => del(`/api/route-templates/${id}`)
 export const getJourneySettings = (query = {}) => get('/api/journey-settings', query)
 export const saveJourneySettings = body => put('/api/journey-settings', body)
 
+// ── the rest of the Uffizio Job module (client 2026-11-21) ──
+export const recentJourneys = (query = {}) => get('/api/journeys/recent', query)
+export const journeyEvents = (query = {}) => request('/api/journeys/events', { query, unwrap: false })
+export const journeyReport = query => request('/api/journeys/report', { query, unwrap: false })
+export const journeyLinks = id => get(`/api/journeys/${id}/links`)
+export const makeJourneyLink = (id, body) => post(`/api/journeys/${id}/links`, body)
+export const revokeJourneyLink = (id, linkId) => del(`/api/journeys/${id}/links/${linkId}`)
+export const journeyExpenses = id => get(`/api/journeys/${id}/expenses`)
+export const addJourneyExpense = (id, body) => post(`/api/journeys/${id}/expenses`, body)
+export const linkJourneyExpense = (id, expenseId) => post(`/api/journeys/${id}/expenses/link`, { expenseId })
+export const unlinkJourneyExpense = (id, expenseId) => del(`/api/journeys/${id}/expenses/${expenseId}`)
+export const officeCheckIn = (id, seq) => post(`/api/journeys/${id}/stops/${seq}/check-in`, {})
+export const fillStopForm = (id, seq, answers) => post(`/api/journeys/${id}/stops/${seq}/form`, { answers })
+export const addStopPhoto = (id, seq, body) => post(`/api/journeys/${id}/stops/${seq}/photos`, body)
+
+export const listAddresses = () => get('/api/journey-addresses')
+export const saveAddress = (body, id) => (id ? put(`/api/journey-addresses/${id}`, body) : post('/api/journey-addresses', body))
+export const bulkAddresses = rows => request('/api/journey-addresses/bulk', { method: 'POST', body: { rows }, unwrap: false })
+export const deleteAddress = id => del(`/api/journey-addresses/${id}`)
+export const updateRouteTemplate = (id, body) => put(`/api/route-templates/${id}`, body)
+
+export const listForms = () => get('/api/journey-forms')
+export const saveForm = (body, id) => (id ? put(`/api/journey-forms/${id}`, body) : post('/api/journey-forms', body))
+export const deleteForm = id => del(`/api/journey-forms/${id}`)
+
+export const listJourneyTemplates = () => request('/api/journey-templates', { unwrap: false })
+export const saveJourneyTemplate = (body, id) => (id ? request(`/api/journey-templates/${id}`, { method: 'PUT', body, unwrap: false }) : request('/api/journey-templates', { method: 'POST', body, unwrap: false }))
+export const deleteJourneyTemplate = id => del(`/api/journey-templates/${id}`)
+export const approveJourneyTemplate = id => post(`/api/journey-templates/${id}/approve`)
+export const unapproveJourneyTemplate = id => post(`/api/journey-templates/${id}/unapprove`)
+export const runJourneyTemplate = id => request(`/api/journey-templates/${id}/run`, { method: 'POST', unwrap: false })
+
+export const routeOptimizationOptions = () => get('/api/route-optimization/options')
+export const solveRoutes = body => post('/api/route-optimization/solve', body)
+export const saveVehicleCapacity = (vehicleId, body) => put(`/api/route-optimization/capacity/${vehicleId}`, body)
+
+/** A stop photo as an object URL (the endpoint needs the login token). */
+export async function photoUrl(id, seq, photoId) {
+  const res = await fetch(`${API_URL}/api/journeys/${id}/stops/${seq}/photos/${photoId}`, { headers: { Authorization: `Bearer ${getToken()}` } })
+  if (!res.ok) return null
+  return URL.createObjectURL(await res.blob())
+}
+
+/** The public pages (no login): the tracking link and the driver link. */
+export const linkUrl = (kind, token) => `${window.location.origin}/${kind === 'DRIVER' ? 'driver/journey' : 'share/journey'}/${token}`
+async function publicCall(path, { method = 'GET', body } = {}) {
+  const res = await fetch(`${API_URL}/api/public/journey/${path}`, {
+    method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined,
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error(json?.error?.message || `Request failed (${res.status})`)
+    err.status = res.status
+    err.details = json?.error?.details
+    throw err
+  }
+  return json.data
+}
+export const publicJourney = token => publicCall(token)
+export const driverCheckIn = (token, seq, body) => publicCall(`${token}/stops/${seq}/check-in`, { method: 'POST', body })
+export const driverForm = (token, seq, answers) => publicCall(`${token}/stops/${seq}/form`, { method: 'POST', body: { answers } })
+export const driverPhoto = (token, seq, body) => publicCall(`${token}/stops/${seq}/photos`, { method: 'POST', body })
+export const driverSignature = (token, seq, body) => publicCall(`${token}/stops/${seq}/signature`, { method: 'POST', body })
+
+export const PURPOSE_LABEL = Object.freeze({ LOADING: 'Loading', UNLOADING: 'Unloading', DELIVERY: 'Delivery', REST: 'Rest', OTHER: 'Other' })
+export const SCHEDULE_LABEL = Object.freeze({ FIXED: 'One-off', RELATIVE: 'Repeats', AUTOMATIC: 'Automatic', NONE: 'Template' })
+
 /** A stop's signature image as an object URL (the endpoint needs the login token). */
 export async function signatureUrl(id, seq) {
   const res = await fetch(`${API_URL}/api/journeys/${id}/stops/${seq}/signature`, {
@@ -56,6 +123,7 @@ export const STATUS_META = Object.freeze({
   Interrupted: { label: 'No signal',        tone: 'bad' },
   Completed:   { label: 'Completed',        tone: 'done' },
   Cancelled:   { label: 'Cancelled',        tone: 'muted' },
+  ForceClosed: { label: 'Force closed',     tone: 'bad' },
 })
 
 export const TIMING_META = Object.freeze({
@@ -72,14 +140,18 @@ export const EVENT_LABEL = Object.freeze({
   NOT_DEPARTED: 'Not departed', DELAYED: 'Running late', OFF_ROUTE: 'Off route', UNPLANNED_STOP: 'Unplanned stop',
   SKIPPED_STOP: 'Stop missed', NO_SIGNAL: 'No signal', SIGNAL_BACK: 'Signal back',
   BREAK_DUE: 'Break due (HSE)', DAILY_LIMIT: 'Daily driving limit (HSE)',
+  CREATED: 'Made by a schedule', FORCE_CLOSED: 'Force closed', DESTINATION_PASSED: 'Drove past the destination',
+  CONVOY_SEPARATED: 'Convoy separated', CONVOY_REJOINED: 'Convoy back together',
+  TEMP_OUT_OF_RANGE: 'Temperature out of range', TEMP_BACK: 'Temperature back in range',
+  CHECK_IN: 'Checked in', FORM: 'Form filled', PHOTO: 'Photo', LINK: 'Link shared', EXPENSE: 'Expense',
 })
 
 /** The tone of an event on the timeline. */
 export function eventTone(type) {
-  if (/_LATE$|OFF_ROUTE|NO_SIGNAL|REJECTED|DAILY_LIMIT|NOT_DEPARTED|SKIPPED/.test(type)) return 'bad'
-  if (/DELAYED|UNPLANNED|BREAK_DUE/.test(type)) return 'warn'
+  if (/_LATE$|OFF_ROUTE|NO_SIGNAL|REJECTED|DAILY_LIMIT|NOT_DEPARTED|SKIPPED|FORCE_CLOSED|CONVOY_SEPARATED|TEMP_OUT/.test(type)) return 'bad'
+  if (/DELAYED|UNPLANNED|BREAK_DUE|DESTINATION_PASSED/.test(type)) return 'warn'
   if (/_EARLY$/.test(type)) return 'info'
-  if (/_ON_TIME$|APPROVED|SIGNATURE|SIGNAL_BACK/.test(type)) return 'ok'
+  if (/_ON_TIME$|APPROVED|SIGNATURE|SIGNAL_BACK|CHECK_IN|FORM|REJOINED|TEMP_BACK/.test(type)) return 'ok'
   return 'muted'
 }
 

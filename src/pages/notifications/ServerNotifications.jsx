@@ -180,7 +180,8 @@ export default function ServerNotifications() {
   const filtered = useMemo(() => events.filter(e => {
     if (tab === 'unread' && e.readAt) return false
     if (severity !== 'all' && e.severity !== severity) return false
-    if (type !== 'all' && e.type !== type) return false
+    if (type === 'journey') { if (!String(e.type).startsWith('journey_')) return false }
+    else if (type !== 'all' && e.type !== type) return false
     return true
   }), [events, tab, severity, type])
 
@@ -270,6 +271,7 @@ export default function ServerNotifications() {
         <select value={type} onChange={e => setType(e.target.value)} style={selectStyle} aria-label="Alert type">
           <option value="all">All alert types</option>
           {ALERT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          <option value="journey">Journey alerts</option>
         </select>
 
         {filtering && (

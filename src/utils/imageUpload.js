@@ -55,3 +55,26 @@ export function logoPngBase64(file, max = 600) {
     img.src = url
   })
 }
+
+/**
+ * A photo (a stop's proof of delivery) as JPEG, base64 without the data:
+ * prefix: its own shape kept, the long side brought down to `max` px, so a
+ * phone camera's 5 MB picture uploads as a few hundred KB.
+ */
+export function photoJpegBase64(file, max = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1])
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not an image the browser can read')) }
+    img.src = url
+  })
+}

@@ -31,7 +31,7 @@ const stop = z.object({
   radiusM: z.coerce.number().int().min(30).max(20000).optional(),
   stayMin: z.coerce.number().int().min(0).max(1440).default(0),
   legDriveMin: z.union([z.coerce.number().int().min(0).max(4320), z.null()]).optional(),
-  legSource: z.enum(['SPEED', 'TRIP', 'MANUAL', 'ROUTING']).optional(),
+  legSource: z.enum(['SPEED', 'TRIP', 'MANUAL', 'ROUTING']).nullable().optional(),
   signatureRequired: z.boolean().default(false),
 })
 

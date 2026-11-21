@@ -15,7 +15,9 @@ import {
   Gauge, Hourglass, LogIn, LogOut, MapPin, Power, PowerOff, WifiOff,
   Thermometer, Moon, IdCard, Bell, SlidersHorizontal, UserX, CircleGauge, Wrench, ChevronsDown, ChevronsUp,
   ShieldAlert, BatteryWarning, Siren, Activity, ServerCrash,
+  Route, Clock, Signal, Coffee, Truck, CircleStop, ShieldCheck, Ban,
 } from 'lucide-react'
+import { journeyAlertKind } from '../../utils/journeyAlertTypes'
 
 export const SEVERITY_TONE = {
   Low:      { color: '#64748b', bg: 'rgba(100,116,139,0.12)', border: 'rgba(100,116,139,0.28)' },
@@ -53,4 +55,10 @@ export const ALERT_TYPE_ICON = {
   request_overload: ServerCrash,
 }
 
-export const alertTypeIcon = type => ALERT_TYPE_ICON[type] ?? Bell
+/** Journey alerts (type journey_<event>, server lib/journeys.js): one icon per kind. */
+const JOURNEY_ICON = {
+  approval: ShieldCheck, route: Route, signal: Signal, hse: Coffee, convoy: Truck,
+  temperature: Thermometer, stop: CircleStop, closed: Ban, time: Clock, journey: Route,
+}
+
+export const alertTypeIcon = type => ALERT_TYPE_ICON[type] ?? JOURNEY_ICON[journeyAlertKind(type)] ?? Bell

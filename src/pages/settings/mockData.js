@@ -1,4 +1,5 @@
 import { useMemo, useSyncExternalStore } from 'react'
+import { journeyAlertLabel } from '../../utils/journeyAlertTypes'
 import { defaultUserSetting } from './subuserSchema'
 import { isoDateFromToday } from '../../utils/licenceExpiry'
 // Real mode keeps the stores and selectors below but replaces their data source.
@@ -228,7 +229,8 @@ export function upgradeAlertType(type, settings = {}) {
 }
 
 export function alertTypeLabel(value) {
-  return ALERT_TYPES.find(t => t.value === value)?.label || LEGACY_ALERT_TYPES[value]?.label || '—'
+  // Journey alerts (server type journey_<event>) have no rule behind them.
+  return ALERT_TYPES.find(t => t.value === value)?.label || LEGACY_ALERT_TYPES[value]?.label || journeyAlertLabel(value) || '—'
 }
 
 export function alertTypeOf(value) {

@@ -85,7 +85,7 @@ export default function LiveJourneys(props) {
             stops={j?.stops ?? []}
             progressKm={j?.status === 'Completed' ? 1e9 : j?.progressKm ?? 0}
             vehicle={j && j.lastLat != null && (onRoad || j.status === 'Completed') ? { lat: j.lastLat, lng: j.lastLng, label: j.vehicleLabel } : null}
-            height={640}
+            height={typeof window !== 'undefined' && window.innerWidth < 640 ? 340 : 640}
             fitKey={j?.id ?? 'none'}
             showNames={false}
             fitPadding={typeof window !== 'undefined' && window.innerWidth > 900 ? [[40, 60], [380, 40]] : undefined}
@@ -95,7 +95,7 @@ export default function LiveJourneys(props) {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 3, background: '#fff', display: 'inline-block' }} /> Driven so far</span>
           </div>
           {j && (
-            <div className="j-card" style={{ position: 'absolute', top: 12, right: 12, zIndex: 500, width: 'min(330px, calc(100% - 24px))', padding: 16, maxHeight: 'calc(100% - 24px)', overflowY: 'auto' }}>
+            <div className="j-card j-live-card" style={{ position: 'absolute', top: 12, right: 12, zIndex: 500, width: 'min(330px, calc(100% - 24px))', padding: 16, maxHeight: 'calc(100% - 24px)', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                 <Link to={`/journeys/${j.id}`} className="j-strong" style={{ fontSize: 15.5, textDecoration: 'none' }}>{j.title}</Link>
                 <StatusPill journey={j} />

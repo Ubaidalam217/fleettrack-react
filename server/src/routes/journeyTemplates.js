@@ -83,8 +83,8 @@ const schema = z.object({
   weekdays: z.array(z.coerce.number().int().min(0).max(6)).max(7).default([]),
   monthDays: z.array(z.coerce.number().int().min(1).max(31)).max(31).default([]),
   startTime: z.union([z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:mm'), z.null()]).optional(),
-  validFrom: z.union([z.coerce.date(), z.null()]).optional(),
-  validTo: z.union([z.coerce.date(), z.null()]).optional(),
+  validFrom: z.union([z.null(), z.coerce.date()]).optional(),
+  validTo: z.union([z.null(), z.coerce.date()]).optional(),
   horizonDays: z.coerce.number().int().min(0).max(62).default(7),
 })
 
