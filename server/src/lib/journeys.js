@@ -7,6 +7,7 @@
  * 2026-11-17 (six arrival/departure events, chained schedule, signature).
  */
 
+import crypto from 'node:crypto'
 import prisma from '../prisma.js'
 import { badRequest, conflict } from './http.js'
 import { pushToUsers } from './push.js'
@@ -50,7 +51,30 @@ export const EVENT_TYPES = Object.freeze({
   SIGNAL_BACK: { label: 'Signal back', alert: false },
   BREAK_DUE: { label: 'Break due (HSE)', severity: 'Medium', alert: true },
   DAILY_LIMIT: { label: 'Daily driving limit (HSE)', severity: 'High', alert: true },
+  // The rest of the Uffizio Job module (client 2026-11-21).
+  CREATED: { label: 'Made by a schedule', alert: false },
+  FORCE_CLOSED: { label: 'Force closed', severity: 'Medium', alert: true },
+  DESTINATION_PASSED: { label: 'Drove past the destination', severity: 'Low', alert: false },
+  CONVOY_SEPARATED: { label: 'Convoy separated', severity: 'High', alert: true },
+  CONVOY_REJOINED: { label: 'Convoy back together', alert: false },
+  TEMP_OUT_OF_RANGE: { label: 'Temperature out of range', severity: 'High', alert: true },
+  TEMP_BACK: { label: 'Temperature back in range', alert: false },
+  CHECK_IN: { label: 'Checked in', alert: false },
+  FORM: { label: 'Form filled', alert: false },
+  PHOTO: { label: 'Photo', alert: false },
+  LINK: { label: 'Link shared', alert: false },
+  EXPENSE: { label: 'Expense', alert: false },
 })
+
+/** Stop states (the address book's "state", Uffizio's loading / unloading). */
+export const STOP_PURPOSES = Object.freeze(['LOADING', 'UNLOADING', 'DELIVERY', 'REST', 'OTHER'])
+
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+/** A stop's code: 6 characters, no 0/O or 1/I to misread when typed. */
+export function newStopCode() {
+  const bytes = crypto.randomBytes(6)
+  return [...bytes].map(b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('')
+}
 
 /** Does this event ring the bell / push under these settings? */
 export function isAlertWorthy(type, settings, { atEndpoint = true } = {}) {
@@ -86,7 +110,8 @@ const centroid = pts => ({
  * path, and the chained schedule. `geofences` = the caller's visible
  * geofences by id.
  */
-export function buildPlan({ plannedStart, routeSource, plannedPath, stops, settings, geofences }) {
+export function buildPlan({ plannedStart, routeSource, plannedPath, stops, settings, geofences, forms = new Map(), keepCodes = new Map() }) {
+  const usedCodes = new Set()
   const snap = stops.map((s, i) => {
     const base = {
       name: s.name.trim(),
@@ -101,6 +126,22 @@ export function buildPlan({ plannedStart, routeSource, plannedPath, stops, setti
       legDriveMin: s.legDriveMin ?? null,
       legSource: s.legSource ?? null,
       signatureRequired: Boolean(s.signatureRequired),
+      visitVia: s.visitVia === 'QR' ? 'QR' : 'MAP',
+      purpose: STOP_PURPOSES.includes(s.purpose) ? s.purpose : null,
+      loadState: s.loadState || null,
+      addressId: s.addressId || null,
+      formId: null, formName: null, formFields: null,
+    }
+    // Every stop has a code (its QR sheet, and what the driver types when the
+    // camera cannot read it); an edit keeps a stop's code so printed sheets stay right.
+    let code = keepCodes.get(base.name.toLowerCase()) ?? null
+    while (!code || usedCodes.has(code)) code = newStopCode()
+    usedCodes.add(code)
+    base.code = code
+    if (s.formId) {
+      const f = forms.get(s.formId)
+      if (!f) throw badRequest('Validation failed', { [`stops.${i}.formId`]: 'Pick one of your forms' })
+      Object.assign(base, { formId: f.id, formName: f.name, formFields: f.fields })
     }
     if (base.arrivalType === 'GEOFENCE') {
       const g = s.geofenceId ? geofences.get(s.geofenceId) : null
@@ -323,7 +364,10 @@ export const STOP_SELECT = {
   plannedDepart: true, signatureRequired: true, status: true, actualArrive: true, actualDepart: true, dwellSec: true,
   arriveTiming: true, arriveDiffMin: true, departTiming: true, departDiffMin: true, detectedBy: true,
   checkInSource: true, checkedInAt: true, checkedInByName: true,
+  visitVia: true, code: true, purpose: true, loadState: true, addressId: true, formId: true, formName: true, formFields: true,
   signature: { select: { signedByName: true, signedAt: true, source: true, size: true } },
+  form: { select: { formName: true, fields: true, answers: true, source: true, submittedByName: true, submittedAt: true } },
+  photos: { select: { id: true, fieldKey: true, caption: true, source: true, takenAt: true, uploadedByName: true }, orderBy: { takenAt: 'asc' } },
 }
 
 const VEHICLE_SELECT = { select: { id: true, plateNo: true, fleetNo: true, imei: true, vehicleType: true } }
@@ -343,6 +387,21 @@ export function publicStop(s) {
     plannedArrive: iso(s.plannedArrive), plannedDepart: iso(s.plannedDepart),
     actualArrive: iso(s.actualArrive), actualDepart: iso(s.actualDepart), checkedInAt: iso(s.checkedInAt),
     signature: s.signature ? { signedByName: s.signature.signedByName, signedAt: iso(s.signature.signedAt), source: s.signature.source } : null,
+    form: s.form ? { ...s.form, submittedAt: iso(s.form.submittedAt) } : null,
+    photos: (s.photos ?? []).map(p => ({ ...p, takenAt: iso(p.takenAt) })),
+  }
+}
+
+/** A stop as a public link shows it: no code (the QR is the proof), no photos' bytes. */
+export function linkStop(s, { driver = false } = {}) {
+  const { code: _code, addressId: _a, formId: _f, geofenceId: _g, polygon, photos, form, signature, ...rest } = publicStop(s)
+  return {
+    ...rest,
+    polygon: driver ? polygon : undefined,
+    formFields: driver ? rest.formFields : undefined,
+    formDone: Boolean(form),
+    photoCount: (photos ?? []).length,
+    signed: Boolean(signature),
   }
 }
 
@@ -371,3 +430,95 @@ export function publicJourney(j, { full = false } = {}) {
 }
 
 export { diffText }
+
+// ── shared by New Journey, the schedules and route optimization ─────────────
+
+export const JOURNEY_EXTRA_KEYS = Object.freeze([
+  'startLogic', 'startBufferMin', 'routeToleranceM', 'forceCloseMin', 'convoyToleranceM', 'loadState', 'tempMin', 'tempMax',
+])
+
+/**
+ * The columns of a journey from a validated body (routes/journeys.js
+ * journeySchema), with its stops planned. `vehicle`, `driver` and `convoy`
+ * are rows already checked against the caller's scope; `geofences` and
+ * `forms` are Maps by id of the ones the caller may use.
+ */
+export function journeyColumns(b, { vehicle, driver, convoy = [], settings, geofences, forms, keepCodes }) {
+  const plan = buildPlan({
+    plannedStart: b.plannedStart, routeSource: b.routeSource, plannedPath: b.plannedPath,
+    stops: b.stops, settings, geofences, forms, keepCodes,
+  })
+  if (!plan.expectedArrival || plan.expectedArrival <= new Date(b.plannedStart)) {
+    throw badRequest('Validation failed', { stops: 'The arrival must be after the start' })
+  }
+  const data = {
+    title: b.title, customer: b.customer ?? null, priority: b.priority ?? 'Normal', type: journeyTypeOf(b.stops, b.type), instructions: b.instructions ?? null,
+    vehicleId: vehicle.id, vehicleLabel: vehicleLabel(vehicle) || 'Vehicle', driverId: driver?.id ?? null, driverName: driver?.name ?? null,
+    plannedStart: new Date(b.plannedStart), expectedArrival: plan.expectedArrival,
+    plannedDistanceKm: plan.plannedDistanceKm, plannedDriveMin: plan.plannedDriveMin, plannedStayMin: plan.plannedStayMin,
+    routeSource: b.routeSource ?? 'STRAIGHT', routeTemplateId: b.routeTemplateId ?? null,
+    plannedPath: plan.plannedPath ?? undefined, recordedFrom: b.recordedFrom ?? undefined,
+    startLogic: b.startLogic === 'IGNITION_ON' ? 'IGNITION_ON' : 'ANY_DATA',
+    startBufferMin: b.startBufferMin ?? settings.startBufferMin,
+    routeToleranceM: b.routeToleranceM ?? null,
+    forceCloseMin: b.forceCloseMin ?? null,
+    convoy: convoy.length ? convoy.map(v => ({ vehicleId: v.id, vehicleLabel: vehicleLabel(v) || 'Vehicle' })) : undefined,
+    convoyToleranceM: b.convoyToleranceM ?? 200,
+    loadState: b.loadState ?? null,
+    tempMin: b.tempMin ?? null,
+    tempMax: b.tempMax ?? null,
+  }
+  return { data, plan }
+}
+
+export const stopRows = stops => stops.map((s, seq) => ({
+  seq, kind: s.kind, name: s.name, arrivalType: s.arrivalType, geofenceId: s.geofenceId, lat: s.lat, lng: s.lng,
+  radiusM: s.radiusM, polygon: s.polygon ?? undefined, stayMin: s.stayMin, legKm: s.legKm, legDriveMin: s.legDriveMin,
+  legSource: s.legSource, alongKm: s.alongKm, plannedArrive: s.plannedArrive, plannedDepart: s.plannedDepart,
+  signatureRequired: s.signatureRequired, visitVia: s.visitVia ?? 'MAP', code: s.code ?? null, purpose: s.purpose ?? null,
+  loadState: s.loadState ?? null, addressId: s.addressId ?? null, formId: s.formId ?? null, formName: s.formName ?? null,
+  formFields: s.formFields ?? undefined,
+}))
+
+/**
+ * A manual check-in at a stop: the driver (driver link, or its QR scan) or
+ * the office. Marks it arrived — or, at the destination, completes the
+ * journey — and records the event. The engine picks the state up on its
+ * next pass (lib/journeyEngine.js reconcile). Returns the updated stop.
+ */
+export async function checkInStop(j, stop, { source, byName, at = new Date(), lat = null, lng = null, via = null }) {
+  if (FINAL.includes(j.status)) throw conflict('This journey is already finished')
+  if (j.status === 'Draft') throw conflict('This journey has not been approved yet')
+  if (stop.status !== 'PENDING') throw conflict(`${stop.name} is already checked in`)
+  const last = j.stops.length - 1
+  const t = stop.plannedArrive ? Math.round((at.getTime() - new Date(stop.plannedArrive).getTime()) / 60000) : null
+  const settings = await getJourneySettings(j.bgId)
+  const timing = t == null ? null : Math.abs(t) <= settings.onTimeMin ? 'ON_TIME' : t > 0 ? 'LATE' : 'EARLY'
+  const isOrigin = stop.seq === 0
+  const data = isOrigin
+    ? { status: 'ARRIVED', actualArrive: at, checkInSource: source, checkedInAt: at, checkedInByName: byName, detectedBy: via }
+    : {
+      status: 'ARRIVED', actualArrive: at, checkInSource: source, checkedInAt: at, checkedInByName: byName, detectedBy: via,
+      arriveTiming: timing, arriveDiffMin: t,
+    }
+  const row = await prisma.journeyStop.update({ where: { id: stop.id }, data, select: STOP_SELECT })
+  const how = source === 'DRIVER' ? (via === 'QR' ? 'driver scanned the QR' : 'driver checked in') : `checked in by ${byName ?? 'the office'}`
+  await recordEvent(j, {
+    type: 'CHECK_IN', stopSeq: stop.seq, lat, lng, occurredAt: at, value: t,
+    message: `${stop.name}: ${how}${t != null && !isOrigin ? ` (${timing === 'ON_TIME' ? 'on time' : `${diffText(t)}`})` : ''}`,
+  }, { settings, alert: false })
+  if (stop.seq === last && !isOrigin) {
+    // The destination: the journey is done.
+    const now = new Date()
+    await prisma.journey.update({
+      where: { id: j.id },
+      data: {
+        status: 'Completed', actualArrival: at, completedAt: now, etaAt: null, remainingKm: 0,
+        progressKm: j.plannedDistanceKm ?? j.progressKm, delayMin: t,
+        actualStart: j.actualStart ?? at,
+      },
+    })
+    await recordEvent(j, { type: 'STATUS', fromStatus: j.status, toStatus: 'Completed', occurredAt: at, message: `Reached ${stop.name} (${how})` }, { settings, alert: false })
+  }
+  return row
+}

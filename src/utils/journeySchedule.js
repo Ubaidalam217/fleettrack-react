@@ -18,7 +18,7 @@
  * Changing one leg shifts every time after it, nothing before it.
  */
 
-export const LEG_SOURCES = ['SPEED', 'TRIP', 'MANUAL']
+export const LEG_SOURCES = ['SPEED', 'TRIP', 'MANUAL', 'ROUTING']
 
 const toMs = v => (v == null || v === '' ? null : v instanceof Date ? v.getTime() : typeof v === 'number' ? v : Date.parse(v))
 const MIN = 60_000
@@ -125,6 +125,9 @@ export function displayStatus(j) {
     if (j.approvalStatus === 'REJECTED') return 'Rejected'
     return 'Draft'
   }
+  // Closed by the engine after the force-close time (client 2026-11-21): a
+  // Cancelled journey, shown as its own state.
+  if (j.status === 'Cancelled' && j.forceClosedAt) return 'ForceClosed'
   return j.status
 }
 

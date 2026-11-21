@@ -96,6 +96,9 @@ const ENTITIES = Object.freeze({
   vehicleMove: { delegate: 'vehicleMove', label: 'Reallocation record' },
   journey: { delegate: 'journey', label: 'Journey' },
   routeTemplate: { delegate: 'routeTemplate', label: 'Route' },
+  journeyAddress: { delegate: 'journeyAddress', label: 'Address' },
+  journeyForm: { delegate: 'journeyFormTemplate', label: 'Form' },
+  journeyTemplate: { delegate: 'journeyTemplate', label: 'Journey template' },
 })
 
 /**
@@ -423,6 +426,10 @@ const WHERE_BUILDERS = Object.freeze({
   // sub-user, like alert events. Saved routes are BG-wide like geofences.
   journey: alertEventWhere,
   routeTemplate: geofenceWhere,
+  // The address book, stop forms and journey templates are BG-wide like saved routes.
+  journeyAddress: geofenceWhere,
+  journeyForm: geofenceWhere,
+  journeyTemplate: geofenceWhere,
 })
 
 /**

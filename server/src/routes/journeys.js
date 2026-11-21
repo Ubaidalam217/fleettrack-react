@@ -22,6 +22,8 @@
  * (lib/permissions.js) and nobody approves a journey they created or sent.
  */
 
+import crypto from 'node:crypto'
+import { Prisma } from '@prisma/client'
 import { Router } from 'express'
 import { z } from 'zod'
 import prisma from '../prisma.js'
@@ -35,9 +37,15 @@ import * as flespi from '../lib/flespi.js'
 import { fetchRecent } from '../lib/alertEngine.js'
 import { fromBase64, sniffImage } from '../lib/files.js'
 import {
-  ACTIVE, EDITABLE, FINAL, LIST_INCLUDE, STOP_SELECT, approversOf, buildPlan, driverOverlap, driverProblems,
-  findOverlap, journeyTypeOf, overlapMessage, publicJourney, publicStop, recordEvent, withVehicleCheck,
+  ACTIVE, EDITABLE, FINAL, LIST_INCLUDE, STOP_SELECT, STOP_PURPOSES, approversOf, driverOverlap, driverProblems,
+  findOverlap, overlapMessage, publicJourney, publicStop, recordEvent, withVehicleCheck,
+  journeyColumns, stopRows, checkInStop,
 } from '../lib/journeys.js'
+import { checkAnswers } from '../../../src/utils/journeyForms.js'
+import { probeTemperature } from '../../../src/utils/sensorReadings.js'
+import { assertCanWrite } from '../lib/scope.js'
+import { levelOf } from '../lib/permissions.js'
+import { EXPENSE_TYPES } from './expenses.js'
 import { journeyRef } from '../../../src/utils/journeySchedule.js'
 import { simplifyPath, pathKm } from '../../../src/utils/journeyGeo.js'
 
@@ -65,7 +73,7 @@ router.use(viewGuard)
 const lat = z.coerce.number().min(-90).max(90)
 const lng = z.coerce.number().min(-180).max(180)
 
-const stopSchema = z.object({
+export const stopSchema = z.object({
   name: z.string().trim().min(1, 'Name the stop').max(120),
   arrivalType: z.enum(['RADIUS', 'GEOFENCE']).default('RADIUS'),
   geofenceId: z.union([z.string().trim().min(1), z.null()]).optional(),
@@ -73,9 +81,17 @@ const stopSchema = z.object({
   radiusM: z.coerce.number().int().min(30, 'At least 30 m').max(20000).optional(),
   stayMin: z.coerce.number().int().min(0).max(1440).default(0),
   legDriveMin: z.union([z.coerce.number().int().min(0).max(4320), z.null()]).optional(),
-  legSource: z.enum(['SPEED', 'TRIP', 'MANUAL']).optional(),
+  legSource: z.enum(['SPEED', 'TRIP', 'MANUAL', 'ROUTING']).optional(),
   signatureRequired: z.boolean().default(false),
+  visitVia: z.enum(['MAP', 'QR']).default('MAP'),
+  purpose: z.union([z.enum(STOP_PURPOSES), z.null()]).optional(),
+  loadState: z.union([z.string().trim().max(40), z.null()]).optional().transform(v => v || null),
+  addressId: z.union([z.string().trim().min(1), z.null()]).optional(),
+  formId: z.union([z.string().trim().min(1), z.null()]).optional(),
 })
+
+const nullableInt = (lo, hi) => z.union([z.coerce.number().int().min(lo).max(hi), z.null()]).optional()
+const nullableNum = (lo, hi) => z.union([z.coerce.number().min(lo).max(hi), z.null()]).optional()
 
 const journeySchema = z.object({
   bgId: z.union([z.string().trim().min(1), z.null()]).optional(),
@@ -91,9 +107,20 @@ const journeySchema = z.object({
   plannedPath: z.union([z.array(z.array(z.number()).min(2)).max(20000), z.null()]).optional(),
   recordedFrom: z.union([z.record(z.string(), z.any()), z.null()]).optional(),
   routeTemplateId: z.union([z.string().trim().min(1), z.null()]).optional(),
-  stops: z.array(stopSchema).min(2, 'A journey needs a start and a destination').max(40),
+  stops: z.array(stopSchema).min(2, 'A journey needs a start and a destination').max(60),
   submit: z.boolean().default(false),
-})
+  // The rest of the Uffizio Job module (client 2026-11-21).
+  startLogic: z.enum(['ANY_DATA', 'IGNITION_ON']).default('ANY_DATA'),
+  startBufferMin: nullableInt(0, 720),
+  routeToleranceM: nullableInt(20, 20000),
+  forceCloseMin: nullableInt(0, 43200),
+  convoy: z.array(z.string().trim().min(1)).max(5).default([]),
+  convoyToleranceM: z.coerce.number().int().min(50).max(5000).default(200),
+  loadState: z.union([z.string().trim().max(40), z.null()]).optional().transform(v => v || null),
+  tempMin: nullableNum(-60, 120),
+  tempMax: nullableNum(-60, 120),
+}).refine(b => b.tempMin == null || b.tempMax == null || b.tempMin < b.tempMax, { message: 'The lowest must be below the highest', path: ['tempMax'] })
+  .refine(b => !b.convoy.includes(b.vehicleId), { message: 'The lead vehicle is already in the journey', path: ['convoy'] })
 
 const reasonSchema = z.object({ reason: z.string().trim().min(3, 'Say why').max(1000) })
 const optionalReason = z.object({ reason: z.union([z.string().trim().max(1000), z.null()]).optional() })
@@ -158,29 +185,24 @@ async function resolveAssignment(req) {
   if (req.body.driverId) {
     driver = await findScopedOrThrow('driver', req.body.driverId, req.scope)
   }
-  return { vehicle, driver }
+  const convoy = []
+  for (const id of [...new Set(req.body.convoy ?? [])]) convoy.push(await findScopedOrThrow('vehicle', id, req.scope))
+  return { vehicle, driver, convoy }
 }
 
-/** The fields a plan writes, from a validated body. */
-async function planColumns(req, settings) {
-  const b = req.body
-  const geofences = await geofencesFor(req, b.stops)
-  const plan = buildPlan({
-    plannedStart: b.plannedStart, routeSource: b.routeSource, plannedPath: b.plannedPath,
-    stops: b.stops, settings, geofences,
-  })
-  if (!plan.expectedArrival || plan.expectedArrival <= b.plannedStart) {
-    throw badRequest('Validation failed', { stops: 'The arrival must be after the start' })
-  }
-  return { plan, type: journeyTypeOf(b.stops, b.type) }
+/** The caller's forms used by these stops, by id. */
+async function formsFor(req, stops) {
+  const ids = [...new Set(stops.map(s => s.formId).filter(Boolean))]
+  if (!ids.length) return new Map()
+  const rows = await prisma.journeyFormTemplate.findMany({ where: scopedWhere('journeyForm', req.scope, { id: { in: ids } }) })
+  return new Map(rows.map(f => [f.id, f]))
 }
 
-const stopRows = stops => stops.map((s, seq) => ({
-  seq, kind: s.kind, name: s.name, arrivalType: s.arrivalType, geofenceId: s.geofenceId, lat: s.lat, lng: s.lng,
-  radiusM: s.radiusM, polygon: s.polygon ?? undefined, stayMin: s.stayMin, legKm: s.legKm, legDriveMin: s.legDriveMin,
-  legSource: s.legSource, alongKm: s.alongKm, plannedArrive: s.plannedArrive, plannedDepart: s.plannedDepart,
-  signatureRequired: s.signatureRequired,
-}))
+/** The columns a plan writes, from a validated body. */
+async function planColumns(req, settings, assignment, keepCodes) {
+  const [geofences, forms] = await Promise.all([geofencesFor(req, req.body.stops), formsFor(req, req.body.stops)])
+  return journeyColumns(req.body, { ...assignment, settings, geofences, forms, keepCodes })
+}
 
 /** Does an edit change what HSE approved (vehicle, driver, route, stops, times)? */
 function materialChange(before, after) {
@@ -282,7 +304,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const bgs = await prisma.businessGroup.findMany({ where: bgWhere(req.scope), select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 500 })
     const bgId = req.scope.bgId ?? (typeof req.query.bgId === 'string' ? req.query.bgId : null) ?? bgs[0]?.id ?? null
-    const [vehicles, drivers, geofences, templates, customers, settings] = await Promise.all([
+    const [vehicles, drivers, geofences, templates, customers, settings, addresses, forms, journeyTemplates] = await Promise.all([
       prisma.vehicle.findMany({
         where: vehicleWhere(req.scope),
         select: { id: true, bgId: true, plateNo: true, fleetNo: true, imei: true, vehicleType: true, make: true, model: true, driver: { select: { id: true, name: true } } },
@@ -303,12 +325,21 @@ router.get(
       prisma.routeTemplate.findMany({ where: scopedWhere('routeTemplate', req.scope), orderBy: { name: 'asc' }, take: 300 }),
       prisma.journey.findMany({ where: scopedWhere('journey', req.scope, { customer: { not: null } }), distinct: ['customer'], select: { customer: true }, take: 200 }),
       getJourneySettings(bgId),
+      prisma.journeyAddress.findMany({ where: scopedWhere('journeyAddress', req.scope), orderBy: { name: 'asc' }, take: 2000 }),
+      prisma.journeyFormTemplate.findMany({ where: scopedWhere('journeyForm', req.scope), orderBy: { name: 'asc' }, take: 200 }),
+      prisma.journeyTemplate.findMany({
+        where: scopedWhere('journeyTemplate', req.scope),
+        select: { id: true, name: true, vehicleId: true, scheduleKind: true, body: true, active: true },
+        orderBy: { name: 'asc' }, take: 300,
+      }),
     ])
+    const temps = await temperatureVehicles(vehicles)
     res.set('Cache-Control', 'no-store')
     res.json({
       data: {
         bgs, bgId,
-        vehicles: vehicles.map(v => ({ ...v, label: vehicleLabel(v) })).sort((a, b) => a.label.localeCompare(b.label)),
+        vehicles: vehicles.map(v => ({ ...v, label: vehicleLabel(v), hasTemperature: temps.has(v.id) })).sort((a, b) => a.label.localeCompare(b.label)),
+        addresses, forms, journeyTemplates,
         drivers: drivers.map(d => ({ ...d, problems: driverProblems(d, new Date()) })),
         geofences,
         templates,
@@ -402,6 +433,141 @@ router.get(
   })
 )
 
+/**
+ * Vehicles whose tracker reports a real temperature (a probe, not the 0 °C a
+ * BLE slot with no probe sends), from our own copy of each device's last
+ * state — no Flespi call. Only these may set a journey's temperature limits.
+ */
+const TEMP_SEEN_SEC = 7 * 86_400
+async function temperatureVehicles(vehicles) {
+  const byImei = new Map(vehicles.map(v => [String(v.imei ?? '').replace(/\D/g, ''), v.id]).filter(([k]) => k))
+  if (!byImei.size) return new Set()
+  const rows = await prisma.deviceState.findMany({
+    where: { ident: { in: [...byImei.keys()] }, ts: { gte: Math.floor(Date.now() / 1000) - TEMP_SEEN_SEC } },
+    select: { ident: true, temperature: true, extra: true },
+  })
+  const out = new Set()
+  for (const r of rows) {
+    const flat = { 'ble.sensor.temperature.1': r.temperature, ...(r.extra && typeof r.extra === 'object' ? r.extra : {}) }
+    if ([1, 2, 3, 4].some(n => probeTemperature(flat, n) !== null)) out.add(byImei.get(r.ident))
+  }
+  return out
+}
+
+// ── Journey Alerts, reports, copy from a previous journey ──────────────────
+
+const eventsQuery = z.object({
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  type: z.string().trim().max(400).optional(),
+  severity: z.string().trim().max(100).optional(),
+  vehicleId: z.string().trim().min(1).optional(),
+  journeyId: z.string().trim().min(1).optional(),
+  q: z.string().trim().max(100).optional(),
+  alertsOnly: z.enum(['true', 'false']).optional(),
+  limit: z.coerce.number().int().min(1).max(2000).default(500),
+})
+
+/** Journey Alerts: every journey event (or only those that rang the bell) in a period. */
+router.get(
+  '/events',
+  validate(eventsQuery, 'query'),
+  asyncHandler(async (req, res) => {
+    const { from, to, type, severity, vehicleId, journeyId, q, alertsOnly, limit } = req.validatedQuery
+    const [d0, d1] = todayUae()
+    const start = from ?? new Date(d0.getTime() - 6 * 86_400_000)
+    const end = to ?? d1
+    const journey = scopedWhere('journey', req.scope, vehicleId ? { vehicleId } : null, journeyId ? { id: journeyId } : null,
+      q ? { OR: ['title', 'vehicleLabel', 'driverName', 'customer'].map(f => ({ [f]: { contains: q, mode: 'insensitive' } })) } : null)
+    const rows = await prisma.journeyEvent.findMany({
+      where: {
+        occurredAt: { gte: start, lt: end },
+        journey,
+        ...(type ? { type: { in: type.split(',') } } : {}),
+        ...(severity ? { severity: { in: severity.split(',') } } : {}),
+        ...(alertsOnly === 'true' ? { alertEventId: { not: null } } : {}),
+      },
+      include: { journey: { select: { id: true, journeyNo: true, plannedStart: true, title: true, vehicleLabel: true, driverName: true, customer: true, status: true } } },
+      orderBy: { occurredAt: 'desc' },
+      take: limit,
+    })
+    res.set('Cache-Control', 'no-store')
+    res.json({
+      data: rows.map(({ journey: jr, ...e }) => ({
+        ...e, occurredAt: e.occurredAt.toISOString(), endedAt: e.endedAt?.toISOString() ?? null, alert: Boolean(e.alertEventId),
+        journey: { ...jr, ref: journeyRef(jr), plannedStart: jr.plannedStart.toISOString() },
+      })),
+      window: { from: start.toISOString(), to: end.toISOString() },
+    })
+  })
+)
+
+const reportQuery = z.object({
+  from: z.coerce.date(),
+  to: z.coerce.date(),
+  vehicleId: z.string().trim().min(1).optional(),
+  driverId: z.string().trim().min(1).optional(),
+  customer: z.string().trim().max(120).optional(),
+})
+
+/**
+ * Everything the Journey reports (Reports › Journey) read: the journeys
+ * planned in the period with their stops (planned vs actual, timing, form
+ * and signature state), their events and their cost.
+ */
+router.get(
+  '/report',
+  validate(reportQuery, 'query'),
+  asyncHandler(async (req, res) => {
+    const { from, to, vehicleId, driverId, customer } = req.validatedQuery
+    if (to <= from) throw badRequest('Validation failed', { to: 'The end must be after the start' })
+    if (to - from > 93 * 86_400_000) throw badRequest('Validation failed', { to: 'Pick at most three months' })
+    const rows = await prisma.journey.findMany({
+      where: scopedWhere('journey', req.scope, { plannedStart: { gte: from, lt: to } },
+        vehicleId ? { vehicleId } : null, driverId ? { driverId } : null,
+        customer ? { customer: { equals: customer, mode: 'insensitive' } } : null),
+      include: {
+        ...LIST_INCLUDE,
+        events: { select: { type: true, severity: true, stopSeq: true, occurredAt: true, message: true, value: true, alertEventId: true, durationSec: true }, orderBy: { occurredAt: 'asc' }, take: 300 },
+      },
+      orderBy: { plannedStart: 'asc' },
+      take: 2000,
+    })
+    const costs = rows.length
+      ? await prisma.expense.groupBy({ by: ['journeyId'], where: { journeyId: { in: rows.map(r => r.id) } }, _sum: { amount: true }, _count: true })
+      : []
+    const costOf = new Map(costs.map(c => [c.journeyId, { amount: c._sum.amount ?? 0, count: c._count }]))
+    res.set('Cache-Control', 'no-store')
+    res.json({
+      data: rows.map(r => ({
+        ...publicJourney(r),
+        events: r.events.map(e => ({ ...e, occurredAt: e.occurredAt.toISOString(), alert: Boolean(e.alertEventId) })),
+        alertCount: r.events.filter(e => e.alertEventId).length,
+        cost: costOf.get(r.id)?.amount ?? 0,
+        expenseCount: costOf.get(r.id)?.count ?? 0,
+      })),
+      window: { from: from.toISOString(), to: to.toISOString() },
+    })
+  })
+)
+
+/** "Copy from a previous journey": the latest journeys, searchable. */
+router.get(
+  '/recent',
+  validate(z.object({ q: z.string().trim().max(100).optional() }), 'query'),
+  asyncHandler(async (req, res) => {
+    const { q } = req.validatedQuery
+    const rows = await prisma.journey.findMany({
+      where: scopedWhere('journey', req.scope, q ? { OR: ['title', 'vehicleLabel', 'customer'].map(f => ({ [f]: { contains: q, mode: 'insensitive' } })) } : null),
+      select: { id: true, journeyNo: true, title: true, vehicleLabel: true, plannedStart: true, status: true, customer: true, plannedDistanceKm: true, _count: { select: { stops: true } } },
+      orderBy: { plannedStart: 'desc' },
+      take: 60,
+    })
+    res.set('Cache-Control', 'no-store')
+    res.json({ data: rows.map(r => ({ ...r, ref: journeyRef(r), stopCount: r._count.stops, _count: undefined })) })
+  })
+)
+
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
@@ -421,13 +587,19 @@ router.get(
       : []
     const level = levelFor(req)
     const own = j.createdById === req.user.id || j.submittedById === req.user.id
+    const [cost, links] = await Promise.all([
+      prisma.expense.aggregate({ where: { journeyId: j.id }, _sum: { amount: true }, _count: true }),
+      prisma.journeyLink.count({ where: { journeyId: j.id, revokedAt: null, expiresAt: { gt: new Date() } } }),
+    ])
     res.set('Cache-Control', 'no-store')
     res.json({
       data: {
         ...publicJourney(j, { full: true }),
         events: j.events.map(e => ({ ...e, occurredAt: e.occurredAt.toISOString(), endedAt: e.endedAt?.toISOString() ?? null })),
         violations,
-        settings: { onTimeMin: settings.onTimeMin, lateArrivalMin: settings.lateArrivalMin },
+        settings: { onTimeMin: settings.onTimeMin, lateArrivalMin: settings.lateArrivalMin, destinationRule: settings.destinationRule, forceCloseHours: settings.forceCloseHours, offRouteKm: settings.offRouteKm },
+        cost: { total: Math.round((cost._sum.amount ?? 0) * 100) / 100, count: cost._count },
+        openLinks: links,
         can: {
           edit: atLeast(level, 'modify') && EDITABLE.includes(j.status),
           submit: atLeast(level, 'modify') && j.status === 'Draft' && j.approvalStatus !== 'PENDING',
@@ -436,6 +608,10 @@ router.get(
           delete: atLeast(level, 'addDelete') && j.status === 'Draft',
           note: atLeast(level, 'modify'),
           sign: atLeast(level, 'modify'),
+          links: atLeast(level, 'modify') && j.status !== 'Cancelled',
+          checkIn: atLeast(level, 'modify') && ACTIVE.includes(j.status),
+          form: atLeast(level, 'modify') && j.status !== 'Cancelled',
+          expenses: atLeast(level, 'modify'),
         },
       },
     })
@@ -449,20 +625,13 @@ router.post(
   validate(journeySchema),
   asyncHandler(async (req, res) => {
     need(req, 'modify')
-    const { vehicle, driver } = await resolveAssignment(req)
+    const assignment = await resolveAssignment(req)
+    const { vehicle, driver } = assignment
     const bgId = await journeyBgId(req, vehicle)
     const settings = await getJourneySettings(bgId)
-    const { plan, type } = await planColumns(req, settings)
+    const { plan, data: cols } = await planColumns(req, settings, assignment)
     const b = req.body
-    const data = {
-      bgId, title: b.title, customer: b.customer, priority: b.priority, type, instructions: b.instructions,
-      vehicleId: vehicle.id, vehicleLabel: vehicleLabel(vehicle) || 'Vehicle', driverId: driver?.id ?? null, driverName: driver?.name ?? null,
-      plannedStart: b.plannedStart, expectedArrival: plan.expectedArrival,
-      plannedDistanceKm: plan.plannedDistanceKm, plannedDriveMin: plan.plannedDriveMin, plannedStayMin: plan.plannedStayMin,
-      routeSource: b.routeSource, routeTemplateId: b.routeTemplateId ?? null,
-      plannedPath: plan.plannedPath ?? undefined, recordedFrom: b.recordedFrom ?? undefined,
-      createdById: req.user.id, createdByName: who(req.user),
-    }
+    const data = { bgId, ...cols, createdById: req.user.id, createdByName: who(req.user) }
     if (b.submit) {
       await checkDriver(driver, b.plannedStart)
       Object.assign(data, { approvalStatus: 'PENDING', submittedAt: new Date(), submittedById: req.user.id, submittedByName: who(req.user) })
@@ -481,10 +650,12 @@ router.put(
     need(req, 'modify')
     const before = await loadJourney(req, { full: false })
     if (!EDITABLE.includes(before.status)) throw conflict('A journey on the road or finished cannot be changed')
-    const { vehicle, driver } = await resolveAssignment(req)
+    const assignment = await resolveAssignment(req)
+    const { vehicle, driver } = assignment
     await assertInFleet(before.bgId, vehicle)
     const settings = await getJourneySettings(before.bgId)
-    const { plan, type } = await planColumns(req, settings)
+    const keepCodes = new Map(before.stops.filter(x => x.code).map(x => [x.name.toLowerCase(), x.code]))
+    const { plan, data: cols } = await planColumns(req, settings, assignment, keepCodes)
     const b = req.body
     const after = {
       vehicleId: vehicle.id, driverId: driver?.id ?? null, plannedStart: b.plannedStart, routeSource: b.routeSource,
@@ -493,14 +664,7 @@ router.put(
     const material = materialChange({ ...before, plannedPath: before.plannedPath ?? null }, after)
     const wasSent = before.approvalStatus === 'PENDING' || before.approvalStatus === 'APPROVED'
     const resend = (material && wasSent) || (b.submit && before.approvalStatus !== 'PENDING')
-    const data = {
-      title: b.title, customer: b.customer, priority: b.priority, type, instructions: b.instructions,
-      vehicleId: vehicle.id, vehicleLabel: vehicleLabel(vehicle) || before.vehicleLabel, driverId: driver?.id ?? null, driverName: driver?.name ?? null,
-      plannedStart: b.plannedStart, expectedArrival: plan.expectedArrival,
-      plannedDistanceKm: plan.plannedDistanceKm, plannedDriveMin: plan.plannedDriveMin, plannedStayMin: plan.plannedStayMin,
-      routeSource: b.routeSource, routeTemplateId: b.routeTemplateId ?? null,
-      plannedPath: plan.plannedPath ?? undefined, recordedFrom: b.recordedFrom ?? undefined,
-    }
+    const data = { ...cols, vehicleLabel: cols.vehicleLabel || before.vehicleLabel, convoy: cols.convoy ?? Prisma.DbNull }
     if (resend) {
       await checkDriver(driver, b.plannedStart)
       // Edits to what HSE approved go back to HSE (design §A.2).
@@ -516,7 +680,13 @@ router.put(
       } else {
         // Same plan: only the per-stop flags that are not part of the plan.
         for (const [seq, s] of plan.stops.entries()) {
-          await db.journeyStop.updateMany({ where: { journeyId: before.id, seq }, data: { name: s.name, signatureRequired: s.signatureRequired } })
+          await db.journeyStop.updateMany({
+            where: { journeyId: before.id, seq },
+            data: {
+              name: s.name, signatureRequired: s.signatureRequired, visitVia: s.visitVia, purpose: s.purpose, loadState: s.loadState,
+              addressId: s.addressId, formId: s.formId, formName: s.formName, formFields: s.formFields ?? undefined,
+            },
+          })
         }
       }
       return db.journey.update({ where: { id: before.id }, data, include: LIST_INCLUDE })
@@ -671,6 +841,242 @@ router.get(
     res.set('Content-Type', sig.mimeType)
     res.set('Cache-Control', 'private, no-store')
     res.send(Buffer.from(sig.data))
+  })
+)
+
+// ── at a stop: check in, form, photos (the office; the driver uses its link) ──
+
+router.post(
+  '/:id/stops/:seq/check-in',
+  validate(z.object({ at: z.coerce.date().optional() })),
+  asyncHandler(async (req, res) => {
+    need(req, 'modify')
+    const { j, stop } = await stopOf(req)
+    const at = req.body.at ?? new Date()
+    if (at.getTime() > Date.now() + 60_000) throw badRequest('Validation failed', { at: 'Not in the future' })
+    const row = await checkInStop(j, stop, { source: 'OFFICE', byName: who(req.user), at, via: 'OFFICE' })
+    res.json({ data: publicStop(row) })
+  })
+)
+
+export const MAX_PHOTO_BYTES = 3 * 1024 * 1024
+const photoSchema = z.object({
+  data: z.string().min(16).max(Math.ceil((MAX_PHOTO_BYTES * 4) / 3) + 64),
+  fieldKey: z.union([z.string().trim().max(40), z.null()]).optional(),
+  caption: z.union([z.string().trim().max(200), z.null()]).optional(),
+})
+
+/** Stores one stop photo; shared with the driver link. */
+export async function savePhoto(j, stop, body, { source, byName }) {
+  const data = fromBase64(body.data)
+  const mimeType = sniffImage(data)
+  if (!mimeType) throw badRequest('Upload the photo as a PNG, JPEG or WebP image', { data: 'Unsupported file type' })
+  if (data.length > MAX_PHOTO_BYTES) throw new HttpError(413, 'The photo is too large (max 3 MB)')
+  const count = await prisma.journeyStopPhoto.count({ where: { stopId: stop.id } })
+  if (count >= 20) throw conflict('A stop keeps up to 20 photos')
+  const row = await prisma.journeyStopPhoto.create({
+    data: { stopId: stop.id, fieldKey: body.fieldKey || null, caption: body.caption || null, source, mimeType, size: data.length, data, uploadedByName: byName },
+    select: { id: true, fieldKey: true, caption: true, source: true, takenAt: true },
+  })
+  await recordEvent(j, { type: 'PHOTO', stopSeq: stop.seq, message: `${stop.name}: photo${body.caption ? ` (${body.caption})` : ''}${byName ? ` by ${byName}` : ''}` }, { alert: false })
+  return row
+}
+
+/** Stores the stop's form answers; shared with the driver link. */
+export async function saveForm(j, stop, answersIn, { source, byName }) {
+  if (!Array.isArray(stop.formFields) || !stop.formFields.length) throw badRequest('This stop has no form')
+  if (stop.form) throw conflict('The form of this stop is already filled')
+  const photoIds = new Set((await prisma.journeyStopPhoto.findMany({ where: { stopId: stop.id }, select: { id: true } })).map(p => p.id))
+  const { answers, errors } = checkAnswers(stop.formFields, answersIn)
+  for (const f of stop.formFields) {
+    if (f.type === 'PHOTO' && answers[f.key] && !photoIds.has(answers[f.key])) errors[f.key] = 'Take the photo again'
+  }
+  if (Object.keys(errors).length) throw badRequest('Validation failed', errors)
+  await prisma.journeyStopForm.create({
+    data: { stopId: stop.id, formName: stop.formName ?? 'Form', fields: stop.formFields, answers, source, submittedByName: byName },
+  })
+  await recordEvent(j, { type: 'FORM', stopSeq: stop.seq, message: `${stop.name}: ${stop.formName ?? 'form'} filled${byName ? ` by ${byName}` : ''}` }, { alert: false })
+}
+
+router.post(
+  '/:id/stops/:seq/photos',
+  validate(photoSchema),
+  asyncHandler(async (req, res) => {
+    need(req, 'modify')
+    const { j, stop } = await stopOf(req)
+    res.status(201).json({ data: await savePhoto(j, stop, req.body, { source: 'WEB', byName: who(req.user) }) })
+  })
+)
+
+router.get(
+  '/:id/stops/:seq/photos/:photoId',
+  asyncHandler(async (req, res) => {
+    const { stop } = await stopOf(req)
+    const p = await prisma.journeyStopPhoto.findFirst({ where: { id: req.params.photoId, stopId: stop.id }, select: { mimeType: true, data: true } })
+    if (!p) throw notFound('Photo')
+    res.set('Content-Type', p.mimeType)
+    res.set('Cache-Control', 'private, no-store')
+    res.send(Buffer.from(p.data))
+  })
+)
+
+router.post(
+  '/:id/stops/:seq/form',
+  validate(z.object({ answers: z.record(z.string(), z.any()) })),
+  asyncHandler(async (req, res) => {
+    need(req, 'modify')
+    const { j, stop } = await stopOf(req)
+    await saveForm(j, stop, req.body.answers, { source: 'WEB', byName: who(req.user) })
+    const fresh = await prisma.journeyStop.findUnique({ where: { id: stop.id }, select: STOP_SELECT })
+    res.status(201).json({ data: publicStop(fresh) })
+  })
+)
+
+// ── public links: tracking (customer) and driver ───────────────────────────
+
+const newLinkToken = () => crypto.randomBytes(24).toString('base64url')
+const linkShape = l => ({
+  id: l.id, kind: l.kind, token: l.token, expiresAt: l.expiresAt.toISOString(), revokedAt: l.revokedAt?.toISOString() ?? null,
+  createdByName: l.createdByName, createdAt: l.createdAt.toISOString(), lastOpenedAt: l.lastOpenedAt?.toISOString() ?? null,
+})
+
+router.get(
+  '/:id/links',
+  asyncHandler(async (req, res) => {
+    const j = await loadJourney(req, { full: false })
+    const rows = await prisma.journeyLink.findMany({ where: { journeyId: j.id }, orderBy: { createdAt: 'desc' }, take: 50 })
+    res.set('Cache-Control', 'no-store')
+    res.json({ data: rows.map(linkShape) })
+  })
+)
+
+router.post(
+  '/:id/links',
+  validate(z.object({ kind: z.enum(['TRACK', 'DRIVER']), hours: z.coerce.number().int().min(1).max(24 * 31).optional() })),
+  asyncHandler(async (req, res) => {
+    need(req, 'modify')
+    const j = await loadJourney(req, { full: false })
+    if (j.status === 'Cancelled') throw conflict('This journey was cancelled')
+    const settings = await getJourneySettings(j.bgId)
+    const hours = req.body.hours ?? (req.body.kind === 'TRACK' ? settings.trackLinkHours : settings.driverLinkHours)
+    const row = await prisma.journeyLink.create({
+      data: { journeyId: j.id, kind: req.body.kind, token: newLinkToken(), expiresAt: new Date(Date.now() + hours * 3600_000), createdByName: who(req.user) },
+    })
+    await recordEvent(j, { type: 'LINK', message: `${req.body.kind === 'TRACK' ? 'Tracking' : 'Driver'} link made by ${who(req.user)}, open ${hours} h`, actor: req.user }, { alert: false })
+    res.status(201).json({ data: linkShape(row) })
+  })
+)
+
+router.delete(
+  '/:id/links/:linkId',
+  asyncHandler(async (req, res) => {
+    need(req, 'modify')
+    const j = await loadJourney(req, { full: false })
+    const l = await prisma.journeyLink.findFirst({ where: { id: req.params.linkId, journeyId: j.id } })
+    if (!l) throw notFound('Link')
+    const row = await prisma.journeyLink.update({ where: { id: l.id }, data: { revokedAt: l.revokedAt ?? new Date() } })
+    res.json({ data: linkShape(row) })
+  })
+)
+
+// ── expenses on a journey ───────────────────────────────────────────────────
+
+/** Expense = Edit on Settings › Expense (as /api/expenses), and a role that may write expenses. */
+function needExpenseWrite(req) {
+  assertCanWrite(req.scope, 'expense')
+  if (req.scope.role !== 'SUPER_ADMIN' && !atLeast(levelOf(req.user?.screenAccess, '/settings/expense'), 'modify')) {
+    throw forbidden('You do not have permission to change expenses')
+  }
+}
+
+const expenseShape = e => ({
+  id: e.id, category: e.category, type: e.type, subType: e.subType, amount: e.amount, vendor: e.vendor, referenceNo: e.referenceNo,
+  description: e.description, expenseDate: e.expenseDate?.toISOString().slice(0, 10) ?? null, vehicleLabel: e.vehicleLabel,
+  journeyId: e.journeyId, createdByName: e.createdByName,
+})
+
+/** The journey's expenses, and the vehicle's unlinked ones around its dates to pick from. */
+router.get(
+  '/:id/expenses',
+  asyncHandler(async (req, res) => {
+    const j = await loadJourney(req, { full: false })
+    const from = new Date((j.actualStart ?? j.plannedStart).getTime() - 3 * 86_400_000)
+    const to = new Date((j.completedAt ?? j.expectedArrival).getTime() + 3 * 86_400_000)
+    const [linked, candidates] = await Promise.all([
+      prisma.expense.findMany({ where: { journeyId: j.id }, orderBy: { expenseDate: 'asc' } }),
+      j.vehicleId
+        ? prisma.expense.findMany({
+          where: scopedWhere('expense', req.scope, { vehicleId: j.vehicleId, journeyId: null, OR: [{ expenseDate: { gte: from, lte: to } }, { createdAt: { gte: from, lte: to } }] }),
+          orderBy: { expenseDate: 'desc' }, take: 50,
+        })
+        : [],
+    ])
+    res.set('Cache-Control', 'no-store')
+    res.json({
+      data: {
+        linked: linked.map(expenseShape), candidates: candidates.map(expenseShape),
+        total: Math.round(linked.reduce((s, e) => s + e.amount, 0) * 100) / 100,
+        types: EXPENSE_TYPES.Variable,
+      },
+    })
+  })
+)
+
+router.post(
+  '/:id/expenses',
+  validate(z.object({
+    type: z.string().trim().min(1).max(40),
+    amount: z.coerce.number().positive().max(100_000_000),
+    expenseDate: z.coerce.date().optional(),
+    vendor: z.union([z.string().trim().max(120), z.null()]).optional(),
+    referenceNo: z.union([z.string().trim().max(60), z.null()]).optional(),
+    description: z.union([z.string().trim().max(1000), z.null()]).optional(),
+  })),
+  asyncHandler(async (req, res) => {
+    need(req, 'modify')
+    needExpenseWrite(req)
+    const j = await loadJourney(req, { full: false })
+    if (!EXPENSE_TYPES.Variable.includes(req.body.type)) throw badRequest('Validation failed', { type: 'Not an expense type' })
+    if (!j.vehicleId) throw badRequest('This journey has no vehicle to charge the expense to')
+    const vehicle = await prisma.vehicle.findUnique({ where: { id: j.vehicleId } })
+    const e = await prisma.expense.create({
+      data: {
+        bgId: vehicle?.bgId ?? j.bgId, vehicleId: j.vehicleId, vehicleLabel: j.vehicleLabel, category: 'Variable', type: req.body.type,
+        expenseDate: req.body.expenseDate ?? new Date(), amount: req.body.amount, vendor: req.body.vendor || null,
+        referenceNo: req.body.referenceNo || null, description: req.body.description || `${journeyRef(j)} ${j.title}`,
+        journeyId: j.id, createdById: req.user.id, createdByName: who(req.user),
+      },
+    })
+    await recordEvent(j, { type: 'EXPENSE', message: `${e.type} ${e.amount.toFixed(2)} added by ${who(req.user)}`, value: e.amount, actor: req.user }, { alert: false })
+    res.status(201).json({ data: expenseShape(e) })
+  })
+)
+
+router.post(
+  '/:id/expenses/link',
+  validate(z.object({ expenseId: z.string().trim().min(1) })),
+  asyncHandler(async (req, res) => {
+    need(req, 'modify')
+    needExpenseWrite(req)
+    const j = await loadJourney(req, { full: false })
+    const e = await findScopedOrThrow('expense', req.body.expenseId, req.scope)
+    if (e.journeyId && e.journeyId !== j.id) throw conflict('This expense belongs to another journey')
+    const row = await prisma.expense.update({ where: { id: e.id }, data: { journeyId: j.id } })
+    res.json({ data: expenseShape(row) })
+  })
+)
+
+router.delete(
+  '/:id/expenses/:expenseId',
+  asyncHandler(async (req, res) => {
+    need(req, 'modify')
+    needExpenseWrite(req)
+    const j = await loadJourney(req, { full: false })
+    const e = await prisma.expense.findFirst({ where: { id: req.params.expenseId, journeyId: j.id } })
+    if (!e) throw notFound('Expense')
+    // Unlinked only: the expense stays on the vehicle.
+    const row = await prisma.expense.update({ where: { id: e.id }, data: { journeyId: null } })
+    res.json({ data: expenseShape(row) })
   })
 )
 

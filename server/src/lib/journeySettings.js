@@ -38,12 +38,45 @@ export const JOURNEY_DEFAULTS = Object.freeze({
   hseBreaks: true,
   recipients: Object.freeze({ creatorAndApprover: true, bgAdmins: true, bgAdminsAfterMin: 15 }),
   channels: Object.freeze({ push: true, web: true, whatsapp: false }),
+
+  // ── The rest of the Uffizio Job module (client 2026-11-21) ──
+  /** Force close: an unfinished journey closes itself this long after its planned arrival (0 = never). */
+  forceCloseHours: 12,
+  /**
+   * When the destination counts as reached: DWELL_OR_IGNITION (inside for
+   * arriveAfterMin, or the ignition off inside), DWELL, or IGNITION_OFF.
+   * Driving through it never completes the journey.
+   */
+  destinationRule: 'DWELL_OR_IGNITION',
+  /** A start up to this long before the planned start counts (each journey may change it). */
+  startBufferMin: 60,
+  /** Convoy: a vehicle further than its tolerance from the lead for this long is separated. */
+  convoyAfterMin: 2,
+  /** Temperature: outside the journey's limits for this long raises an alert. */
+  tempAfterMin: 5,
+  /** The load states a journey and its stops pick from. */
+  loadStates: Object.freeze(['Empty', 'Loaded', 'Partially loaded']),
+  /** How long a new tracking / driver link stays open. */
+  trackLinkHours: 48,
+  driverLinkHours: 48,
+  /**
+   * Route optimization's distances (Journey › Route Optimization).
+   * ESTIMATE = great-circle × roadFactor at the planned speed, no service.
+   * OSRM (a self-hosted URL), ORS (OPENROUTESERVICE_API_KEY on the server) and
+   * GOOGLE (GOOGLE_MAPS_API_KEY) are only used when set up (lib/distanceProvider.js).
+   */
+  routing: Object.freeze({ provider: 'ESTIMATE', roadFactor: 1.3, osrmUrl: '' }),
 })
+
+export const DESTINATION_RULES = Object.freeze(['DWELL_OR_IGNITION', 'DWELL', 'IGNITION_OFF'])
+export const ROUTING_PROVIDERS = Object.freeze(['ESTIMATE', 'OSRM', 'ORS', 'GOOGLE'])
 
 const NUMBER_LIMITS = Object.freeze({
   lateDepartureMin: [0, 600], lateArrivalMin: [0, 600], onTimeMin: [0, 240], unplannedStopMin: [1, 600],
-  offRouteKm: [0.1, 50], offRouteMin: [0, 120], noSignalMin: [5, 1440], arriveAfterMin: [0, 60],
+  offRouteKm: [0.05, 50], offRouteMin: [0, 120], noSignalMin: [5, 1440], arriveAfterMin: [0, 60],
   departAfterSec: [0, 600], defaultRadiusM: [50, 20000], plannedSpeedKmh: [5, 150],
+  forceCloseHours: [0, 720], startBufferMin: [0, 720], convoyAfterMin: [0, 120], tempAfterMin: [0, 240],
+  trackLinkHours: [1, 24 * 31], driverLinkHours: [1, 24 * 31],
 })
 
 /** Defaults under whatever is stored, numbers clamped, unknown keys dropped. */
@@ -64,6 +97,19 @@ export function mergeSettings(stored) {
     bgAdminsAfterMin: Number.isFinite(Number(r.bgAdminsAfterMin)) ? Math.min(1440, Math.max(1, Number(r.bgAdminsAfterMin))) : 15,
   }
   out.channels = bools(JOURNEY_DEFAULTS.channels, v.channels)
+  out.destinationRule = DESTINATION_RULES.includes(v.destinationRule) ? v.destinationRule : JOURNEY_DEFAULTS.destinationRule
+  const states = Array.isArray(v.loadStates)
+    ? [...new Set(v.loadStates.map(x => String(x ?? '').trim().slice(0, 40)).filter(Boolean))].slice(0, 30)
+    : null
+  out.loadStates = states?.length ? states : [...JOURNEY_DEFAULTS.loadStates]
+  const rt = v.routing ?? {}
+  const factor = Number(rt.roadFactor)
+  const url = typeof rt.osrmUrl === 'string' ? rt.osrmUrl.trim() : ''
+  out.routing = {
+    provider: ROUTING_PROVIDERS.includes(rt.provider) ? rt.provider : 'ESTIMATE',
+    roadFactor: Number.isFinite(factor) && rt.roadFactor !== '' ? Math.min(3, Math.max(1, factor)) : JOURNEY_DEFAULTS.routing.roadFactor,
+    osrmUrl: /^https?:\/\/\S+$/.test(url) ? url.replace(/\/+$/, '') : '',
+  }
   // WhatsApp stays off until the client's account exists (lib/whatsapp.js).
   if (!whatsapp.isConfigured()) out.channels.whatsapp = false
   return out

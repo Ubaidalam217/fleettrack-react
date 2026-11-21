@@ -55,13 +55,13 @@ enum Status {
 /// Group Global Admin — the top of the tree below Super Admin. The mock calls
 /// this a `reseller`.
 model Ggb {
-  id    String  @id @default(cuid())
+  id String @id @default(cuid())
 
   /// Random key of the logo (GET /api/node-logos/:key), replaced on every upload.
   logoKey String? @unique
-  name  String
+  name    String
   /// Optional: the mock seeds two GGBs with no contact address at all.
-  email String?
+  email   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -69,18 +69,18 @@ model Ggb {
   groups         Group[]
   businessGroups BusinessGroup[]
   users          User[]
-  logo NodeLogo?
+  logo           NodeLogo?
 }
 
 /// An optional tier between a GGB and its BGs. A BG with no Group is its own
 /// group — see BusinessGroup.groupId.
 model Group {
-  id    String @id @default(cuid())
+  id String @id @default(cuid())
 
   /// Random key of the logo (GET /api/node-logos/:key), replaced on every upload.
   logoKey String? @unique
-  name  String
-  ggbId String
+  name    String
+  ggbId   String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -88,7 +88,7 @@ model Group {
   ggb            Ggb             @relation(fields: [ggbId], references: [id], onDelete: Cascade)
   businessGroups BusinessGroup[]
   users          User[]
-  logo NodeLogo?
+  logo           NodeLogo?
   vehicleShares  VehicleShare[]
 
   @@index([ggbId])
@@ -98,11 +98,11 @@ model Group {
 /// all belong to exactly one BG, and almost every scope check reduces to "which
 /// BGs may this account see".
 model BusinessGroup {
-  id   String @id @default(cuid())
+  id String @id @default(cuid())
 
   /// Random key of the logo (GET /api/node-logos/:key), replaced on every upload.
   logoKey String? @unique
-  name String
+  name    String
 
   /// Also the BG account's login username, which is why it is required here and
   /// globally unique rather than optional like Ggb.email.
@@ -117,24 +117,27 @@ model BusinessGroup {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  ggb      Ggb       @relation(fields: [ggbId], references: [id], onDelete: Cascade)
-  group    Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  branches  Branch[]
-  vehicles  Vehicle[]
-  users     User[]
-  alerts    Alert[]
-  geofences Geofence[]
-  drivers     Driver[]
-  alertEvents AlertEvent[]
-  expenses    Expense[]
-  reminderRules ReminderRule[]
-  reminderAcks  ReminderAck[]
-  vehicleMoves  VehicleMove[]
-  logo NodeLogo?
-  vehicleShares VehicleShare[]
-  journeys       Journey[]
-  routeTemplates RouteTemplate[]
-  journeySetting JourneySetting?
+  ggb              Ggb                   @relation(fields: [ggbId], references: [id], onDelete: Cascade)
+  group            Group?                @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  branches         Branch[]
+  vehicles         Vehicle[]
+  users            User[]
+  alerts           Alert[]
+  geofences        Geofence[]
+  drivers          Driver[]
+  alertEvents      AlertEvent[]
+  expenses         Expense[]
+  reminderRules    ReminderRule[]
+  reminderAcks     ReminderAck[]
+  vehicleMoves     VehicleMove[]
+  logo             NodeLogo?
+  vehicleShares    VehicleShare[]
+  journeys         Journey[]
+  routeTemplates   RouteTemplate[]
+  journeySetting   JourneySetting?
+  journeyAddresses JourneyAddress[]
+  journeyForms     JourneyFormTemplate[]
+  journeyTemplates JourneyTemplate[]
 
   @@index([ggbId])
   @@index([groupId])
@@ -147,10 +150,10 @@ model BusinessGroup {
 /// convention. The route still walks the subtree first — but only to count what
 /// it is about to remove so the response can report it.
 model Branch {
-  id             String  @id @default(cuid())
+  id String @id @default(cuid())
 
   /// Random key of the logo (GET /api/node-logos/:key), replaced on every upload.
-  logoKey String? @unique
+  logoKey        String? @unique
   name           String
   bgId           String
   /// null for a top-level branch; otherwise another branch of the SAME bg,
@@ -160,12 +163,12 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bg       BusinessGroup   @relation(fields: [bgId], references: [id], onDelete: Cascade)
-  parent   Branch?         @relation("BranchTree", fields: [parentBranchId], references: [id], onDelete: Cascade)
-  children Branch[]        @relation("BranchTree")
-  vehicles Vehicle[]
-  subusers SubuserBranch[]
-  logo NodeLogo?
+  bg            BusinessGroup   @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  parent        Branch?         @relation("BranchTree", fields: [parentBranchId], references: [id], onDelete: Cascade)
+  children      Branch[]        @relation("BranchTree")
+  vehicles      Vehicle[]
+  subusers      SubuserBranch[]
+  logo          NodeLogo?
   vehicleShares VehicleShare[]
 
   @@index([bgId])
@@ -175,8 +178,8 @@ model Branch {
 /// A tracked asset. Everything here is paperwork the operator maintains; the
 /// live figures come from Flespi, keyed on `imei`.
 model Vehicle {
-  id   String  @id @default(cuid())
-  bgId String
+  id       String  @id @default(cuid())
+  bgId     String
   /// Optional, and always a branch of the same bg. A branch delete sets this
   /// back to null (SetNull below) rather than taking the vehicle with it.
   branchId String?
@@ -225,12 +228,10 @@ model Vehicle {
   /**
    * Added in Phase 2, because the frontend's Vehicle form collects both and
    * without them a save silently discarded what the operator typed.
-   *
    * `odometer` is free text, not a number: the form is a text input and the value
    * is paperwork the operator maintains by hand, not a measurement. It is NOT the
    * Live Map's ODO reading — that one comes from the tracker itself and is never
    * stored here.
-   *
    * `groupId` is only meaningful when the vehicle's BG has no group of its own:
    * the form derives the group from the BG whenever the BG has one, and leaves it
    * selectable only in that case. Deliberately a plain id with no relation —
@@ -267,24 +268,25 @@ model Vehicle {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bg       BusinessGroup    @relation(fields: [bgId], references: [id], onDelete: Cascade)
-  branch   Branch?          @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  subusers SubuserVehicle[]
-  alerts   AlertVehicle[]
-  driver      Driver?
-  alertEvents AlertEvent[]
-  driverAssignments DriverAssignment[]
-  driverIncidents   DriverIncident[]
-  expenses          Expense[]
-  reminders         ReminderVehicle[]
-  reminderAcks      ReminderAck[]
-  engineHours       VehicleEngineHours?
-  moves             VehicleMove[]
-  documents         VehicleDocument[]
+  bg                  BusinessGroup        @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  branch              Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  subusers            SubuserVehicle[]
+  alerts              AlertVehicle[]
+  driver              Driver?
+  alertEvents         AlertEvent[]
+  driverAssignments   DriverAssignment[]
+  driverIncidents     DriverIncident[]
+  expenses            Expense[]
+  reminders           ReminderVehicle[]
+  reminderAcks        ReminderAck[]
+  engineHours         VehicleEngineHours?
+  moves               VehicleMove[]
+  documents           VehicleDocument[]
   odometerAdjustments OdometerAdjustment[]
   /// The other Groups, BGs and Branches it also shows in (VehicleShare).
-  shares            VehicleShare[]
-  journeys          Journey[]
+  shares              VehicleShare[]
+  journeys            Journey[]
+  journeyTemplates    JourneyTemplate[]
 
   @@index([bgId])
   @@index([branchId])
@@ -400,8 +402,8 @@ model User {
   grp Group?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
   bg  BusinessGroup? @relation(fields: [bgId], references: [id], onDelete: Cascade)
 
-  vehicles SubuserVehicle[]
-  branches SubuserBranch[]
+  vehicles    SubuserVehicle[]
+  branches    SubuserBranch[]
   flespiGrant FlespiGrant?
   avatar      UserAvatar?
   pushDevices PushDevice[]
@@ -607,7 +609,7 @@ model Geofence {
   speedLimitKmh Int?
   /// How long the vehicle may stay over that limit before it is a violation.
   /// Shorter excursions are only recorded; 0 alerts at once.
-  speedGraceSec Int @default(0)
+  speedGraceSec Int  @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -745,18 +747,18 @@ model Driver {
   bgId String
 
   /// Shown as DRV-0001: a running number, never reused.
-  driverNo      Int       @unique @default(autoincrement())
-  name          String
-  mobile        String?
-  email         String?
-  nationality   String?
-  dateOfBirth   DateTime?
-  employeeId    String?
-  department    String?
-  joiningDate   DateTime?
+  driverNo         Int       @unique @default(autoincrement())
+  name             String
+  mobile           String?
+  email            String?
+  nationality      String?
+  dateOfBirth      DateTime?
+  employeeId       String?
+  department       String?
+  joiningDate      DateTime?
   /// Random key of the profile photo (GET /api/driver-photos/:key), replaced on every upload.
-  photoKey      String?   @unique
-  licenseNo     String?
+  photoKey         String?   @unique
+  licenseNo        String?
   licenseCategory  String?
   licenseIssueDate DateTime?
   licenseCountry   String?
@@ -766,29 +768,29 @@ model Driver {
   emiratesIdExpiry DateTime?
   medicalExpiry    DateTime?
   /// Date only (stored at UTC midnight); drives the Driver Licence Expiry alert.
-  licenseExpiry DateTime?
+  licenseExpiry    DateTime?
   /// The driver's iButton / driver-ID tag as the tracker reports it in
   /// `ibutton.code` (upper-case hex). Unique: one physical tag, one driver. A
   /// trip driven with this tag shows this driver, whichever vehicle it was.
-  ibuttonCode   String?   @unique
-  vehicleId     String?   @unique
-  notes         String?
-  status        Status    @default(Active)
+  ibuttonCode      String?   @unique
+  vehicleId        String?   @unique
+  notes            String?
+  status           Status    @default(Active)
 
   // The rest of the reference system's driver form (client, 2026-11-09).
-  contactNumber2 String?
-  country        String?
-  state          String?
-  city           String?
-  zipCode        String?
-  street1        String?
-  street2        String?
+  contactNumber2      String?
+  country             String?
+  state               String?
+  city                String?
+  zipCode             String?
+  street1             String?
+  street2             String?
   /// How the driver is identified on the tracker ("Tag Via"): iButton, RFID or Beacon.
-  tagType        String?
-  leavingDate    DateTime?
-  retirementDate DateTime?
+  tagType             String?
+  leavingDate         DateTime?
+  retirementDate      DateTime?
   /// Driving since: the form shows the years of experience from it.
-  drivingSince   DateTime?
+  drivingSince        DateTime?
   licenseAvailable    Boolean   @default(true)
   lifeInsuranceNo     String?
   lifeInsuranceExpiry DateTime?
@@ -807,9 +809,9 @@ model Driver {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bg        BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
-  vehicle   Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  events    AlertEvent[]
+  bg          BusinessGroup      @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicle     Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  events      AlertEvent[]
   photo       DriverPhoto?
   documents   DriverDocument[]
   assignments DriverAssignment[]
@@ -1111,8 +1113,8 @@ model ReplayShare {
 /// Variable: one cost on one day (expenseDate, odometer, work time).
 /// Fix: a cost over a period (fromDate to toDate).
 model Expense {
-  id        String  @id @default(cuid())
-  bgId      String
+  id           String  @id @default(cuid())
+  bgId         String
   /// Null once the vehicle is deleted; vehicleLabel keeps its plate.
   vehicleId    String?
   vehicleLabel String
@@ -1136,12 +1138,18 @@ model Expense {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  /// The journey this cost belongs to (Journey Management, client 2026-11-21:
+  /// "expenses on a job"); null for a vehicle cost of its own.
+  journeyId String?
+
   bg      BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
   vehicle Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  journey Journey?      @relation(fields: [journeyId], references: [id], onDelete: SetNull)
   bills   ExpenseBill[]
 
   @@index([bgId])
   @@index([vehicleId])
+  @@index([journeyId])
 }
 
 /// A bill or receipt for an expense (up to three), PDF or image.
@@ -1175,13 +1183,13 @@ model ReminderRule {
   byDistance    Boolean @default(false)
   byEngineHours Boolean @default(false)
   /// Recurring: Daily | Weekly | Monthly, every `every` of those. One Time: at `every` months.
-  frequency  String  @default("Monthly")
-  every      Int?
-  notifyDays Int?
-  everyKm    Float?
-  notifyKm   Float?
-  everyHours  Float?
-  notifyHours Float?
+  frequency     String  @default("Monthly")
+  every         Int?
+  notifyDays    Int?
+  everyKm       Float?
+  notifyKm      Float?
+  everyHours    Float?
+  notifyHours   Float?
 
   notifyInApp Boolean  @default(true)
   notifyEmail Boolean  @default(false)
@@ -1205,16 +1213,16 @@ model ReminderVehicle {
   vehicleId String
 
   /// The cycle starts here (the reference's "Reminder Start Date"); Mark done moves it.
-  startDate   DateTime
+  startDate        DateTime
   /// Distance and engine hours already run in this cycle before the start date.
-  kmBefore    Float @default(0)
-  hoursBefore Float @default(0)
+  kmBefore         Float     @default(0)
+  hoursBefore      Float     @default(0)
   /// Odometer and counted engine hours when the cycle started (filled by the server).
   startOdometer    Float?
   startEngineHours Float?
   /// A renewal's own dates; the expiry stands for the duration when set.
-  issueDate  DateTime?
-  expiryDate DateTime?
+  issueDate        DateTime?
+  expiryDate       DateTime?
 
   /// The last step notified in this cycle (due | overdue), so each is sent once.
   alerted     String?
@@ -1485,6 +1493,38 @@ model Journey {
   /// The engine's memory between passes (lib/journeyEngine.js).
   engineState      Json?
 
+  // -- The Uffizio Job-module parts (client 2026-11-21) --
+  /// FIXED (a one-off) | RELATIVE (made by a recurring schedule) | AUTOMATIC
+  /// (made when the vehicle left the first stop; its times start from then).
+  scheduleKind     String    @default("FIXED")
+  /// The template / schedule it was made from (JourneyTemplate).
+  templateId       String?
+  /// The schedule's day this journey is, UAE 'YYYY-MM-DD': one per schedule per day.
+  occurrenceKey    String?
+  /// ANY_DATA: leaving the first stop starts it. IGNITION_ON: the ignition
+  /// switched on at the first stop starts it.
+  startLogic       String    @default("ANY_DATA")
+  /// A start up to this many minutes before the planned start counts.
+  startBufferMin   Int       @default(60)
+  /// The off-route corridor of this journey, metres; null = Journey settings.
+  routeToleranceM  Int?
+  /// Unfinished, it closes itself this long after its planned arrival;
+  /// null = Journey settings, 0 = never.
+  forceCloseMin    Int?
+  forceClosedAt    DateTime?
+  /// Vehicles travelling with this one: [{ vehicleId, vehicleLabel }].
+  convoy           Json?
+  convoyToleranceM Int       @default(200)
+  /// The convoy as last measured: [{ vehicleId, vehicleLabel, distanceM, at, separated }].
+  convoyState      Json?
+  /// The vehicle's load (the list in Journey settings).
+  loadState        String?
+  /// Temperature limits, degrees C, against the vehicle's probe (ble.sensor.temperature.*).
+  tempMin          Float?
+  tempMax          Float?
+  lastTemp         Float?
+  lastTempAt       DateTime?
+
   createdById     String?
   createdByName   String?
   cancelledAt     DateTime?
@@ -1493,12 +1533,16 @@ model Journey {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  bg      BusinessGroup  @relation(fields: [bgId], references: [id], onDelete: Cascade)
-  vehicle Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  driver  Driver?        @relation(fields: [driverId], references: [id], onDelete: SetNull)
-  stops   JourneyStop[]
-  events  JourneyEvent[]
+  bg       BusinessGroup    @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicle  Vehicle?         @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  driver   Driver?          @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  template JourneyTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  stops    JourneyStop[]
+  events   JourneyEvent[]
+  links    JourneyLink[]
+  expenses Expense[]
 
+  @@unique([templateId, occurrenceKey])
   @@index([bgId, plannedStart])
   @@index([bgId, approvalStatus])
   @@index([status, plannedStart])
@@ -1535,6 +1579,20 @@ model JourneyStop {
   /// Proof of delivery (client, 2026-11-17): the driver signs here.
   signatureRequired Boolean @default(false)
 
+  /// MAP: reached by position (automatic). QR: the driver scans the stop's code.
+  visitVia   String  @default("MAP")
+  /// The stop's own code, in its QR and typed by the driver when the camera fails.
+  code       String?
+  /// LOADING | UNLOADING | REST | DELIVERY | OTHER (the address book's state).
+  purpose    String?
+  loadState  String?
+  /// The address-book entry it was picked from (a copy; the entry may change later).
+  addressId  String?
+  /// The form filled here: its template and a copy of its fields at planning time.
+  formId     String?
+  formName   String?
+  formFields Json?
+
   // Actuals, written by the engine.
   status          String    @default("PENDING") // PENDING | ARRIVED | DEPARTED | PASSED | SKIPPED
   actualArrive    DateTime?
@@ -1550,8 +1608,10 @@ model JourneyStop {
   checkedInAt     DateTime?
   checkedInByName String?
 
-  journey   Journey           @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  journey   Journey            @relation(fields: [journeyId], references: [id], onDelete: Cascade)
   signature JourneySignature?
+  form      JourneyStopForm?
+  photos    JourneyStopPhoto[]
 
   @@unique([journeyId, seq])
   @@index([geofenceId])
@@ -1653,4 +1713,158 @@ model JourneyNotice {
 
   @@index([journeyEventId])
   @@index([userId, sentAt])
+}
+
+// -- Journey Management, the rest of the Job module (client 2026-11-21: Uffizio) --
+
+/// A public link to one journey (after Uffizio's "Send tracking link"):
+/// TRACK = a read-only live view for the customer, DRIVER = the driver's phone
+/// page (check in, QR, form, photo, signature) without a login. The token is
+/// the only key; it expires and can be switched off.
+model JourneyLink {
+  id            String    @id @default(cuid())
+  journeyId     String
+  kind          String // TRACK | DRIVER
+  token         String    @unique
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdByName String?
+  createdAt     DateTime  @default(now())
+  lastOpenedAt  DateTime?
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  @@index([journeyId])
+}
+
+/// The custom form filled at a stop (one per stop).
+model JourneyStopForm {
+  id              String   @id @default(cuid())
+  stopId          String   @unique
+  formName        String
+  /// The fields as they were asked, and the answers by field key.
+  fields          Json
+  answers         Json
+  /// WEB (the office) | DRIVER_APP (the driver link)
+  source          String   @default("WEB")
+  submittedByName String?
+  submittedAt     DateTime @default(now())
+
+  stop JourneyStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+}
+
+/// A photo taken at a stop (proof of delivery, or a form's photo field).
+model JourneyStopPhoto {
+  id             String   @id @default(cuid())
+  stopId         String
+  /// The form field it answers, if any.
+  fieldKey       String?
+  caption        String?
+  source         String   @default("WEB")
+  mimeType       String
+  size           Int
+  data           Bytes
+  takenAt        DateTime @default(now())
+  uploadedByName String?
+
+  stop JourneyStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+
+  @@index([stopId])
+}
+
+/// The address book (Checkpoints & Routes): saved places per BG, picked as stops.
+model JourneyAddress {
+  id            String   @id @default(cuid())
+  bgId          String
+  name          String
+  /// RADIUS (a point and a radius) | GEOFENCE (a Settings geofence).
+  arrivalType   String   @default("RADIUS")
+  geofenceId    String?
+  lat           Float
+  lng           Float
+  radiusM       Int      @default(300)
+  /// LOADING | UNLOADING | REST | DELIVERY | OTHER
+  purpose       String   @default("OTHER")
+  /// The customer's own reference for the place.
+  code          String?
+  contactName   String?
+  contactPhone  String?
+  notes         String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bg BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+
+  @@unique([bgId, name])
+  @@index([bgId])
+}
+
+/// A custom form per BG, filled at a stop: [{ key, label, type, required, options? }],
+/// type TEXT | NUMBER | YESNO | DROPDOWN | PHOTO.
+model JourneyFormTemplate {
+  id            String   @id @default(cuid())
+  bgId          String
+  name          String
+  fields        Json     @default("[]")
+  createdByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bg BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+
+  @@unique([bgId, name])
+  @@index([bgId])
+}
+
+/// A reusable journey (Uffizio's Job Type "Without object" when vehicleId is
+/// null) and, with a schedule, the recurring plan the engine makes journeys
+/// from: RELATIVE (daily / weekly on days / monthly on dates, at startTime,
+/// between validFrom and validTo, horizonDays ahead) or AUTOMATIC (one each
+/// time the vehicle leaves the first stop). `body` is the journey as New
+/// Journey sends it, less the vehicle and the start time.
+model JourneyTemplate {
+  id             String    @id @default(cuid())
+  bgId           String
+  name           String
+  active         Boolean   @default(true)
+  vehicleId      String?
+  driverId       String?
+  body           Json
+  /// NONE (a template only) | RELATIVE | AUTOMATIC
+  scheduleKind   String    @default("NONE")
+  /// DAILY | WEEKLY | MONTHLY
+  repeat         String?
+  /// 0 = Sunday ... 6 = Saturday (WEEKLY).
+  weekdays       Int[]     @default([])
+  /// 1 ... 31 (MONTHLY; a date a month does not have is skipped).
+  monthDays      Int[]     @default([])
+  /// 'HH:mm', UAE time.
+  startTime      String?
+  validFrom      DateTime?
+  validTo        DateTime?
+  horizonDays    Int       @default(7)
+  /// The journeys it makes start approved: an HSE approver approved the template.
+  autoApprove    Boolean   @default(false)
+  approvedById   String?
+  approvedByName String?
+  approvedAt     DateTime?
+  /// The last UAE day made ('YYYY-MM-DD'), the last run and what went wrong.
+  generatedUntil String?
+  lastRunAt      DateTime?
+  lastError      String?
+  /// AUTOMATIC: the engine's memory of the vehicle at the first stop.
+  engineState    Json?
+  createdById    String?
+  createdByName  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  bg       BusinessGroup @relation(fields: [bgId], references: [id], onDelete: Cascade)
+  vehicle  Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  journeys Journey[]
+
+  @@unique([bgId, name])
+  @@index([bgId])
+  @@index([scheduleKind, active])
 }

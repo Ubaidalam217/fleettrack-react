@@ -56,6 +56,9 @@ import dataMonitorRoutes from './routes/dataMonitor.js'
 import journeyRoutes from './routes/journeys.js'
 import routeTemplateRoutes from './routes/routeTemplates.js'
 import journeySettingRoutes from './routes/journeySettings.js'
+import journeyAddressRoutes from './routes/journeyAddresses.js'
+import journeyFormRoutes from './routes/journeyForms.js'
+import journeyTemplateRoutes from './routes/journeyTemplates.js'
 import { tagSource, tagUserSource } from './lib/requestSource.js'
 
 /**
@@ -103,7 +106,8 @@ export function createApp() {
   // GGB / Group / BG / Branch logos (5 MB, base64).
   // Journeys and saved routes carry a planned path (thousands of points) and
   // a stop's delivery signature (512 KB image, base64).
-  app.use(['/api/journeys', '/api/route-templates'], express.json({ limit: '3mb' }))
+  // A stop photo is up to 3 MB of image.
+  app.use(['/api/journeys', '/api/route-templates', '/api/journey-templates', '/api/journey-addresses'], express.json({ limit: '6mb' }))
   app.use(['/api/ggbs/:id/logo', '/api/groups/:id/logo', '/api/bgs/:id/logo', '/api/branches/:id/logo'], express.json({ limit: '8mb' }))
   // The Flespi webhook: batches of device messages, so its own larger limit.
   // Mounted before the request log and before auth — it has its own token.
@@ -223,6 +227,9 @@ export function createApp() {
   // Journey Management (routes/journeys.js checks the Journeys screen itself).
   app.use('/api/journeys', journeyRoutes)
   app.use('/api/route-templates', routeTemplateRoutes)
+  app.use('/api/journey-addresses', journeyAddressRoutes)
+  app.use('/api/journey-forms', journeyFormRoutes)
+  app.use('/api/journey-templates', journeyTemplateRoutes)
   app.use('/api/journey-settings', requireScreen(WRITE_SCREENS['/api/journey-settings']), journeySettingRoutes)
 
   app.use(notFoundHandler)
