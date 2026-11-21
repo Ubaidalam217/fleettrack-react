@@ -799,3 +799,18 @@ export async function listRemovedDrivers() {
 export function restoreDriver(id) {
   return write(() => post(`/api/drivers/${id}/restore`, {}))
 }
+
+/**
+ * The alert types switched off for one vehicle, with every type that can be
+ * (GET /api/vehicles/:id/muted-alerts). null in the demo.
+ */
+export async function getVehicleMutedAlerts(id) {
+  if (!IS_REAL) return null
+  return get(`/api/vehicles/${id}/muted-alerts`)
+}
+
+/** Switch exactly `types` off for the vehicle (PUT /api/vehicles/:id/muted-alerts). */
+export async function setVehicleMutedAlerts(id, types) {
+  if (!IS_REAL) throw new Error('Switching alerts off needs the server')
+  return put(`/api/vehicles/${id}/muted-alerts`, { types })
+}

@@ -246,6 +246,10 @@ model Vehicle {
   /// the tracker's own (vehicle.mileage) at that moment, so everywhere the app
   /// shows the vehicle's odometer it is the tracker's reading plus this. Null =
   /// never set: the tracker's reading as it is. Nothing is written to Flespi.
+  /// Alert types the client switched off for this vehicle (Settings: Vehicle
+  /// information › Alerts). The engine raises none of them for it, so they never
+  /// reach the bell, Notifications or the violation reports.
+  mutedAlerts String[] @default([])
   odometerOffsetKm Float?
   odometerSetAt    DateTime?
   /// Who set it, as a name to show.

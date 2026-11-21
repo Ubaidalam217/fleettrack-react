@@ -15,6 +15,7 @@ import {
   validateCustomFields, cleanCustomFields, fieldNameSuggestions, valueParts, MAX_CUSTOM_FIELDS,
 } from '../../utils/customFields'
 import OdometerSection from './OdometerSection'
+import MutedAlertsSection from './MutedAlertsSection'
 import VehicleHistorySection from './VehicleHistorySection'
 
 /**
@@ -407,6 +408,7 @@ export default function VehicleInfoDialog({ vehicle, title, onClose, onSaved, on
           ) : !editing ? (
             <>
               <OdometerSection vehicleId={row.id} canEdit={canEdit} onSaved={onSaved} />
+              <MutedAlertsSection vehicleId={row.id} canEdit={canEdit} onSaved={onSaved} />
               <VehicleHistorySection vehicleId={row.id} label={vehicleTitle} />
 
               <div className="vi-sechead">

@@ -599,4 +599,27 @@ describe('violation episodes', () => {
       expect(res.status).toBe(201)
     }
   })
+  it('a vehicle with Battery Tamper switched off raises none, and the endpoint saves the list', async () => {
+    await prisma.alert.create({ data: { name: 'Battery cut', type: 'battery_tamper', bgId: fx.bgA1a.id, severity: 'Critical', params: {}, allVehicles: true } })
+    await prisma.vehicle.updateMany({ where: { bgId: fx.bgA1a.id }, data: { mutedAlerts: ['battery_tamper'] } })
+    telemetry = { 101: { 'external.powersource.status': true, timestamp: NOW - 20 } }
+    expect(await runAlertPass(NOW)).toHaveLength(0)
+    telemetry = { 101: { 'external.powersource.status': false, timestamp: NOW + 40 } }
+    expect(await runAlertPass(NOW + 60)).toHaveLength(0)
+    // Switched back on: it is raised again.
+    await prisma.vehicle.updateMany({ where: { bgId: fx.bgA1a.id }, data: { mutedAlerts: [] } })
+    telemetry = { 101: { 'external.powersource.status': true, timestamp: NOW + 100 } }
+    await runAlertPass(NOW + 120)
+    telemetry = { 101: { 'external.powersource.status': false, timestamp: NOW + 140 } }
+    expect(await runAlertPass(NOW + 160)).toHaveLength(1)
+
+    const v = await prisma.vehicle.findFirst({ where: { bgId: fx.bgA1a.id }, select: { id: true } })
+    const put = await request(app).put(`/api/vehicles/${v.id}/muted-alerts`).set(auth(fx.tokens.bgUserA1a)).send({ types: ['battery_tamper', 'tamper'] })
+    expect(put.status).toBe(200)
+    expect(put.body.data.muted).toEqual(['battery_tamper', 'tamper'])
+    const bad = await request(app).put(`/api/vehicles/${v.id}/muted-alerts`).set(auth(fx.tokens.bgUserA1a)).send({ types: ['nope'] })
+    expect(bad.status).toBe(400)
+    const get = await request(app).get(`/api/vehicles/${v.id}/muted-alerts`).set(auth(fx.tokens.bgUserA1a))
+    expect(get.body.data.muted).toEqual(['battery_tamper', 'tamper'])
+  })
 })

@@ -742,7 +742,7 @@ export async function closeEpisodes(closes, now) {
   }
 }
 
-const FLEET_VEHICLE_SELECT = { id: true, bgId: true, imei: true, plateNo: true, fleetNo: true, driver: { select: { id: true, name: true } } }
+const FLEET_VEHICLE_SELECT = { id: true, bgId: true, mutedAlerts: true, imei: true, plateNo: true, fleetNo: true, driver: { select: { id: true, name: true } } }
 
 /**
  * The vehicles the rules of these BGs watch, and each BG's fleet: its own
@@ -752,6 +752,9 @@ const FLEET_VEHICLE_SELECT = { id: true, bgId: true, imei: true, plateNo: true, 
  * device (AlertState), so two BGs' rules on one vehicle never interfere: each
  * raises its own events, in its own BG.
  */
+/** The client switched this alert type off for this vehicle (Vehicle.mutedAlerts). */
+const isMuted = (v, alert) => Array.isArray(v.mutedAlerts) && v.mutedAlerts.includes(alert.type)
+
 async function loadFleets(bgIds) {
   const byId = new Map()
   const fleetOf = new Map()
@@ -828,7 +831,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
     for (const alert of harshRules) {
       const listed = new Set(alert.vehicles.map(v => v.vehicleId))
       for (const v of vehicles) {
-        if (!inFleet(v, alert.bgId) || !(alert.allVehicles || listed.has(v.id))) continue
+        if (!inFleet(v, alert.bgId) || !(alert.allVehicles || listed.has(v.id)) || isMuted(v, alert)) continue
         const deviceId = deviceByImei.get(digits(v.imei))
         if (deviceId === undefined) continue
         ids.add(deviceId)
@@ -913,7 +916,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
       const listed = new Set(alert.vehicles.map(v => v.vehicleId))
       for (const doc of vehicleDocs) {
         const v = doc.vehicle
-        if (v.bgId !== alert.bgId || !(alert.allVehicles || listed.has(v.id))) continue
+        if (v.bgId !== alert.bgId || !(alert.allVehicles || listed.has(v.id)) || isMuted(v, alert)) continue
         const subject = `vdoc:${doc.id}`
         const prev = stateOf.get(`${alert.id}|${subject}`)
         const result = evaluateVehicleDocument(doc, prev, now)
@@ -924,7 +927,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
     }
 
     const listed = new Set(alert.vehicles.map(v => v.vehicleId))
-    const targets = vehicles.filter(v => inFleet(v, alert.bgId) && (alert.allVehicles || listed.has(v.id)))
+    const targets = vehicles.filter(v => inFleet(v, alert.bgId) && (alert.allVehicles || listed.has(v.id)) && !isMuted(v, alert))
     const fences = geofences.filter(g => g.bgId === alert.bgId)
     const suspendedByTag = new Map(tagged.filter(d => d.bgId === alert.bgId && d.status === 'Suspended').map(d => [d.ibuttonCode, d]))
     for (const v of targets) {

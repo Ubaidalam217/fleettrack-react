@@ -27,6 +27,7 @@ import * as flespi from '../lib/flespi.js'
 import { channelAddresses, deviceById, deviceName, deviceTypes, syncVehicleDevice, unregisteredDevices } from '../lib/flespiDevices.js'
 import { assertSameBg, mergeInto, mergePlan, planView, removeRow, swapRows } from '../lib/trackers.js'
 import { vehicleLabel } from '../lib/vehicleLabel.js'
+import { TYPES as ALERT_TYPES } from '../lib/alertEngine.js'
 import { deviceOdometers, odometerRow, adjustmentRow } from '../lib/odometer.js'
 import { SHARES_INCLUDE, dropSharesForTransfer, stripLostAccess, withShares, withSharesOne } from '../lib/vehicleShares.js'
 
@@ -577,6 +578,38 @@ const detailsSchema = z.object({
 // The schema fills a missing field with null, so the keys actually sent are
 // noted first and only those are written.
 const noteSentKeys = (req, _res, next) => { req.sentKeys = new Set(Object.keys(req.body ?? {})); next() }
+
+
+// ── Alerts switched off for one vehicle (client, 2026-11-21) ──
+//
+// "Battery tamper" while a tanker is refilled, or a driver rests with the battery
+// off, is no tamper: the client switches that type off for the vehicle, and the
+// alert engine raises none of it. Own endpoint, so nothing goes to Flespi.
+
+const mutedAlertsSchema = z.object({ types: z.array(z.string().max(60)).max(60) })
+const mutableTypes = () => Object.entries(ALERT_TYPES).map(([key, t]) => ({ key, label: t.label }))
+
+router.get(
+  '/:id/muted-alerts',
+  asyncHandler(async (req, res) => {
+    const v = await findScopedOrThrow('vehicle', req.params.id, req.scope, { select: { id: true, mutedAlerts: true } })
+    res.json({ data: { muted: v.mutedAlerts ?? [], types: mutableTypes() } })
+  })
+)
+
+router.put(
+  '/:id/muted-alerts',
+  validate(mutedAlertsSchema),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const v = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope, { select: { id: true } })
+    const types = [...new Set(req.body.types)]
+    const bad = types.filter(t => !(t in ALERT_TYPES))
+    if (bad.length) throw badRequest(`Unknown alert type: ${bad.join(', ')}`)
+    const row = await prisma.vehicle.update({ where: { id: v.id }, data: { mutedAlerts: types }, select: { mutedAlerts: true } })
+    res.json({ data: { muted: row.mutedAlerts, types: mutableTypes() } })
+  })
+)
 
 router.patch(
   '/:id/details',
