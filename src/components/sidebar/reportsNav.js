@@ -150,6 +150,29 @@ export const REPORT_CATEGORIES = [
         desc: 'Each time a vehicle moved to another Business Group or branch, or a tracker to another vehicle.' },
     ],
   },
+  {
+    // Client 2026-11-21: Uffizio's five Job reports, plus the client's own
+    // analytics list (pages/reports/JourneyReport.jsx). Kept apart from the trip reports.
+    id: 'journey',
+    title: 'Journey',
+    desc: 'Planned journeys against what happened: status, summaries per journey, stop, vehicle, driver and customer, and analytics.',
+    reports: [
+      { id: 'journey-today', label: "Today's Journey Status", icon: CalendarClock, path: '/reports/journey/today-status', ready: true,
+        desc: 'Every journey of the day: where it is, stops reached, ETA and state.' },
+      { id: 'journey-summary', label: 'Journey Summary', icon: ListChecks, path: '/reports/journey/summary', ready: true,
+        desc: 'Planned against actual start and end, distance, delay, alerts and cost per journey.' },
+      { id: 'journey-detail', label: 'Journey Detail Summary', icon: ScrollText, path: '/reports/journey/detail', ready: true,
+        desc: 'Each stop planned against actual, early / on time / late, leg km, signature and form.' },
+      { id: 'journey-vehicle', label: 'Vehicle Journey Summary', icon: Car, path: '/reports/journey/vehicle', ready: true,
+        desc: 'Per vehicle: journeys, on time, delay, distance, deviations and cost.' },
+      { id: 'journey-driver', label: 'Driver Journey Summary', icon: UserRound, path: '/reports/journey/driver', ready: true,
+        desc: 'Per driver of that time: journeys, on time, delay, distance and alerts.' },
+      { id: 'journey-customer', label: 'Customer Journey Summary', icon: Users, path: '/reports/journey/customer', ready: true,
+        desc: 'Per customer: journeys, on time, delay, distance and cost.' },
+      { id: 'journey-analytics', label: 'Journey Analytics', icon: LineChart, path: '/reports/journey/analytics', ready: true,
+        desc: 'On-time %, delay by route, route deviation frequency, planned against driven distance.' },
+    ],
+  },
 ]
 
 /** A report the client listed that has no page yet: the shared placeholder. */

@@ -54,6 +54,11 @@ import JourneyDetail           from './pages/journeys/JourneyDetail'
 import LiveJourneys            from './pages/journeys/LiveJourneys'
 import HseApprovals            from './pages/journeys/HseApprovals'
 import JourneySettings         from './pages/journeys/JourneySettings'
+import CheckpointsRoutes       from './pages/journeys/CheckpointsRoutes'
+import JourneyAlerts           from './pages/journeys/JourneyAlerts'
+import RouteOptimization       from './pages/journeys/RouteOptimization'
+import PublicJourney           from './pages/journeys/PublicJourney'
+import JourneyReport           from './pages/reports/JourneyReport'
 import PushPermissionModal from './components/PushPermissionModal'
 import ErrorBoundary       from './components/ErrorBoundary'
 import AuthGate            from './components/AuthGate'
@@ -178,6 +183,9 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         {/* Public: a shared replay, no sign-in; refused by the server once expired. */}
         <Route path="/share/replay/:token" element={<SharedReplay />} />
         <Route path="/share/location/:token" element={<SharedLocation />} />
+        {/* Public: a journey's tracking link and driver link (client 2026-11-21). */}
+        <Route path="/share/journey/:token" element={<PublicJourney />} />
+        <Route path="/driver/journey/:token" element={<PublicJourney driver />} />
         <Route path="/dashboard"      element={guard(<Dashboard      {...themeProps} />)} />
         <Route path="/tracking"       element={guard(<Tracking       {...themeProps} />)} />
         <Route path="/charts"         element={guard(<Charts         {...themeProps} />)} />
@@ -256,6 +264,7 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/reports/drivers"       element={guard(<DriverListReport   {...themeProps} />)} />
         <Route path="/reports/gyr"           element={guard(<UsageReportPage variant="gyr" {...themeProps} />)} />
         <Route path="/reports/driver-performance" element={guard(<DriverPerformanceReport {...themeProps} />)} />
+        <Route path="/reports/journey/:slug" element={guard(<JourneyReport {...themeProps} />)} />
 
         {/* Journey Management (client 2026-11-13/16/17, design §A.7). */}
         <Route path="/journeys"            element={guard(<JourneyList     {...themeProps} />)} />
@@ -263,6 +272,9 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/journeys/new"        element={guard(<JourneyForm     key="new" {...themeProps} />)} />
         <Route path="/journeys/approvals"  element={guard(<HseApprovals    {...themeProps} />)} />
         <Route path="/journeys/settings"   element={guard(<JourneySettings {...themeProps} />)} />
+        <Route path="/journeys/checkpoints" element={guard(<CheckpointsRoutes {...themeProps} />)} />
+        <Route path="/journeys/alerts"     element={guard(<JourneyAlerts   {...themeProps} />)} />
+        <Route path="/journeys/optimize"   element={guard(<RouteOptimization {...themeProps} />)} />
         <Route path="/journeys/:id"        element={guard(<JourneyDetail   {...themeProps} />)} />
         <Route path="/journeys/:id/edit"   element={guard(<JourneyForm     key="edit" {...themeProps} />)} />
 
