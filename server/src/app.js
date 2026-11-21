@@ -59,6 +59,8 @@ import journeySettingRoutes from './routes/journeySettings.js'
 import journeyAddressRoutes from './routes/journeyAddresses.js'
 import journeyFormRoutes from './routes/journeyForms.js'
 import journeyTemplateRoutes from './routes/journeyTemplates.js'
+import routeOptimizationRoutes from './routes/routeOptimization.js'
+import { publicRouter as publicJourneyRoutes } from './routes/journeyPublic.js'
 import { tagSource, tagUserSource } from './lib/requestSource.js'
 
 /**
@@ -107,7 +109,7 @@ export function createApp() {
   // Journeys and saved routes carry a planned path (thousands of points) and
   // a stop's delivery signature (512 KB image, base64).
   // A stop photo is up to 3 MB of image.
-  app.use(['/api/journeys', '/api/route-templates', '/api/journey-templates', '/api/journey-addresses'], express.json({ limit: '6mb' }))
+  app.use(['/api/journeys', '/api/route-templates', '/api/journey-templates', '/api/journey-addresses', '/api/route-optimization', '/api/public/journey'], express.json({ limit: '6mb' }))
   app.use(['/api/ggbs/:id/logo', '/api/groups/:id/logo', '/api/bgs/:id/logo', '/api/branches/:id/logo'], express.json({ limit: '8mb' }))
   // The Flespi webhook: batches of device messages, so its own larger limit.
   // Mounted before the request log and before auth — it has its own token.
@@ -146,6 +148,16 @@ export function createApp() {
     skip: () => env.isTest,
     message: { error: { message: 'Too many requests. Try again in a minute.' } },
   }), publicLocationRoutes)
+  // Public: a journey's tracking link and driver link (routes/journeyPublic.js).
+  // The pages ask every 30 s; the driver link also posts check-ins and photos.
+  app.use('/api/public/journey', rateLimit({
+    windowMs: 60_000,
+    max: 120,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    skip: () => env.isTest,
+    message: { error: { message: 'Too many requests. Try again in a minute.' } },
+  }), publicJourneyRoutes)
 
   /**
    * Rate limit on login only.
@@ -230,6 +242,7 @@ export function createApp() {
   app.use('/api/journey-addresses', journeyAddressRoutes)
   app.use('/api/journey-forms', journeyFormRoutes)
   app.use('/api/journey-templates', journeyTemplateRoutes)
+  app.use('/api/route-optimization', routeOptimizationRoutes)
   app.use('/api/journey-settings', requireScreen(WRITE_SCREENS['/api/journey-settings']), journeySettingRoutes)
 
   app.use(notFoundHandler)

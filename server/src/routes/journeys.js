@@ -473,6 +473,8 @@ router.get(
   '/events',
   validate(eventsQuery, 'query'),
   asyncHandler(async (req, res) => {
+    // The Journey alerts page is its own screen in the permission editor.
+    if (req.scope.role !== 'SUPER_ADMIN' && levelOf(req.user?.screenAccess, '/journeys/alerts') === 'none') throw forbidden('You do not have access to Journey alerts')
     const { from, to, type, severity, vehicleId, journeyId, q, alertsOnly, limit } = req.validatedQuery
     const [d0, d1] = todayUae()
     const start = from ?? new Date(d0.getTime() - 6 * 86_400_000)
@@ -541,6 +543,7 @@ router.get(
     res.json({
       data: rows.map(r => ({
         ...publicJourney(r),
+        vehicleImei: r.vehicle?.imei ?? null,
         events: r.events.map(e => ({ ...e, occurredAt: e.occurredAt.toISOString(), alert: Boolean(e.alertEventId) })),
         alertCount: r.events.filter(e => e.alertEventId).length,
         cost: costOf.get(r.id)?.amount ?? 0,

@@ -16,6 +16,7 @@ import { bgWhere, findScopedOrThrow, ROLES } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { getJourneySettings, hseRules, JOURNEY_DEFAULTS, setJourneySettings } from '../lib/journeySettings.js'
 import * as whatsapp from '../lib/whatsapp.js'
+import { providerStatus } from '../lib/distanceProvider.js'
 import { levelOf, atLeast } from '../lib/permissions.js'
 
 const router = Router()
@@ -46,6 +47,7 @@ router.get(
     res.json({
       data: {
         bgId, value, defaults: JOURNEY_DEFAULTS, hse, whatsappConfigured: whatsapp.isConfigured(),
+        routingProviders: providerStatus(value.routing),
         updatedAt: row?.updatedAt ?? null, updatedByName: row?.updatedByName ?? null, canEdit,
       },
     })
