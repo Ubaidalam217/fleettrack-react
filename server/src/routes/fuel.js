@@ -18,8 +18,11 @@ import { assertCanWrite, findScopedOrThrow, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { actorOf } from '../lib/vehicleMoves.js'
 import { vehicleLabel } from '../lib/vehicleLabel.js'
-import { activeCalibrations, applyCalibration, calibrationView, checkCalibrationInput, latestPorts, readingLitres } from '../lib/fuel.js'
+import {
+  activeCalibrations, applyCalibration, buildFuelReport, calibrationView, checkCalibrationInput, latestPorts, readingLitres, REPORT_MAX_DAYS,
+} from '../lib/fuel.js'
 import { METHOD_VALUES, MAX_POINTS } from '../../../src/utils/fuelCalibration.js'
+import { DEFAULT_THRESHOLD_L } from '../../../src/utils/fuelEvents.js'
 
 const router = Router()
 
@@ -72,6 +75,43 @@ router.get('/overview', asyncHandler(async (req, res) => {
     out.push({ vehicleId: id, calibration: calibrationView(cal), ports })
   }
   res.json({ data: out })
+}))
+
+/**
+ * GET /api/fuel/report?from&to&vehicleIds=a,b&threshold=15 — the Fuel report
+ * (lib/fuel.js buildFuelReport). No vehicleIds: every visible vehicle with a
+ * calibration or a reading in the period.
+ */
+const reportQuery = z.object({
+  from: z.coerce.date({ message: 'Choose the From date' }),
+  to: z.coerce.date({ message: 'Choose the To date' }),
+  vehicleIds: z.string().trim().max(10_000).optional(),
+  threshold: z.union([z.null(), z.coerce.number().min(1, 'At least 1 litre').max(1000)]).optional(),
+})
+
+router.get('/report', validate(reportQuery, 'query'), asyncHandler(async (req, res) => {
+  const { from, to, vehicleIds, threshold } = req.validatedQuery
+  if (to < from) throw badRequest('The From date must be before the To date', { from: 'After To' })
+  if (to - from > REPORT_MAX_DAYS * 86400_000 + 3600_000) throw badRequest(`Up to ${REPORT_MAX_DAYS} days at a time`, { to: `Up to ${REPORT_MAX_DAYS} days` })
+  const wanted = vehicleIds ? [...new Set(vehicleIds.split(',').map(s => s.trim()).filter(Boolean))].slice(0, 100) : null
+  const select = { id: true, plateNo: true, fleetNo: true, imei: true, bg: { select: { name: true } } }
+  let vehicles
+  if (wanted) {
+    vehicles = await prisma.vehicle.findMany({ where: scopedWhere('vehicle', req.scope, { id: { in: wanted } }), select })
+  } else {
+    const visible = await prisma.vehicle.findMany({ where: scopedWhere('vehicle', req.scope), select: { id: true } })
+    const ids = visible.map(v => v.id)
+    const [withReadings, withCal] = await Promise.all([
+      prisma.fuelReading.groupBy({ by: ['vehicleId'], where: { vehicleId: { in: ids }, ts: { gte: from, lte: to } } }),
+      prisma.fuelCalibration.findMany({ where: { vehicleId: { in: ids }, active: true }, select: { vehicleId: true } }),
+    ])
+    const keep = [...new Set([...withReadings.map(r => r.vehicleId), ...withCal.map(c => c.vehicleId)])].slice(0, 100)
+    vehicles = keep.length ? await prisma.vehicle.findMany({ where: { id: { in: keep } }, select }) : []
+  }
+  const report = await buildFuelReport(vehicles, { from, to, threshold: threshold ?? undefined })
+  report.sort((a, b) => a.label.localeCompare(b.label))
+  res.set('Cache-Control', 'no-store')
+  res.json({ data: { from, to, threshold: threshold ?? DEFAULT_THRESHOLD_L, vehicles: report } })
 }))
 
 router.get('/vehicles/:id', asyncHandler(async (req, res) => {

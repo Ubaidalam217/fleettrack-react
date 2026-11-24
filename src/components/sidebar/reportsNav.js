@@ -3,7 +3,7 @@ import {
   Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma, ShieldCheck, Wrench, History,
   Activity, TrendingUp, TrendingDown, CircleParking, ListOrdered, PlugZap, ChartLine, Table2, Shuffle,
   MapPin, Trophy, Flame, ListChecks, Timer, BarChart3, Award, Moon, LayoutDashboard,
-  BadgeCheck, Hourglass, UserRoundX, Users, GanttChartSquare, LineChart, ScrollText, HardDrive, Receipt,
+  BadgeCheck, Hourglass, UserRoundX, Users, GanttChartSquare, LineChart, ScrollText, HardDrive, Receipt, Fuel,
 } from 'lucide-react'
 import { labelForPathIn } from './navTree'
 
@@ -116,6 +116,16 @@ export const REPORT_CATEGORIES = [
     reports: [
       { id: 'expense-report', label: 'Expense Report', icon: Receipt, path: '/reports/expense', ready: true,
         desc: 'Every expense per vehicle in a period, the Vehicle Cost and the totals per category.' },
+    ],
+  },
+  {
+    // Client, 2026-11-24: "We need a fuel graph report" (fuel vehicles via Uffizio).
+    id: 'fuel',
+    title: 'Fuel',
+    desc: 'Fuel level over time, fills and drains, and the litres used.',
+    reports: [
+      { id: 'fuel-report', label: 'Fuel Report', icon: Fuel, path: '/reports/fuel', ready: true,
+        desc: 'Each vehicle’s fuel level as a graph, with every fill and drain, and the litres used.' },
     ],
   },
   {

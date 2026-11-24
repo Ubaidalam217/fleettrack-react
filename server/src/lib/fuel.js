@@ -16,6 +16,8 @@ import { badRequest } from './http.js'
 import {
   validateCalibration, readingLitres, rawToLitres, calibrationPort, METHOD_PORT,
 } from '../../../src/utils/fuelCalibration.js'
+import { cleanSeries, detectFuelEvents, fuelSummary, rawSummary, downsample } from '../../../src/utils/fuelEvents.js'
+import { vehicleLabel as vehicleLabelOf } from './vehicleLabel.js'
 
 export { readingLitres, rawToLitres, calibrationPort }
 
@@ -98,4 +100,66 @@ export async function latestPorts(vehicleId, cal) {
     out.push({ port: r.port, raw: r.raw, ts: r.ts, ign: r.ign, speed: r.speed, litres: conv.litres, flag: conv.flag })
   }
   return out.sort((a, b) => a.port.localeCompare(b.port))
+}
+
+// ── the Fuel report ─────────────────────────────────────────────────────────
+
+/** The longest period one report may cover. */
+export const REPORT_MAX_DAYS = 31
+
+/**
+ * The Fuel report of some vehicles over a period. Per vehicle: the port it
+ * reads (the calibrated one, else the one with the most readings), the graph
+ * series (litres, or raw when not calibrated; at most ~800 points), the
+ * summary and the fill / drain events (src/utils/fuelEvents.js).
+ *
+ * @param {{ id, plateNo, fleetNo, imei, bg?: { name } }[]} vehicles  already scope-checked
+ */
+export async function buildFuelReport(vehicles, { from, to, threshold }) {
+  const ids = vehicles.map(v => v.id)
+  const [cals, rows] = await Promise.all([
+    activeCalibrations(ids),
+    prisma.fuelReading.findMany({
+      where: { vehicleId: { in: ids }, ts: { gte: from, lte: to } },
+      orderBy: { ts: 'asc' },
+      select: { vehicleId: true, ts: true, port: true, raw: true, ign: true, speed: true, lat: true, lng: true },
+    }),
+  ])
+  const byVehicle = new Map(ids.map(id => [id, []]))
+  for (const r of rows) byVehicle.get(r.vehicleId)?.push(r)
+
+  return vehicles.map(v => {
+    const cal = cals.get(v.id) ?? null
+    const all = byVehicle.get(v.id) ?? []
+    const counts = new Map()
+    for (const r of all) counts.set(r.port, (counts.get(r.port) ?? 0) + 1)
+    const port = (cal && calibrationPort(cal)) || [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null
+    const mine = all.filter(r => r.port === port)
+    const base = {
+      vehicleId: v.id, label: vehicleLabelOf(v), company: v.bg?.name ?? null, port,
+      ports: [...counts.keys()], calibration: calibrationView(cal),
+    }
+    if (!cal) {
+      return {
+        ...base, calibrated: false, unit: 'raw',
+        series: downsample(mine.map(r => ({ ts: r.ts.getTime(), v: r.raw }))),
+        summary: rawSummary(mine.map(r => ({ ts: r.ts.getTime(), raw: r.raw }))),
+        events: [], outOfRange: 0,
+      }
+    }
+    let outOfRange = 0
+    const converted = mine.map(r => {
+      const { litres, flag } = readingLitres(r, cal)
+      if (flag === 'out_of_range') outOfRange++
+      return { ts: r.ts.getTime(), litres, ign: r.ign, speed: r.speed, lat: r.lat, lng: r.lng }
+    })
+    const series = cleanSeries(converted)
+    const events = detectFuelEvents(series, { threshold })
+    return {
+      ...base, calibrated: true, unit: 'L',
+      series: downsample(series.map(p => ({ ts: p.ts, v: p.litres }))),
+      summary: fuelSummary(series, events),
+      events, outOfRange,
+    }
+  })
 }

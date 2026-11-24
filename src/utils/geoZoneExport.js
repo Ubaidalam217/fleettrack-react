@@ -187,7 +187,8 @@ const summaryLines = opts => [...(opts.summaryCards ?? []), ...(opts.reportSumma
  * on a continuation page), and a `{ kind: 'band', label }` row is a yellow
  * date band.
  *
- * @param {object} opts  {title, subtitle, filters?|filtersText, printDate, systemName, summaryCards, tables, hiddenColumns?, reportSummary?}
+ * @param {object} opts  {title, subtitle, filters?|filtersText, printDate, systemName, summaryCards, tables, hiddenColumns?, reportSummary?, figures?}
+ *   `figures` ([{ heading, png: dataURL, aspect: height / width }]) are drawn before the tables.
  *   A row with `strong` prints bold on the total yellow (a "Day Summary" line).
  *   `summaryCards` and `reportSummary` ([{label, value}]) print as the
  *   "Report Summary" block after the last table, the way Ctrack MaXx ends its
@@ -213,6 +214,20 @@ export async function buildGeoZonePdf(opts) {
   }
 
   startPage()
+
+  // Figures (a report's graphs, as PNG images) come first, each under a
+  // silver bar like a table's heading — the Fuel report's level graphs.
+  for (const fig of opts.figures ?? []) {
+    const w = BAND.w - 8
+    const h = Math.min(220, w * (fig.aspect ?? 0.26))
+    if (y + GROUP_H + 1 + h + 6 > BODY_BOTTOM) startPage()
+    if (fig.heading) {
+      drawBand(doc, y, GROUP_H, GROUP_GRAY, fig.heading)
+      y += GROUP_H + 1
+    }
+    doc.addImage(fig.png, 'PNG', BAND.x + 4, y + 2, w, h)
+    y += h + 6
+  }
 
   for (const table of tables) {
     const cols = layoutColumns(table.columns, BORDER.w - 6)
@@ -374,6 +389,16 @@ export async function exportGeoZoneExcel(opts, filenameBase) {
     paint(ws.addRow(cells), 'FFB0C4DE', false)
   }
   ws.addRow([])
+
+  // Figures: a heading row, then the image over the rows below it.
+  for (const fig of opts.figures ?? []) {
+    if (fig.heading) paint(ws.addRow([fig.heading]), 'FFC0C0C0', true)
+    const at = ws.rowCount // 0-based index of the next row
+    const width = 900
+    const height = Math.round(width * (fig.aspect ?? 0.26))
+    ws.addImage(wb.addImage({ base64: fig.png, extension: 'png' }), { tl: { col: 0, row: at }, ext: { width, height } })
+    for (let k = 0; k < Math.ceil(height / 20) + 1; k++) ws.addRow([])
+  }
 
   let widths = null
   let stamped = null

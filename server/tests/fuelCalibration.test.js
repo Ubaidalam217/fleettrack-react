@@ -117,3 +117,42 @@ describe('readings stored with litres', () => {
     expect(rows.map(r => [r.port, r.litres])).toEqual([[PORT, 75], ['Other', null]])
   })
 })
+
+describe('the Fuel report', () => {
+  it('litres, events and summary for a calibrated vehicle; raw for one without', async () => {
+    const { v1, v2, v5 } = fx.vehicles
+    await apply(fx.tokens.bgUserA1a, { vehicleIds: [v1.id], method: 'PORT', port: PORT, tankCapacityL: 100, points: TABLE })
+    const t0 = Date.UTC(2026, 10, 20, 6, 0, 0)
+    // 20 L, a refill to 90 L (parked), driving down to 80 L, then 30 L gone while parked.
+    const mv = [900, 900, 900, 1500, 2100, 2300, 2300, 2250, 2200, 2100, 2100, 1700, 1500, 1500, 1500]
+    const parked = [true, true, true, true, true, true, false, false, false, false, true, true, true, true, true]
+    await prisma.fuelReading.createMany({
+      data: mv.map((raw, i) => ({ vehicleId: v1.id, port: PORT, raw, ts: new Date(t0 + i * 120_000), ign: !parked[i], speed: parked[i] ? 0 : 60, lat: 24.1, lng: 54.2 })),
+    })
+    await prisma.fuelReading.createMany({ data: [3000, 3100].map((raw, i) => ({ vehicleId: v2.id, port: PORT, raw, ts: new Date(t0 + i * 120_000) })) })
+    await prisma.fuelReading.create({ data: { vehicleId: v5.id, port: PORT, raw: 1000, ts: new Date(t0) } })
+
+    const q = `from=${new Date(t0 - 3600_000).toISOString()}&to=${new Date(t0 + 86400_000).toISOString()}`
+    const res = await request(app).get(`/api/fuel/report?${q}`).set(auth(fx.tokens.bgUserA1a))
+    expect(res.status).toBe(200)
+    const byId = new Map(res.body.data.vehicles.map(v => [v.vehicleId, v]))
+    expect([...byId.keys()].sort()).toEqual([v1.id, v2.id].sort()) // v5 is another BG's
+
+    const a = byId.get(v1.id)
+    expect(a).toMatchObject({ calibrated: true, unit: 'L', port: PORT })
+    expect(a.events.map(e => [e.kind, e.before, e.after])).toEqual([['fill', 20, 90], ['drain', 80, 50]])
+    expect(a.summary).toMatchObject({ start: 20, end: 50, min: 20, max: 90, filled: 70, drained: 30, fills: 1, drains: 1, used: 10 })
+    const b = byId.get(v2.id)
+    expect(b).toMatchObject({ calibrated: false, unit: 'raw', events: [] })
+    expect(b.summary).toMatchObject({ start: 3000, end: 3100 })
+
+    const one = await request(app).get(`/api/fuel/report?${q}&vehicleIds=${v1.id},${v5.id}&threshold=40`).set(auth(fx.tokens.bgUserA1a))
+    expect(one.body.data.vehicles.map(v => v.vehicleId)).toEqual([v1.id])
+    expect(one.body.data.vehicles[0].events.map(e => e.kind)).toEqual(['fill'])
+  })
+
+  it('refuses a period over 31 days', async () => {
+    const res = await request(app).get('/api/fuel/report?from=2026-09-01&to=2026-11-01').set(auth(fx.tokens.bgUserA1a))
+    expect(res.status).toBe(400)
+  })
+})

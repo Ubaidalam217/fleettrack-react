@@ -24,6 +24,7 @@ import SettingsReminderRule   from './pages/settings/ReminderRule'
 import ReminderStatusReport   from './pages/reports/ReminderStatusReport'
 import ReminderHistoryReport  from './pages/reports/ReminderHistoryReport'
 import ExpenseReport          from './pages/reports/ExpenseReport'
+import FuelReport             from './pages/reports/FuelReport'
 import UtilizationReport      from './pages/reports/UtilizationReport'
 import ViolationOverviewReport from './pages/reports/ViolationOverviewReport'
 import PowerFailureReport     from './pages/reports/PowerFailureReport'
@@ -250,6 +251,7 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/reports/reminder-status"  element={guard(<ReminderStatusReport  {...themeProps} />)} />
         <Route path="/reports/reminder-history" element={guard(<ReminderHistoryReport {...themeProps} />)} />
         <Route path="/reports/expense"          element={guard(<ExpenseReport {...themeProps} />)} />
+        <Route path="/reports/fuel"             element={guard(<FuelReport {...themeProps} />)} />
         <Route path="/reports/asset-utilization" element={guard(<UtilizationReport variant="asset" {...themeProps} />)} />
         <Route path="/reports/over-utilization"  element={guard(<UtilizationReport variant="over"  {...themeProps} />)} />
         <Route path="/reports/under-utilization" element={guard(<UtilizationReport variant="under" {...themeProps} />)} />
