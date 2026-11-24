@@ -3,7 +3,7 @@ import {
   Clock, UserRound, MapPinned, CalendarClock, IdCard, Gauge, Sigma, ShieldCheck, Wrench, History,
   Activity, TrendingUp, TrendingDown, CircleParking, ListOrdered, PlugZap, ChartLine, Table2, Shuffle,
   MapPin, Trophy, Flame, ListChecks, Timer, BarChart3, Award, Moon, LayoutDashboard,
-  Hourglass, UserRoundX, Users, GanttChartSquare, LineChart, ScrollText, HardDrive, Receipt,
+  BadgeCheck, Hourglass, UserRoundX, Users, GanttChartSquare, LineChart, ScrollText, HardDrive, Receipt,
 } from 'lucide-react'
 import { labelForPathIn } from './navTree'
 
@@ -146,6 +146,8 @@ export const REPORT_CATEGORIES = [
         desc: 'Every vehicle with its group, device and last report.' },
       { id: 'driver-list',      label: 'List of Drivers',         icon: IdCard,        path: '/reports/drivers',         ready: true,
         desc: 'Every driver with licence details and assigned vehicle.' },
+      { id: 'expiry-gate-pass', label: 'Expiry Gate Pass',        icon: BadgeCheck,    path: '/reports/expiry-gate-pass', ready: true,
+        desc: 'Drivers whose gate pass has expired or is about to, per Business Group and contractor.' },
       { id: 'reallocation-history', label: 'Reallocation History Report', icon: Shuffle, path: '/reports/reallocation-history', ready: true,
         desc: 'Each time a vehicle moved to another Business Group or branch, or a tracker to another vehicle.' },
     ],

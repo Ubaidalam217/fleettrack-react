@@ -544,6 +544,10 @@ export function emptyDriver() {
     lifeInsuranceExpiry: '',
     mediclaimNo:         '',
     mediclaimExpiry:     '',
+    // Gate pass (site access card) for the Expiry Gate Pass report (client, 2026-11-24).
+    gatePassTag:         '',
+    gatePassExpiry:      '',
+    contractorName:      '',
   }
 }
 
@@ -770,10 +774,10 @@ const SEED_GEOFENCES = [
 // v3 and the c3 fleet are left undriven on purpose: the vehicle picker and the
 // Live Map both have a "no driver" case to render from first load.
 const SEED_DRIVERS = [
-  { id: 'd1', companyId: 'c1', name: 'Ahmed Khan',     mobile: '+971 50 220 4411', licenseNo: 'AD-4471920', licenseExpiry: isoDateFromToday(540), vehicleId: 'v1', notes: '',                         status: 'Active'   },
-  { id: 'd2', companyId: 'c1', name: 'Rashid Ali',     mobile: '+971 50 220 4412', licenseNo: 'AD-5520183', licenseExpiry: isoDateFromToday(18),  vehicleId: 'v2', notes: 'Night shift, Mussafah.',  status: 'Active'   },
-  { id: 'd3', companyId: 'c1', name: 'Imran Siddiqui', mobile: '+971 52 118 9034', licenseNo: 'AD-3308871', licenseExpiry: isoDateFromToday(-12), vehicleId: '',   notes: 'Renewal in progress.',    status: 'Inactive' },
-  { id: 'd4', companyId: 'c2', name: 'Faisal Mahmood', mobile: '+971 55 404 1180', licenseNo: 'DXB-881204', licenseExpiry: isoDateFromToday(300), vehicleId: 'v5', notes: '',                         status: 'Active'   },
+  { id: 'd1', companyId: 'c1', name: 'Ahmed Khan',     mobile: '+971 50 220 4411', licenseNo: 'AD-4471920', licenseExpiry: isoDateFromToday(540), vehicleId: 'v1', notes: '',                         status: 'Active'   , employeeId: 'E-1001', gatePassTag: '04A1B2C3D4E5F60718A1', gatePassExpiry: isoDateFromToday(400), contractorName: 'Gulf Contracting' },
+  { id: 'd2', companyId: 'c1', name: 'Rashid Ali',     mobile: '+971 50 220 4412', licenseNo: 'AD-5520183', licenseExpiry: isoDateFromToday(18),  vehicleId: 'v2', notes: 'Night shift, Mussafah.',  status: 'Active'   , employeeId: 'E-1002', gatePassTag: '04A1B2C3D4E5F60718A2', gatePassExpiry: isoDateFromToday(12), contractorName: 'Gulf Contracting' },
+  { id: 'd3', companyId: 'c1', name: 'Imran Siddiqui', mobile: '+971 52 118 9034', licenseNo: 'AD-3308871', licenseExpiry: isoDateFromToday(-12), vehicleId: '',   notes: 'Renewal in progress.',    status: 'Inactive' , employeeId: 'E-1003', gatePassTag: '04A1B2C3D4E5F60718A3', gatePassExpiry: isoDateFromToday(-40), contractorName: 'Ruwais Site' },
+  { id: 'd4', companyId: 'c2', name: 'Faisal Mahmood', mobile: '+971 55 404 1180', licenseNo: 'DXB-881204', licenseExpiry: isoDateFromToday(300), vehicleId: 'v5', notes: '',                         status: 'Active'   , employeeId: 'E-2001', gatePassTag: '04A1B2C3D4E5F60718B1', gatePassExpiry: isoDateFromToday(-5), contractorName: 'Desert Works' },
   { id: 'd5', companyId: 'c2', name: 'Joseph Mathew',  mobile: '+971 55 404 1181', licenseNo: 'DXB-772019', licenseExpiry: '',                    vehicleId: 'v6', notes: '',                         status: 'Active'   },
 ]
 

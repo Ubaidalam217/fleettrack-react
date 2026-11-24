@@ -97,11 +97,15 @@ const driverFields = {
   lifeInsuranceExpiry: optionalDate(),
   mediclaimNo: optionalText(60),
   mediclaimExpiry: optionalDate(),
+  // Gate pass (Expiry Gate Pass report). The ID number of the client's sheet is employeeId.
+  gatePassTag: optionalText(60),
+  gatePassExpiry: optionalDate(),
+  contractorName: optionalText(120),
 }
 
 const DATE_FIELDS = [
   'dateOfBirth', 'joiningDate', 'licenseIssueDate', 'licenseExpiry', 'visaExpiry', 'emiratesIdExpiry', 'medicalExpiry',
-  'leavingDate', 'retirementDate', 'drivingSince', 'lifeInsuranceExpiry', 'mediclaimExpiry',
+  'leavingDate', 'retirementDate', 'drivingSince', 'lifeInsuranceExpiry', 'mediclaimExpiry', 'gatePassExpiry',
 ]
 
 const createSchema = z.object({ bgId: requiredId('Business Group'), ...driverFields })

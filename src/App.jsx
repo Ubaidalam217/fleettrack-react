@@ -42,6 +42,7 @@ import SharedReplay            from './pages/SharedReplay'
 import SharedLocation          from './pages/SharedLocation'
 import VehicleListReport       from './pages/reports/VehicleListReport'
 import DriverListReport        from './pages/reports/DriverListReport'
+import ExpiryGatePassReport    from './pages/reports/ExpiryGatePassReport'
 import EventOccurrenceReport   from './pages/reports/EventOccurrenceReport'
 import UsageReportPage         from './pages/reports/UsageReportPage'
 import ViolationReportPage     from './pages/reports/ViolationReportPage'
@@ -262,6 +263,7 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/reports/geo-zone"      element={guard(<GeoZoneReport      {...themeProps} />)} />
         <Route path="/reports/time-sheet"    element={guard(<UsageReportPage variant="timeSheet" {...themeProps} />)} />
         <Route path="/reports/drivers"       element={guard(<DriverListReport   {...themeProps} />)} />
+        <Route path="/reports/expiry-gate-pass" element={guard(<ExpiryGatePassReport {...themeProps} />)} />
         <Route path="/reports/gyr"           element={guard(<UsageReportPage variant="gyr" {...themeProps} />)} />
         <Route path="/reports/driver-performance" element={guard(<DriverPerformanceReport {...themeProps} />)} />
         <Route path="/reports/journey/:slug" element={guard(<JourneyReport {...themeProps} />)} />

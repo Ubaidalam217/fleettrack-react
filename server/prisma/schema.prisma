@@ -801,6 +801,14 @@ model Driver {
   mediclaimNo         String?
   mediclaimExpiry     DateTime?
 
+  /// Gate pass (site access card) for the Expiry Gate Pass report (client,
+  /// 2026-11-24). A separate card from the tracker's iButton/driver-ID tag, so
+  /// it has its own columns; the "ID Number" of the client's sheet is employeeId.
+  gatePassTag         String?
+  gatePassExpiry      DateTime?
+  /// Free value per driver: sometimes a company, sometimes a location.
+  contractorName      String?
+
   /// Set when the driver is removed (client, 2026-11-13: "All the drivers names
   /// will stay as it is"). A driver who ever drove or held a tag is never
   /// deleted: the row stays so past trips keep their name, with the vehicle and

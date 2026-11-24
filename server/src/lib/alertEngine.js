@@ -524,6 +524,7 @@ export const DRIVER_EXPIRIES = [
   ['medicalExpiry', 'Medical fitness', ':medical'],
   ['lifeInsuranceExpiry', 'Life insurance', ':insurance'],
   ['mediclaimExpiry', 'Mediclaim', ':mediclaim'],
+  ['gatePassExpiry', 'Gate pass', ':gatepass'],
 ]
 
 export function evaluateLicence(alert, driver, state, now, field = 'licenseExpiry', label = 'Driving licence') {

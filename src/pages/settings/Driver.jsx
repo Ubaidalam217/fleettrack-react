@@ -66,6 +66,7 @@ const EXPIRIES = [
   ['medicalExpiry',    'Medical'],
   ['lifeInsuranceExpiry', 'Life insurance'],
   ['mediclaimExpiry',     'Mediclaim'],
+  ['gatePassExpiry',      'Gate pass'],
 ]
 
 function Pill({ tone, children }) {
@@ -787,7 +788,7 @@ export default function Driver(props) {
       if (bgFilter && d.companyId !== bgFilter) return false
       if (!q) return true
       const vehicle = d.vehicleId ? vehicleById.get(d.vehicleId) : null
-      return [d.name, driverCode(d), d.employeeId, d.department, d.mobile, d.licenseNo, d.ibuttonCode, companyNameFor(d.companyId), vehicle && vehicleLabel(vehicle)]
+      return [d.name, driverCode(d), d.employeeId, d.department, d.mobile, d.licenseNo, d.ibuttonCode, d.gatePassTag, d.contractorName, companyNameFor(d.companyId), vehicle && vehicleLabel(vehicle)]
         .some(s => String(s ?? '').toLowerCase().includes(q))
     })
     return list.sort((a, b) => a.name.localeCompare(b.name))
@@ -884,6 +885,7 @@ export default function Driver(props) {
       contactNumber2: trim('contactNumber2'), country: trim('country'), state: trim('state'), city: trim('city'),
       zipCode: trim('zipCode'), street1: trim('street1'), street2: trim('street2'),
       lifeInsuranceNo: trim('lifeInsuranceNo'), mediclaimNo: trim('mediclaimNo'),
+      gatePassTag: trim('gatePassTag').replace(/\s+/g, '').toUpperCase(), contractorName: trim('contractorName'),
       ibuttonCode: tag,
       notes: trim('notes'),
     }
@@ -1265,6 +1267,18 @@ export default function Driver(props) {
                 <ExpiryField label="Emirates ID expiry" name="emiratesIdExpiry" value={draft.emiratesIdExpiry} error={errors.emiratesIdExpiry} onChange={set} />
                 <ExpiryField label="Visa expiry" name="visaExpiry" value={draft.visaExpiry} error={errors.visaExpiry} onChange={set} />
                 <ExpiryField label="Medical fitness expiry" name="medicalExpiry" value={draft.medicalExpiry} error={errors.medicalExpiry} onChange={set} />
+              </div>
+            </DSection>
+
+            <DSection
+              icon={IdCard}
+              title="Gate pass"
+              desc="The site access card. The Expiry Gate Pass report lists every driver whose card has expired or is about to, per Business Group."
+            >
+              <div className="dfm-grid">
+                {text('gatePassTag', 'Tag number', { placeholder: '04A1B2C3D4E5F60718AB', max: 60, span: 6 })}
+                <ExpiryField label="Tag expiry" name="gatePassExpiry" value={draft.gatePassExpiry} error={errors.gatePassExpiry} onChange={set} />
+                {text('contractorName', 'Contractor name', { placeholder: 'A company or a location', max: 120, span: 12 })}
               </div>
             </DSection>
 

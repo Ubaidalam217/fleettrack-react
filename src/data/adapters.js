@@ -513,6 +513,9 @@ export const driver = {
     lifeInsuranceExpiry: orBlank(r.lifeInsuranceExpiry),
     mediclaimNo: orBlank(r.mediclaimNo),
     mediclaimExpiry: orBlank(r.mediclaimExpiry),
+    gatePassTag: orBlank(r.gatePassTag),
+    gatePassExpiry: orBlank(r.gatePassExpiry),
+    contractorName: orBlank(r.contractorName),
   }),
   toApiCreate: r => ({
     bgId: r.companyId,
@@ -559,6 +562,9 @@ export const driver = {
     lifeInsuranceExpiry: orNull(r.lifeInsuranceExpiry),
     mediclaimNo: orNull(r.mediclaimNo),
     mediclaimExpiry: orNull(r.mediclaimExpiry),
+    gatePassTag: orNull(r.gatePassTag),
+    gatePassExpiry: orNull(r.gatePassExpiry),
+    contractorName: orNull(r.contractorName),
   }),
 }
 
