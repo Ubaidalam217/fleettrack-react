@@ -4,7 +4,7 @@ import { Plus, Search, ShieldCheck, CalendarClock, Truck, Clock, Flag, X, Refres
 import { exportCtrackPdf, exportCtrackExcel } from '../../utils/ctrackExport'
 import { listExport } from '../../utils/journeyReports'
 import JourneyShell from './JourneyShell'
-import { StatusPill, StopDots, ErrorNote } from '../../components/journeys/JourneyBits'
+import { StatusPill, StopDots, ErrorNote, NoApprovalChip } from '../../components/journeys/JourneyBits'
 import { listJourneys, hhmm, uaeDate, dayRange } from '../../data/journeys'
 import { errorMessage } from '../../data/http'
 import { useScreenLevel, atLeast } from '../../data/screens'
@@ -12,12 +12,12 @@ import { useScreenLevel, atLeast } from '../../data/screens'
 /**
  * Journeys (client 2026-11-17, point 2): every planned and ongoing journey in
  * one list — the day's, everything still on the road, everything waiting for
- * HSE — with stops passed, km done of planned, status and ETA. Click a
+ * approval — with stops passed, km done of planned, status and ETA. Click a
  * number to filter; click a row for the detail page.
  */
 
 const KPIS = [
-  { key: 'Pending', label: 'Pending approval', sub: 'Waiting for HSE', icon: ShieldCheck, statuses: ['Pending'] },
+  { key: 'Pending', label: 'Pending approval', sub: 'Waiting for approval', icon: ShieldCheck, statuses: ['Pending'] },
   { key: 'Scheduled', label: 'Scheduled', sub: 'Planned, not left yet', icon: CalendarClock, statuses: ['Scheduled'] },
   { key: 'road', label: 'On the road', sub: 'Driving now', icon: Truck, statuses: ['Started', 'InProgress', 'Delayed', 'Interrupted'] },
   { key: 'Delayed', label: 'Late', sub: 'Will arrive after the plan', icon: Clock, statuses: ['Delayed'] },
@@ -173,9 +173,9 @@ function Row({ j, onOpen }) {
     <tr onClick={onOpen} onKeyDown={e => e.key === 'Enter' && onOpen()} tabIndex={0}>
       <td style={{ maxWidth: 240 }}>
         <div className="j-strong">{j.title}</div>
-        <div className="j-label">{j.ref}{j.customer ? ` · ${j.customer}` : ''}</div>
-        {j.display === 'Rejected' && j.rejectReason && <div className="j-err" style={{ marginTop: 3 }}>HSE: {j.rejectReason}</div>}
-        {j.display === 'Pending' && j.submittedAt && <div className="j-label">Sent to HSE at {hhmm(j.submittedAt)}</div>}
+        <div className="j-label">{j.ref}{j.customer ? ` · ${j.customer}` : ''} <NoApprovalChip journey={j} /></div>
+        {j.display === 'Rejected' && j.rejectReason && <div className="j-err" style={{ marginTop: 3 }}>Rejected: {j.rejectReason}</div>}
+        {j.display === 'Pending' && j.submittedAt && <div className="j-label">Sent for approval at {hhmm(j.submittedAt)}</div>}
       </td>
       <td>
         <div className="j-strong">{j.vehicleLabel}</div>

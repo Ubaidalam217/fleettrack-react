@@ -139,7 +139,7 @@ export default function JourneySettings(props) {
               <div className="j-card-head"><User size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Who gets journey alerts</h2></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
                 <span className="j-badge">1</span>
-                <div style={{ flex: 1 }}><div className="j-strong">First</div><div className="j-label">The person who created the journey, and the HSE approver</div></div>
+                <div style={{ flex: 1 }}><div className="j-strong">First</div><div className="j-label">The person who created the journey, and the approver</div></div>
                 <Toggle label="Creator and approver" checked={v.recipients.creatorAndApprover} disabled={ro} onChange={x => setIn('recipients', 'creatorAndApprover', x)} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid var(--j-line)' }}>
@@ -223,6 +223,18 @@ export default function JourneySettings(props) {
                 <label className="j-field"><span>OSRM address</span><input className="j-input" value={v.routing.osrmUrl} disabled={ro} onChange={e => setIn('routing', 'osrmUrl', e.target.value)} placeholder="http://10.0.0.5:5000" /></label>
               </div>
               <div className="j-label" style={{ marginTop: 8 }}>Used by New Journey (the road route and its driving times) and Route Optimization. A service that is picked but not set up, or does not answer, falls back to the estimate. A paid service is only called once its key is set.</div>
+            </div>
+
+            <div className="j-card j-form-card">
+              <div className="j-card-head"><ShieldCheck size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Approval</h2></div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div><div className="j-strong">Journeys need approval by default</div><div className="j-label">New Journey starts with “Needs approval” on; the planner can switch it off for one journey.</div></div>
+                <Toggle label="Needs approval by default" checked={v.approvalByDefault} disabled={ro} onChange={x => set('approvalByDefault', x)} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingTop: 12, marginTop: 12, borderTop: '1px solid var(--j-line)' }}>
+                <div><div className="j-strong">Allow journeys without approval</div><div className="j-label">Off: every journey must be approved first; the switch is not offered on New Journey.</div></div>
+                <Toggle label="Allow journeys without approval" checked={v.allowNoApproval} disabled={ro} onChange={x => set('allowNoApproval', x)} />
+              </div>
             </div>
 
             <div className="j-card j-form-card">

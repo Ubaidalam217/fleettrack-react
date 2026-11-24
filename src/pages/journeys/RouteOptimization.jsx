@@ -18,7 +18,7 @@ import { errorMessage } from '../../data/http'
  * Capacity), a start, the delivery points (map, address book, Excel / CSV)
  * with weights, stay times and time windows; "Optimize" splits them into trips
  * per vehicle on the server (lib/routeOptimizer.js), each ordered to drive the
- * least; "Create journeys" makes one draft journey per trip for HSE to approve.
+ * least; "Create journeys" makes one draft journey per trip for approval.
  * Distances are estimates until a road routing service is set up.
  */
 
@@ -271,7 +271,7 @@ export default function RouteOptimization(props) {
             <div className="j-card">
               <div className="j-card-head" style={{ flexWrap: 'wrap' }}>
                 <h2 className="j-card-title" style={{ flex: 1 }}>{result.trips.length} trip{result.trips.length === 1 ? '' : 's'} · {result.totalKm} km{result.estimated ? ' (estimated)' : ''}</h2>
-                <label className="j-label" style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={sendHse} onChange={e => setSendHse(e.target.checked)} /> Send to HSE at once</label>
+                <label className="j-label" style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={sendHse} onChange={e => setSendHse(e.target.checked)} /> Send for approval at once</label>
                 <button type="button" className="j-btn j-btn--sm j-btn--primary" disabled={busy || !result.trips.length || Boolean(made)} onClick={createAll}><CirclePlus size={13} /> Create {result.trips.length} journey{result.trips.length === 1 ? '' : 's'}</button>
               </div>
               {result.trips.map((t, k) => {
@@ -291,7 +291,7 @@ export default function RouteOptimization(props) {
                         </span>
                       ))}
                     </div>
-                    {m && (m.error ? <div className="j-err" style={{ marginTop: 6 }}><AlertTriangle size={12} /> {m.error}</div> : <div className="j-ok-text" style={{ marginTop: 6 }}><Check size={12} /> <Link to={`/journeys/${m.id}`} style={{ textDecoration: 'underline' }}>{m.ref}</Link> {sendHse ? 'sent to HSE' : 'saved as a draft'}</div>)}
+                    {m && (m.error ? <div className="j-err" style={{ marginTop: 6 }}><AlertTriangle size={12} /> {m.error}</div> : <div className="j-ok-text" style={{ marginTop: 6 }}><Check size={12} /> <Link to={`/journeys/${m.id}`} style={{ textDecoration: 'underline' }}>{m.ref}</Link> {sendHse ? 'sent for approval' : 'saved as a draft'}</div>)}
                   </div>
                 )
               })}

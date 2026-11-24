@@ -134,7 +134,7 @@ export const TIMING_META = Object.freeze({
 })
 
 export const EVENT_LABEL = Object.freeze({
-  STATUS: 'Status', SUBMITTED: 'Sent for HSE approval', APPROVED: 'Approved by HSE', REJECTED: 'Rejected by HSE',
+  STATUS: 'Status', SUBMITTED: 'Sent for approval', APPROVED: 'Approved', REJECTED: 'Rejected', CREATED_WITHOUT_APPROVAL: 'Created without approval',
   CANCELLED: 'Cancelled', NOTE: 'Note', SIGNATURE: 'Signed',
   DEPART_EARLY: 'Early departure', DEPART_ON_TIME: 'On-time departure', DEPART_LATE: 'Late departure',
   ARRIVE_EARLY: 'Early arrival', ARRIVE_ON_TIME: 'On-time arrival', ARRIVE_LATE: 'Late arrival',

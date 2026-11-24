@@ -34,6 +34,12 @@ export const JOURNEY_DEFAULTS = Object.freeze({
     /** Also for the stops in between, not only the start and the destination. */
     atStops: true,
   }),
+  /**
+   * Approval is a choice on each journey (client 2026-11-24): the default New Journey starts with,
+   * and whether a planner may switch it off at all.
+   */
+  approvalByDefault: true,
+  allowNoApproval: true,
   /** Break due / daily driving limit from the HSE driving rules (the fatigue setting). */
   hseBreaks: true,
   recipients: Object.freeze({ creatorAndApprover: true, bgAdmins: true, bgAdminsAfterMin: 15 }),
@@ -89,6 +95,8 @@ export function mergeSettings(stored) {
   }
   const bools = (def, given) => Object.fromEntries(Object.entries(def).map(([k, d]) => [k, typeof given?.[k] === 'boolean' ? given[k] : d]))
   out.eventAlerts = bools(JOURNEY_DEFAULTS.eventAlerts, v.eventAlerts)
+  out.approvalByDefault = typeof v.approvalByDefault === 'boolean' ? v.approvalByDefault : JOURNEY_DEFAULTS.approvalByDefault
+  out.allowNoApproval = typeof v.allowNoApproval === 'boolean' ? v.allowNoApproval : JOURNEY_DEFAULTS.allowNoApproval
   out.hseBreaks = typeof v.hseBreaks === 'boolean' ? v.hseBreaks : JOURNEY_DEFAULTS.hseBreaks
   const r = v.recipients ?? {}
   out.recipients = {

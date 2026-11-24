@@ -41,7 +41,7 @@ const NAV_SECTIONS = [
       { label: 'Journeys',        icon: Route,       path: '/journeys', match: p => p === '/journeys' || (/^\/journeys\/[^/]+(\/edit)?$/.test(p) && !['/journeys/live', '/journeys/new', '/journeys/approvals', '/journeys/settings', '/journeys/checkpoints', '/journeys/alerts', '/journeys/optimize'].includes(p)) },
       { label: 'Live Journeys',   icon: Radio,       path: '/journeys/live' },
       { label: 'New Journey',     icon: CirclePlus,  path: '/journeys/new', minLevel: 'modify' },
-      { label: 'HSE Approvals',   icon: ShieldCheck, path: '/journeys/approvals' },
+      { label: 'Approvals',       icon: ShieldCheck, path: '/journeys/approvals' },
       { label: 'Journey Alerts',  icon: BellRing,    path: '/journeys/alerts' },
       { label: 'Checkpoints & Routes', icon: BookMarked, path: '/journeys/checkpoints' },
       { label: 'Route Optimization', icon: Wand2,    path: '/journeys/optimize', minLevel: 'modify' },

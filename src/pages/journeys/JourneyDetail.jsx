@@ -7,7 +7,7 @@ import { detailExport } from '../../utils/journeyReports'
 import JourneyShell from './JourneyShell'
 import JourneyMap from '../../components/journeys/JourneyMap'
 import SignaturePad from '../../components/journeys/SignaturePad'
-import { StatusPill, TimingChip, HalfGauge, ErrorNote } from '../../components/journeys/JourneyBits'
+import { StatusPill, TimingChip, HalfGauge, ErrorNote, NoApprovalChip } from '../../components/journeys/JourneyBits'
 import {
   getJourney, submitJourney, approveJourney, rejectJourney, cancelJourney, deleteJourney, addJourneyNote, signStop, signatureUrl,
   hhmm, dayTime, duration, EVENT_LABEL, eventTone, STATUS_META,
@@ -20,7 +20,7 @@ import { diffText } from '../../utils/journeySchedule'
  * One journey (client 2026-11-17, point 4): where it is now, which stops are
  * done, what is ahead, km done / remaining, ETA. The layout is the prototype
  * the client liked (journey-detail-dark): header with plate, title, driver,
- * HSE state and a status pill; compliance %; the distance half gauge; the
+ * approval state and a status pill; compliance %; the distance half gauge; the
  * stops with planned vs actual; leg progress; the map (driven solid, still to
  * go dashed); and a bottom bar with the distance to arrival, ETA and Call
  * driver. Then the timeline, proof of delivery, events and violations.
@@ -118,7 +118,7 @@ export default function JourneyDetail(props) {
   const vehicle = j.lastLat != null && (onRoad || j.status === 'Completed')
     ? { lat: j.lastLat, lng: j.lastLng, label: `${j.vehicleLabel}${onRoad && j.lastSpeed != null ? ` · ${Math.round(j.lastSpeed)} km/h` : ''}` }
     : null
-  const hse = j.approvalStatus === 'APPROVED' ? 'HSE approved' : j.approvalStatus === 'PENDING' ? 'Waiting for HSE' : j.approvalStatus === 'REJECTED' ? 'Rejected by HSE' : 'Not sent to HSE'
+  const hse = j.approvalStatus === 'APPROVED' ? 'Approved' : j.approvalStatus === 'PENDING' ? 'Waiting for approval' : j.approvalStatus === 'REJECTED' ? 'Rejected' : j.approvalStatus === 'NOT_REQUIRED' ? null : 'Not sent for approval'
   const eta = j.status === 'Completed' ? j.actualArrival : j.etaAt ?? j.expectedArrival
   const gaugeTag = { Started: 'STARTED', InProgress: 'IN TRANSIT', Delayed: 'IN TRANSIT', Interrupted: 'NO SIGNAL', Completed: 'ARRIVED', Scheduled: 'SCHEDULED' }[j.status] ?? (STATUS_META[j.display]?.label ?? '').toUpperCase()
 
@@ -130,13 +130,13 @@ export default function JourneyDetail(props) {
         <div style={{ flex: 1, minWidth: 220 }}>
           <h1 className="j-title" style={{ fontSize: 22 }}><b>{j.vehicleLabel}</b> · {j.title}</h1>
           <div className="j-label" style={{ marginTop: 4, fontSize: 12.5 }}>
-            {j.ref} · {j.driverName || 'No driver'} · {hse}{j.customer ? ` · ${j.customer}` : ''}{j.priority !== 'Normal' ? ` · ${j.priority}` : ''}
+            {j.ref} · {j.driverName || 'No driver'}{hse ? ` · ${hse}` : ''}{j.customer ? ` · ${j.customer}` : ''}{j.priority !== 'Normal' ? ` · ${j.priority}` : ''}
           </div>
         </div>
-        <StatusPill journey={j} />
+        <StatusPill journey={j} /><NoApprovalChip journey={j} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {j.can.edit && <Link to={`/journeys/${j.id}/edit`} className="j-btn j-btn--sm" style={{ textDecoration: 'none' }}><Pencil size={13} /> Edit</Link>}
-          {j.can.submit && <button type="button" className="j-btn j-btn--sm j-btn--primary" disabled={busy} onClick={() => act(() => submitJourney(j.id))}><Send size={13} /> Send for HSE approval</button>}
+          {j.can.submit && <button type="button" className="j-btn j-btn--sm j-btn--primary" disabled={busy} onClick={() => act(() => submitJourney(j.id))}><Send size={13} /> Send for approval</button>}
           {j.can.cancel && <button type="button" className="j-btn j-btn--sm" disabled={busy} onClick={() => setCancelling(c => !c)}><Ban size={13} /> Cancel journey</button>}
           {j.can.delete && <button type="button" className="j-btn j-btn--sm j-btn--danger" disabled={busy} onClick={() => window.confirm('Delete this draft?') && act(() => deleteJourney(j.id), () => navigate('/journeys'))}><Trash2 size={13} /> Delete</button>}
           <button type="button" className="j-btn j-btn--sm" onClick={() => download('pdf')} title="Download PDF"><FileDown size={13} /> PDF</button>
@@ -166,7 +166,7 @@ export default function JourneyDetail(props) {
         <div className="j-card" style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <ShieldCheck size={20} />
           <div style={{ flex: 1, minWidth: 200 }}>
-            <div className="j-strong">Waiting for HSE approval</div>
+            <div className="j-strong">Waiting for approval</div>
             <div className="j-label">Sent by {j.submittedByName} at {dayTime(j.submittedAt)}</div>
           </div>
           {!rejecting ? (
@@ -194,7 +194,7 @@ export default function JourneyDetail(props) {
             {comp.pct == null ? 'Nothing to judge yet' : comp.pct >= 85 ? 'Journey compliance is good' : comp.pct >= 60 ? 'Journey compliance needs attention' : 'Journey compliance is poor'}
           </div>
           <div style={{ marginTop: 4, fontSize: 13, color: 'var(--j-text2)' }}>
-            based on <span className="j-pill j-pill--plain" data-tone="ok" style={{ background: 'rgba(126,226,168,.16)' }}>{comp.checks} HSE check{comp.checks === 1 ? '' : 's'}</span>
+            based on <span className="j-pill j-pill--plain" data-tone="ok" style={{ background: 'rgba(126,226,168,.16)' }}>{comp.checks} check{comp.checks === 1 ? '' : 's'}</span>
           </div>
         </div>
 

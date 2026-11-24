@@ -98,3 +98,9 @@ export function ErrorNote({ error }) {
   if (!error) return null
   return <div className="j-card" style={{ borderColor: 'rgba(255,143,128,.5)', marginBottom: 14, padding: '12px 16px', fontSize: 13 }}>{error}</div>
 }
+
+/** "No approval needed": a journey created without the approval step (client 2026-11-24). */
+export function NoApprovalChip({ journey }) {
+  if (journey?.approvalStatus !== 'NOT_REQUIRED') return null
+  return <span className="j-pill j-pill--plain" data-tone="muted" title="This journey was created without needing approval">No approval needed</span>
+}

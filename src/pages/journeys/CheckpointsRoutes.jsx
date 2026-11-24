@@ -42,7 +42,7 @@ export default function CheckpointsRoutes(props) {
   return (
     <JourneyShell {...props} crumb="Checkpoints & Routes" title="Checkpoints & routes" subtitle="Places, routes, templates, schedules and stop forms that New Journey reuses.">
       <ErrorNote error={error} />
-      {location.state?.saved && tab === 'templates' && <div className="j-card" style={{ marginBottom: 12, padding: '10px 14px', fontSize: 13, borderColor: 'rgba(126,226,168,.5)' }}>Schedule "{location.state.saved}" saved. Its journeys are made ahead of time; they go to HSE unless an HSE approver approves the schedule below.</div>}
+      {location.state?.saved && tab === 'templates' && <div className="j-card" style={{ marginBottom: 12, padding: '10px 14px', fontSize: 13, borderColor: 'rgba(126,226,168,.5)' }}>Schedule "{location.state.saved}" saved. Its journeys are made ahead of time; they wait for approval unless an approver approves the schedule below.</div>}
       <div className="j-tabs" role="tablist" style={{ marginBottom: 16 }}>
         {TABS.map(t => <button key={t.key} type="button" role="tab" className="j-tab" aria-pressed={tab === t.key} onClick={() => setParams({ tab: t.key })}><t.icon size={14} /> {t.label}</button>)}
       </div>
@@ -215,7 +215,7 @@ function Templates({ opts, canEdit, canDelete, onError }) {
   const rows = data?.data
   return (
     <div className="j-grid" style={{ gap: 12 }}>
-      <div className="j-label" style={{ fontSize: 12.5 }}>Make a template or a schedule from New Journey ("When: Repeats / Automatic", or "Also save as a template"). A schedule's journeys go to HSE for approval one by one, unless an HSE approver approves the schedule here.</div>
+      <div className="j-label" style={{ fontSize: 12.5 }}>Make a template or a schedule from New Journey ("When: Repeats / Automatic", or "Also save as a template"). A schedule's journeys go for approval one by one, unless an approver approves the schedule here.</div>
       {!rows && <div className="j-skel" style={{ height: 120 }} />}
       {rows?.length === 0 && <div className="j-card j-empty">No templates or schedules yet.</div>}
       {rows?.map(t => (
@@ -225,7 +225,7 @@ function Templates({ opts, canEdit, canDelete, onError }) {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span className="j-strong" style={{ fontSize: 15 }}>{t.name}</span>
                 <span className="j-pill j-pill--plain">{t.scheduleKind === 'NONE' ? 'Template' : t.scheduleKind === 'RELATIVE' ? 'Repeats' : 'Automatic'}</span>
-                {t.scheduleKind !== 'NONE' && (t.autoApprove ? <span className="j-pill" data-tone="ok">HSE approved{t.approvedByName ? ` · ${t.approvedByName}` : ''}</span> : <span className="j-pill" data-tone="violet">{t.scheduleKind === 'AUTOMATIC' ? 'Needs HSE approval to run' : 'Each journey goes to HSE'}</span>)}
+                {t.scheduleKind !== 'NONE' && (t.autoApprove ? <span className="j-pill" data-tone="ok">Approved{t.approvedByName ? ` · ${t.approvedByName}` : ''}</span> : <span className="j-pill" data-tone="violet">{t.scheduleKind === 'AUTOMATIC' ? 'Needs approval to run' : 'Each journey needs approval'}</span>)}
                 {!t.active && <span className="j-pill" data-tone="muted">Off</span>}
               </div>
               <div className="j-label" style={{ marginTop: 4 }}>{t.body?.title} · {(t.body?.stops ?? []).map(s => s.name).join(' → ')}</div>
@@ -237,7 +237,7 @@ function Templates({ opts, canEdit, canDelete, onError }) {
               {t.scheduleKind !== 'NONE' && canEdit && <Toggle label="On" checked={t.active} disabled={busy === t.id} onChange={() => toggle(t)} />}
               {canEdit && <button type="button" className="j-btn j-btn--sm" onClick={() => navigate(`/journeys/new?template=${t.id}`)}><Plus size={13} /> Journey from it</button>}
               {t.scheduleKind === 'RELATIVE' && canEdit && t.active && <button type="button" className="j-btn j-btn--sm" disabled={busy === t.id} onClick={() => act(t.id, () => runJourneyTemplate(t.id))}><Play size={13} /> Make due days now</button>}
-              {t.scheduleKind !== 'NONE' && data.canApprove && !t.autoApprove && t.createdById !== me?.id && <button type="button" className="j-btn j-btn--sm j-btn--primary" disabled={busy === t.id} onClick={() => act(t.id, () => approveJourneyTemplate(t.id))}><ShieldCheck size={13} /> Approve (HSE)</button>}
+              {t.scheduleKind !== 'NONE' && data.canApprove && !t.autoApprove && t.createdById !== me?.id && <button type="button" className="j-btn j-btn--sm j-btn--primary" disabled={busy === t.id} onClick={() => act(t.id, () => approveJourneyTemplate(t.id))}><ShieldCheck size={13} /> Approve</button>}
               {t.scheduleKind !== 'NONE' && t.autoApprove && (data.canApprove || canEdit) && <button type="button" className="j-btn j-btn--sm" disabled={busy === t.id} onClick={() => act(t.id, () => unapproveJourneyTemplate(t.id))}>Remove approval</button>}
               {canDelete && <button type="button" className="j-iconbtn" style={{ width: 30, height: 30 }} onClick={() => window.confirm(`Delete "${t.name}"? Journeys it made stay.`) && act(t.id, () => deleteJourneyTemplate(t.id))} aria-label={`Delete ${t.name}`}><Trash2 size={13} /></button>}
             </div>

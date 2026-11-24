@@ -9,8 +9,8 @@
  *     each day's journey horizonDays ahead) or AUTOMATIC (a journey each time
  *     the vehicle leaves the first stop). A one-off is just a journey (FIXED).
  *
- * HSE: a journey a schedule makes waits for HSE approval like any other —
- * unless an HSE approver approved the template itself ("auto-approved
+ * HSE: a journey a schedule makes waits for approval like any other —
+ * unless an approver approved the template itself ("auto-approved
  * template"), then its journeys start approved. Any change to the plan or the
  * schedule takes that approval away again. AUTOMATIC needs it: its journeys
  * are already on the road when they are made.
@@ -19,7 +19,7 @@
  *   POST   /              add          (Journeys = Edit)
  *   PUT    /:id           change       (Journeys = Edit)
  *   DELETE /:id           remove; its journeys stay (Journeys = Full)
- *   POST   /:id/approve   HSE approves the template (journey-approval; never your own)
+ *   POST   /:id/approve   an approver approves the template (journey-approval; never your own)
  *   POST   /:id/unapprove
  *   POST   /:id/run       make the due days now
  */
@@ -69,6 +69,8 @@ const bodySchema = z.object({
   loadState: nText(40),
   tempMin: nNum(-60, 120),
   tempMax: nNum(-60, 120),
+  // false: the journeys this schedule makes start Scheduled with no approval (needs Journey setting allowNoApproval).
+  needsApproval: z.boolean().optional(),
 })
 
 const schema = z.object({
@@ -134,7 +136,7 @@ const columns = b => ({
   horizonDays: b.horizonDays,
 })
 
-/** What HSE approved: everything but the name and the on/off switch. */
+/** What was approved: everything but the name and the on/off switch. */
 const approvedKey = t => JSON.stringify([t.vehicleId, t.driverId, t.body, t.scheduleKind, t.repeat, t.weekdays, t.monthDays, t.startTime,
   t.validFrom ? new Date(t.validFrom).getTime() : null, t.validTo ? new Date(t.validTo).getTime() : null])
 
@@ -193,7 +195,7 @@ router.put(
       where: { id: t.id },
       data: {
         ...cols,
-        // A new plan or schedule: HSE approves it again, and the days are worked out again.
+        // A new plan or schedule: it is approved again, and the days are worked out again.
         ...(changed ? { autoApprove: false, approvedById: null, approvedByName: null, approvedAt: null, generatedUntil: null, engineState: undefined, lastError: null } : {}),
       },
       include: INCLUDE,
@@ -216,8 +218,8 @@ router.post(
   '/:id/approve',
   asyncHandler(async (req, res) => {
     const t = await findScopedOrThrow('journeyTemplate', req.params.id, req.scope)
-    if (!canApproveJourneys(req.user, req.scope.role)) throw forbidden('Only an HSE approver can approve a template')
-    if (t.createdById === req.user.id) throw forbidden('You made this template, so another HSE approver must check it')
+    if (!canApproveJourneys(req.user, req.scope.role)) throw forbidden('Only an approver can approve a template')
+    if (t.createdById === req.user.id) throw forbidden('You made this template, so another approver must check it')
     const row = await prisma.journeyTemplate.update({
       where: { id: t.id },
       data: { autoApprove: true, approvedById: req.user.id, approvedByName: who(req.user), approvedAt: new Date() },

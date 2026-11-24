@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { History, PenLine, Route, Navigation, Plus, X, ChevronDown, ChevronUp, Send, Check, AlertTriangle, MapPin, Undo2, BookMarked, Upload, Copy, LayoutTemplate, Repeat, Thermometer, Truck } from 'lucide-react'
 import JourneyShell from './JourneyShell'
 import JourneyMap from '../../components/journeys/JourneyMap'
-import { ErrorNote } from '../../components/journeys/JourneyBits'
+import { ErrorNote, Toggle } from '../../components/journeys/JourneyBits'
 import { JModal, AddressPicker, StopsImport } from '../../components/journeys/JourneyDialogs'
 import {
   journeyOptions, journeyAvailability, routeFromTrip, getJourney, createJourney, updateJourney, saveRouteTemplate,
@@ -122,9 +122,16 @@ export default function JourneyForm(props) {
   const [templateName, setTemplateName] = useState('')
   const [dialog, setDialog] = useState(null) // 'book' | 'import' | 'copy' | 'template'
   const [recent, setRecent] = useState(null)
+  // Approval is a choice on each journey (client 2026-11-24): on unless the BG's setting or the planner says otherwise.
+  const [needsApproval, setNeedsApproval] = useState(true)
+  const [approvalLocked, setApprovalLocked] = useState(false) // sent for approval already: it cannot skip it
+  const approvalTouched = useRef(false)
 
   useEffect(() => {
-    journeyOptions().then(setOpts).catch(e => setError(errorMessage(e, 'Could not load vehicles and drivers')))
+    journeyOptions().then(o => {
+      setOpts(o)
+      if (!approvalTouched.current) setNeedsApproval(o.settings?.allowNoApproval === false ? true : o.settings?.approvalByDefault !== false)
+    }).catch(e => setError(errorMessage(e, 'Could not load vehicles and drivers')))
   }, [])
 
   // Edit: fill the form from the journey.
@@ -137,6 +144,8 @@ export default function JourneyForm(props) {
       setStops(j.stops.map(s => newStop({ ...s, legSource: s.legSource ?? 'SPEED', polygon: undefined })))
       setInstructions(j.instructions ?? ''); setCustomer(j.customer ?? ''); setPriority(j.priority); setType(j.type)
       applyOptions(j)
+      approvalTouched.current = true
+      setNeedsApproval(j.approvalStatus !== 'NOT_REQUIRED'); setApprovalLocked(['PENDING', 'APPROVED', 'REJECTED'].includes(j.approvalStatus))
       setLoaded(true)
     }).catch(e => setError(errorMessage(e, 'Could not load the journey')))
   }, [editing, id])
@@ -262,6 +271,7 @@ export default function JourneyForm(props) {
     setRouteSource(b.routeSource ?? 'STRAIGHT'); setPath(b.plannedPath ?? null); setRecordedFrom(b.recordedFrom ?? null); setTemplateId(b.routeTemplateId ?? null)
     setTrip(null)
     setStops((b.stops ?? []).map(x => newStop(planOf(x))))
+    if (b.needsApproval === false && settings?.allowNoApproval !== false) { approvalTouched.current = true; setNeedsApproval(false) }
     applyOptions(b)
     if (vehicle) setVehicleId(vehicle)
   }
@@ -407,7 +417,7 @@ export default function JourneyForm(props) {
         stayMin: Number(s.stayMin) || 0, legDriveMin: s.legDriveMin, legSource: s.legSource, signatureRequired: Boolean(s.signatureRequired),
         visitVia: s.visitVia ?? 'MAP', purpose: s.purpose || null, loadState: s.loadState || null, addressId: s.addressId || null, formId: s.formId || null,
       })),
-      instructions: instructions.trim() || null, customer: customer.trim() || null, priority, type: type || undefined, submit: send,
+      instructions: instructions.trim() || null, customer: customer.trim() || null, priority, type: type || undefined, needsApproval: canSkip ? needsApproval : true, submit: send && (!canSkip || needsApproval),
       ...optionFields(),
     }
     try {
@@ -416,7 +426,7 @@ export default function JourneyForm(props) {
       }
       const { vehicleId: _v, driverId: _d, plannedStart: _p, submit: _s, ...plan } = body
       if (!editing && when !== 'FIXED') {
-        // A schedule: the engine makes its journeys (they wait for HSE unless HSE approves the schedule).
+        // A schedule: the engine makes its journeys (they wait for approval unless an approver approves the schedule).
         const errs = scheduleErrors(scheduleBody())
         if (Object.keys(errs).length) { setFieldErrors(errs); throw new Error(Object.values(errs)[0]) }
         await saveJourneyTemplate({ name: sched.name.trim() || title.trim(), vehicleId, driverId: driverId || null, body: plan, ...scheduleBody() })
@@ -465,6 +475,8 @@ export default function JourneyForm(props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [when, sched, start])
 
+  const canSkip = settings?.allowNoApproval !== false && !approvalLocked && when !== 'AUTOMATIC'
+  const noApproval = canSkip && !needsApproval
   const canSave = title.trim() && vehicleId && ready && schedule && !busy && road.status !== 'loading'
   const n = stops.length
 
@@ -473,7 +485,7 @@ export default function JourneyForm(props) {
       {...props}
       crumb={editing ? 'Edit journey' : 'New journey'}
       title={editing ? 'Edit journey' : 'New journey'}
-      subtitle="Fill in the basics and the stops. The times add up from the start; HSE approves it before the vehicle leaves."
+      subtitle="Fill in the basics and the stops. The times add up from the start; it is approved before the vehicle leaves, unless you switch approval off."
     >
       <ErrorNote error={error} />
       {!opts || !loaded ? <div className="j-skel" style={{ height: 420 }} /> : (
@@ -642,7 +654,7 @@ export default function JourneyForm(props) {
                     {(fieldErrors.weekdays || fieldErrors.monthDays) && <div className="j-err" style={{ marginTop: 6 }}>{fieldErrors.weekdays || fieldErrors.monthDays}</div>}
                   </>
                 )}
-                {when === 'AUTOMATIC' && <div className="j-label" style={{ fontSize: 12.5, lineHeight: 1.5 }}>A journey is made each time the vehicle leaves the first stop, on the valid days. It needs an HSE approver to approve the schedule first, because it is already on the road when it is made.</div>}
+                {when === 'AUTOMATIC' && <div className="j-label" style={{ fontSize: 12.5, lineHeight: 1.5 }}>A journey is made each time the vehicle leaves the first stop, on the valid days. It needs an approver to approve the schedule first, because it is already on the road when it is made.</div>}
                 <div className="j-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: 10, marginTop: 10 }}>
                   <label className="j-field"><span>Valid from</span><input className="j-input" type="date" value={sched.validFrom} onChange={e => setSched(x => ({ ...x, validFrom: e.target.value }))} /></label>
                   <label className="j-field"><span>Valid to <span className="j-muted" style={{ fontWeight: 400 }}>optional</span></span><input className="j-input" type="date" value={sched.validTo} onChange={e => setSched(x => ({ ...x, validTo: e.target.value }))} /></label>
@@ -653,7 +665,7 @@ export default function JourneyForm(props) {
                   {describeSchedule({ scheduleKind: when, ...scheduleBody() })}
                   {nextDays.length > 0 && <> · next: {nextDays.map(o => dayTime(o.start)).join(', ')}</>}
                 </div>
-                <div className="j-label" style={{ marginTop: 6, fontSize: 12 }}>Each journey still goes to HSE for approval, unless an HSE approver approves the schedule (Checkpoints &amp; Routes › Templates &amp; schedules).</div>
+                <div className="j-label" style={{ marginTop: 6, fontSize: 12 }}>Each journey still goes for approval, unless an approver approves the schedule (Checkpoints &amp; Routes › Templates &amp; schedules).</div>
                 {(fieldErrors.validFrom || fieldErrors.validTo || fieldErrors.vehicleId) && <div className="j-err">{fieldErrors.validFrom || fieldErrors.validTo || fieldErrors.vehicleId}</div>}
               </div>
             )}
@@ -766,6 +778,21 @@ export default function JourneyForm(props) {
               <textarea className="j-textarea" rows={3} value={instructions} onChange={e => setInstructions(e.target.value)} placeholder="Gate pass at Ruwais Gate 2. Call the office from Tarif." />
             </label>
 
+            {when !== 'AUTOMATIC' && (
+              <div className="j-inset" style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }} data-testid="approval-choice">
+                <div style={{ minWidth: 0 }}>
+                  <div className="j-strong" style={{ fontSize: 13.5 }}>Needs approval</div>
+                  <div className="j-label" style={{ fontSize: 12.5, lineHeight: 1.45 }}>
+                    {approvalLocked ? 'This journey was already sent for approval, so it keeps going through it. A change to the route or the times sends it back.'
+                      : settings?.allowNoApproval === false ? 'Every journey must be approved before the vehicle leaves (Journey settings).'
+                        : needsApproval ? 'An approver checks it before the vehicle leaves. Save it as a draft or send it.'
+                          : when === 'RELATIVE' ? 'The journeys this schedule makes are scheduled at once, with no approval.' : 'No approval: saving makes it Scheduled at once. The driver, the vehicle and the other checks still apply.'}
+                  </div>
+                </div>
+                <Toggle label="Needs approval" checked={canSkip ? needsApproval : true} disabled={!canSkip} onChange={x => { approvalTouched.current = true; setNeedsApproval(x) }} />
+              </div>
+            )}
+
             <div className="j-inset" style={{ marginTop: 14 }}>
               <button type="button" className="j-btn j-btn--ghost" style={{ padding: 0, height: 'auto', whiteSpace: 'normal', textAlign: 'left', justifyContent: 'flex-start', display: 'block', lineHeight: 1.5 }} onClick={() => setMore(m => !m)}>
                 {more ? <ChevronUp size={15} /> : <ChevronDown size={15} />} More options <span className="j-muted" style={{ fontWeight: 400 }}>customer, priority, start logic, tolerance, convoy, load, temperature, force close</span>
@@ -856,10 +883,12 @@ export default function JourneyForm(props) {
             <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', marginTop: 20, flexWrap: 'wrap', borderTop: '1px solid var(--j-line)', paddingTop: 18 }}>
               <button type="button" className="j-btn j-btn--ghost" onClick={() => navigate(editing ? `/journeys/${id}` : '/journeys')}>Cancel</button>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {when === 'FIXED' || editing ? (
+                {(when === 'FIXED' || editing) && noApproval ? (
+                  <button type="button" className="j-btn j-btn--primary" disabled={!canSave || (avail && !avail.free)} onClick={() => submit(false)}><Check size={14} /> Save journey</button>
+                ) : when === 'FIXED' || editing ? (
                   <>
                     <button type="button" className="j-btn" disabled={!canSave} onClick={() => submit(false)}>Save as draft</button>
-                    <button type="button" className="j-btn j-btn--primary" disabled={!canSave || (avail && !avail.free)} onClick={() => submit(true)}><Send size={14} /> Send for HSE approval</button>
+                    <button type="button" className="j-btn j-btn--primary" disabled={!canSave || (avail && !avail.free)} onClick={() => submit(true)}><Send size={14} /> Send for approval</button>
                   </>
                 ) : (
                   <button type="button" className="j-btn j-btn--primary" disabled={!canSave} onClick={() => submit(false)}><Repeat size={14} /> Save the schedule</button>

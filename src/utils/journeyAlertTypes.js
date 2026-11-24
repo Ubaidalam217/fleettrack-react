@@ -6,9 +6,9 @@
  */
 
 export const JOURNEY_ALERT_LABEL = Object.freeze({
-  journey_submitted: 'Journey sent for HSE approval',
-  journey_approved: 'Journey approved by HSE',
-  journey_rejected: 'Journey rejected by HSE',
+  journey_submitted: 'Journey sent for approval',
+  journey_approved: 'Journey approved',
+  journey_rejected: 'Journey rejected',
   journey_depart_early: 'Journey: early departure',
   journey_depart_on_time: 'Journey: on-time departure',
   journey_depart_late: 'Journey: late departure',

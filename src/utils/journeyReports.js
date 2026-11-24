@@ -72,7 +72,7 @@ export function statusSummary(journeys) {
   const n = s => journeys.filter(j => s.includes(j.display)).length
   return [
     { label: 'Journeys', value: journeys.length },
-    { label: 'Waiting for HSE', value: n(['Pending']) },
+    { label: 'Waiting for approval', value: n(['Pending']) },
     { label: 'Scheduled', value: n(['Scheduled']) },
     { label: 'On the road', value: n(['Started', 'InProgress', 'Delayed', 'Interrupted']) },
     { label: 'Late now', value: journeys.filter(j => j.status === 'Delayed').length },
@@ -282,7 +282,7 @@ export function detailExport(j, { eventLabel = t => t } = {}) {
       ['Planned start', dt(j.plannedStart)], ['Actual start', dt(j.actualStart)],
       ['Planned arrival', dt(j.expectedArrival)], ['Actual arrival', dt(j.actualArrival)],
       ['Planned km', km(j.plannedDistanceKm)], ['Driven km', km(drivenKm(j))],
-      ['HSE', j.approvalStatus === 'APPROVED' ? `Approved by ${j.decidedByName ?? '—'}` : j.approvalStatus], ['Cost', money(j.cost?.total ?? j.cost)],
+      ['Approval', j.approvalStatus === 'APPROVED' ? `Approved by ${j.decidedByName ?? '—'}` : j.approvalStatus === 'NOT_REQUIRED' ? 'No approval needed' : j.approvalStatus], ['Cost', money(j.cost?.total ?? j.cost)],
     ],
     tables: [
       { key: 'stops', heading: 'Stops: planned vs actual', columns: DETAIL_COLUMNS.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align })), rows: stops.rows },

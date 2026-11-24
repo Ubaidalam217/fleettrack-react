@@ -4,8 +4,9 @@
  *
  *   rollSchedules(now)   RELATIVE schedules: make each day's journey ahead of
  *                        time (horizonDays), once per day per schedule. A
- *                        journey from an HSE-approved template starts
- *                        Scheduled; otherwise it waits for HSE like any other.
+ *                        journey from an approved template starts
+ *                        Scheduled; otherwise it waits for approval like any other (unless
+ *                        the template says needsApproval: false: then it starts Scheduled too).
  *   automaticStep(...)   AUTOMATIC schedules: watch the vehicle at the
  *                        template's first stop; when it leaves, make a journey
  *                        that has already started (pure, tested).
@@ -64,14 +65,18 @@ export async function makeInstance(t, { plannedStart, occurrenceKey, kind = 'REL
     return { skipped: err.details ? Object.values(err.details)[0] : err.message }
   }
   const approved = t.autoApprove
+  // The template carries the planner's choice "no approval" (a repeating schedule only: an automatic one is already on the road).
+  const noApproval = !approved && kind !== 'AUTOMATIC' && t.body?.needsApproval === false && settings.allowNoApproval
   const now = new Date()
   const data = {
     ...cols,
     bgId: t.bgId, scheduleKind: kind, templateId: t.id, occurrenceKey,
     createdById: t.createdById, createdByName: `Schedule · ${t.name}`,
     ...(approved
-      ? { status: kind === 'AUTOMATIC' ? 'Started' : 'Scheduled', approvalStatus: 'APPROVED', decidedById: t.approvedById, decidedByName: `${t.approvedByName ?? 'HSE'} (approved template)`, decidedAt: now }
-      : { status: 'Draft', approvalStatus: 'PENDING', submittedAt: now, submittedByName: `Schedule · ${t.name}` }),
+      ? { status: kind === 'AUTOMATIC' ? 'Started' : 'Scheduled', approvalStatus: 'APPROVED', decidedById: t.approvedById, decidedByName: `${t.approvedByName ?? 'Approver'} (approved template)`, decidedAt: now }
+      : noApproval
+        ? { status: 'Scheduled', approvalStatus: 'NOT_REQUIRED' }
+        : { status: 'Draft', approvalStatus: 'PENDING', submittedAt: now, submittedByName: `Schedule · ${t.name}` }),
     ...(kind === 'AUTOMATIC' ? { actualStart: startedAt, engineState: engineState ?? undefined } : {}),
   }
   const stops = stopRows(plan.stops)
@@ -84,10 +89,10 @@ export async function makeInstance(t, { plannedStart, occurrenceKey, kind = 'REL
     if (err.status === 409) return { skipped: err.message }
     throw err
   }
-  await recordEvent(row, { type: 'CREATED', message: `Made by the schedule "${t.name}"${approved ? ' (HSE-approved template)' : ''}` }, { settings, alert: false })
-  if (!approved) {
+  await recordEvent(row, { type: 'CREATED', message: `Made by the schedule "${t.name}"${approved ? ' (approved template)' : noApproval ? ' (no approval needed)' : ''}` }, { settings, alert: false })
+  if (!approved && !noApproval) {
     const people = (await approversOf(row.bgId)).filter(u => u.id !== t.createdById).map(u => u.id)
-    await recordEvent(row, { type: 'SUBMITTED', message: `Sent for HSE approval by the schedule "${t.name}"` }, { settings, alert: true, notify: people })
+    await recordEvent(row, { type: 'SUBMITTED', message: `Sent for approval by the schedule "${t.name}"` }, { settings, alert: true, notify: people })
   }
   return row
 }

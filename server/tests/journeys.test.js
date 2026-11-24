@@ -172,7 +172,7 @@ describe('HSE approval and one vehicle, one journey', () => {
     expect(c.status).toBe(201)
     const res = await post(`/api/journeys/${c.body.data.id}/approve`, approver.token)
     expect(res.status).toBe(403)
-    expect(res.body.error.message).toMatch(/another HSE approver/)
+    expect(res.body.error.message).toMatch(/another approver/)
   })
 
   it('reject needs a reason and sends it back as Rejected; it can be sent again', async () => {

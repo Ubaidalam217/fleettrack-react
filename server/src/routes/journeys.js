@@ -1,14 +1,14 @@
 /**
  * /api/journeys — Journey Management (client 2026-11-13/16/17, design §A).
  *
- *   GET    /                         list (date window + everything on the road + waiting for HSE), with counts
+ *   GET    /                         list (date window + everything on the road + waiting for approval), with counts
  *   GET    /options                  what New Journey needs: vehicles, drivers, geofences, saved routes, settings, rights
  *   GET    /availability             is this vehicle free then? (the form's "Free at this time")
  *   GET    /route-from-trip          a past trip's track for "Copy a past trip" (GET-only telemetry read)
  *   GET    /:id                      the detail page: stops, events, path, violations in the window
- *   POST   /                         create (Draft; `submit: true` also sends it for HSE approval)
+ *   POST   /                         create (Draft; `submit: true` also sends it for approval; `needsApproval: false` makes it Scheduled at once)
  *   PUT    /:id                      edit the plan; a material change sends it back for approval
- *   POST   /:id/submit               Draft / Rejected → Pending HSE approval
+ *   POST   /:id/submit               Draft / Rejected → Pending approval
  *   POST   /:id/approve              Pending → Scheduled (journey-approval; never your own)
  *   POST   /:id/reject   { reason }  Pending → Rejected (back to Draft)
  *   POST   /:id/cancel   { reason }  any non-final state → Cancelled (Journeys = Full)
@@ -18,7 +18,7 @@
  *   GET    /:id/stops/:seq/signature the image, authenticated
  *
  * Permissions (design §A.6): Journeys View = read, Edit = create / edit / send,
- * Full = delete drafts and cancel. "Journey approval (HSE)" is deny-by-default
+ * Full = delete drafts and cancel. "Journey approval" is deny-by-default
  * (lib/permissions.js) and nobody approves a journey they created or sent.
  */
 
@@ -112,6 +112,8 @@ const journeySchema = z.object({
   routeTemplateId: z.union([z.string().trim().min(1), z.null()]).optional(),
   stops: z.array(stopSchema).min(2, 'A journey needs a start and a destination').max(60),
   submit: z.boolean().default(false),
+  // false: no approval step, created Scheduled (client 2026-11-24). Left out = the usual approval flow.
+  needsApproval: z.boolean().optional(),
   // The rest of the Uffizio Job module (client 2026-11-21).
   startLogic: z.enum(['ANY_DATA', 'IGNITION_ON']).default('ANY_DATA'),
   startBufferMin: nullableInt(0, 720),
@@ -207,7 +209,7 @@ async function planColumns(req, settings, assignment, keepCodes) {
   return journeyColumns(req.body, { ...assignment, settings, geofences, forms, keepCodes })
 }
 
-/** Does an edit change what HSE approved (vehicle, driver, route, stops, times)? */
+/** Does an edit change what was approved (vehicle, driver, route, stops, times)? */
 function materialChange(before, after) {
   const key = j => JSON.stringify({
     v: j.vehicleId, d: j.driverId ?? null, s: new Date(j.plannedStart).getTime(), r: j.routeSource,
@@ -215,6 +217,21 @@ function materialChange(before, after) {
     st: j.stops.map(s => [s.name, s.arrivalType, s.geofenceId ?? null, +(+s.lat).toFixed(6), +(+s.lng).toFixed(6), s.radiusM, s.stayMin, s.legDriveMin, new Date(s.plannedArrive ?? 0).getTime()]),
   })
   return key(before) !== key(after)
+}
+
+/** A journey with no approval step is Scheduled at once (approvalStatus is a free string). */
+const NO_APPROVAL_COLUMNS = Object.freeze({
+  status: 'Scheduled', approvalStatus: 'NOT_REQUIRED',
+  submittedAt: null, submittedById: null, submittedByName: null, decidedById: null, decidedByName: null, decidedAt: null, rejectReason: null,
+})
+
+function assertMaySkipApproval(settings) {
+  if (!settings.allowNoApproval) throw forbidden('Journeys without approval are switched off in Journey settings')
+}
+
+/** A Scheduled journey the engine would never pick up (it gave up on a start long gone). */
+function assertNotPast(plannedStart) {
+  if (new Date(plannedStart).getTime() < Date.now() - 6 * 3600 * 1000) throw badRequest('This journey was planned for the past — change its start time first', { plannedStart: 'In the past' })
 }
 
 async function checkDriver(driver, at) {
@@ -231,7 +248,7 @@ async function warningsFor(j) {
 
 async function notifyApproval(j, actor) {
   const approvers = (await approversOf(j.bgId)).filter(u => u.id !== actor?.id && u.id !== j.createdById)
-  await recordEvent(j, { type: 'SUBMITTED', message: `Sent for HSE approval by ${who(actor) ?? 'someone'}`, actor }, {
+  await recordEvent(j, { type: 'SUBMITTED', message: `Sent for approval by ${who(actor) ?? 'someone'}`, actor }, {
     alert: true, notify: approvers.map(u => u.id),
   })
 }
@@ -271,7 +288,7 @@ router.get(
   })
 )
 
-/** The HSE queue: waiting, decided today, rejected — with the caller's right to decide. */
+/** The approvals queue: waiting, decided today, rejected — with the caller's right to decide. */
 router.get(
   '/approvals',
   asyncHandler(async (req, res) => {
@@ -677,13 +694,22 @@ router.post(
     const { plan, data: cols } = await planColumns(req, settings, assignment)
     const b = req.body
     const data = { bgId, ...cols, createdById: req.user.id, createdByName: who(req.user) }
-    if (b.submit) {
+    // No approval needed (client 2026-11-24: "we only create them and follow them"): created
+    // Scheduled at once. Every check that is not about approval still runs.
+    const skip = b.needsApproval === false
+    if (skip) {
+      assertMaySkipApproval(settings)
+      assertNotPast(b.plannedStart)
+      await checkDriver(driver, b.plannedStart)
+      Object.assign(data, NO_APPROVAL_COLUMNS)
+    } else if (b.submit) {
       await checkDriver(driver, b.plannedStart)
       Object.assign(data, { approvalStatus: 'PENDING', submittedAt: new Date(), submittedById: req.user.id, submittedByName: who(req.user) })
     }
     const create = db => db.journey.create({ data: { ...data, stops: { create: stopRows(plan.stops) } }, include: LIST_INCLUDE })
-    const row = b.submit ? await withVehicleCheck(data, create) : await create(prisma)
-    if (b.submit) await notifyApproval(row, req.user)
+    const row = skip || b.submit ? await withVehicleCheck(data, create) : await create(prisma)
+    if (skip) await recordEvent(row, { type: 'CREATED_WITHOUT_APPROVAL', message: `Created without approval by ${who(req.user) ?? 'someone'}`, actor: req.user, toStatus: 'Scheduled' }, { settings, alert: false })
+    else if (b.submit) await notifyApproval(row, req.user)
     res.status(201).json({ data: publicJourney(row), warnings: await warningsFor(row) })
   })
 )
@@ -708,11 +734,27 @@ router.put(
     }
     const material = materialChange({ ...before, plannedPath: before.plannedPath ?? null }, after)
     const wasSent = before.approvalStatus === 'PENDING' || before.approvalStatus === 'APPROVED'
-    const resend = (material && wasSent) || (b.submit && before.approvalStatus !== 'PENDING')
+    // No approval: a journey made that way stays that way when edited (an older client that does not
+    // send the choice changes nothing), and is never pushed back to Draft or Pending. One that was
+    // sent for approval (or rejected) cannot skip it by editing.
+    const wasNoApproval = before.approvalStatus === 'NOT_REQUIRED'
+    const sentBefore = wasSent || before.approvalStatus === 'REJECTED'
+    if (b.needsApproval === false && sentBefore) throw badRequest('Validation failed', { needsApproval: 'A journey that was sent for approval cannot skip it' })
+    const skip = b.needsApproval === false || (wasNoApproval && b.needsApproval === undefined)
+    const resend = !skip && ((material && wasSent) || (b.submit && before.approvalStatus !== 'PENDING'))
     const data = { ...cols, vehicleLabel: cols.vehicleLabel || before.vehicleLabel, convoy: cols.convoy ?? Prisma.DbNull }
+    if (skip) {
+      if (!wasNoApproval) assertMaySkipApproval(settings)
+      if (!wasNoApproval || new Date(b.plannedStart).getTime() !== new Date(before.plannedStart).getTime()) assertNotPast(b.plannedStart)
+      await checkDriver(driver, b.plannedStart)
+      if (!wasNoApproval) Object.assign(data, NO_APPROVAL_COLUMNS)
+    } else if (wasNoApproval && !resend) {
+      // The planner switched "Needs approval" on again: back to a draft, not yet sent.
+      Object.assign(data, { status: 'Draft', approvalStatus: 'NONE' })
+    }
     if (resend) {
       await checkDriver(driver, b.plannedStart)
-      // Edits to what HSE approved go back to HSE (design §A.2).
+      // Edits to what was approved go back for approval (design §A.2).
       Object.assign(data, {
         status: 'Draft', approvalStatus: 'PENDING', submittedAt: new Date(), submittedById: req.user.id, submittedByName: who(req.user),
         decidedById: null, decidedByName: null, decidedAt: null, rejectReason: null,
@@ -736,8 +778,12 @@ router.put(
       }
       return db.journey.update({ where: { id: before.id }, data, include: LIST_INCLUDE })
     }
-    const row = resend ? await withVehicleCheck({ ...data, id: before.id, excludeId: before.id }, write) : await prisma.$transaction(write)
+    // A Scheduled journey holds its vehicle, so a no-approval edit takes the same lock as a send.
+    const row = resend || skip ? await withVehicleCheck({ ...data, id: before.id, excludeId: before.id }, write) : await prisma.$transaction(write)
     if (resend) await notifyApproval(row, req.user)
+    else if (skip && !wasNoApproval) {
+      await recordEvent(row, { type: 'CREATED_WITHOUT_APPROVAL', message: `Saved without approval by ${who(req.user) ?? 'someone'}`, actor: req.user, fromStatus: before.status, toStatus: 'Scheduled' }, { settings, alert: false })
+    }
     res.json({ data: publicJourney(row), resent: resend, warnings: await warningsFor(row) })
   })
 )
@@ -761,9 +807,9 @@ router.post(
 )
 
 function assertApprover(req, j) {
-  if (!canApproveJourneys(req.user, req.scope.role)) throw forbidden('Only an HSE approver can approve or reject journeys')
+  if (!canApproveJourneys(req.user, req.scope.role)) throw forbidden('Only an approver can approve or reject journeys')
   if (j.createdById === req.user.id || j.submittedById === req.user.id) {
-    throw forbidden('You created or sent this journey, so another HSE approver must check it')
+    throw forbidden('You created or sent this journey, so another approver must check it')
   }
   if (j.approvalStatus !== 'PENDING' || j.status !== 'Draft') throw conflict('This journey is not waiting for approval')
 }

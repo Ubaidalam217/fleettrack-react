@@ -30,9 +30,10 @@ export const EDITABLE = Object.freeze(['Draft', 'Scheduled'])
  */
 export const EVENT_TYPES = Object.freeze({
   STATUS: { label: 'Status', alert: false },
-  SUBMITTED: { label: 'Sent for HSE approval', alert: false },
-  APPROVED: { label: 'Approved by HSE', alert: false },
-  REJECTED: { label: 'Rejected by HSE', alert: false },
+  SUBMITTED: { label: 'Sent for approval', alert: false },
+  APPROVED: { label: 'Approved', alert: false },
+  REJECTED: { label: 'Rejected', alert: false },
+  CREATED_WITHOUT_APPROVAL: { label: 'Created without approval', alert: false },
   CANCELLED: { label: 'Cancelled', alert: false },
   NOTE: { label: 'Note', alert: false },
   SIGNATURE: { label: 'Signed', alert: false },

@@ -61,7 +61,7 @@ export const SCREEN_MODULES = [
     id: 'journeys', label: 'Journey Management',
     screens: [
       { id: 'journeys', label: 'Journeys', kind: 'data', hint: 'View = list and live map · Edit = plan, edit and send for approval · Full = also cancel and delete drafts' },
-      { id: 'journey-approval', label: 'Journey approval (HSE)', kind: 'approval', hint: 'Off unless given. Nobody approves a journey they created.' },
+      { id: 'journey-approval', label: 'Journey approval', kind: 'approval', hint: 'Off unless given. Nobody approves a journey they created.' },
       { id: '/journeys/checkpoints', label: 'Checkpoints & Routes', kind: 'page', hint: 'Address book, saved routes, templates and schedules, stop forms (changing them needs Journeys = Edit)' },
       { id: '/journeys/alerts', label: 'Journey alerts', kind: 'page' },
       { id: '/settings/journey', label: 'Journey settings', kind: 'data' },

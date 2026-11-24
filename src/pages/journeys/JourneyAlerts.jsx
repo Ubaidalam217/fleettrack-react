@@ -24,7 +24,7 @@ const KINDS = [
   { key: 'CONVOY_SEPARATED,CONVOY_REJOINED', label: 'Convoy' },
   { key: 'TEMP_OUT_OF_RANGE,TEMP_BACK', label: 'Temperature' },
   { key: 'CHECK_IN,FORM,PHOTO,SIGNATURE', label: 'Check-ins and proof' },
-  { key: 'SUBMITTED,APPROVED,REJECTED', label: 'HSE approval' },
+  { key: 'SUBMITTED,APPROVED,REJECTED', label: 'Approval' },
   { key: 'FORCE_CLOSED,CANCELLED', label: 'Closed' },
 ]
 

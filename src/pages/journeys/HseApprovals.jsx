@@ -7,8 +7,8 @@ import { journeyApprovals, approveJourney, rejectJourney, hhmm, dayTime, duratio
 import { errorMessage } from '../../data/http'
 
 /**
- * HSE Approvals (design §A.2, mockup journey-approvals-simple): journeys
- * waiting for HSE, with what HSE checks — vehicle, driver (licence, suspended),
+ * Approvals (design §A.2, mockup journey-approvals-simple): journeys
+ * waiting for approval, with what the approver checks — vehicle, driver (licence, suspended),
  * times, distance, stops with stays, notes — and Approve / Reject (a reason is
  * required). Nobody approves a journey they created or sent; the server
  * refuses it too.
@@ -58,11 +58,11 @@ export default function HseApprovals(props) {
 
   const list = groups[tab]
   return (
-    <JourneyShell {...props} crumb="HSE approvals" title="HSE approvals" subtitle="Journeys waiting for HSE. Check the details, then approve or reject.">
+    <JourneyShell {...props} crumb="Approvals" title="Approvals" subtitle="Journeys waiting for approval. Check the details, then approve or reject.">
       <ErrorNote error={error} />
       {data && !data.canApprove && (
         <div className="j-card" style={{ marginBottom: 14, padding: '12px 16px', display: 'flex', gap: 10, alignItems: 'center', fontSize: 13 }}>
-          <Info size={16} /> You can see the queue, but approving needs the “Journey approval (HSE)” permission. A Super Admin gives it in the user’s permissions.
+          <Info size={16} /> You can see the queue, but approving needs the “Journey approval” permission. A Super Admin gives it in the user’s permissions.
         </div>
       )}
       <div className="j-tabs" style={{ marginBottom: 16 }}>
@@ -72,7 +72,7 @@ export default function HseApprovals(props) {
       </div>
 
       {!data && <div className="j-skel" style={{ height: 220 }} />}
-      {data && list.length === 0 && <div className="j-card j-empty">{tab === 'waiting' ? 'Nothing is waiting for HSE.' : 'None.'}</div>}
+      {data && list.length === 0 && <div className="j-card j-empty">{tab === 'waiting' ? 'Nothing is waiting for approval.' : 'None.'}</div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1000 }}>
         {list.map(j => {
@@ -115,7 +115,7 @@ export default function HseApprovals(props) {
               {j.approvalStatus === 'APPROVED' && <div className="j-ok-text" style={{ marginTop: 10 }}>Approved by {j.decidedByName} at {hhmm(j.decidedAt)}</div>}
               {tab === 'waiting' && j.ownJourney && (
                 <div className="j-inset" style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, borderColor: 'rgba(201,184,255,.4)' }}>
-                  <Info size={14} /> You created or sent this journey, so another HSE approver must check it.
+                  <Info size={14} /> You created or sent this journey, so another approver must check it.
                 </div>
               )}
 
