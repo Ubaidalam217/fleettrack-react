@@ -38,15 +38,14 @@ export function hasGatePass(d) {
 
 /**
  * State and days left of one card against `now`.
+ * warnDays: how close counts as expiring (30 unless the report's window is wider).
  * @returns {{ state: 'none'|'expired'|'expiring'|'valid', days: number|null }}
  */
-export function gatePassState(expiry, now = new Date()) {
+export function gatePassState(expiry, now = new Date(), warnDays = ATTENTION_DAYS) {
   const s = licenceExpiryState(expiry, now)
-  // licenceExpiryState calls anything within 30 days "expiring"; here only the
-  // window picked on the report decides that, so "valid" is anything not past.
   if (s.state === 'none') return { state: 'none', days: null }
-  if (s.state === 'expired') return { state: 'expired', days: s.days }
-  return { state: 'valid', days: s.days }
+  if (s.days < 0) return { state: 'expired', days: s.days }
+  return { state: s.days <= warnDays ? 'expiring' : 'valid', days: s.days }
 }
 
 /** Does a card with `days` left (negative once expired) pass the status filter? */
@@ -83,13 +82,15 @@ export function buildGatePassRows(drivers, o = {}) {
   const { filter = 'attention', companyId = '', contractor = '', driverStatus = 'Active', query = '', now = new Date() } = o
   const q = query.trim().toLowerCase()
   const c = contractor.trim().toLowerCase()
+  // A wider window picked on the report (60 days) is what counts as expiring on it.
+  const warnDays = Math.max(ATTENTION_DAYS, GATE_PASS_FILTERS.find(x => x.key === filter)?.max ?? 0)
   const out = []
   for (const d of drivers ?? []) {
     if (!hasGatePass(d) || d.deletedAt) continue
     if (companyId && d.companyId !== companyId) continue
     if (driverStatus !== 'all' && (d.status || 'Active') !== driverStatus) continue
     if (c && String(d.contractorName ?? '').trim().toLowerCase() !== c) continue
-    const { state, days } = gatePassState(d.gatePassExpiry, now)
+    const { state, days } = gatePassState(d.gatePassExpiry, now, warnDays)
     if (!matchesGatePassFilter(days, filter)) continue
     const row = {
       key: d.id,

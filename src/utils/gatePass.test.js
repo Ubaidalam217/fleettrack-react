@@ -27,9 +27,12 @@ const drivers = [
 ]
 
 describe('gatePassState', () => {
-  it('reads expired, valid and none', () => {
+  it('reads expired, expiring, valid and none', () => {
     expect(gatePassState(at(-1), NOW)).toEqual({ state: 'expired', days: -1 })
-    expect(gatePassState(at(0), NOW)).toEqual({ state: 'valid', days: 0 })
+    expect(gatePassState(at(0), NOW)).toEqual({ state: 'expiring', days: 0 })
+    expect(gatePassState(at(30), NOW)).toEqual({ state: 'expiring', days: 30 })
+    expect(gatePassState(at(31), NOW)).toEqual({ state: 'valid', days: 31 })
+    expect(gatePassState(at(45), NOW, 60)).toEqual({ state: 'expiring', days: 45 })
     expect(gatePassState('', NOW)).toEqual({ state: 'none', days: null })
   })
 })
@@ -77,6 +80,13 @@ describe('buildGatePassRows', () => {
     expect(all).not.toContain('No Card Person')
     expect(all).not.toContain('Gone Driver') // inactive by default
     expect(all).toHaveLength(8)
+  })
+
+  it('status text follows the window: 30 days by default, 60 on the 60-day view', () => {
+    const st = o => Object.fromEntries(buildGatePassRows(drivers, { now: NOW, ...o }).map(r => [r.driverName, r.status]))
+    expect(st({ filter: 'all' })['Sample Driver Four']).toBe('Expiring')
+    expect(st({ filter: 'all' })['Sample Driver Five']).toBe('Valid')
+    expect(st({ filter: 'd60' })['Sample Driver Five']).toBe('Expiring')
   })
 
   it('driver status all brings the inactive one back', () => {
