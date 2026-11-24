@@ -1,5 +1,5 @@
 /**
- * The Fuel report's level graph as a PNG, for the downloaded PDF and Excel
+ * The Fuel report's level graph as an image (JPEG), for the downloaded PDF and Excel
  * (utils/geoZoneExport.js `figures`). Drawn on a canvas in the paper's own
  * colours — the downloads are always the white Movement paper, whatever the
  * screen theme. One series (litres, or raw when not calibrated), a recessive
@@ -24,6 +24,16 @@ function ticks(min, max, n = 4) {
 }
 
 const pad = n => String(n).padStart(2, '0')
+const UAE = 4 * 3600_000
+
+/** Round UAE hours or midnights, about 7 across the chart. */
+export function timeTicks(from, to, want = 7) {
+  const steps = [3600_000, 2 * 3600_000, 3 * 3600_000, 6 * 3600_000, 12 * 3600_000, 86400_000, 2 * 86400_000, 5 * 86400_000, 7 * 86400_000]
+  const step = steps.find(st => (to - from) / st <= want) ?? steps[steps.length - 1]
+  const out = []
+  for (let t = Math.ceil((from + UAE) / step) * step - UAE; t <= to; t += step) out.push(t)
+  return out
+}
 /** UAE time labels: "20 Nov" or "14:00". */
 function timeLabel(ms, spanMs) {
   const d = new Date(ms + 4 * 3600_000)
@@ -33,7 +43,7 @@ function timeLabel(ms, spanMs) {
 
 /**
  * @param {{ series: {ts:number, v:number}[], events?: object[], unit: 'L'|'raw', from: number, to: number }} p
- * @returns {string|null} a PNG data URL, or null with nothing to draw
+ * @returns {string|null} a JPEG data URL, or null with nothing to draw
  */
 export function renderFuelChartPng({ series, events = [], unit, from, to, width = 1600, height = 420 }) {
   if (typeof document === 'undefined' || !series?.length) return null
@@ -45,12 +55,13 @@ export function renderFuelChartPng({ series, events = [], unit, from, to, width 
   g.fillStyle = '#ffffff'
   g.fillRect(0, 0, width, height)
 
-  const P = { l: 96, r: 24, t: 24, b: 52 }
+  const P = { l: 96, r: 24, t: 52, b: 52 }
   const vs = series.map(p => p.v)
-  let y0 = unit === 'L' ? Math.min(0, ...vs) : Math.min(...vs)
+  let y0 = Math.min(0, ...vs)
   let y1 = Math.max(...vs)
   if (y1 === y0) y1 = y0 + 1
   const yt = ticks(y0, y1 + (y1 - y0) * 0.05)
+  if (yt.length > 1 && yt[yt.length - 1] < y1) yt.push(+(yt[yt.length - 1] + (yt[1] - yt[0])).toFixed(10))
   y0 = Math.min(y0, yt[0]); y1 = Math.max(y1, yt[yt.length - 1])
   const x0 = from ?? series[0].ts, x1 = Math.max(x0 + 1, to ?? series[series.length - 1].ts)
   const sx = t => P.l + ((t - x0) / (x1 - x0)) * (width - P.l - P.r)
@@ -68,7 +79,7 @@ export function renderFuelChartPng({ series, events = [], unit, from, to, width 
   }
   g.textAlign = 'center'
   g.textBaseline = 'top'
-  for (const t of ticks(x0, x1, 6)) {
+  for (const t of timeTicks(x0, x1)) {
     if (t < x0 || t > x1) continue
     g.fillText(timeLabel(t, x1 - x0), sx(t), height - P.b + 12)
   }
@@ -94,5 +105,6 @@ export function renderFuelChartPng({ series, events = [], unit, from, to, width 
     g.textBaseline = up ? 'bottom' : 'top'
     g.fillText(`${up ? 'Fill' : 'Drain'} ${up ? '+' : '-'}${e.litres} L`, x, up ? y - 14 : y + 14)
   }
-  return c.toDataURL('image/png')
+  // JPEG: a white chart compresses to a few dozen KB, where a PNG in jsPDF is megabytes.
+  return c.toDataURL('image/jpeg', 0.9)
 }

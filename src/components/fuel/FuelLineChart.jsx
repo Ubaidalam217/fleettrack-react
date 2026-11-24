@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 /**
  * One series as a line (fuel: litres over time, or a calibration's litres
@@ -14,7 +14,6 @@ import { useMemo, useRef, useState } from 'react'
  * markers  [{ x, y, kind:'fill'|'drain', label }]
  */
 
-const W = 760
 const PAD = { l: 52, r: 14, t: 12, b: 30 }
 
 function niceTicks(min, max, count = 5) {
@@ -37,7 +36,17 @@ export default function FuelLineChart({
   xTicks: xTicksIn, yMin: yMinIn, ariaLabel, showDots = false,
 }) {
   const svgRef = useRef(null)
+  const boxRef = useRef(null)
   const [hover, setHover] = useState(null)
+  // Drawn at the box's own width, so the text stays its real size on any screen.
+  const [W, setW] = useState(760)
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([e]) => setW(Math.max(280, Math.round(e.contentRect.width))))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   const H = height
 
   const geo = useMemo(() => {
@@ -49,6 +58,8 @@ export default function FuelLineChart({
     let y0 = yMinIn ?? Math.min(0, ...ys), y1 = Math.max(...ys)
     if (y1 === y0) y1 = y0 + 1
     const yt = niceTicks(y0, y1 + (y1 - y0) * 0.05, 4)
+    // A gridline above the highest reading, so the top of the line is labelled.
+    if (yt.length > 1 && yt[yt.length - 1] < y1) yt.push(+(yt[yt.length - 1] + (yt[1] - yt[0])).toFixed(10))
     y1 = Math.max(y1, yt[yt.length - 1])
     y0 = Math.min(y0, yt[0])
     const sx = x => PAD.l + ((x - x0) / (x1 - x0)) * (W - PAD.l - PAD.r)
@@ -60,11 +71,11 @@ export default function FuelLineChart({
       d += `${pen ? 'L' : 'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`
       pen = true
     }
-    const xt = xTicksIn ?? niceTicks(x0, x1, 5)
+    const xt = (typeof xTicksIn === 'function' ? xTicksIn(x0, x1, W) : xTicksIn) ?? niceTicks(x0, x1, Math.max(2, Math.floor(W / 140)))
     return { valid, sx, sy, d, yt, xt: xt.filter(v => v >= x0 && v <= x1), x0, x1 }
-  }, [points, H, xTicksIn, yMinIn])
+  }, [points, H, W, xTicksIn, yMinIn])
 
-  if (!geo) return <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--c-text3)' }}>No readings to draw</div>
+  if (!geo) return <div ref={boxRef} style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--c-text3)' }}>No readings to draw</div>
 
   const onMove = e => {
     const svg = svgRef.current
@@ -84,7 +95,7 @@ export default function FuelLineChart({
   const tipLeft = hover ? Math.min(Math.max(hx / W * 100, 12), 88) : 0
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={boxRef} style={{ position: 'relative' }}>
       <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={ariaLabel}
         style={{ display: 'block', touchAction: 'pan-y', overflow: 'visible' }}
         onMouseMove={onMove} onMouseLeave={() => setHover(null)} onTouchStart={onMove} onTouchMove={onMove}>

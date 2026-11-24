@@ -188,7 +188,7 @@ const summaryLines = opts => [...(opts.summaryCards ?? []), ...(opts.reportSumma
  * date band.
  *
  * @param {object} opts  {title, subtitle, filters?|filtersText, printDate, systemName, summaryCards, tables, hiddenColumns?, reportSummary?, figures?}
- *   `figures` ([{ heading, png: dataURL, aspect: height / width }]) are drawn before the tables.
+ *   `figures` ([{ heading, image: dataURL, format: 'jpeg'|'png', aspect: height / width }]) are drawn before the tables.
  *   A row with `strong` prints bold on the total yellow (a "Day Summary" line).
  *   `summaryCards` and `reportSummary` ([{label, value}]) print as the
  *   "Report Summary" block after the last table, the way Ctrack MaXx ends its
@@ -225,7 +225,7 @@ export async function buildGeoZonePdf(opts) {
       drawBand(doc, y, GROUP_H, GROUP_GRAY, fig.heading)
       y += GROUP_H + 1
     }
-    doc.addImage(fig.png, 'PNG', BAND.x + 4, y + 2, w, h)
+    doc.addImage(fig.image, fig.format === 'jpeg' ? 'JPEG' : 'PNG', BAND.x + 4, y + 2, w, h, undefined, 'FAST')
     y += h + 6
   }
 
@@ -396,7 +396,7 @@ export async function exportGeoZoneExcel(opts, filenameBase) {
     const at = ws.rowCount // 0-based index of the next row
     const width = 900
     const height = Math.round(width * (fig.aspect ?? 0.26))
-    ws.addImage(wb.addImage({ base64: fig.png, extension: 'png' }), { tl: { col: 0, row: at }, ext: { width, height } })
+    ws.addImage(wb.addImage({ base64: fig.image, extension: fig.format === 'jpeg' ? 'jpeg' : 'png' }), { tl: { col: 0, row: at }, ext: { width, height } })
     for (let k = 0; k < Math.ceil(height / 20) + 1; k++) ws.addRow([])
   }
 

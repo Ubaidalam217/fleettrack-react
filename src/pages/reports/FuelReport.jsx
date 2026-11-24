@@ -15,7 +15,6 @@ import { useCompanies, useVehicles } from '../../data/settings'
 import { IS_REAL } from '../../data/mode'
 import { fetchFuelReport } from '../../data/fuel'
 import { vehicleLabel } from '../../utils/vehicleLabel'
-import { dateStr } from '../../utils/reportRange'
 import { formatPrintDate } from '../../utils/movementReport'
 import { locationUrl } from '../../utils/mapLink'
 import { reverseGeocodeMany, geocodeKey, shortenAddress } from '../../utils/geocode'
@@ -60,14 +59,17 @@ const PRESETS = [
   { key: 'thisMonth', label: 'This Month' },
   { key: 'custom', label: 'Custom' },
 ]
+/** The days are UAE days, whatever the browser's own time zone. */
+const uaeDay = ms => new Date(ms + UAE).toISOString().slice(0, 10)
 function presetDays(key, now = new Date()) {
-  const today = dateStr(now)
-  const back = n => dateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - n))
+  const t = now.getTime()
+  const today = uaeDay(t)
+  const back = n => uaeDay(t - n * 86400_000)
   switch (key) {
     case 'today': return { from: today, to: today }
     case 'yesterday': return { from: back(1), to: back(1) }
     case 'd7': return { from: back(6), to: today }
-    case 'thisMonth': return { from: dateStr(new Date(now.getFullYear(), now.getMonth(), 1)), to: today }
+    case 'thisMonth': return { from: `${today.slice(0, 8)}01`, to: today }
     default: return null
   }
 }
@@ -219,9 +221,10 @@ export default function FuelReport(props) {
     hiddenColumns: hiddenCols,
     figures: list.map(v => ({
       heading: plain(`${v.label}${v.company ? ` - ${v.company}` : ''} - fuel level${v.calibrated ? ' (litres)' : ' (raw sensor value, not calibrated)'}`),
-      png: renderFuelChartPng({ series: v.series, events: v.events, unit: v.unit, from: report.fromMs, to: report.toMs }),
+      image: renderFuelChartPng({ series: v.series, events: v.events, unit: v.unit }),
+      format: 'jpeg',
       aspect: 420 / 1600,
-    })).filter(f => f.png),
+    })).filter(f => f.image),
     tables: [
       { heading: 'Summary', columns: SUMMARY_COLUMNS.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align })), rows: summaryRows.map(plainRow) },
       ...(eventRows.length ? [{ heading: 'Fills and drains', columns: EVENT_COLUMNS.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, hrefKey: c.hrefKey })), rows: eventRows.map(r => plainRow({ ...r, litres: r.litres.replace('−', '-') })) }] : []),
@@ -296,7 +299,7 @@ export default function FuelReport(props) {
                           {v.company && <span style={{ fontSize: 12, color: 'var(--c-text3)' }}>{v.company}</span>}
                           <span style={{ fontSize: 12, color: 'var(--c-text3)' }}>· {v.calibrated ? 'litres' : 'raw sensor value'}{v.port ? ` · ${v.port}` : ''}</span>
                           <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c-text2)', fontVariantNumeric: 'tabular-nums' }}>
-                            {v.calibrated ? `${fmtLitres(v.summary.start)} → ${fmtLitres(v.summary.end)} · used ${fmtLitres(v.summary.used)}` : v.summary.readings ? `${fmtRaw(v.summary.start)} → ${fmtRaw(v.summary.end)}` : ''}
+                            {!v.summary.readings ? 'No fuel readings in this period' : v.calibrated ? `${fmtLitres(v.summary.start)} → ${fmtLitres(v.summary.end)} · used ${fmtLitres(v.summary.used)}` : `${fmtRaw(v.summary.start)} → ${fmtRaw(v.summary.end)}`}
                           </span>
                         </div>
                         {!v.calibrated && v.summary.readings > 0 && (
@@ -310,8 +313,8 @@ export default function FuelReport(props) {
                           ariaLabel={`Fuel level of ${v.label} over the period`}
                           points={v.series.map(p => ({ x: p.ts, y: p.v }))}
                           markers={v.events.map(e => ({ x: e.endTs, y: e.after, kind: e.kind, label: `${e.kind === 'fill' ? '+' : '−'}${Math.round(e.litres)} L` }))}
-                          xTicks={timeTicks(report.fromMs, report.toMs)}
-                          xFormat={x => axisTime(x, report.toMs - report.fromMs)}
+                          xTicks={timeTicks}
+                          xFormat={x => axisTime(x, spanOf(v.series))}
                           yFormat={y => (v.unit === 'L' ? `${y} L` : fmtRaw(y))}
                           tipX={x => fmtTime(x)}
                           tipY={y => (v.unit === 'L' ? fmtLitres(y) : `raw ${fmtRaw(y)}`)}
@@ -351,10 +354,14 @@ export default function FuelReport(props) {
   )
 }
 
-/** Ticks at UAE midnights (or every few hours for a day or two). */
-function timeTicks(from, to) {
+const spanOf = series => (series.length ? series[series.length - 1].ts - series[0].ts : 0)
+
+/** Ticks on round UAE hours or midnights, about one per 120 px. */
+function timeTicks(from, to, width = 760) {
   const span = to - from
-  const step = span > 10 * 86400_000 ? 5 * 86400_000 : span > 3 * 86400_000 ? 86400_000 : span > 36 * 3600_000 ? 12 * 3600_000 : 3 * 3600_000
+  const want = Math.max(2, Math.floor(width / 120))
+  const steps = [3600_000, 2 * 3600_000, 3 * 3600_000, 6 * 3600_000, 12 * 3600_000, 86400_000, 2 * 86400_000, 5 * 86400_000, 7 * 86400_000]
+  const step = steps.find(st => span / st <= want) ?? steps[steps.length - 1]
   const first = Math.ceil((from + UAE) / step) * step - UAE
   const out = []
   for (let t = first; t <= to; t += step) out.push(t)
