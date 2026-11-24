@@ -30,7 +30,7 @@ const stop = z.object({
   lng: z.coerce.number().min(-180).max(180),
   radiusM: z.coerce.number().int().min(30).max(20000).optional(),
   stayMin: z.coerce.number().int().min(0).max(1440).default(0),
-  legDriveMin: z.union([z.coerce.number().int().min(0).max(4320), z.null()]).optional(),
+  legDriveMin: z.union([z.null(), z.coerce.number().int().min(0).max(4320)]).optional(),
   legSource: z.enum(['SPEED', 'TRIP', 'MANUAL', 'ROUTING']).nullable().optional(),
   signatureRequired: z.boolean().default(false),
 })
@@ -40,7 +40,7 @@ const schema = z.object({
   name: z.string().trim().min(1, 'Name the route').max(120),
   source: z.enum(['PAST_TRIP', 'DRAWN', 'STRAIGHT']),
   path: z.union([z.array(z.array(z.number()).min(2)).max(20000), z.null()]).optional(),
-  driveMin: z.union([z.coerce.number().int().min(0).max(4320), z.null()]).optional(),
+  driveMin: z.union([z.null(), z.coerce.number().int().min(0).max(4320)]).optional(),
   stops: z.array(stop).min(2).max(40),
   recordedFrom: z.union([z.record(z.string(), z.any()), z.null()]).optional(),
 })

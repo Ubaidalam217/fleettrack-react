@@ -80,7 +80,7 @@ export const stopSchema = z.object({
   lat, lng,
   radiusM: z.coerce.number().int().min(30, 'At least 30 m').max(20000).optional(),
   stayMin: z.coerce.number().int().min(0).max(1440).default(0),
-  legDriveMin: z.union([z.coerce.number().int().min(0).max(4320), z.null()]).optional(),
+  legDriveMin: z.union([z.null(), z.coerce.number().int().min(0).max(4320)]).optional(),
   legSource: z.enum(['SPEED', 'TRIP', 'MANUAL', 'ROUTING']).nullable().optional(),
   signatureRequired: z.boolean().default(false),
   visitVia: z.enum(['MAP', 'QR']).default('MAP'),
@@ -90,8 +90,8 @@ export const stopSchema = z.object({
   formId: z.union([z.string().trim().min(1), z.null()]).optional(),
 })
 
-const nullableInt = (lo, hi) => z.union([z.coerce.number().int().min(lo).max(hi), z.null()]).optional()
-const nullableNum = (lo, hi) => z.union([z.coerce.number().min(lo).max(hi), z.null()]).optional()
+const nullableInt = (lo, hi) => z.union([z.null(), z.coerce.number().int().min(lo).max(hi)]).optional()
+const nullableNum = (lo, hi) => z.union([z.null(), z.coerce.number().min(lo).max(hi)]).optional()
 
 const journeySchema = z.object({
   bgId: z.union([z.string().trim().min(1), z.null()]).optional(),

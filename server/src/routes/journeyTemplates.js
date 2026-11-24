@@ -44,8 +44,8 @@ function need(req, level) {
 }
 router.use((req, _res, next) => { try { need(req, 'view'); next() } catch (e) { next(e) } })
 
-const nInt = (lo, hi) => z.union([z.coerce.number().int().min(lo).max(hi), z.null()]).optional()
-const nNum = (lo, hi) => z.union([z.coerce.number().min(lo).max(hi), z.null()]).optional()
+const nInt = (lo, hi) => z.union([z.null(), z.coerce.number().int().min(lo).max(hi)]).optional()
+const nNum = (lo, hi) => z.union([z.null(), z.coerce.number().min(lo).max(hi)]).optional()
 const nText = max => z.union([z.string().trim().max(max), z.null()]).optional().transform(v => v || null)
 
 /** The journey a template makes, less the vehicle and the start time. */

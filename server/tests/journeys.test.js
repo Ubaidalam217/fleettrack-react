@@ -81,6 +81,29 @@ describe('the plan', () => {
     expect(j.plannedStayMin).toBe(30)
   })
 
+  it('saves what the web form sends when the options are left blank (null, not missing)', async () => {
+    // Client, 2026-11-24: "unable to save any journey". A blank option is sent as null,
+    // and a coerced null is 0: lowest 0 was not below highest 0, so every save failed.
+    const blank = {
+      startBufferMin: null, routeToleranceM: null, forceCloseMin: null, tempMin: null, tempMax: null,
+      loadState: null, convoy: [], convoyToleranceM: 200, startLogic: 'ANY_DATA', priority: 'Normal',
+      stops: [
+        { name: 'Depot', ...P.a, arrivalType: 'RADIUS', radiusM: 300, stayMin: 0, legDriveMin: null, legSource: null },
+        { name: 'Site B', ...P.c, arrivalType: 'RADIUS', radiusM: 300, stayMin: 0, legDriveMin: null, legSource: null },
+      ],
+    }
+    const res = await post('/api/journeys', fx.tokens.bgUserA1a, body(fx.vehicles.v1.id, blank))
+    expect(res.status).toBe(201)
+    const row = await prisma.journey.findUnique({ where: { id: res.body.data.id } })
+    expect(row.tempMin).toBeNull()
+    expect(row.tempMax).toBeNull()
+    expect(row.forceCloseMin).toBeNull()
+    expect(row.startBufferMin).toBeGreaterThan(0) // the setting's default, not 0
+    // A real pair still has to be ordered.
+    const bad = await post('/api/journeys', fx.tokens.bgUserA1a, body(fx.vehicles.v1.id, { tempMin: 8, tempMax: 2 }))
+    expect(bad.status).toBe(400)
+  })
+
   it('works a leg out from km ÷ the planned speed when not given', async () => {
     const b = body(fx.vehicles.v1.id)
     b.stops[1] = { name: 'Fuel stop', ...P.b }

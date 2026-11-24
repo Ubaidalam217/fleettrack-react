@@ -99,8 +99,8 @@ publicRouter.post(
   '/:token/stops/:seq/check-in',
   validate(z.object({
     code: z.union([z.string().trim().max(40), z.null()]).optional(),
-    lat: z.union([z.coerce.number().min(-90).max(90), z.null()]).optional(),
-    lng: z.union([z.coerce.number().min(-180).max(180), z.null()]).optional(),
+    lat: z.union([z.null(), z.coerce.number().min(-90).max(90)]).optional(),
+    lng: z.union([z.null(), z.coerce.number().min(-180).max(180)]).optional(),
   })),
   asyncHandler(async (req, res) => {
     const { link, journey: j } = await linkOf(req)
