@@ -23,7 +23,7 @@
  */
 
 import { haversineKm } from './routeOptimizer.js'
-import { getJson, providerStatus } from './distanceProvider.js'
+import { getJson, providerStatus, ORS_BASE } from './distanceProvider.js'
 import { simplifyPath } from '../../../src/utils/journeyGeo.js'
 
 /** Most points one request carries, by provider (a longer journey is estimated). */
@@ -65,11 +65,12 @@ export function estimateRoute(points, { roadFactor = 1.3, speedKmh = 70 } = {}) 
 // ── providers: each returns { geometry: [[lat, lng]], legs: [{ distanceKm, durationMin }] } ──
 
 async function orsRoute(points) {
-  const j = await getJson('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+  const j = await getJson(`${ORS_BASE}/v2/directions/driving-car/geojson`, {
     method: 'POST',
     headers: { Authorization: process.env.OPENROUTESERVICE_API_KEY, 'Content-Type': 'application/json' },
     // Snap every stop to the nearest road, however far (a stop in a yard or a field).
-    body: JSON.stringify({ coordinates: points.map(p => [p.lng, p.lat]), radiuses: points.map(() => -1), instructions: false, preference: 'recommended' }),
+    body: JSON.stringify({ coordinates: points.map(p => [p.lng, p.lat]), radiuses: points.map(() => -1), preference: 'recommended' }),
+    // No `instructions: false`: ORS then leaves out `segments`, the per-leg distance and time.
   })
   const f = j?.features?.[0]
   const segs = f?.properties?.segments

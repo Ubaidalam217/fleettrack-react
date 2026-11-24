@@ -97,7 +97,7 @@ describe('with OpenRouteService', () => {
     // one request, the key in the header only, and one best route (no alternatives)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toContain('openrouteservice.org/v2/directions/driving-car')
+    expect(url).toContain('api.heigit.org/openrouteservice/v2/directions/driving-car')
     expect(init.headers.Authorization).toBe('test-key-not-real')
     expect(JSON.parse(init.body).coordinates).toEqual([[54.5, 24.35], [54.95, 24.35], [55.4, 24.35]])
     expect(JSON.parse(init.body).alternative_routes).toBeUndefined()

@@ -18,6 +18,13 @@
 
 import { haversineKm } from './routeOptimizer.js'
 
+/**
+ * OpenRouteService moved its public API: api.openrouteservice.org was shut off
+ * on 2026-09-28 in favour of api.heigit.org/openrouteservice. Overridable for a
+ * self-hosted ORS (OPENROUTESERVICE_URL).
+ */
+export const ORS_BASE = (process.env.OPENROUTESERVICE_URL || 'https://api.heigit.org/openrouteservice').replace(/\/+$/, '')
+
 export const PROVIDERS = Object.freeze(['ESTIMATE', 'OSRM', 'ORS', 'GOOGLE'])
 
 /** Which providers are set up on this server (no secrets in the answer). */
@@ -66,7 +73,7 @@ async function osrmMatrix(places, url) {
 }
 
 async function orsMatrix(places) {
-  const j = await getJson('https://api.openrouteservice.org/v2/matrix/driving-car', {
+  const j = await getJson(`${ORS_BASE}/v2/matrix/driving-car`, {
     method: 'POST',
     headers: { Authorization: process.env.OPENROUTESERVICE_API_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({ locations: places.map(p => [p.lng, p.lat]), metrics: ['distance', 'duration'], units: 'km' }),
