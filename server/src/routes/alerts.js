@@ -128,6 +128,20 @@ function cleanParams(body) {
     case 'harsh_acceleration':
       if (!positive(num('thresholdMs2'), 1.5, 9)) throw badRequest('Set the threshold between 1.5 and 9 m/s²', { thresholdMs2: '1.5–9 m/s²' })
       return { thresholdMs2: num('thresholdMs2') }
+    case 'fuel_theft':
+    case 'fuel_fill':
+      if (!positive(num('litres'), 1, 1000)) throw badRequest('Set the litres between 1 and 1000', { litres: '1–1000 L' })
+      return { litres: num('litres') }
+    case 'low_fuel': {
+      // Litres when given, else a share of the vehicle's tank (its calibration).
+      const hasLitres = !Number.isNaN(num('litres'))
+      if (hasLitres) {
+        if (!positive(num('litres'), 1, 100_000)) throw badRequest('Set the litres above 0', { litres: 'Above 0 L' })
+        return { litres: num('litres'), percent: null }
+      }
+      if (!positive(num('percent'), 1, 99)) throw badRequest('Set the level in litres, or as 1–99 % of the tank', { percent: '1–99 %' })
+      return { litres: null, percent: num('percent') }
+    }
     default:
       return {}
   }

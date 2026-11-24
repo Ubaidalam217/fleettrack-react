@@ -97,6 +97,15 @@ const VALIDATORS = {
   harsh_braking:      s => only('thresholdMs2', rangeError(s.thresholdMs2, 1.5, 9, 'm/s²')),
   harsh_acceleration: s => only('thresholdMs2', rangeError(s.thresholdMs2, 1.5, 9, 'm/s²')),
   custom:         validateCustom,
+  fuel_theft:     s => only('litres', rangeError(s.litres, 1, 1000, 'L')),
+  fuel_fill:      s => only('litres', rangeError(s.litres, 1, 1000, 'L')),
+  low_fuel:       validateLowFuel,
+}
+
+function validateLowFuel(s) {
+  const l = toNum(s.litres)
+  if (l !== null) return Number.isNaN(l) ? { litres: 'Must be a number' } : l <= 0 ? { litres: 'Above 0 L' } : {}
+  return only('percent', rangeError(s.percent, 1, 99, '%'))
 }
 
 /** { field: message } for the type's own settings; {} when they are fine. */

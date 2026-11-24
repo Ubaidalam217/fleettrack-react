@@ -109,7 +109,15 @@ export const TYPES = Object.freeze({
   tamper:         { label: 'Tamper',         defaults: {}, severity: 'High' },
   battery_tamper: { label: 'Battery Tamper', defaults: {}, severity: 'Critical' },
   panic:          { label: 'Panic (SOS)',    defaults: {}, severity: 'Critical' },
+  // Client, 2026-11-24: fuel, from the stored fuel readings and each vehicle's
+  // calibration (lib/fuelAlerts.js runs these, after each Uffizio poll).
+  fuel_theft:     { label: 'Fuel Theft (drain while stopped)', defaults: { litres: 15 }, severity: 'High' },
+  fuel_fill:      { label: 'Fuel Fill',      defaults: { litres: 15 }, severity: 'Low' },
+  low_fuel:       { label: 'Low Fuel',       defaults: { litres: null, percent: 15 } },
 })
+
+/** The fuel types: run by lib/fuelAlerts.js over the fuel readings, not by runAlertPass. */
+export const FUEL_ALERT_TYPES = Object.freeze(new Set(['fuel_theft', 'fuel_fill', 'low_fuel']))
 
 /** The flag each device event reads, and the value that means "it is happening". */
 const FLAG_EVENTS = Object.freeze({
@@ -777,7 +785,7 @@ async function loadFleets(bgIds) {
  */
 export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}) {
   const alerts = await prisma.alert.findMany({
-    where: { status: 'Active', type: { in: Object.keys(TYPES) } },
+    where: { status: 'Active', type: { in: Object.keys(TYPES).filter(t => !FUEL_ALERT_TYPES.has(t)) } },
     include: { vehicles: { select: { vehicleId: true } } },
   })
   if (!alerts.length) return []
@@ -979,7 +987,7 @@ export async function runAlertPass(now = Math.floor(Date.now() / 1000), pre = {}
 }
 
 /** Email each event to its rule's recipients, when the rule asks for email. */
-async function emailEvents(events, alerts) {
+export async function emailEvents(events, alerts) {
   const byId = new Map(alerts.map(a => [a.id, a]))
   for (const e of events) {
     const alert = byId.get(e.alertId)

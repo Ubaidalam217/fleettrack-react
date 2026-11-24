@@ -46,6 +46,7 @@ import prisma from '../prisma.js'
 import env from '../env.js'
 import { deviceRow, renameRow } from './vehicleMoves.js'
 import { activeCalibrations, readingLitres } from './fuel.js'
+import { runFuelAlertPass } from './fuelAlerts.js'
 
 export const SOURCE = 'UFFIZIO'
 /** Uffizio's own limit: one live-data call per 120 s per company. */
@@ -574,6 +575,15 @@ async function tick() {
   if (now - lastCleanupAt > 3600_000) {
     lastCleanupAt = now
     await cleanup(now).catch(err => console.error(`[uffizio] cleanup: ${scrub(err?.message)}`))
+  }
+  // The fuel alerts read the new readings straight away (lib/fuelAlerts.js).
+  if (r.ok && r.inserted) {
+    try {
+      const events = await runFuelAlertPass()
+      if (events.length) console.log(`[uffizio] fuel alerts: ${events.length} raised`)
+    } catch (err) {
+      console.error(`[uffizio] fuel alerts: ${scrub(err?.message)}`)
+    }
   }
 }
 

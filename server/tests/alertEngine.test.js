@@ -419,7 +419,7 @@ describe('POST /api/alerts — engine types', () => {
 
   it('rejects a missing limit, an unknown type, and email on with no address', async () => {
     expect((await post({ name: 'x', type: 'overspeed', params: { speedKmh: '' } })).status).toBe(400)
-    expect((await post({ name: 'x', type: 'fuel_theft' })).status).toBe(400)
+    expect((await post({ name: 'x', type: 'door_open' })).status).toBe(400)
     expect((await post({ name: 'x', type: 'idle', notify: { email: true }, emails: [] })).status).toBe(400)
   })
 

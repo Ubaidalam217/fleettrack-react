@@ -137,3 +137,21 @@ describe('alert event text', () => {
     expect(relativeTime('2026-10-29T12:00:00Z', now)).toBe('1 day ago')
   })
 })
+
+describe('fuel alert rules (client, 2026-11-24)', () => {
+  it('validates the litres and the low-fuel level', () => {
+    expect(validateAlertSettings('fuel_theft', { litres: '0' })).toHaveProperty('litres')
+    expect(validateAlertSettings('fuel_fill', { litres: '20' })).toEqual({})
+    expect(validateAlertSettings('low_fuel', { litres: '', percent: '15' })).toEqual({})
+    expect(validateAlertSettings('low_fuel', { litres: '', percent: '120' })).toHaveProperty('percent')
+    expect(validateAlertSettings('low_fuel', { litres: '40', percent: '' })).toEqual({})
+  })
+
+  it('sends litres, or the % of the tank when no litres are typed', () => {
+    const base = { name: 'x', companyId: 'bg1', allVehicles: true, emails: [] }
+    expect(A.fields({ ...base, type: 'fuel_theft', settings: { litres: '25' } }).params).toEqual({ litres: 25 })
+    expect(A.fields({ ...base, type: 'low_fuel', settings: { litres: '', percent: '20' } }).params).toEqual({ litres: null, percent: 20 })
+    expect(A.fields({ ...base, type: 'low_fuel', settings: { litres: '40', percent: '20' } }).params).toEqual({ litres: 40, percent: null })
+    expect(A.toFe({ type: 'low_fuel', params: { litres: null, percent: 15 } }).settings).toMatchObject({ percent: '15' })
+  })
+})

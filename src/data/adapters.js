@@ -614,6 +614,12 @@ function alertParams(type, s) {
       return { days: numOrNull(s.days) }
     case 'custom':
       return { parameter: String(s.parameter ?? '').trim(), operator: s.operator, value: String(s.value ?? '').trim() }
+    case 'fuel_theft':
+    case 'fuel_fill':
+      return { litres: numOrNull(s.litres) }
+    case 'low_fuel':
+      // Litres when typed; otherwise the % of the tank.
+      return numOrNull(s.litres) !== null ? { litres: numOrNull(s.litres), percent: null } : { litres: null, percent: numOrNull(s.percent) }
     default:
       return {}
   }

@@ -10,7 +10,7 @@
 //              battery_tamper, panic (SOS)
 //   left out   temperature, license_expiry, ignition_on / ignition_off,
 //              geofence / geofence_enter / geofence_exit, offline,
-//              suspended_driver, custom
+//              suspended_driver, custom, fuel_theft / fuel_fill / low_fuel
 //
 // Harsh cornering, fatigue / rest and power failure are no alert type yet:
 // harsh_cornering is listed so it is kept the day the engine raises it.
@@ -24,6 +24,8 @@ export const OIL_GAS_VIOLATION_TYPES = Object.freeze([
 export const NOT_OIL_GAS_TYPES = Object.freeze([
   'temperature', 'license_expiry', 'ignition_on', 'ignition_off', 'geofence', 'geofence_enter', 'geofence_exit',
   'offline', 'suspended_driver', 'custom',
+  // Fuel (client, 2026-11-24): the vehicle's fuel, not its driving — to confirm with the client.
+  'fuel_theft', 'fuel_fill', 'low_fuel',
 ])
 
 /**

@@ -195,6 +195,29 @@ export const ALERT_TYPES = [
     defaults: () => ({}),
     severity: 'Critical',
   },
+  // Client, 2026-11-24: fuel, from the fuel readings (the Uffizio feed) and
+  // each vehicle's calibration (Settings › Master › Fuel). A vehicle without a
+  // calibration raises none of them.
+  {
+    value: 'fuel_theft',
+    label: 'Fuel Theft (drain while stopped)',
+    hint: 'Raised when the fuel level drops by at least the set litres while the vehicle stands; one event per drain, with its start, end and litres.',
+    defaults: () => ({ litres: '15' }),
+    severity: 'High',
+  },
+  {
+    value: 'fuel_fill',
+    label: 'Fuel Fill',
+    hint: 'Raised for each refuel of at least the set litres, with the level before and after.',
+    defaults: () => ({ litres: '15' }),
+    severity: 'Low',
+  },
+  {
+    value: 'low_fuel',
+    label: 'Low Fuel',
+    hint: 'Raised once when the level falls below the litres (or % of the tank) you set, and closed when it is filled again.',
+    defaults: () => ({ litres: '', percent: '15' }),
+  },
 ]
 
 /**

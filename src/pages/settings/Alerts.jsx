@@ -31,9 +31,9 @@ import { useSearchParams } from 'react-router-dom'
 // here, and a validator in alertRules.js. Nothing else in the page knows type
 // names. A type with no renderer (Ignition On/Off) simply has no settings block.
 
-function NumberField({ label, name, value, error, onChange, placeholder, hint, step = '1' }) {
+function NumberField({ label, name, value, error, onChange, placeholder, hint, step = '1', required = true }) {
   return (
-    <Field label={label} required error={error} hint={hint}>
+    <Field label={label} required={required} error={error} hint={hint}>
       <input
         name={name}
         type="number"
@@ -74,6 +74,33 @@ function HarshSettings({ settings, errors, onChange }) {
       hint="1.5 – 9 m/s². 3.5 is a firm stop; lower catches more."
       value={settings.thresholdMs2} error={errors.thresholdMs2} onChange={onChange}
     />
+  )
+}
+
+function FuelRunSettings({ settings, errors, onChange, type }) {
+  return (
+    <NumberField
+      label={type === 'fuel_fill' ? 'Fill Of At Least (litres)' : 'Drop Of At Least (litres)'} name="litres" placeholder="15"
+      hint={type === 'fuel_fill' ? '1 – 1000 L' : '1 – 1000 L, while the vehicle stands (ignition off or speed 0). Fuel used while driving is not counted.'}
+      value={settings.litres} error={errors.litres} onChange={onChange}
+    />
+  )
+}
+
+function LowFuelSettings({ settings, errors, onChange }) {
+  return (
+    <>
+      <NumberField
+        label="Below (litres)" name="litres" placeholder="e.g. 40" required={false}
+        hint="Leave empty to use the % of the tank instead."
+        value={settings.litres} error={errors.litres} onChange={onChange}
+      />
+      <NumberField
+        label="Or Below (% of the tank)" name="percent" placeholder="15" required={false}
+        hint="1 – 99 %. Uses the tank capacity of the vehicle’s fuel calibration."
+        value={settings.percent} error={errors.percent} onChange={onChange}
+      />
+    </>
   )
 }
 
@@ -276,6 +303,9 @@ const SETTINGS_RENDERERS = {
   license_expiry: LicenceSettings,
   harsh_braking:      HarshSettings,
   harsh_acceleration: HarshSettings,
+  fuel_theft:     props => <FuelRunSettings {...props} type="fuel_theft" />,
+  fuel_fill:      props => <FuelRunSettings {...props} type="fuel_fill" />,
+  low_fuel:       LowFuelSettings,
 }
 
 // The Geo Zone type's direction is a grid cell (SETTINGS_RENDERERS); its fence
