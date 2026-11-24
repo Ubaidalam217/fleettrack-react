@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import VehicleImport from './VehicleImport'
 import { vehicleLabel } from '../../utils/vehicleLabel'
 import { Save, RotateCcw, Search, Gauge, Link2, Unlink } from 'lucide-react'
 import SettingsLayout from './SettingsLayout'
@@ -69,6 +71,8 @@ function usePlaceOptions() {
 }
 
 export default function BulkAction(props) {
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'import' ? 'import' : 'update'
   const allVehicles = useVehicles()
   // Its own vehicles only: a vehicle shared into this account is its owner's to change.
   const vehicles = useMemo(() => allVehicles.filter(isOwned), [allVehicles])
@@ -190,8 +194,23 @@ export default function BulkAction(props) {
   }
 
   return (
-    <SettingsLayout title="Bulk Object Update" {...props}>
+    <SettingsLayout title={tab === 'import' ? 'Import Vehicles' : 'Bulk Object Update'} {...props}>
       <ToastStack toasts={toasts} onDismiss={dismiss} />
+      <div role="tablist" aria-label="Bulk Action" style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        {[['update', 'Bulk Object Update'], ['import', 'Import Vehicles']].map(([id, label]) => (
+          <button
+            key={id} type="button" role="tab" aria-selected={tab === id}
+            onClick={() => setParams(id === 'import' ? { tab: 'import' } : {}, { replace: true })}
+            style={{
+              padding: '7px 16px', borderRadius: 999, fontSize: 12.5, fontWeight: tab === id ? 750 : 600, cursor: 'pointer',
+              border: `1px solid ${tab === id ? 'var(--ft-accent)' : 'var(--c-border2)'}`,
+              background: tab === id ? 'color-mix(in srgb, var(--ft-accent) 12%, transparent)' : 'var(--c-input)',
+              color: tab === id ? 'var(--ft-accent)' : 'var(--c-text2)',
+            }}
+          >{label}</button>
+        ))}
+      </div>
+      {tab === 'import' ? <VehicleImport canWrite={access.canWrite} push={push} /> : (<>
       <p style={{ fontSize: 12.5, color: 'var(--c-text3)', margin: '2px 0 12px', maxWidth: 820, lineHeight: 1.5 }}>
         {modeNote(
           'Change several vehicles at once, then Save. Odometer is the vehicle’s own reading: type it once and FleetmaxX keeps counting from it — the tracker is not changed.',
@@ -325,6 +344,7 @@ export default function BulkAction(props) {
           </span>
         </div>
       </div>
+      </>)}
     </SettingsLayout>
   )
 }

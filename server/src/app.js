@@ -104,6 +104,8 @@ export function createApp() {
   // Driver photos and scanned documents (5 MB each, base64).
   app.use('/api/drivers', express.json({ limit: '8mb' }))
   app.use('/api/expenses', express.json({ limit: '8mb' }))
+  // The vehicle import sends up to 500 sheet rows of 26 cells (Settings > Bulk Action).
+  app.use('/api/vehicles/import', express.json({ limit: '2mb' }))
   app.use('/api/vehicles/:vehicleId/documents', express.json({ limit: '8mb' }))
   // GGB / Group / BG / Branch logos (5 MB, base64).
   // Journeys and saved routes carry a planned path (thousands of points) and

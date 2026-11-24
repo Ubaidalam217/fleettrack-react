@@ -18,7 +18,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import prisma from '../prisma.js'
 import { asyncHandler, badRequest, conflict } from '../lib/http.js'
-import { imeiField, optionalDate, optionalId, optionalText, requiredId } from '../lib/fields.js'
+import { booleanField, imeiField, optionalDate, optionalId, optionalText, requiredId } from '../lib/fields.js'
 import { assertCanWrite, assertWritableParent, findScoped, findScopedOrThrow, isSuperAdmin, scopedWhere } from '../lib/scope.js'
 import { validate } from '../middleware/validate.js'
 import { revokeGrantsForBg } from '../lib/flespiGrant.js'
@@ -28,7 +28,8 @@ import { channelAddresses, deviceById, deviceName, deviceTypes, syncVehicleDevic
 import { assertSameBg, mergeInto, mergePlan, planView, removeRow, swapRows } from '../lib/trackers.js'
 import { vehicleLabel } from '../lib/vehicleLabel.js'
 import { TYPES as ALERT_TYPES } from '../lib/alertEngine.js'
-import { deviceOdometers, odometerRow, adjustmentRow } from '../lib/odometer.js'
+import { applyOdometerReading, deviceOdometers, odometerRow, adjustmentRow } from '../lib/odometer.js'
+import { importVehicles, MAX_IMPORT_ROWS } from '../lib/vehicleImport.js'
 import { SHARES_INCLUDE, dropSharesForTransfer, stripLostAccess, withShares, withSharesOne } from '../lib/vehicleShares.js'
 
 const router = Router()
@@ -297,6 +298,46 @@ router.get(
   })
 )
 
+/**
+ * Bulk import from the client's Master Data sheet (client, 2026-11-24). The
+ * browser sends the rows it read; each is checked again here (lib/vehicleImport.js)
+ * and `dryRun` only reports what would happen. An IMEI already on a Flespi device
+ * is linked, never duplicated; creating a missing device is opt-in (`createDevices`
+ * + `deviceType`) and goes through syncVehicleDevice like POST /api/vehicles.
+ */
+const importSchema = z.object({
+  bgId: requiredId('Business Group'),
+  branchId: optionalId(),
+  dryRun: booleanField(false),
+  createDevices: booleanField(false),
+  deviceType: optionalText(120),
+  rows: z
+    .array(z.object({
+      row: z.number().int().min(1),
+      raw: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
+    }))
+    .min(1, 'The file has no vehicle rows')
+    .max(MAX_IMPORT_ROWS, `Up to ${MAX_IMPORT_ROWS} vehicles at a time`),
+})
+
+router.post(
+  '/import',
+  validate(importSchema),
+  asyncHandler(async (req, res) => {
+    assertCanWrite(req.scope, 'vehicle')
+    const bg = await assertWritableParent(req.scope, 'bg', req.body.bgId)
+    const branchId = await resolveBranch(req.body.branchId, bg.id)
+    if (req.body.createDevices && !req.body.dryRun && !req.body.deviceType) {
+      throw badRequest('Choose the device type for the trackers that are not in Flespi yet', { deviceType: 'Choose the device type' })
+    }
+    const result = await importVehicles({
+      scope: req.scope, bg, branchId, rows: req.body.rows, dryRun: req.body.dryRun,
+      createDevices: req.body.createDevices, deviceType: req.body.deviceType, by: actorOf(req),
+    })
+    res.status(result.dryRun ? 200 : 201).json({ data: result })
+  })
+)
+
 router.post(
   '/',
   validate(createSchema),
@@ -530,33 +571,12 @@ router.put(
         reading: 'No reading from the tracker yet',
       })
     }
-    const offset = req.body.reading - reading.deviceKm
-    const delta = offset - (existing.odometerOffsetKm ?? 0)
-    const setAt = new Date()
-    const setBy = req.user?.shortName || req.user?.email || null
-    const [row] = await prisma.$transaction([
-      prisma.vehicle.update({
-        where: { id: existing.id },
-        data: { odometerOffsetKm: offset, odometerSetAt: setAt, odometerSetBy: setBy },
-        select: ODOMETER_SELECT,
-      }),
-      prisma.reminderVehicle.updateMany({
-        where: { vehicleId: existing.id, startOdometer: { not: null } },
-        data: { startOdometer: { increment: delta } },
-      }),
-      prisma.odometerAdjustment.create({
-        data: {
-          vehicleId: existing.id,
-          readingKm: req.body.reading,
-          deviceKm: reading.deviceKm,
-          offsetKm: offset,
-          previousOffsetKm: existing.odometerOffsetKm ?? null,
-          setAt,
-          setBy,
-          note: req.body.note,
-        },
-      }),
-    ])
+    const row = await applyOdometerReading(existing, {
+      readingKm: req.body.reading,
+      deviceKm: reading.deviceKm,
+      by: req.user?.shortName || req.user?.email || null,
+      note: req.body.note,
+    })
     res.json({ data: odometerRow(row, reading) })
   })
 )

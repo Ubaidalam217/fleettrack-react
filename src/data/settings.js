@@ -470,6 +470,18 @@ export async function setVehicleOdometer(id, reading, { refresh = true, note } =
 }
 
 /**
+ * Vehicle import from the Master Data sheet (POST /api/vehicles/import). `rows`
+ * are { row, raw } as read from the sheet; `dryRun` only checks them. Needs the
+ * server: the demo has no trackers to link.
+ */
+export async function importVehiclesFromSheet({ bgId, branchId, rows, dryRun, createDevices, deviceType }) {
+  if (!IS_REAL) throw new Error('Importing vehicles needs the server: the demo has no trackers to link')
+  const result = await post('/api/vehicles/import', { bgId, branchId: branchId || null, rows, dryRun: !!dryRun, createDevices: !!createDevices, deviceType: deviceType || null })
+  if (!dryRun && result?.created?.length) await refreshAll()
+  return result
+}
+
+/**
  * Bulk Object Update: only the fields given, and only ones that do not touch
  * the Flespi device (PATCH /api/vehicles/:id/details). `patch` uses the form's
  * names (branchId, subGroup, make, model, vehicleType, mobileNo, validUntil).

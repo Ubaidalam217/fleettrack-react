@@ -8,6 +8,7 @@
  * writes to Flespi.
  */
 
+import prisma from '../prisma.js'
 import * as flespi from './flespi.js'
 
 const digits = v => String(v ?? '').replace(/\D/g, '')
@@ -39,6 +40,46 @@ export async function deviceOdometers(vehicles) {
     out.set(v.id, { deviceKm: finite(t?.mileage), ts: t?.ts ?? null })
   }
   return out
+}
+
+/**
+ * Record "the vehicle's real odometer is `readingKm` now" (the one write path:
+ * PUT /api/vehicles/:id/odometer and the vehicle import both come through here).
+ * The correction kept is that reading minus the tracker's own (`deviceKm`);
+ * reminder cycles that started on the old reading move with it, and the change
+ * goes into OdometerAdjustment. Nothing is written to Flespi.
+ *
+ * @param {object} existing  the Vehicle row (id, odometerOffsetKm)
+ * @returns the vehicle's odometer fields (ODOMETER_SELECT of routes/vehicles.js)
+ */
+export async function applyOdometerReading(existing, { readingKm, deviceKm, by = null, note = null }) {
+  const offset = readingKm - deviceKm
+  const delta = offset - (existing.odometerOffsetKm ?? 0)
+  const setAt = new Date()
+  const [row] = await prisma.$transaction([
+    prisma.vehicle.update({
+      where: { id: existing.id },
+      data: { odometerOffsetKm: offset, odometerSetAt: setAt, odometerSetBy: by },
+      select: { id: true, imei: true, odometerOffsetKm: true, odometerSetAt: true, odometerSetBy: true },
+    }),
+    prisma.reminderVehicle.updateMany({
+      where: { vehicleId: existing.id, startOdometer: { not: null } },
+      data: { startOdometer: { increment: delta } },
+    }),
+    prisma.odometerAdjustment.create({
+      data: {
+        vehicleId: existing.id,
+        readingKm,
+        deviceKm,
+        offsetKm: offset,
+        previousOffsetKm: existing.odometerOffsetKm ?? null,
+        setAt,
+        setBy: by,
+        note,
+      },
+    }),
+  ])
+  return row
 }
 
 /** One vehicle's odometer as the API returns it. */

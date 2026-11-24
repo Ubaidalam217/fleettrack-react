@@ -38,7 +38,7 @@ export function sampleCsv() {
 }
 
 /** CSV text → rows of cells (quotes, doubled quotes, commas and newlines inside quotes). */
-export function parseCsv(text) {
+export function parseCsv(text, { keepBlank = false } = {}) {
   const rows = []
   let row = [], cell = '', q = false
   const s = String(text ?? '').replace(/^﻿/, '')
@@ -56,7 +56,8 @@ export function parseCsv(text) {
     } else cell += ch
   }
   if (cell !== '' || row.length) { row.push(cell); rows.push(row) }
-  return rows.filter(r => r.some(c => String(c).trim() !== ''))
+  // keepBlank: the row numbers stay the sheet's own (the vehicle import says "row 7").
+  return keepBlank ? rows : rows.filter(r => r.some(c => String(c).trim() !== ''))
 }
 
 const norm = v => String(v ?? '').trim().toLowerCase().replace(/[^a-z]/g, '')
