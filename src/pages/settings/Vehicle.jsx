@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Plus, FileBadge, BellPlus, ArrowRightLeft, Radio, Unplug, Cpu, Info } from 'lucide-react'
+import { Plus, FileBadge, BellPlus, ArrowRightLeft, Radio, Unplug, Cpu, Info, CloudDownload } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import SettingsLayout from './SettingsLayout'
 import SettingsTable, { TableToolbar } from './SettingsTable'
@@ -84,6 +84,21 @@ const COLUMNS = [
  */
 function FlespiHint({ status, imei, onResolve }) {
   if (!status) return null
+  // A fuel vehicle fed from the client's Uffizio system (2026-11-24): never on
+  // Flespi, so never "Not in Flespi", and its tracker is not changed here.
+  if (status.state === 'uffizio') {
+    const text = 'This vehicle’s data comes from the client’s Uffizio system (Settings › Master › Fuel). It has no Flespi device, and its number and tracker follow Uffizio.'
+    return (
+      <span title={text} aria-label={text} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
+        padding: '1px 7px', borderRadius: 999, fontSize: 10, fontWeight: 600,
+        color: 'var(--ft-accent)', background: 'color-mix(in srgb, var(--ft-accent) 10%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--ft-accent) 35%, transparent)',
+      }}>
+        <CloudDownload size={11} strokeWidth={2.4} aria-hidden="true" />Uffizio
+      </span>
+    )
+  }
   const missing = status.state === 'missing'
   const none = status.state === 'none'
   const tone = missing ? '#d97706' : 'var(--c-text3)'
@@ -236,7 +251,7 @@ export default function Vehicle(props) {
   // Client, 2026-11-17: trackers are changed here ({ vehicle, tab }).
   const [tracker, setTracker] = useState(null)
   const access = usePageAccess('vehicle')
-  const canTracker = row => TRACKER_ACTIONS_AVAILABLE && access.canWrite && isOwned(row)
+  const canTracker = row => TRACKER_ACTIONS_AVAILABLE && access.canWrite && isOwned(row) && row.dataSource !== 'UFFIZIO'
 
   // The Vehicle Number column carries a hint where Flespi disagrees (FlespiHint),
   // which opens the tracker dialog for a vehicle this account may change.
@@ -244,11 +259,12 @@ export default function Vehicle(props) {
   const columns = useMemo(() => COLUMNS.map(c => (c.key !== 'vehicleNumber' ? c : {
     ...c,
     render: row => {
-      const status = !row.imei ? (TRACKER_ACTIONS_AVAILABLE ? { state: 'none' } : null) : flespiStatusFor(row, liveByImei)
+      const status = row.dataSource === 'UFFIZIO' ? { state: 'uffizio' }
+        : !row.imei ? (TRACKER_ACTIONS_AVAILABLE ? { state: 'none' } : null) : flespiStatusFor(row, liveByImei)
       return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           {row.vehicleNumber || '—'}
-          <FlespiHint status={status} imei={row.imei} onResolve={status && canTracker(row) ? () => setTracker({ vehicle: row }) : undefined} />
+          <FlespiHint status={status} imei={row.imei} onResolve={status && status.state !== 'uffizio' && canTracker(row) ? () => setTracker({ vehicle: row }) : undefined} />
         </span>
       )
     },
@@ -587,14 +603,14 @@ export default function Vehicle(props) {
                       aria-readonly="true"
                       style={{ ...inputStyle(false), background: 'var(--c-thead)', color: 'var(--c-text3)', cursor: 'not-allowed', flex: 1, minWidth: 0 }}
                     />
-                    <button
+                    {draft.dataSource !== 'UFFIZIO' && <button
                       type="button"
                       className="ft-btn"
                       onClick={() => { const row = vehicles.find(v => v.id === draft.id); closeForm(); if (row) setTracker({ vehicle: row }) }}
                       style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}
                     >
                       <Cpu size={13} />{draft.imei ? 'Change tracker' : 'Install tracker'}
-                    </button>
+                    </button>}
                   </div>
                 ) : (
                   <input

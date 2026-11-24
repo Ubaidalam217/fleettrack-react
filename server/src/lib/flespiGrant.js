@@ -73,8 +73,10 @@ export async function buildAcl(scope) {
   // a shared vehicle's tracker belongs to its owner (lib/sharePolicy.js).
   const canWrite = methods.includes('PUT')
   const [vehicles, owned] = await Promise.all([
-    prisma.vehicle.findMany({ where: scopedWhere('vehicle', scope), select: { id: true, imei: true } }),
-    canWrite ? prisma.vehicle.findMany({ where: scopedWhere('ownedVehicle', scope), select: { id: true } }) : [],
+    // Only Flespi vehicles: an Uffizio one (lib/uffizio.js) has no Flespi device
+    // and is not an "unmatched" IMEI either.
+    prisma.vehicle.findMany({ where: scopedWhere('vehicle', scope, { dataSource: 'FLESPI' }), select: { id: true, imei: true } }),
+    canWrite ? prisma.vehicle.findMany({ where: scopedWhere('ownedVehicle', scope, { dataSource: 'FLESPI' }), select: { id: true } }) : [],
   ])
   const ownedIds = new Set(owned.map(v => v.id))
 

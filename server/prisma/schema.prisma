@@ -250,6 +250,13 @@ model Vehicle {
   /// information › Alerts). The engine raises none of them for it, so they never
   /// reach the bell, Notifications or the violation reports.
   mutedAlerts String[] @default([])
+
+  /// Where the vehicle's data comes from (client, 2026-11-24). 'FLESPI' — a
+  /// tracker on our Flespi account, joined on the IMEI (every vehicle before
+  /// this). 'UFFIZIO' — a vehicle that reports only to the client's
+  /// Uffizio/Trakzee system, pulled in by lib/uffizio.js: it never has a
+  /// Flespi device, and nothing may create or rename one for it.
+  dataSource String @default("FLESPI")
   odometerOffsetKm Float?
   odometerSetAt    DateTime?
   /// Who set it, as a name to show.
@@ -291,9 +298,39 @@ model Vehicle {
   shares              VehicleShare[]
   journeys            Journey[]
   journeyTemplates    JourneyTemplate[]
+  fuelReadings        FuelReading[]
 
   @@index([bgId])
   @@index([branchId])
+}
+
+/// One raw fuel reading of one vehicle's fuel port (client, 2026-11-24: fuel
+/// vehicles through the Uffizio API, lib/uffizio.js). `raw` is the sensor's
+/// value as the source sends it (millivolts for an analogue / BLE level
+/// sensor, percent for CAN); litres are worked out from the vehicle's
+/// calibration. Written only when the vehicle's record time changed; kept 90
+/// days (the same job deletes older rows).
+model FuelReading {
+  id        BigInt   @id @default(autoincrement())
+  vehicleId String
+  ts        DateTime
+  /// The source's port name, e.g. "BLE Fuel Level #1".
+  port      String
+  raw       Float
+  /// Litres from the calibration in use when it was stored (null: none yet).
+  /// The report and the alerts convert `raw` again with the current one.
+  litres    Float?
+  ign       Boolean?
+  lat       Float?
+  lng       Float?
+  speed     Float?
+  createdAt DateTime @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleId, port, ts])
+  @@index([vehicleId, ts])
+  @@index([ts])
 }
 
 /// A place, besides its own, where a vehicle also shows (client, 2026-11-13:

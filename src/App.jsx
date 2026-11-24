@@ -32,6 +32,7 @@ import ReallocationHistoryReport from './pages/reports/ReallocationHistoryReport
 import HeatMapReport          from './pages/reports/HeatMapReport'
 import SettingsBulkAction     from './pages/settings/BulkAction'
 import SettingsDataMonitor    from './pages/settings/DataMonitor'
+import SettingsFuel           from './pages/settings/Fuel'
 // Reports module — Movement Report, plus the two Daywise sheets (step 2)
 import WorkingHourReport       from './pages/reports/WorkingHourReport'
 import SummaryUsageReport      from './pages/reports/SummaryUsageReport'
@@ -211,6 +212,7 @@ function AppInner({ isDark, toggleTheme, themeMode, setTheme }) {
         <Route path="/settings/driver"          element={guard(<SettingsDriver         {...themeProps} />)} />
         <Route path="/settings/expense"         element={guard(<SettingsExpense        {...themeProps} />)} />
         <Route path="/settings/reminder-rule"   element={guard(<SettingsReminderRule   {...themeProps} />)} />
+        <Route path="/settings/fuel"            element={guard(<SettingsFuel           {...themeProps} />)} />
         {/* Master is a group now (Expense under it); old links land on its first page. */}
         <Route path="/settings/master"          element={<Navigate to="/settings/expense" replace />} />
         {/* …and the branches that share one placeholder until they get built. */}

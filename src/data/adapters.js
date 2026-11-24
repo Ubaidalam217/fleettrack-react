@@ -184,6 +184,9 @@ export const vehicle = {
     imei: r.imei ?? '',
     // The Flespi device the vehicle was last linked to; a record, the IMEI is the join key.
     flespiDeviceId: r.flespiDeviceId ?? null,
+    // Where its data comes from: 'FLESPI', or 'UFFIZIO' for the fuel vehicles
+    // pulled from the client's Uffizio system (never a Flespi device).
+    dataSource: r.dataSource ?? 'FLESPI',
     odometer: orBlank(r.odometer),
     make: orBlank(r.make),
     model: orBlank(r.model),

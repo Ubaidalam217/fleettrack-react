@@ -53,6 +53,7 @@ import ingestRoutes from './routes/ingest.js'
 import appUpdateRoutes from './routes/appUpdates.js'
 import liveRoutes from './routes/live.js'
 import dataMonitorRoutes from './routes/dataMonitor.js'
+import uffizioRoutes from './routes/uffizio.js'
 import journeyRoutes from './routes/journeys.js'
 import routeTemplateRoutes from './routes/routeTemplates.js'
 import journeySettingRoutes from './routes/journeySettings.js'
@@ -238,6 +239,8 @@ export function createApp() {
   app.use('/api/assistant', assistantRoutes)
   // Settings › Device Data Monitor — Super Admin only (routes/dataMonitor.js).
   app.use('/api/data-monitor', dataMonitorRoutes)
+  // The Uffizio fuel-vehicle feed (routes/uffizio.js): status, poll now, test.
+  app.use('/api/uffizio', uffizioRoutes)
   // Journey Management (routes/journeys.js checks the Journeys screen itself).
   app.use('/api/journeys', journeyRoutes)
   app.use('/api/route-templates', routeTemplateRoutes)

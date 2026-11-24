@@ -81,6 +81,7 @@ export const SCREEN_MODULES = [
       { id: '/settings/geofence', label: 'Address - Geofence', kind: 'data' },
       { id: '/settings/expense',  label: 'Expense',            kind: 'data' },
       { id: '/settings/reminder-rule', label: 'Reminder Rule',  kind: 'data', hint: 'Also Mark done in Reminder Status' },
+      { id: '/settings/fuel',     label: 'Fuel calibration',   kind: 'data', hint: 'Upload and edit fuel calibrations' },
     ],
   },
 ]

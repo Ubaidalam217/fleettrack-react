@@ -113,6 +113,15 @@ const listQuerySchema = z.object({
   branchId: z.string().trim().min(1).optional(),
 })
 
+/**
+ * A vehicle whose data comes from somewhere other than our Flespi account
+ * (dataSource 'UFFIZIO', lib/uffizio.js). Its IMEI is the join key with that
+ * system, so its tracker is never changed, removed, merged or synced here, and
+ * no Flespi device is ever created or renamed for it.
+ */
+const isExternal = v => !!v?.dataSource && v.dataSource !== 'FLESPI'
+const EXTERNAL_TRACKER = 'This vehicle’s data comes from Uffizio: its tracker is kept in step with Uffizio and is not changed in FleetmaxX or Flespi'
+
 /** Throws 409 if the IMEI is on another vehicle. Compares normalised digits. */
 async function assertImeiFree(imei, exceptId = null) {
   const clash = await prisma.vehicle.findFirst({
@@ -378,8 +387,13 @@ router.put(
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
     const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
+    const external = isExternal(existing)
+    if (external && req.body.imei && req.body.imei !== existing.imei) {
+      throw badRequest(EXTERNAL_TRACKER, { imei: 'Kept in step with Uffizio' })
+    }
     if (req.body.imei) await assertImeiFree(req.body.imei, existing.id)
-    const flespiDevice = await syncVehicleDevice({
+    // An Uffizio vehicle has no Flespi device, and none may be made for it.
+    const flespiDevice = external ? null : await syncVehicleDevice({
       imei: req.body.imei ?? existing.imei,
       oldImei: existing.imei,
       name: deviceName({ ...existing, ...req.body }),
@@ -677,6 +691,11 @@ router.get(
   asyncHandler(async (req, res) => {
     const v = await findScopedOrThrow('vehicle', req.params.id, req.scope)
     const out = { imei: v.imei ?? null, flespiDeviceId: v.flespiDeviceId ?? null, state: v.imei ? 'missing' : 'none', device: null, suggestion: null }
+    // Not a Flespi tracker at all: never "missing" from Flespi.
+    if (isExternal(v)) {
+      res.json({ data: { ...out, state: 'external', source: v.dataSource } })
+      return
+    }
     if (!flespi.isConfigured()) {
       res.json({ data: { ...out, state: v.imei ? 'unknown' : 'none' } })
       return
@@ -711,6 +730,7 @@ router.post(
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
     const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
+    if (isExternal(existing)) throw badRequest(EXTERNAL_TRACKER)
     const { imei, note } = req.body
     if (imei === existing.imei) throw badRequest('This is already the vehicle’s tracker', { imei: 'Same IMEI' })
     await assertImeiFree(imei)
@@ -759,6 +779,7 @@ router.post(
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
     const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
+    if (isExternal(existing)) throw badRequest(EXTERNAL_TRACKER)
     if (!existing.imei) throw badRequest('This vehicle has no tracker')
     const [row] = await prisma.$transaction([
       prisma.vehicle.update({ where: { id: existing.id }, data: { imei: null, flespiDeviceId: null }, include: VEHICLE_INCLUDE }),
@@ -779,6 +800,7 @@ router.post(
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
     const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
+    if (isExternal(existing)) throw badRequest(EXTERNAL_TRACKER)
     if (!existing.imei) throw badRequest('This vehicle has no tracker')
     if (!flespi.isConfigured()) throw badRequest('Flespi is not set up on this server')
     const byImei = await flespi.deviceMap({ force: true })
@@ -809,6 +831,7 @@ router.post(
     assertCanWrite(req.scope, 'vehicle')
     const source = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
     const target = await findScopedOrThrow('ownedVehicle', req.body.targetId, req.scope)
+    if (isExternal(source) || isExternal(target)) throw badRequest('Uffizio vehicles are kept in step with Uffizio and cannot be merged')
     const bg = source.bgId !== target.bgId
       ? await prisma.businessGroup.findUnique({ where: { id: target.bgId }, select: { name: true } })
       : null

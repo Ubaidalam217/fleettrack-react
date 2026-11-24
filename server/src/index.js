@@ -9,6 +9,7 @@ import { startDailyUsageJob } from './lib/dailyUsage.js'
 import { startAlertEngine } from './lib/alertEngine.js'
 import { startTelemetry } from './lib/telemetry.js'
 import { startDataMonitor } from './lib/dataMonitor.js'
+import { startUffizioJob } from './lib/uffizio.js'
 
 const app = createApp()
 
@@ -29,6 +30,8 @@ const stopAlertEngine = startAlertEngine()
 const stopTelemetry = startTelemetry()
 // Device Data Monitor: overloads checked every minute, counts saved hourly (lib/dataMonitor.js).
 const stopDataMonitor = startDataMonitor()
+// Uffizio fuel vehicles: one live-data poll every ~2 min when UFFIZIO_* is set (lib/uffizio.js).
+const stopUffizio = startUffizioJob()
 
 /**
  * Graceful shutdown.
@@ -46,6 +49,7 @@ async function shutdown(signal) {
   console.log(`[fleetmax] ${signal} received, shutting down`)
   stopDailyUsage()
   stopAlertEngine()
+  stopUffizio()
   await stopTelemetry()
   await stopDataMonitor()
 

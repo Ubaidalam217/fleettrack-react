@@ -1,6 +1,6 @@
 import {
   Layers, Users, Car, Bell, IdCard,
-  Database, MapPinned, ListChecks, Receipt, BellRing, Activity,
+  Database, MapPinned, ListChecks, Receipt, BellRing, Activity, Fuel,
 } from 'lucide-react'
 import { filterMenu, ancestorIdsIn, labelForPathIn } from './navTree'
 
@@ -54,6 +54,8 @@ export const SETTINGS_MENU = [
     children: [
       { id: 'reminder-rule', label: 'Reminder Rule', icon: BellRing, path: '/settings/reminder-rule' },
       { id: 'expense', label: 'Expense', icon: Receipt, path: '/settings/expense' },
+      // Client, 2026-11-24: fuel calibration, and the Uffizio fuel-vehicle feed.
+      { id: 'fuel', label: 'Fuel', icon: Fuel, path: '/settings/fuel' },
     ],
   },
   { id: 'geofence',   label: 'Address - Geofence', icon: MapPinned,  path: '/settings/geofence' },

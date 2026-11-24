@@ -74,6 +74,8 @@ const PAGE_ROLES = Object.freeze({
   // The same for expenses: a sub-user reads those of its own vehicles.
   expense: ALL,
   'reminder-rule': ALL,
+  // Fuel calibration (a sub-user reads it) and the Uffizio feed card.
+  fuel: ALL,
   // Every tracker in the account and every user's Flespi usage (client, 2026-11-16).
   'data-monitor': [ROLE.SUPER_ADMIN],
 })
@@ -92,6 +94,8 @@ export const PAGE_ENTITY = Object.freeze({
   driver: 'driver',
   expense: 'expense',
   'reminder-rule': 'reminderRule',
+  // A calibration is a setting of the vehicle.
+  fuel: 'vehicle',
 })
 
 /**
