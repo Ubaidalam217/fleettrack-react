@@ -203,9 +203,9 @@ export default function JourneySettings(props) {
             </div>
 
             <div className="j-card j-form-card">
-              <div className="j-card-head"><MapIcon size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Route optimization distances</h2></div>
+              <div className="j-card-head"><MapIcon size={18} /><h2 className="j-card-title" style={{ fontSize: 17 }}>Road routes and distances</h2></div>
               {[
-                ['ESTIMATE', 'Estimate', 'Straight-line distance × a road factor. Free, nothing to set up.'],
+                ['ESTIMATE', 'Estimate', 'Straight-line distance × a road factor. Free, nothing to set up. If the OpenRouteService key is set on the server, New Journey still draws road routes with it.'],
                 ['OSRM', 'OSRM (your own server)', 'Exact road distances from an OSRM server you run (UAE map, about 2 GB of memory). Free.'],
                 ['ORS', 'OpenRouteService', 'Needs OPENROUTESERVICE_API_KEY on the server. Free key, daily limits.'],
                 ['GOOGLE', 'Google Maps', 'Needs GOOGLE_MAPS_API_KEY on the server. Paid per request.'],
@@ -222,7 +222,7 @@ export default function JourneySettings(props) {
                 <label className="j-field"><span>Road factor</span><input className="j-input" type="number" step="0.05" min="1" max="3" value={v.routing.roadFactor} disabled={ro} onChange={e => setIn('routing', 'roadFactor', e.target.value)} /></label>
                 <label className="j-field"><span>OSRM address</span><input className="j-input" value={v.routing.osrmUrl} disabled={ro} onChange={e => setIn('routing', 'osrmUrl', e.target.value)} placeholder="http://10.0.0.5:5000" /></label>
               </div>
-              <div className="j-label" style={{ marginTop: 8 }}>A service that is picked but not set up, or does not answer, falls back to the estimate. A paid service is only called once its key is set.</div>
+              <div className="j-label" style={{ marginTop: 8 }}>Used by New Journey (the road route and its driving times) and Route Optimization. A service that is picked but not set up, or does not answer, falls back to the estimate. A paid service is only called once its key is set.</div>
             </div>
 
             <div className="j-card j-form-card">

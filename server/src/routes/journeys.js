@@ -26,7 +26,10 @@ import crypto from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import { Router } from 'express'
 import { z } from 'zod'
+import rateLimit from 'express-rate-limit'
+import env from '../env.js'
 import prisma from '../prisma.js'
+import { roadRoute } from '../lib/roadRoute.js'
 import { asyncHandler, badRequest, conflict, forbidden, HttpError, notFound } from '../lib/http.js'
 import { bgWhere, findScopedOrThrow, scopedWhere, vehicleWhere, bgFleetWhere } from '../lib/scope.js'
 import { atLeast, canApproveJourneys, journeysLevel } from '../lib/permissions.js'
@@ -103,7 +106,7 @@ const journeySchema = z.object({
   vehicleId: z.string().trim().min(1, 'Pick a vehicle'),
   driverId: z.union([z.string().trim().min(1), z.null()]).optional().transform(v => v || null),
   plannedStart: z.coerce.date({ error: 'Pick the start time' }),
-  routeSource: z.enum(['PAST_TRIP', 'DRAWN', 'STRAIGHT']).default('STRAIGHT'),
+  routeSource: z.enum(['PAST_TRIP', 'DRAWN', 'ROAD', 'STRAIGHT']).default('STRAIGHT'),
   plannedPath: z.union([z.array(z.array(z.number()).min(2)).max(20000), z.null()]).optional(),
   recordedFrom: z.union([z.record(z.string(), z.any()), z.null()]).optional(),
   routeTemplateId: z.union([z.string().trim().min(1), z.null()]).optional(),
@@ -430,6 +433,45 @@ router.get(
         points: pts.length,
       },
     })
+  })
+)
+
+// ── the road route through the stops ───────────────────────────────────────
+
+const routeSchema = z.object({
+  bgId: z.union([z.string().trim().min(1), z.null()]).optional(),
+  points: z.array(z.object({ lat, lng })).min(2, 'Place at least two stops').max(60),
+})
+
+// Each call may cost the provider's free daily quota: per account, not per address.
+const routeLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 40,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: () => env.isTest,
+  keyGenerator: req => `route:${req.user?.id ?? 'anon'}`,
+  validate: { keyGeneratorIpFallback: false },
+  message: { error: { message: 'Too many route requests. Try again in a minute.' } },
+})
+
+/**
+ * The best road route through the stops (client 2026-11-24): its line, each
+ * leg's distance and driving time. No provider set up or a provider that fails
+ * is NOT an error: the answer is the estimate with `estimated: true` (and a note).
+ */
+router.post(
+  '/route',
+  routeLimiter,
+  validate(routeSchema),
+  asyncHandler(async (req, res) => {
+    need(req, 'modify')
+    let bgId = req.scope.bgId ?? req.body.bgId ?? null
+    if (bgId) await findScopedOrThrow('bg', bgId, req.scope)
+    const settings = await getJourneySettings(bgId)
+    const route = await roadRoute(req.body.points, { routing: settings.routing, speedKmh: settings.plannedSpeedKmh })
+    res.set('Cache-Control', 'no-store')
+    res.json({ data: route })
   })
 )
 

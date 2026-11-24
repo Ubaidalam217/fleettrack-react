@@ -38,7 +38,7 @@ const stop = z.object({
 const schema = z.object({
   bgId: z.union([z.string().trim().min(1), z.null()]).optional(),
   name: z.string().trim().min(1, 'Name the route').max(120),
-  source: z.enum(['PAST_TRIP', 'DRAWN', 'STRAIGHT']),
+  source: z.enum(['PAST_TRIP', 'DRAWN', 'ROAD', 'STRAIGHT']),
   path: z.union([z.array(z.array(z.number()).min(2)).max(20000), z.null()]).optional(),
   driveMin: z.union([z.null(), z.coerce.number().int().min(0).max(4320)]).optional(),
   stops: z.array(stop).min(2).max(40),

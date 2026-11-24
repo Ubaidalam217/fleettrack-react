@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { History, PenLine, Route, Plus, X, ChevronDown, ChevronUp, Send, Check, AlertTriangle, MapPin, Undo2, BookMarked, Upload, Copy, LayoutTemplate, Repeat, Thermometer, Truck } from 'lucide-react'
+import { History, PenLine, Route, Navigation, Plus, X, ChevronDown, ChevronUp, Send, Check, AlertTriangle, MapPin, Undo2, BookMarked, Upload, Copy, LayoutTemplate, Repeat, Thermometer, Truck } from 'lucide-react'
 import JourneyShell from './JourneyShell'
 import JourneyMap from '../../components/journeys/JourneyMap'
 import { ErrorNote } from '../../components/journeys/JourneyBits'
@@ -8,8 +8,9 @@ import { JModal, AddressPicker, StopsImport } from '../../components/journeys/Jo
 import {
   journeyOptions, journeyAvailability, routeFromTrip, getJourney, createJourney, updateJourney, saveRouteTemplate,
   hhmm, duration, toLocalInput, fromLocalInput, uaeDay, dayTime,
-  stopMark, recentJourneys, bulkAddresses, saveJourneyTemplate, PURPOSE_LABEL,
+  stopMark, recentJourneys, bulkAddresses, saveJourneyTemplate, PURPOSE_LABEL, roadRoute,
 } from '../../data/journeys'
+import { applyRoadLegs, clearRoadLegs, estimateBanner, routeKey, routePoints, PROVIDER_LABEL } from '../../utils/roadRoute'
 import { upcoming, scheduleErrors, describeSchedule, WEEKDAY_SHORT, uaeDateKey } from '../../utils/journeyRecurrence'
 import { errorMessage } from '../../data/http'
 import { computeSchedule, overrideArrival } from '../../utils/journeySchedule'
@@ -81,7 +82,13 @@ export default function JourneyForm(props) {
   const [vehicleId, setVehicleId] = useState('')
   const [driverId, setDriverId] = useState('')
   const [start, setStart] = useState(defaultStart)
-  const [routeSource, setRouteSource] = useState('STRAIGHT')
+  // "Road route" is the default (client 2026-11-24): the best road through the stops, from the server.
+  const [routeSource, setRouteSource] = useState('ROAD')
+  const [road, setRoad] = useState({ status: 'idle', route: null, note: null }) // idle | loading | ok | estimate
+  const roadSeq = useRef(0)
+  const roadFitted = useRef(false) // the map zooms to the first route only, not on every stop you add
+  const roadLoadedKey = useRef(null) // an edited journey keeps its saved line until a stop moves
+  const [roadFit, setRoadFit] = useState(0)
   const [path, setPath] = useState(null)
   const [recordedFrom, setRecordedFrom] = useState(null)
   const [templateId, setTemplateId] = useState(null)
@@ -126,6 +133,7 @@ export default function JourneyForm(props) {
     getJourney(id).then(j => {
       setTitle(j.title); setVehicleId(j.vehicleId ?? ''); setDriverId(j.driverId ?? ''); setStart(toLocalInput(j.plannedStart))
       setRouteSource(j.routeSource); setPath(j.plannedPath ?? null); setRecordedFrom(j.recordedFrom ?? null); setTemplateId(j.routeTemplateId ?? null)
+      roadLoadedKey.current = j.routeSource === 'ROAD' && j.plannedPath?.length >= 2 ? routeKey(j.stops) : null
       setStops(j.stops.map(s => newStop({ ...s, legSource: s.legSource ?? 'SPEED', polygon: undefined })))
       setInstructions(j.instructions ?? ''); setCustomer(j.customer ?? ''); setPriority(j.priority); setType(j.type)
       applyOptions(j)
@@ -169,6 +177,37 @@ export default function JourneyForm(props) {
   }, [placed, ready, line, start, settings])
 
   const distanceKm = line ? pathKm(line) : schedule?.distanceKm ?? 0
+
+  // Road route: ask the server for the best road through the stops whenever a stop moves (debounced).
+  const stopsKey = routeKey(placed)
+  useEffect(() => {
+    if (routeSource !== 'ROAD' || !loaded) { roadSeq.current++; setRoad(r => (r.status === 'idle' ? r : { status: 'idle', route: null, note: null })); return undefined }
+    const pts = routePoints(placed)
+    if (!pts) { roadSeq.current++; setRoad({ status: 'idle', route: null, note: null }); return undefined }
+    if (roadLoadedKey.current === stopsKey) { setRoad(r => ({ ...r, status: 'ok' })); return undefined }
+    roadLoadedKey.current = null
+    const mine = ++roadSeq.current
+    setRoad(r => ({ ...r, status: 'loading' }))
+    const t = setTimeout(() => {
+      roadRoute({ points: pts, bgId: opts?.bgId ?? null }).then(route => {
+        if (mine !== roadSeq.current) return
+        const ok = !route.estimated
+        setPath(ok ? route.geometry : null)
+        setStops(list => applyRoadLegs(list, route))
+        setRoad({ status: ok ? 'ok' : 'estimate', route, note: route.note })
+        if (ok && !roadFitted.current) { roadFitted.current = true; setRoadFit(n => n + 1) }
+        if (!ok) roadFitted.current = false
+      }).catch(() => {
+        if (mine !== roadSeq.current) return
+        setPath(null)
+        setStops(list => clearRoadLegs(list))
+        setRoad({ status: 'estimate', route: null, note: 'The road service did not answer' })
+      })
+    }, 700)
+    return () => clearTimeout(t)
+    // placed is represented by stopsKey (only a moved stop needs a new route)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeSource, stopsKey, loaded, opts?.bgId])
 
   // "Free at this time" for the chosen vehicle.
   const expected = schedule?.expectedArrival?.toISOString()
@@ -334,9 +373,19 @@ export default function JourneyForm(props) {
     setStops(t.stops.map(s => newStop({ ...s, legSource: s.legSource ?? 'SPEED' })))
   }
 
+  /** Leaving "Road route": the minutes the road service set go back to the planned speed. */
+  function leaveRoad() {
+    roadSeq.current++
+    setRoad({ status: 'idle', route: null, note: null })
+    setStops(list => clearRoadLegs(list))
+  }
+
   function setLeg(i, minutes) {
     const v = minutes === '' ? null : Math.max(0, Math.round(Number(minutes)))
-    setStop(i, v == null ? { legDriveMin: null, legSource: 'SPEED' } : { legDriveMin: v, legSource: 'MANUAL' })
+    const routed = road.route && !road.route.estimated ? road.route.legs[i - 1] : null
+    // Reset on a road route goes back to the road minutes, not to the speed estimate.
+    if (v == null && routeSource === 'ROAD' && routed) setStop(i, { legDriveMin: routed.durationMin, legSource: 'ROUTING' })
+    else setStop(i, v == null ? { legDriveMin: null, legSource: 'SPEED' } : { legDriveMin: v, legSource: 'MANUAL' })
   }
   function setArrival(i, local) {
     if (!schedule || !local) return
@@ -416,7 +465,7 @@ export default function JourneyForm(props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [when, sched, start])
 
-  const canSave = title.trim() && vehicleId && ready && schedule && !busy
+  const canSave = title.trim() && vehicleId && ready && schedule && !busy && road.status !== 'loading'
   const n = stops.length
 
   return (
@@ -469,11 +518,34 @@ export default function JourneyForm(props) {
 
             <div style={{ marginTop: 18 }}>
               <div className="j-field"><span>Route</span></div>
-              <div className="j-seg" style={{ marginTop: 6, width: '100%', display: 'flex' }}>
-                <button type="button" style={{ flex: 1 }} aria-pressed={routeSource === 'PAST_TRIP'} onClick={() => setTripOpen(o => !o)}><History size={14} /> Copy a past trip</button>
-                <button type="button" style={{ flex: 1 }} aria-pressed={routeSource === 'DRAWN'} onClick={() => { setRouteSource('DRAWN'); setTrip(null); setRecordedFrom(null); if (routeSource !== 'DRAWN') setPath(null); setClickMode('draw') }}><PenLine size={14} /> Draw on the map</button>
-                <button type="button" style={{ flex: 1 }} aria-pressed={routeSource === 'STRAIGHT'} onClick={() => { setRouteSource('STRAIGHT'); setPath(null); setTrip(null); setRecordedFrom(null); setClickMode('stop') }}><Route size={14} /> Straight legs</button>
+              <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 6 }}>
+                {[
+                  ['ROAD', <><Navigation size={14} /> Road route</>, () => { if (routeSource !== 'ROAD') { setRouteSource('ROAD'); setPath(null); setTrip(null); setRecordedFrom(null); setTemplateId(null); roadLoadedKey.current = null } setClickMode('stop') }],
+                  ['PAST_TRIP', <><History size={14} /> Copy a past trip</>, () => setTripOpen(o => !o)],
+                  ['DRAWN', <><PenLine size={14} /> Draw on the map</>, () => { leaveRoad(); setRouteSource('DRAWN'); setTrip(null); setRecordedFrom(null); if (routeSource !== 'DRAWN') setPath(null); setClickMode('draw') }],
+                  ['STRAIGHT', <><Route size={14} /> Straight legs</>, () => { leaveRoad(); setRouteSource('STRAIGHT'); setPath(null); setTrip(null); setRecordedFrom(null); setClickMode('stop') }],
+                ].map(([k, label, onClick]) => (
+                  <button key={k} type="button" className="j-tab" style={{ border: '1px solid var(--j-line2)', justifyContent: 'center' }} aria-pressed={routeSource === k} onClick={onClick}>{label}</button>
+                ))}
               </div>
+
+              {routeSource === 'ROAD' && (
+                <div className="j-inset" style={{ marginTop: 10, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }} role="status" data-testid="road-status">
+                  <Navigation size={16} />
+                  {road.status === 'loading' && <span style={{ flex: 1, fontSize: 12.5 }}>Finding the best road route…</span>}
+                  {road.status === 'idle' && <span style={{ flex: 1, fontSize: 12.5 }}>Click the map to place the start and the destination; the road route is drawn for you.</span>}
+                  {road.status === 'ok' && road.route && (
+                    <span style={{ flex: 1, fontSize: 12.5 }}>
+                      By road: <b className="j-strong">{Math.round(road.route.distanceKm)} km · {duration(road.route.durationMin)}</b> driving
+                      <span className="j-muted"> · {PROVIDER_LABEL[road.route.provider] ?? road.route.provider}. Change a leg's minutes below if you know better.</span>
+                    </span>
+                  )}
+                  {road.status === 'ok' && !road.route && <span style={{ flex: 1, fontSize: 12.5 }}>The saved road route. Move a stop and it is drawn again.</span>}
+                  {road.status === 'estimate' && (
+                    <span style={{ flex: 1, fontSize: 12.5 }} className="j-warn-text"><AlertTriangle size={12} style={{ verticalAlign: -2 }} /> {estimateBanner(road.note)}. Straight legs at {settings?.plannedSpeedKmh ?? 70} km/h are used.</span>
+                  )}
+                </div>
+              )}
 
               {tripOpen && (
                 <div className="j-inset" style={{ marginTop: 10 }}>
@@ -604,7 +676,7 @@ export default function JourneyForm(props) {
                         {!isFirst && sc && (
                           <div className="j-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             Drive <input className="j-input j-input--sm j-input--num" type="number" min="0" value={s.legSource === 'MANUAL' ? s.legDriveMin ?? '' : sc.legDriveMin} onChange={e => setLeg(i, e.target.value)} aria-label={`Drive time to ${s.name || 'this stop'}`} /> min
-                            <span>· {sc.legKm ? `${Math.round(sc.legKm)} km` : ''} · {s.legSource === 'MANUAL' ? 'set by you' : s.legSource === 'TRIP' ? 'from the past trip' : `at ${settings?.plannedSpeedKmh ?? 70} km/h`}</span>
+                            <span>· {sc.legKm ? `${Math.round(sc.legKm)} km` : ''} · {s.legSource === 'MANUAL' ? 'set by you' : s.legSource === 'TRIP' ? 'from the past trip' : s.legSource === 'ROUTING' ? 'by road' : `at ${settings?.plannedSpeedKmh ?? 70} km/h`}</span>
                             {s.legSource === 'MANUAL' && <button type="button" className="j-btn j-btn--sm j-btn--ghost" onClick={() => setLeg(i, '')}>Reset</button>}
                           </div>
                         )}
@@ -804,7 +876,7 @@ export default function JourneyForm(props) {
                 height={typeof window !== 'undefined' && window.innerWidth < 640 ? 320 : 560}
                 onMapClick={onMapClick}
                 showAreas
-                fitKey={`${templateId}|${recordedFrom?.from}|${loaded}`}
+                fitKey={`${templateId}|${recordedFrom?.from}|${loaded}|${roadFit}`}
               />
               <span className="j-pill j-pill--plain" style={{ position: 'absolute', top: 12, left: 12, zIndex: 500, background: 'rgba(30,45,54,.88)' }}>
                 <MapPin size={12} /> {routeSource === 'DRAWN' && clickMode === 'draw' ? 'Click the map to draw the route' : 'Click the map to add a stop'}

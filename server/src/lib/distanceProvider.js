@@ -46,7 +46,7 @@ export function estimateMatrix(places, { roadFactor = 1.3, speedKmh = 70 } = {})
   return { km, min }
 }
 
-async function getJson(url, init = {}, timeoutMs = 20_000) {
+export async function getJson(url, init = {}, timeoutMs = 20_000) {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
   try {

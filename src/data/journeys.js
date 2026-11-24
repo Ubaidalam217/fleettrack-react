@@ -13,6 +13,7 @@ export const journeyApprovals = () => request('/api/journeys/approvals', { unwra
 export const journeyOptions = (query = {}) => get('/api/journeys/options', query)
 export const journeyAvailability = query => get('/api/journeys/availability', query)
 export const routeFromTrip = query => get('/api/journeys/route-from-trip', query)
+export const roadRoute = body => post('/api/journeys/route', body)
 export const getJourney = id => get(`/api/journeys/${id}`)
 export const createJourney = body => request('/api/journeys', { method: 'POST', body, unwrap: false })
 export const updateJourney = (id, body) => request(`/api/journeys/${id}`, { method: 'PUT', body, unwrap: false })

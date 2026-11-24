@@ -1457,7 +1457,7 @@ model Journey {
   plannedDistanceKm Float?
   plannedDriveMin   Int?
   plannedStayMin    Int?
-  /// PAST_TRIP | DRAWN | STRAIGHT (legs between the stops).
+  /// PAST_TRIP | DRAWN | ROAD | STRAIGHT (legs between the stops).
   routeSource       String   @default("STRAIGHT")
   routeTemplateId   String?
   /// [[lat, lng], …] simplified, copied onto the journey so a template edit
@@ -1675,7 +1675,7 @@ model RouteTemplate {
   id            String   @id @default(cuid())
   bgId          String
   name          String
-  source        String // PAST_TRIP | DRAWN | STRAIGHT
+  source        String // PAST_TRIP | DRAWN | ROAD | STRAIGHT
   path          Json?
   distanceKm    Float?
   driveMin      Int?

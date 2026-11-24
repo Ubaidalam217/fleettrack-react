@@ -55,7 +55,7 @@ const bodySchema = z.object({
   priority: z.enum(['Normal', 'High', 'Urgent']).default('Normal'),
   type: z.enum(['ONE_WAY', 'ROUND_TRIP', 'MULTI_STOP']).optional(),
   instructions: nText(2000),
-  routeSource: z.enum(['PAST_TRIP', 'DRAWN', 'STRAIGHT']).default('STRAIGHT'),
+  routeSource: z.enum(['PAST_TRIP', 'DRAWN', 'ROAD', 'STRAIGHT']).default('STRAIGHT'),
   plannedPath: z.union([z.array(z.array(z.number()).min(2)).max(20000), z.null()]).optional(),
   recordedFrom: z.union([z.record(z.string(), z.any()), z.null()]).optional(),
   routeTemplateId: z.union([z.string().trim().min(1), z.null()]).optional(),

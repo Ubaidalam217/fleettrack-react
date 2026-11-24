@@ -186,7 +186,7 @@ function Routes({ canEdit, canDelete, onError }) {
             ) : <div className="j-strong">{r.name}</div>}
             <div className="j-label">{(r.stops ?? []).map(s => s.name).join(' → ')}</div>
           </div>
-          <span className="j-label">{r.source === 'PAST_TRIP' ? 'From a past trip' : r.source === 'DRAWN' ? 'Drawn' : 'Straight legs'}{r.distanceKm ? ` · ${Math.round(r.distanceKm)} km` : ''}</span>
+          <span className="j-label">{r.source === 'PAST_TRIP' ? 'From a past trip' : r.source === 'DRAWN' ? 'Drawn' : r.source === 'ROAD' ? 'By road' : 'Straight legs'}{r.distanceKm ? ` · ${Math.round(r.distanceKm)} km` : ''}</span>
           {canEdit && renaming?.id !== r.id && <button type="button" className="j-iconbtn" style={{ width: 30, height: 30 }} onClick={() => setRenaming({ id: r.id, name: r.name })} aria-label={`Rename ${r.name}`}><Pencil size={13} /></button>}
           {canDelete && <button type="button" className="j-iconbtn" style={{ width: 30, height: 30 }} onClick={() => window.confirm(`Delete "${r.name}"?`) && deleteRouteTemplate(r.id).then(load).catch(e => onError(errorMessage(e, 'Could not delete')))} aria-label={`Delete ${r.name}`}><Trash2 size={13} /></button>}
         </div>
