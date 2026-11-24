@@ -45,6 +45,7 @@
 import prisma from '../prisma.js'
 import env from '../env.js'
 import { deviceRow, renameRow } from './vehicleMoves.js'
+import { activeCalibrations, readingLitres } from './fuel.js'
 
 export const SOURCE = 'UFFIZIO'
 /** Uffizio's own limit: one live-data call per 120 s per company. */
@@ -416,14 +417,16 @@ async function lastStored(vehicleIds) {
 }
 
 /**
- * Store the fuel readings of the rows whose record time moved on.
+ * Store the fuel readings of the rows whose record time moved on, each with
+ * the litres the calibration in use gives (a record: the report and the
+ * alerts convert the raw value again with the current one, lib/fuel.js).
  * @returns {Promise<number>} readings inserted
  */
 export async function storeReadings(rows, byImei) {
   const withFuel = rows.filter(r => r && r.ts !== null && r.fuel.length && byImei.get(r.imei))
   if (!withFuel.length) return 0
   const ids = [...new Set(withFuel.map(r => byImei.get(r.imei).id))]
-  const last = await lastStored(ids)
+  const [last, calibrations] = await Promise.all([lastStored(ids), activeCalibrations(ids)])
   const data = []
   for (const r of withFuel) {
     const v = byImei.get(r.imei)
@@ -431,7 +434,8 @@ export async function storeReadings(rows, byImei) {
     if (r.ts > Date.now() + 10 * 60_000) continue // a clock far in the future
     for (const f of r.fuel) {
       data.push({
-        vehicleId: v.id, ts: new Date(r.ts), port: f.port, raw: f.raw, litres: null,
+        vehicleId: v.id, ts: new Date(r.ts), port: f.port, raw: f.raw,
+        litres: readingLitres(f, calibrations.get(v.id) ?? null).litres,
         ign: r.ign, lat: r.lat, lng: r.lng, speed: r.speed,
       })
     }

@@ -17,6 +17,7 @@ import {
 import OdometerSection from './OdometerSection'
 import MutedAlertsSection from './MutedAlertsSection'
 import VehicleHistorySection from './VehicleHistorySection'
+import FuelSection from './FuelSection'
 
 /**
  * "Vehicle information" from a vehicle's ⋮ menu on the Live Map (client,
@@ -408,6 +409,7 @@ export default function VehicleInfoDialog({ vehicle, title, onClose, onSaved, on
           ) : !editing ? (
             <>
               <OdometerSection vehicleId={row.id} canEdit={canEdit} onSaved={onSaved} />
+              <FuelSection vehicleId={row.id} hideEmpty />
               <MutedAlertsSection vehicleId={row.id} canEdit={canEdit} onSaved={onSaved} />
               <VehicleHistorySection vehicleId={row.id} label={vehicleTitle} />
 

@@ -73,6 +73,8 @@ export const WRITE_SCREENS = Object.freeze({
   // /api/journeys and /api/route-templates check the Journeys screen in their
   // routes: there, creating needs Edit, not Full (design §A.6).
   '/api/journey-settings': '/settings/journey',
+  // Fuel calibrations (Settings › Master › Fuel).
+  '/api/fuel': '/settings/fuel',
 })
 
 /**

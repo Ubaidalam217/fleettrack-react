@@ -54,6 +54,7 @@ import appUpdateRoutes from './routes/appUpdates.js'
 import liveRoutes from './routes/live.js'
 import dataMonitorRoutes from './routes/dataMonitor.js'
 import uffizioRoutes from './routes/uffizio.js'
+import fuelRoutes from './routes/fuel.js'
 import journeyRoutes from './routes/journeys.js'
 import routeTemplateRoutes from './routes/routeTemplates.js'
 import journeySettingRoutes from './routes/journeySettings.js'
@@ -241,6 +242,8 @@ export function createApp() {
   app.use('/api/data-monitor', dataMonitorRoutes)
   // The Uffizio fuel-vehicle feed (routes/uffizio.js): status, poll now, test.
   app.use('/api/uffizio', uffizioRoutes)
+  // Fuel calibrations and readings (routes/fuel.js).
+  app.use('/api/fuel', requireScreen(WRITE_SCREENS['/api/fuel']), fuelRoutes)
   // Journey Management (routes/journeys.js checks the Journeys screen itself).
   app.use('/api/journeys', journeyRoutes)
   app.use('/api/route-templates', routeTemplateRoutes)

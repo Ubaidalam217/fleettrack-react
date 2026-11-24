@@ -299,6 +299,7 @@ model Vehicle {
   journeys            Journey[]
   journeyTemplates    JourneyTemplate[]
   fuelReadings        FuelReading[]
+  fuelCalibrations    FuelCalibration[]
 
   @@index([bgId])
   @@index([branchId])
@@ -331,6 +332,38 @@ model FuelReading {
   @@unique([vehicleId, port, ts])
   @@index([vehicleId, ts])
   @@index([ts])
+}
+
+/// A vehicle's fuel calibration (client, 2026-11-24: "calibration files have
+/// Fuel Liter and Voltage; in the upload window we enter tank capacity and
+/// reading method"). One is in use per vehicle (`active`; a partial unique
+/// index in the migration holds that); applying another keeps the old one as
+/// history (active false, replacedAt / replacedByName) — never overwritten.
+/// The conversion is src/utils/fuelCalibration.js, shared with the web page.
+model FuelCalibration {
+  id            String    @id @default(cuid())
+  vehicleId     String
+  /// 'PORT' (a named Uffizio fuel port), 'AIN1', 'AIN2' (analogue input 1 / 2),
+  /// 'CAN' (fuel level in percent: no table, only the tank capacity).
+  method        String
+  /// The port it reads: the Uffizio port name for PORT, else 'ain.1' / 'ain.2' / 'can'.
+  port          String
+  tankCapacityL Float?
+  /// [{ litres, mv }] sorted by mv; [] for CAN.
+  points        Json      @default("[]")
+  /// The uploaded file's name, or null for a table typed in by hand.
+  fileName      String?
+  note          String?
+  active        Boolean   @default(true)
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime  @default(now())
+  replacedAt    DateTime?
+  replacedByName String?
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, createdAt])
 }
 
 /// A place, besides its own, where a vehicle also shows (client, 2026-11-13:
