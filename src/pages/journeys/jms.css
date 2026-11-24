@@ -343,3 +343,16 @@ html:not(.dark) .jms-theme .j-sigpad { background: #fff; border: 1px solid var(-
 html:not(.dark) .jms-theme .j-skel { background: linear-gradient(90deg, rgba(20, 38, 46, .05), rgba(20, 38, 46, .11), rgba(20, 38, 46, .05)); background-size: 200% 100%; }
 html:not(.dark) .jms-theme .j-tabs { background: rgba(255, 255, 255, .70); }
 html:not(.dark) .jms-theme .j-input, html:not(.dark) .jms-theme .j-select, html:not(.dark) .jms-theme .j-textarea { background: rgba(255, 255, 255, .85); color: var(--j-text1); }
+
+/* The tab bar on every journey screen (client 2026-11-24): one scrolling row, also at 400 px. */
+.j-nav {
+  display: flex; gap: 4px; padding: 4px; margin-bottom: 16px; border-radius: 16px;
+  overflow-x: auto; overflow-y: hidden; max-width: 100%; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  background: rgba(20, 34, 42, .55); border: 1px solid var(--j-line);
+}
+.j-nav::-webkit-scrollbar { display: none; }
+.j-nav .j-tab { flex: 0 0 auto; text-decoration: none; }
+.j-nav .j-tab[aria-current='page'] { background: rgba(255, 255, 255, .16); color: #fff; box-shadow: 0 1px 0 rgba(255, 255, 255, .12) inset; }
+html:not(.dark) .jms-theme .j-nav { background: rgba(255, 255, 255, .70); }
+html:not(.dark) .jms-theme .j-nav .j-tab[aria-current='page'] { background: #1c3440; color: #fff; box-shadow: none; }
+@media (max-width: 640px) { .j-nav { margin-bottom: 12px; } .j-nav .j-tab { padding: 0 11px; } }
