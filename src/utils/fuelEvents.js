@@ -1,30 +1,67 @@
 /**
- * Fuel report and fuel alerts (client, 2026-11-24): fills, drains and the
- * period's figures from a vehicle's fuel level over time. Pure and shared —
- * the server builds the report and raises the alerts with it, so both agree.
- * `.js` imports only.
+ * Fuel report and fuel alerts: fills, drains and the period's figures from a
+ * vehicle's fuel level over time. Pure and shared — the server builds the
+ * report and raises the alerts with it, so both agree. `.js` imports only.
  *
- * The rules:
- *   - Readings without litres (outside the calibration: a dropout to 0, a
- *     reading on another scale) are left out before anything else.
- *   - Noise: a median of 3 readings (a single spike or dip disappears).
- *   - FILL: the level rises by at least `threshold` litres (default 15) from
- *     a low to the next high; dips smaller than the noise band do not break
- *     the rise. Counted whether moving or not.
- *   - DRAIN: the level falls by at least `threshold` litres while the vehicle
- *     stands — ignition OFF, or speed 0 — counted only between readings that
- *     are both standing. Fuel used while driving is consumption, not a drain.
- *     A reading with neither ignition nor speed known is not "standing".
- *   - Litres used (driving) = start + filled − end − drained.
+ * The rule (client, 2026-11-25): "Any drop or fill during a trip, even on
+ * idle, or after a new trip: the difference between the old and the new
+ * reading, if it satisfies the threshold, will alert and be noted as drain or
+ * fill." So:
+ *
+ *   1. Readings without litres (outside the calibration: a dropout far out of
+ *      range, a reading on another scale) are left out first.
+ *   2. Dropouts: a short excursion — 1 to 3 readings that jump away from the
+ *      readings on both sides by at least the threshold, when those two agree
+ *      within the threshold (e.g. 120 → 0 → 0 → 120) — is a sensor glitch and
+ *      is left out, so it never makes a drain + fill pair.
+ *   3. Noise: a median of 3 readings.
+ *   4. Each valid reading is compared with the previous valid one, WHATEVER
+ *      the ignition or speed and however long the time between them: a fall
+ *      of at least `drainThreshold` litres is a DRAIN, a rise of at least
+ *      `fillThreshold` a FILL — while moving, at idle, stopped, between two
+ *      trips (the last reading of the old trip against the first of the new)
+ *      and after a gap in the data (the device was offline).
+ *   5. Episodes: a drain or fill that goes on over consecutive readings is ONE
+ *      event, from the reading before it to the furthest one. Consecutive
+ *      steps join when each moves at least the "step" amount (20 % of the
+ *      threshold, at least 2 L; 1 L between two engine-off readings, where no
+ *      fuel is being used), and one small step in between (back by less than
+ *      that) does not break it. Normal consumption while driving (well under
+ *      2 L per reading) never builds an episode, so it stays consumption.
+ *   6. Optional allowance (`allowanceLph`, default 0 = the pure threshold the
+ *      client asked for): litres per hour the engine may use, taken off a
+ *      fall for the time the engine may have run (not between two engine-off
+ *      readings). Raise it if long data gaps while driving read as drains.
+ *
+ * Each event records its context: 'moving' | 'idle' | 'stopped' |
+ * 'between_trips' | 'gap' | 'unknown', plus gapMin when readings in it are
+ * more than GAP_MS apart.
+ *
+ * Litres used = start + filled − end − drained: consumption, without the
+ * detected drains and fills.
  */
 
 export const DEFAULT_THRESHOLD_L = 15
+/** Readings further apart than this are "a gap in the data". */
+export const GAP_MS = 15 * 60_000
+/** A dropout is at most this many readings long. */
+export const DROPOUT_MAX_READINGS = 3
+/** An alert waits for this many readings after an event's end (a dropout could still come back). */
+export const SETTLE_READINGS = DROPOUT_MAX_READINGS
 const STILL_KMH = 2
+const ENGINE_OFF_STEP_L = 1
+const EPS = 1e-9
 
 const fin = v => typeof v === 'number' && Number.isFinite(v)
+const round1 = v => Math.round(v * 10) / 10
 
-/** Is the vehicle standing at this reading (ignition off, or not moving)? */
-export const isStanding = r => r?.ign === false || (fin(r?.speed) && r.speed < STILL_KMH)
+/** 'moving' | 'idle' | 'stopped' | 'unknown' for one reading. */
+export function readingState(r) {
+  if (r?.ign === false) return 'stopped'
+  if (fin(r?.speed) && r.speed >= STILL_KMH) return 'moving'
+  if (r?.ign === true) return 'idle'
+  return 'unknown'
+}
 
 /** Median of 3, the ends kept. Input and output: [{ ts, litres, ... }] with litres set. */
 export function medianOf3(list) {
@@ -37,76 +74,192 @@ export function medianOf3(list) {
 }
 
 /**
- * The cleaned series: readings with litres, in time order, median of 3.
- * @param {{ts:number, litres:number|null, ign?:boolean|null, speed?:number|null}[]} readings
+ * Leave out short excursions that come back (rule 2). A run at the very end
+ * of the series is kept: it may yet come back, or be a real drain.
  */
-export function cleanSeries(readings) {
-  const list = (readings ?? []).filter(r => fin(r?.ts) && fin(r?.litres)).sort((a, b) => a.ts - b.ts)
-  return medianOf3(list)
+export function removeDropouts(list, threshold = DEFAULT_THRESHOLD_L) {
+  const th = fin(threshold) && threshold > 0 ? threshold : DEFAULT_THRESHOLD_L
+  const keep = list.map(() => true)
+  for (let i = 1; i < list.length - 1; i++) {
+    if (!keep[i]) continue
+    const before = list[i - 1].litres
+    const dir = Math.sign(list[i].litres - before)
+    if (!dir || Math.abs(list[i].litres - before) < th - EPS) continue
+    for (let len = 1; len <= DROPOUT_MAX_READINGS && i + len < list.length; len++) {
+      const run = list.slice(i, i + len)
+      const after = list[i + len].litres
+      if (Math.abs(after - before) >= th - EPS) {
+        // Not back yet: a longer run may still be a dropout.
+        if (!run.every(r => dir * (r.litres - before) >= th - EPS)) break
+        continue
+      }
+      if (run.every(r => dir * (r.litres - before) >= th - EPS && dir * (r.litres - after) >= th - EPS)) {
+        for (let k = i; k < i + len; k++) keep[k] = false
+      }
+      break
+    }
+  }
+  return list.filter((_, i) => keep[i])
 }
 
 /**
- * Runs in one direction: from a turning point to the furthest point before
- * the level turns back by more than `noise`. `ok(a, b)` may refuse a step
- * (drains: both readings must be standing), which ends the run there.
+ * The cleaned series: readings with litres, in time order, dropouts out,
+ * median of 3.
+ * @param {{ts:number, litres:number|null, ign?:boolean|null, speed?:number|null}[]} readings
+ * @param {{ threshold?: number }} [opts] the smaller of the drain / fill thresholds
  */
-function runs(pts, dir, noise, ok = () => true) {
-  const out = []
-  let i = 0
+export function cleanSeries(readings, { threshold = DEFAULT_THRESHOLD_L } = {}) {
+  const list = (readings ?? []).filter(r => fin(r?.ts) && fin(r?.litres)).sort((a, b) => a.ts - b.ts)
+  return medianOf3(removeDropouts(list, threshold))
+}
+
+/** The context of the readings from `a` to `b` (indexes, inclusive). */
+export function eventContext(pts, a, b) {
+  const seg = pts.slice(a, b + 1)
+  let maxGap = 0
+  for (let i = 1; i < seg.length; i++) maxGap = Math.max(maxGap, seg[i].ts - seg[i - 1].ts)
+  const gapMin = maxGap > GAP_MS ? Math.round(maxGap / 60_000) : null
+  const states = seg.map(readingState)
+  const last = seg[seg.length - 1]
+  let context
+  if (last?.ign === true && seg.slice(0, -1).some(r => r.ign === false)) context = 'between_trips'
+  else if (seg.every(r => r.ign === false)) context = 'stopped'
+  else if (gapMin) context = 'gap'
+  else if (states.includes('moving')) context = 'moving'
+  else if (states.includes('idle')) context = 'idle'
+  else if (states.includes('stopped')) context = 'stopped'
+  else context = 'unknown'
+  return { context, gapMin }
+}
+
+export const CONTEXT_LABELS = Object.freeze({
+  moving: 'While moving',
+  idle: 'At idle',
+  stopped: 'Stopped (engine off)',
+  between_trips: 'Between trips',
+  gap: 'After a gap in data',
+  unknown: 'Ignition not known',
+})
+
+/** "1 h 20 min" */
+export function minutesText(min) {
+  if (!fin(min)) return ''
+  if (min < 60) return `${min} min`
+  const h = Math.floor(min / 60), m = min % 60
+  if (h < 48) return m ? `${h} h ${m} min` : `${h} h`
+  return `${Math.round(h / 24)} days`
+}
+
+/** "Between trips (no data for 3 h 5 min)" */
+export function contextText(e) {
+  const label = CONTEXT_LABELS[e?.context] ?? CONTEXT_LABELS.unknown
+  if (!e?.gapMin) return label
+  if (e.context === 'gap') return `After ${minutesText(e.gapMin)} without data`
+  return `${label} (no data for ${minutesText(e.gapMin)})`
+}
+
+/** Litres the engine may have used between two readings (the allowance). */
+function allowanceOf(a, b, lph) {
+  if (!(lph > 0)) return 0
+  if (a.ign === false && b.ign === false) return 0
+  return lph * Math.max(0, b.ts - a.ts) / 3600_000
+}
+
+/** One direction's episodes (rule 5). dir: -1 drains, +1 fills. */
+function episodes(pts, dir, th, lph) {
+  const stepMin = Math.max(2, th * 0.2)
   const n = pts.length
-  while (i < n - 1) {
-    if (!(dir * (pts[i + 1].litres - pts[i].litres) > 0) || !ok(pts[i], pts[i + 1])) { i++; continue }
-    const start = i
-    let extreme = i + 1
-    let j = i + 2
-    while (j < n && ok(pts[j - 1], pts[j])) {
-      if (dir * (pts[j].litres - pts[extreme].litres) > 0) extreme = j
-      else if (dir * (pts[extreme].litres - pts[j].litres) > noise) break
-      j++
-    }
-    out.push({ start, end: extreme })
-    i = Math.max(extreme, i + 1)
+  const amount = []
+  const strong = []
+  const allow = []
+  for (let k = 1; k < n; k++) {
+    const a = pts[k - 1], b = pts[k]
+    const al = dir < 0 ? allowanceOf(a, b, lph) : 0
+    const amt = dir * (b.litres - a.litres) - al
+    const min = a.ign === false && b.ign === false ? Math.min(stepMin, ENGINE_OFF_STEP_L) : stepMin
+    amount[k] = amt
+    allow[k] = al
+    strong[k] = amt >= min - EPS || amt >= th - EPS
   }
-  return out
+  const runs = []
+  let cur = null
+  for (let k = 1; k < n; k++) {
+    if (!strong[k]) continue
+    if (cur && cur.end === k - 1) {
+      cur.end = k
+      cur.allow += allow[k]
+    } else if (cur && cur.end === k - 2 && dir * (pts[k - 1].litres - pts[k - 2].litres) > -stepMin) {
+      // One small step inside the run, not back by more than the step amount.
+      cur.end = k
+      cur.allow += allow[k - 1] + allow[k]
+    } else {
+      if (cur) runs.push(cur)
+      cur = { start: k - 1, end: k, allow: allow[k] }
+    }
+  }
+  if (cur) runs.push(cur)
+  return runs
+    .map(r => ({ ...r, litres: dir * (pts[r.end].litres - pts[r.start].litres) - r.allow }))
+    .filter(r => r.litres >= th - EPS)
 }
 
 /**
  * Fills and drains in a cleaned series.
- * @returns {{ kind:'fill'|'drain', startTs:number, endTs:number, before:number, after:number, litres:number, lat:number|null, lng:number|null }[]}
+ * @param {object} [opts]
+ * @param {number} [opts.drainThreshold]  litres (default `threshold`, else 15)
+ * @param {number} [opts.fillThreshold]   litres (default `threshold`, else 15)
+ * @param {number} [opts.threshold]       both, when the two are not given
+ * @param {number} [opts.allowanceLph]    litres per hour taken off a fall (default 0)
+ * @returns {{ kind:'fill'|'drain', startTs, endTs, before, after, litres, lat, lng, context, gapMin, readings }[]}
  */
-export function detectFuelEvents(series, { threshold = DEFAULT_THRESHOLD_L } = {}) {
+export function detectFuelEvents(series, { threshold, drainThreshold, fillThreshold, allowanceLph = 0 } = {}) {
   const pts = series ?? []
-  const th = fin(threshold) && threshold > 0 ? threshold : DEFAULT_THRESHOLD_L
-  const noise = Math.max(1, th * 0.2)
-  const make = kind => ({ start, end }) => {
-    const a = pts[start], b = pts[end]
+  const pick = v => (fin(v) && v > 0 ? v : null)
+  const base = pick(threshold) ?? DEFAULT_THRESHOLD_L
+  const thDrain = pick(drainThreshold) ?? base
+  const thFill = pick(fillThreshold) ?? base
+  const lph = fin(allowanceLph) && allowanceLph > 0 ? allowanceLph : 0
+  const make = kind => r => {
+    const a = pts[r.start], b = pts[r.end]
     return {
       kind, startTs: a.ts, endTs: b.ts, before: round1(a.litres), after: round1(b.litres),
-      litres: round1(Math.abs(b.litres - a.litres)), lat: b.lat ?? a.lat ?? null, lng: b.lng ?? a.lng ?? null,
+      litres: round1(r.litres),
+      lat: b.lat ?? a.lat ?? null, lng: b.lng ?? a.lng ?? null,
+      ...eventContext(pts, r.start, r.end),
+      readings: r.end - r.start + 1,
     }
   }
-  const fills = runs(pts, 1, noise).map(make('fill')).filter(e => e.litres >= th)
-  const drains = runs(pts, -1, noise, (a, b) => isStanding(a) && isStanding(b)).map(make('drain')).filter(e => e.litres >= th)
+  const fills = episodes(pts, 1, thFill, 0).map(make('fill'))
+  const drains = episodes(pts, -1, thDrain, lph).map(make('drain'))
   return [...fills, ...drains].sort((x, y) => x.startTs - y.startTs)
 }
 
-const round1 = v => Math.round(v * 10) / 10
+/** Has at least SETTLE_READINGS readings after its end, so a dropout cannot still undo it? */
+export function isSettled(event, series) {
+  let after = 0
+  for (const p of series ?? []) if (p.ts > event.endTs) after++
+  return after >= SETTLE_READINGS
+}
 
 /** The period's figures from a cleaned series and its events. */
 export function fuelSummary(series, events) {
   const pts = series ?? []
-  if (!pts.length) return { readings: 0, start: null, end: null, min: null, max: null, filled: 0, drained: 0, fills: 0, drains: 0, used: null }
+  const empty = { moving: 0, idle: 0, stopped: 0, between_trips: 0, gap: 0, unknown: 0 }
+  if (!pts.length) return { readings: 0, start: null, end: null, min: null, max: null, filled: 0, drained: 0, fills: 0, drains: 0, used: null, drainsByContext: empty }
   const levels = pts.map(p => p.litres)
   const fills = events.filter(e => e.kind === 'fill')
   const drains = events.filter(e => e.kind === 'drain')
   const filled = fills.reduce((s, e) => s + e.litres, 0)
   const drained = drains.reduce((s, e) => s + e.litres, 0)
   const start = levels[0], end = levels[levels.length - 1]
+  const drainsByContext = { ...empty }
+  for (const e of drains) drainsByContext[e.context in drainsByContext ? e.context : 'unknown']++
   return {
     readings: pts.length,
     start: round1(start), end: round1(end), min: round1(Math.min(...levels)), max: round1(Math.max(...levels)),
     filled: round1(filled), drained: round1(drained), fills: fills.length, drains: drains.length,
     used: round1(Math.max(0, start + filled - end - drained)),
+    drainsByContext,
   }
 }
 

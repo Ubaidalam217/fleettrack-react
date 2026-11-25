@@ -615,6 +615,7 @@ function alertParams(type, s) {
     case 'custom':
       return { parameter: String(s.parameter ?? '').trim(), operator: s.operator, value: String(s.value ?? '').trim() }
     case 'fuel_theft':
+      return { litres: numOrNull(s.litres), allowanceLph: numOrNull(s.allowanceLph) ?? 0 }
     case 'fuel_fill':
       return { litres: numOrNull(s.litres) }
     case 'low_fuel':

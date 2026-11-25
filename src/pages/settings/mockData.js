@@ -200,9 +200,9 @@ export const ALERT_TYPES = [
   // calibration raises none of them.
   {
     value: 'fuel_theft',
-    label: 'Fuel Theft (drain while stopped)',
-    hint: 'Raised when the fuel level drops by at least the set litres while the vehicle stands; one event per drain, with its start, end and litres.',
-    defaults: () => ({ litres: '15' }),
+    label: 'Fuel Drain / Theft',
+    hint: 'Raised when the fuel level drops by at least the set litres between two readings, whatever the vehicle is doing: moving, at idle, stopped, between trips or after a gap in the data. One event per drain, with its start, end, litres and where it happened.',
+    defaults: () => ({ litres: '15', allowanceLph: '' }),
     severity: 'High',
   },
   {

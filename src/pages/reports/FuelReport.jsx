@@ -21,7 +21,7 @@ import { reverseGeocodeMany, geocodeKey, shortenAddress } from '../../utils/geoc
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { renderFuelChartPng } from '../../utils/fuelChartImage'
 import { fmtLitres, fmtRaw } from '../../utils/fuelFormat'
-import { DEFAULT_THRESHOLD_L } from '../../utils/fuelEvents'
+import { DEFAULT_THRESHOLD_L, contextText } from '../../utils/fuelEvents'
 import { ReportSkeleton } from '../../components/Skeleton'
 
 /**
@@ -31,11 +31,14 @@ import { ReportSkeleton } from '../../components/Skeleton'
  * every fill and drain with its time, place and the level before and after.
  *
  * The server builds it (GET /api/fuel/report, server/src/lib/fuel.js) with
- * the shared rules of utils/fuelEvents.js: noise filtered with a median of 3,
- * readings outside the calibration left out, a fill = a rise of at least the
- * threshold, a drain = a fall of at least the threshold while the vehicle
- * stands (fuel used while driving is not a drain). A vehicle without a
- * calibration shows its raw sensor values and says so.
+ * the shared rules of utils/fuelEvents.js: readings outside the calibration
+ * and short dropouts left out, noise filtered with a median of 3, then any
+ * fall of at least the threshold is a drain and any rise a fill - moving, at
+ * idle, stopped, between trips or after a gap in the data (client,
+ * 2026-11-25) - each with that context. "Used" is the consumption without
+ * the drains and fills. An optional allowance (L/h) takes what the engine may
+ * have used off a fall. A vehicle without a calibration shows its raw sensor
+ * values and says so.
  *
  * Screen, PDF and Excel on the Movement paper; the graphs go into the PDF and
  * Excel as images.
@@ -80,20 +83,21 @@ const SUMMARY_COLUMNS = [
   { key: 'end',     label: 'End',              width: '9%',  pdf: 9, align: 'right' },
   { key: 'min',     label: 'Lowest',           width: '9%',  pdf: 9, align: 'right' },
   { key: 'max',     label: 'Highest',          width: '9%',  pdf: 9, align: 'right' },
-  { key: 'used',    label: 'Used (driving)',   width: '11%', pdf: 11, align: 'right' },
+  { key: 'used',    label: 'Used',             width: '11%', pdf: 11, align: 'right' },
   { key: 'fills',   label: 'Fills',            width: '12%', pdf: 12, align: 'right' },
   { key: 'drains',  label: 'Drains',           width: '12%', pdf: 12, align: 'right' },
   { key: 'note',    label: 'Note',             width: '13%', pdf: 14 },
 ]
 const EVENT_COLUMNS = [
-  { key: 'time',     label: 'Time',          width: '15%', pdf: 14 },
-  { key: 'vehicle',  label: 'Vehicle',       width: '13%', pdf: 12 },
-  { key: 'kind',     label: 'Event',         width: '8%',  pdf: 7 },
-  { key: 'litres',   label: 'Litres',        width: '9%',  pdf: 8, align: 'right' },
-  { key: 'before',   label: 'Before',        width: '9%',  pdf: 8, align: 'right' },
-  { key: 'after',    label: 'After',         width: '9%',  pdf: 8, align: 'right' },
-  { key: 'duration', label: 'Duration',      width: '9%',  pdf: 8 },
-  { key: 'location', label: 'Location',      width: '28%', pdf: 25, hrefKey: 'href' },
+  { key: 'time',     label: 'Time',          width: '13%', pdf: 12 },
+  { key: 'vehicle',  label: 'Vehicle',       width: '11%', pdf: 10 },
+  { key: 'kind',     label: 'Event',         width: '6%',  pdf: 6 },
+  { key: 'litres',   label: 'Litres',        width: '8%',  pdf: 7, align: 'right' },
+  { key: 'before',   label: 'Before',        width: '8%',  pdf: 7, align: 'right' },
+  { key: 'after',    label: 'After',         width: '8%',  pdf: 7, align: 'right' },
+  { key: 'duration', label: 'Time span',     width: '8%',  pdf: 8 },
+  { key: 'context',  label: 'Context',       width: '15%', pdf: 15 },
+  { key: 'location', label: 'Location',      width: '23%', pdf: 21, hrefKey: 'href' },
 ]
 
 const dur = ms => {
@@ -113,6 +117,7 @@ export default function FuelReport(props) {
   const [from, setFrom] = useState(() => presetDays('today', now).from)
   const [to, setTo] = useState(() => presetDays('today', now).to)
   const [threshold, setThreshold] = useState(String(DEFAULT_THRESHOLD_L))
+  const [allowance, setAllowance] = useState('0')
   const [selectedIds, setSelectedIds] = useState(null) // null = every fuel vehicle
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -136,9 +141,11 @@ export default function FuelReport(props) {
   }
   const thresholdNum = Number(threshold)
   const thresholdOk = Number.isFinite(thresholdNum) && thresholdNum >= 1 && thresholdNum <= 1000
+  const allowanceNum = allowance.trim() === '' ? 0 : Number(allowance)
+  const allowanceOk = Number.isFinite(allowanceNum) && allowanceNum >= 0 && allowanceNum <= 200
   const spanDays = from && to ? (Date.parse(to) - Date.parse(from)) / 86400_000 + 1 : 0
   const rangeValid = !!from && !!to && from <= to && spanDays <= 31
-  const canRun = IS_REAL && rangeValid && thresholdOk && (allSelected || selectedIds.length > 0) && !loading
+  const canRun = IS_REAL && rangeValid && thresholdOk && allowanceOk && (allSelected || selectedIds.length > 0) && !loading
 
   const run = async () => {
     setLoading(true)
@@ -148,8 +155,9 @@ export default function FuelReport(props) {
         to: new Date(dayStartMs(to) + 86400_000 - 1).toISOString(),
         vehicleIds: allSelected ? null : selectedIds,
         threshold: thresholdNum,
+        allowance: allowanceNum,
       })
-      setReport({ ...d, fromMs: dayStartMs(from), toMs: Math.min(Date.now(), dayStartMs(to) + 86400_000 - 1), printDate: formatPrintDate(), range: { from, to }, thresholdL: thresholdNum })
+      setReport({ ...d, fromMs: dayStartMs(from), toMs: Math.min(Date.now(), dayStartMs(to) + 86400_000 - 1), printDate: formatPrintDate(), range: { from, to }, thresholdL: thresholdNum, allowanceLph: allowanceNum })
     } catch (err) {
       handleApiError(err, { push })
     } finally {
@@ -189,6 +197,7 @@ export default function FuelReport(props) {
     litres: `${e.kind === 'fill' ? '+' : '−'}${fmtLitres(e.litres)}`,
     before: fmtLitres(e.before), after: fmtLitres(e.after),
     duration: dur(e.endTs - e.startTs),
+    context: contextText(e),
     location: placeOf(e),
     href: e.lat != null && e.lng != null ? locationUrl({ lat: e.lat, lng: e.lng, vehicle: v.label, time: Math.floor(e.startTs / 1000) }) : null,
     ts: e.startTs,
@@ -199,16 +208,22 @@ export default function FuelReport(props) {
   const sumCols = visibleColumns(SUMMARY_COLUMNS, hiddenCols)
   const evCols = visibleColumns(EVENT_COLUMNS, hiddenCols)
   const totals = list.reduce((s, v) => ({ fills: s.fills + (v.summary.fills ?? 0), drains: s.drains + (v.summary.drains ?? 0), filled: s.filled + (v.summary.filled ?? 0), drained: s.drained + (v.summary.drained ?? 0) }), { fills: 0, drains: 0, filled: 0, drained: 0 })
+  // Drains by where they happened (moving, idle, stopped, between trips, after a gap).
+  const drainContexts = DRAIN_CONTEXTS
+    .map(([key, label]) => [label, list.reduce((n, v) => n + (v.summary.drainsByContext?.[key] ?? 0), 0)])
+    .filter(([, n]) => n > 0)
   const paperFilters = report ? [
     ['Vehicles', allSelected ? 'All fuel vehicles' : selectionLabel],
     ['From', fmtDay(report.range.from)],
     ['To', fmtDay(report.range.to)],
     ['Fill / drain threshold', `${report.thresholdL} L`],
+    ...(report.allowanceLph ? [['Consumption allowance', `${report.allowanceLph} L/h`]] : []),
   ] : []
   const summary = [
     { label: 'Vehicles', value: String(list.length) },
     { label: 'Fills', value: `${totals.fills} (${fmtLitres(totals.filled)})` },
     { label: 'Drains', value: `${totals.drains} (${fmtLitres(totals.drained)})` },
+    ...(drainContexts.length ? [{ label: 'Drains by context', value: drainContexts.map(([l, n]) => `${l} ${n}`).join(', ') }] : []),
   ]
 
   const exportOpts = () => ({
@@ -263,10 +278,18 @@ export default function FuelReport(props) {
                 <label style={LABEL} htmlFor="fuel-th">FILL / DRAIN AT (LITRES)</label>
                 <input id="fuel-th" type="number" min="1" max="1000" step="1" style={FIELD} value={threshold} onChange={e => setThreshold(e.target.value)} />
               </div>
+              <div>
+                <label style={LABEL} htmlFor="fuel-allow" title="Optional: litres per hour the engine may use, taken off a fall. 0 = any fall of the threshold is a drain.">ALLOWANCE (L/H, OPTIONAL)</label>
+                <input id="fuel-allow" type="number" min="0" max="200" step="1" style={FIELD} value={allowance} onChange={e => setAllowance(e.target.value)} />
+              </div>
               <ToolbarButton onClick={run} icon={Play} primary disabled={!canRun}>{loading ? 'Generating report…' : 'Generate'}</ToolbarButton>
             </div>
             {!rangeValid && <p style={{ margin: '10px 0 0', fontSize: 12, color: '#dc2626' }}>{from > to ? 'The From date must be on or before the To date.' : 'Choose up to 31 days.'}</p>}
             {!thresholdOk && <p style={{ margin: '10px 0 0', fontSize: 12, color: '#dc2626' }}>The threshold is a number of litres from 1 to 1000.</p>}
+            {!allowanceOk && <p style={{ margin: '10px 0 0', fontSize: 12, color: '#dc2626' }}>The allowance is 0 to 200 litres per hour.</p>}
+            <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--c-text3)' }}>
+              Any fall or rise of the threshold between two readings counts: while moving, at idle, stopped, between trips or after a gap in the data.
+            </p>
           </div>
 
           {loading && !report && <ReportSkeleton label="Generating report…" />}
@@ -275,6 +298,7 @@ export default function FuelReport(props) {
               <div className="report-screen-only" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                 <span style={{ fontSize: 12.5, color: 'var(--c-text2)' }}>
                   {list.length} vehicle{list.length === 1 ? '' : 's'} · {totals.fills} fill{totals.fills === 1 ? '' : 's'} · {totals.drains} drain{totals.drains === 1 ? '' : 's'}
+                  {drainContexts.length > 0 && ` (${drainContexts.map(([l, n]) => `${l.toLowerCase()} ${n}`).join(', ')})`}
                 </span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <ColumnPicker columns={columnChoices(SUMMARY_COLUMNS, EVENT_COLUMNS)} hidden={hiddenCols} onChange={setHiddenCols} />
@@ -353,6 +377,8 @@ export default function FuelReport(props) {
     </ReportFrame>
   )
 }
+
+const DRAIN_CONTEXTS = [['moving', 'While moving'], ['idle', 'At idle'], ['stopped', 'Stopped'], ['between_trips', 'Between trips'], ['gap', 'After a data gap'], ['unknown', 'Ignition not known']]
 
 const spanOf = series => (series.length ? series[series.length - 1].ts - series[0].ts : 0)
 

@@ -4,7 +4,11 @@
  * vehicle's calibration in use.
  *
  *   fuel_theft  a drain: the level falls by at least `litres` (default 15)
- *               while the vehicle stands (src/utils/fuelEvents.js)
+ *               between two readings, whatever the vehicle is doing —
+ *               moving, at idle, stopped, between trips, after a gap in the
+ *               data (client, 2026-11-25; src/utils/fuelEvents.js). The
+ *               message says which. Optional `allowanceLph`: litres per hour
+ *               the engine may use, taken off a fall (default 0).
  *   fuel_fill   a fill: the level rises by at least `litres`
  *   low_fuel    the level is under `litres`, or under `percent` of the tank
  *
@@ -29,13 +33,16 @@ import { bgFleetWhere } from './scope.js'
 import { SHARED_BG_RULES_APPLY } from './sharePolicy.js'
 import { vehicleLabel } from './vehicleLabel.js'
 import { activeCalibrations, readingLitres, calibrationPort } from './fuel.js'
-import { cleanSeries, detectFuelEvents } from '../../../src/utils/fuelEvents.js'
+import { cleanSeries, detectFuelEvents, isSettled, contextText } from '../../../src/utils/fuelEvents.js'
 
 /** How far back the first pass of a rule reads, and at most after a pause. */
 const FIRST_LOOKBACK_MS = 2 * 3600_000
 const MAX_LOOKBACK_MS = 12 * 3600_000
 /** A run is read with this much before the last point seen, so it is whole. */
 const OVERLAP_MS = 2 * 3600_000
+/** Readings before the window kept as the "before" of a drop after a gap. */
+const PRIOR_READINGS = 3
+const PRIOR_MAX_MS = 7 * 86400_000
 /** Low fuel reads the level of the last readings within this window. */
 const LEVEL_WINDOW_MS = 6 * 3600_000
 
@@ -57,14 +64,15 @@ export function lowFuelLimit(params, cal) {
  * One fill / drain rule against one vehicle's cleaned series (pure).
  * @returns {{ state, create: object[], update: object[] }}  create/update: the episodes to write
  */
-export function evaluateFuelRun(kind, series, state, { threshold, now }) {
+export function evaluateFuelRun(kind, series, state, { threshold, allowanceLph = 0, now }) {
   const s = { ...(state ?? {}) }
   const create = []
   const update = []
   if (!series.length) return { state: s, create, update }
   const lastTs = series[series.length - 1].ts
-  // Only runs that have ended: a reading after their furthest point.
-  const events = detectFuelEvents(series, { threshold }).filter(e => e.kind === kind && e.endTs < lastTs)
+  // Only settled episodes: enough readings after their end that a dropout
+  // (fuelEvents.js, up to 3 readings) can no longer turn out to be one.
+  const events = detectFuelEvents(series, { threshold, allowanceLph }).filter(e => e.kind === kind && isSettled(e, series))
   for (const e of events) {
     const ep = s.ep
     if (ep && e.startTs <= ep.endTs) {
@@ -110,14 +118,32 @@ export function evaluateLowFuel(series, state, { limit }) {
   return { state: s, fire: null, end: null }
 }
 
-/** The readings of a vehicle's calibrated port since `fromMs`, converted, cleaned. */
-async function seriesOf(vehicleId, cal, fromMs, toMs) {
-  const rows = await prisma.fuelReading.findMany({
-    where: { vehicleId, port: calibrationPort(cal), ts: { gte: new Date(fromMs), lte: new Date(toMs) } },
-    orderBy: { ts: 'asc' },
-    select: { ts: true, port: true, raw: true, ign: true, speed: true, lat: true, lng: true },
-  })
-  return cleanSeries(rows.map(r => ({ ts: r.ts.getTime(), litres: readingLitres(r, cal).litres, ign: r.ign, speed: r.speed, lat: r.lat, lng: r.lng })))
+/**
+ * The readings of a vehicle's calibrated port since `fromMs`, converted,
+ * cleaned. With a `threshold` (the drain / fill rules) the last few readings
+ * before `fromMs` come first; low fuel (no threshold) reads only the window.
+ */
+async function seriesOf(vehicleId, cal, fromMs, toMs, threshold) {
+  const select = { ts: true, port: true, raw: true, ign: true, speed: true, lat: true, lng: true }
+  const port = calibrationPort(cal)
+  const [rows, before] = await Promise.all([
+    prisma.fuelReading.findMany({
+      where: { vehicleId, port, ts: { gte: new Date(fromMs), lte: new Date(toMs) } },
+      orderBy: { ts: 'asc' },
+      select,
+    }),
+    // The last readings before the window, however old: a drop between the
+    // old trip's last reading and the new trip's first (client, 2026-11-25)
+    // still has its "before" after a long gap. A few, for the noise filters.
+    threshold == null ? [] : prisma.fuelReading.findMany({
+      where: { vehicleId, port, ts: { lt: new Date(fromMs), gte: new Date(fromMs - PRIOR_MAX_MS) } },
+      orderBy: { ts: 'desc' },
+      take: PRIOR_READINGS,
+      select,
+    }),
+  ])
+  rows.unshift(...before.reverse())
+  return cleanSeries(rows.map(r => ({ ts: r.ts.getTime(), litres: readingLitres(r, cal).litres, ign: r.ign, speed: r.speed, lat: r.lat, lng: r.lng })), { threshold })
 }
 
 const VEHICLE_SELECT = { id: true, bgId: true, mutedAlerts: true, imei: true, plateNo: true, fleetNo: true, driver: { select: { id: true, name: true } } }
@@ -142,9 +168,9 @@ export async function runFuelAlertPass(nowMs = Date.now()) {
   const states = await prisma.alertState.findMany({ where: { alertId: { in: alerts.map(a => a.id) } } })
   const stateOf = new Map(states.map(r => [`${r.alertId}|${r.subject}`, r.state]))
   const seriesCache = new Map()
-  const series = async (v, cal, fromMs) => {
-    const key = `${v.id}|${fromMs}`
-    if (!seriesCache.has(key)) seriesCache.set(key, await seriesOf(v.id, cal, fromMs, nowMs))
+  const series = async (v, cal, fromMs, threshold) => {
+    const key = `${v.id}|${fromMs}|${threshold ?? ''}`
+    if (!seriesCache.has(key)) seriesCache.set(key, await seriesOf(v.id, cal, fromMs, nowMs, threshold))
     return seriesCache.get(key)
   }
 
@@ -179,12 +205,11 @@ export async function runFuelAlertPass(nowMs = Date.now()) {
       } else {
         const kind = alert.type === 'fuel_theft' ? 'drain' : 'fill'
         const from = Math.max(nowMs - MAX_LOOKBACK_MS, prev?.lastTs ? prev.lastTs - OVERLAP_MS : nowMs - FIRST_LOOKBACK_MS)
-        const s = await series(v, cal, from)
-        const r = evaluateFuelRun(kind, s, prev, { threshold: Number(p.litres) || 15, now: nowMs })
+        const threshold = Number(p.litres) || 15
+        const s = await series(v, cal, from, threshold)
+        const r = evaluateFuelRun(kind, s, prev, { threshold, allowanceLph: Number(p.allowanceLph) || 0, now: nowMs })
         next = r.state
-        const text = e => (kind === 'drain'
-          ? `${label}: Fuel drained while stopped, ${round1(e.litres)} L (${e.before} → ${e.after} L)${driver}`
-          : `${label}: Fuel filled, ${round1(e.litres)} L (${e.before} → ${e.after} L)${driver}`)
+        const text = e => `${label}: Fuel ${kind === 'drain' ? 'drained' : 'filled'}, ${round1(e.litres)} L (${e.before} → ${e.after} L) · ${contextText(e)}${driver}`
         for (const e of r.create) {
           events.push({
             ...base, message: text(e), value: e.litres, peakValue: e.litres, lat: e.lat, lng: e.lng,
@@ -194,7 +219,7 @@ export async function runFuelAlertPass(nowMs = Date.now()) {
         for (const u of r.update) {
           updates.push({
             alertId: alert.id, vehicleId: v.id, at: u.at,
-            data: { endedAt: new Date(u.endTs), durationSec: Math.round((u.endTs - u.startTs) / 1000), value: u.litres, peakValue: u.litres, message: text({ ...u, before: u.before }) },
+            data: { endedAt: new Date(u.endTs), durationSec: Math.round((u.endTs - u.startTs) / 1000), value: u.litres, peakValue: u.litres, message: text(u) },
           })
         }
       }

@@ -115,7 +115,7 @@ export const REPORT_MAX_DAYS = 31
  *
  * @param {{ id, plateNo, fleetNo, imei, bg?: { name } }[]} vehicles  already scope-checked
  */
-export async function buildFuelReport(vehicles, { from, to, threshold }) {
+export async function buildFuelReport(vehicles, { from, to, threshold, allowanceLph = 0 }) {
   const ids = vehicles.map(v => v.id)
   const [cals, rows] = await Promise.all([
     activeCalibrations(ids),
@@ -153,8 +153,9 @@ export async function buildFuelReport(vehicles, { from, to, threshold }) {
       if (flag === 'out_of_range') outOfRange++
       return { ts: r.ts.getTime(), litres, ign: r.ign, speed: r.speed, lat: r.lat, lng: r.lng }
     })
-    const series = cleanSeries(converted)
-    const events = detectFuelEvents(series, { threshold })
+    const series = cleanSeries(converted, { threshold })
+    // Any fall / rise of the threshold, moving or not (client, 2026-11-25).
+    const events = detectFuelEvents(series, { threshold, allowanceLph })
     return {
       ...base, calibrated: true, unit: 'L',
       series: downsample(series.map(p => ({ ts: p.ts, v: p.litres }))),

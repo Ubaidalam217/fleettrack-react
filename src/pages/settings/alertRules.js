@@ -97,9 +97,16 @@ const VALIDATORS = {
   harsh_braking:      s => only('thresholdMs2', rangeError(s.thresholdMs2, 1.5, 9, 'm/s²')),
   harsh_acceleration: s => only('thresholdMs2', rangeError(s.thresholdMs2, 1.5, 9, 'm/s²')),
   custom:         validateCustom,
-  fuel_theft:     s => only('litres', rangeError(s.litres, 1, 1000, 'L')),
+  fuel_theft:     validateFuelDrain,
   fuel_fill:      s => only('litres', rangeError(s.litres, 1, 1000, 'L')),
   low_fuel:       validateLowFuel,
+}
+
+function validateFuelDrain(s) {
+  const out = only('litres', rangeError(s.litres, 1, 1000, 'L'))
+  // Optional allowance: empty = 0.
+  if (toNum(s.allowanceLph) !== null) Object.assign(out, only('allowanceLph', rangeError(s.allowanceLph, 0, 200, 'L/h')))
+  return out
 }
 
 function validateLowFuel(s) {

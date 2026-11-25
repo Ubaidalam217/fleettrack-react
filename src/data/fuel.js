@@ -21,5 +21,5 @@ export const applyFuelCalibration = body => request('/api/fuel/calibrations', { 
 export const removeFuelCalibration = id => request(`/api/fuel/calibrations/${encodeURIComponent(id)}`, { method: 'DELETE' })
 
 /** The Fuel report: { from, to, threshold, vehicles: [...] } (server/src/lib/fuel.js buildFuelReport). */
-export const fetchFuelReport = ({ from, to, vehicleIds, threshold }) =>
-  request('/api/fuel/report', { query: { from, to, vehicleIds: vehicleIds?.length ? vehicleIds.join(',') : undefined, threshold } })
+export const fetchFuelReport = ({ from, to, vehicleIds, threshold, allowance }) =>
+  request('/api/fuel/report', { query: { from, to, vehicleIds: vehicleIds?.length ? vehicleIds.join(',') : undefined, threshold, allowance: allowance || undefined } })

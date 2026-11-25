@@ -78,7 +78,7 @@ router.get('/overview', asyncHandler(async (req, res) => {
 }))
 
 /**
- * GET /api/fuel/report?from&to&vehicleIds=a,b&threshold=15 — the Fuel report
+ * GET /api/fuel/report?from&to&vehicleIds=a,b&threshold=15&allowance=0 — the Fuel report
  * (lib/fuel.js buildFuelReport). No vehicleIds: every visible vehicle with a
  * calibration or a reading in the period.
  */
@@ -87,10 +87,12 @@ const reportQuery = z.object({
   to: z.coerce.date({ message: 'Choose the To date' }),
   vehicleIds: z.string().trim().max(10_000).optional(),
   threshold: z.union([z.null(), z.coerce.number().min(1, 'At least 1 litre').max(1000)]).optional(),
+  // Optional: litres per hour the engine may use, taken off a fall (default 0).
+  allowance: z.union([z.null(), z.coerce.number().min(0, 'Not below 0').max(200, 'Up to 200 L/h')]).optional(),
 })
 
 router.get('/report', validate(reportQuery, 'query'), asyncHandler(async (req, res) => {
-  const { from, to, vehicleIds, threshold } = req.validatedQuery
+  const { from, to, vehicleIds, threshold, allowance } = req.validatedQuery
   if (to < from) throw badRequest('The From date must be before the To date', { from: 'After To' })
   if (to - from > REPORT_MAX_DAYS * 86400_000 + 3600_000) throw badRequest(`Up to ${REPORT_MAX_DAYS} days at a time`, { to: `Up to ${REPORT_MAX_DAYS} days` })
   const wanted = vehicleIds ? [...new Set(vehicleIds.split(',').map(s => s.trim()).filter(Boolean))].slice(0, 100) : null
@@ -108,10 +110,10 @@ router.get('/report', validate(reportQuery, 'query'), asyncHandler(async (req, r
     const keep = [...new Set([...withReadings.map(r => r.vehicleId), ...withCal.map(c => c.vehicleId)])].slice(0, 100)
     vehicles = keep.length ? await prisma.vehicle.findMany({ where: { id: { in: keep } }, select }) : []
   }
-  const report = await buildFuelReport(vehicles, { from, to, threshold: threshold ?? undefined })
+  const report = await buildFuelReport(vehicles, { from, to, threshold: threshold ?? undefined, allowanceLph: allowance ?? 0 })
   report.sort((a, b) => a.label.localeCompare(b.label))
   res.set('Cache-Control', 'no-store')
-  res.json({ data: { from, to, threshold: threshold ?? DEFAULT_THRESHOLD_L, vehicles: report } })
+  res.json({ data: { from, to, threshold: threshold ?? DEFAULT_THRESHOLD_L, allowanceLph: allowance ?? 0, vehicles: report } })
 }))
 
 router.get('/vehicles/:id', asyncHandler(async (req, res) => {

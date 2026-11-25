@@ -123,8 +123,8 @@ describe('the Fuel report', () => {
     const { v1, v2, v5 } = fx.vehicles
     await apply(fx.tokens.bgUserA1a, { vehicleIds: [v1.id], method: 'PORT', port: PORT, tankCapacityL: 100, points: TABLE })
     const t0 = Date.UTC(2026, 10, 20, 6, 0, 0)
-    // 20 L, a refill to 90 L (parked), driving down to 80 L, then 30 L gone while parked.
-    const mv = [900, 900, 900, 1500, 2100, 2300, 2300, 2250, 2200, 2100, 2100, 1700, 1500, 1500, 1500]
+    // 20 L, a refill to 90 L (parked), driving down 1 L a reading to 87 L, then 37 L gone while parked.
+    const mv = [900, 900, 900, 1500, 2100, 2300, 2300, 2280, 2260, 2240, 2240, 1700, 1500, 1500, 1500]
     const parked = [true, true, true, true, true, true, false, false, false, false, true, true, true, true, true]
     await prisma.fuelReading.createMany({
       data: mv.map((raw, i) => ({ vehicleId: v1.id, port: PORT, raw, ts: new Date(t0 + i * 120_000), ign: !parked[i], speed: parked[i] ? 0 : 60, lat: 24.1, lng: 54.2 })),
@@ -140,8 +140,9 @@ describe('the Fuel report', () => {
 
     const a = byId.get(v1.id)
     expect(a).toMatchObject({ calibrated: true, unit: 'L', port: PORT })
-    expect(a.events.map(e => [e.kind, e.before, e.after])).toEqual([['fill', 20, 90], ['drain', 80, 50]])
-    expect(a.summary).toMatchObject({ start: 20, end: 50, min: 20, max: 90, filled: 70, drained: 30, fills: 1, drains: 1, used: 10 })
+    expect(a.events.map(e => [e.kind, e.before, e.after])).toEqual([['fill', 20, 90], ['drain', 87, 50]])
+    expect(a.events[1]).toMatchObject({ context: 'stopped', litres: 37 })
+    expect(a.summary).toMatchObject({ start: 20, end: 50, min: 20, max: 90, filled: 70, drained: 37, fills: 1, drains: 1, used: 3 })
     const b = byId.get(v2.id)
     expect(b).toMatchObject({ calibrated: false, unit: 'raw', events: [] })
     expect(b.summary).toMatchObject({ start: 3000, end: 3100 })

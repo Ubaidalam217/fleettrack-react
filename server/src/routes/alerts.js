@@ -128,7 +128,13 @@ function cleanParams(body) {
     case 'harsh_acceleration':
       if (!positive(num('thresholdMs2'), 1.5, 9)) throw badRequest('Set the threshold between 1.5 and 9 m/s²', { thresholdMs2: '1.5–9 m/s²' })
       return { thresholdMs2: num('thresholdMs2') }
-    case 'fuel_theft':
+    case 'fuel_theft': {
+      if (!positive(num('litres'), 1, 1000)) throw badRequest('Set the litres between 1 and 1000', { litres: '1–1000 L' })
+      // Optional: litres per hour the engine may use, taken off a fall (0 = none).
+      const allow = Number.isNaN(num('allowanceLph')) ? 0 : num('allowanceLph')
+      if (!positive(allow, 0, 200)) throw badRequest('Set the allowance between 0 and 200 L/h', { allowanceLph: '0–200 L/h' })
+      return { litres: num('litres'), allowanceLph: allow }
+    }
     case 'fuel_fill':
       if (!positive(num('litres'), 1, 1000)) throw badRequest('Set the litres between 1 and 1000', { litres: '1–1000 L' })
       return { litres: num('litres') }

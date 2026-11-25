@@ -1,6 +1,7 @@
 /**
- * Fuel alerts (lib/fuelAlerts.js): theft (drain while stopped), fill and low
- * fuel, one event per episode, muted vehicles skipped, and the rule form's
+ * Fuel alerts (lib/fuelAlerts.js): drain / theft (any fall of the threshold,
+ * moving or not — client, 2026-11-25), fill and low fuel, one event per
+ * episode, muted vehicles skipped, and the rule form's
  * params. Every series here is invented.
  */
 
@@ -45,28 +46,44 @@ beforeEach(async () => {
 })
 
 describe('fuel theft', () => {
-  it('raises one event for a drain while parked, and moves its end when the drain goes on', async () => {
+  it('raises ONE event for a drain while parked, once it has settled, never twice', async () => {
     const v = fx.vehicles.v1
     await calibrate(v.id)
     await rule('fuel_theft', { litres: 15 })
-    // 80 L, then 30 L gone in 6 minutes while parked, then steady.
-    await readings(v.id, [80, 80, 80, 70, 60, 50, 50, 50], { endMinAgo: 20 })
-    const first = await runFuelAlertPass(NOW)
+    // 80 L, then 30 L gone in 6 minutes while parked; only 2 readings after it yet.
+    await readings(v.id, [80, 80, 80, 70, 60, 50, 50, 50], { endMinAgo: 2 })
+    expect(await runFuelAlertPass(NOW)).toHaveLength(0) // a dropout could still come back
+    await readings(v.id, [50], { endMinAgo: 0 })
+    const first = await runFuelAlertPass(NOW + MIN)
     expect(first).toHaveLength(1)
     expect(first[0]).toMatchObject({ type: 'fuel_theft', vehicleId: v.id, bgId: fx.bgA1a.id, value: 30, severity: 'High' })
-    expect(first[0].message).toMatch(/Fuel drained while stopped, 30 L \(80 → 50 L\)/)
+    expect(first[0].message).toMatch(/Fuel drained, 30 L \(80 → 50 L\) · Stopped \(engine off\)/)
     expect(first[0].endedAt.getTime() - first[0].occurredAt.getTime()).toBe(6 * MIN)
-
     // Nothing new: the same drain is not raised twice.
-    expect(await runFuelAlertPass(NOW + MIN)).toHaveLength(0)
+    expect(await runFuelAlertPass(NOW + 2 * MIN)).toHaveLength(0)
+    expect(await fuelEvents('fuel_theft')).toHaveLength(1)
+  })
 
-    // The level drops on (still parked, same run): no new event, the old one grows.
-    await readings(v.id, [40, 30, 30, 30], { endMinAgo: -10 })
-    expect(await runFuelAlertPass(NOW + 12 * MIN)).toHaveLength(0)
-    const all = await fuelEvents('fuel_theft')
-    expect(all).toHaveLength(1)
-    expect(all[0].value).toBe(50)
-    expect(all[0].message).toMatch(/50 L \(80 → 30 L\)/)
+  it('a drain while moving counts too, with its context', async () => {
+    const v = fx.vehicles.v1
+    await calibrate(v.id)
+    await rule('fuel_theft', { litres: 15 })
+    await readings(v.id, [90, 89.5, 89, 70, 69.5, 69, 68.5], { parked: false })
+    const [e] = await runFuelAlertPass(NOW)
+    expect(e).toMatchObject({ type: 'fuel_theft', value: 19 })
+    expect(e.message).toMatch(/Fuel drained, 19 L \(89 → 70 L\) · While moving/)
+  })
+
+  it('a drain between trips: the last reading of the old trip against the first of the new one', async () => {
+    const v = fx.vehicles.v1
+    await calibrate(v.id)
+    await rule('fuel_theft', { litres: 15 })
+    // Trip ends 5 h ago (engine off at 70 L), nothing while parked, the new trip starts with 45 L.
+    await readings(v.id, [72, 71, 70], { endMinAgo: 300, parked: i => i === 2 })
+    await readings(v.id, [45, 44.5, 44, 43.5], { parked: false })
+    const [e] = await runFuelAlertPass(NOW)
+    expect(e).toMatchObject({ type: 'fuel_theft', value: 25 })
+    expect(e.message).toMatch(/25 L \(70 → 45 L\) · Between trips \(no data for 4 h 54 min\)/)
   })
 
   it('fuel used while driving is no theft, and a muted vehicle raises nothing', async () => {
@@ -92,7 +109,7 @@ describe('fuel fill', () => {
     const v = fx.vehicles.v1
     await calibrate(v.id)
     await rule('fuel_fill', { litres: 20 }, { severity: 'Low' })
-    await readings(v.id, [20, 20, 45, 75, 95, 95, 94], { parked: i => i < 5 })
+    await readings(v.id, [20, 20, 45, 75, 95, 95, 94, 94], { parked: i => i < 5 })
     const ev = await runFuelAlertPass(NOW)
     expect(ev).toHaveLength(1)
     expect(ev[0]).toMatchObject({ type: 'fuel_fill', value: 75, severity: 'Low' })
@@ -130,7 +147,10 @@ describe('the rules', () => {
   it('the form saves the fuel types with their settings', async () => {
     const ok = await request(app).post('/api/alerts').set(auth(fx.tokens.bgUserA1a)).send({ bgId: fx.bgA1a.id, name: 'Theft', type: 'fuel_theft', params: { litres: 25 }, allVehicles: true })
     expect(ok.status).toBe(201)
-    expect(ok.body.data.params).toEqual({ litres: 25 })
+    expect(ok.body.data.params).toEqual({ litres: 25, allowanceLph: 0 })
+    const allow = await request(app).post('/api/alerts').set(auth(fx.tokens.bgUserA1a)).send({ bgId: fx.bgA1a.id, name: 'Theft 2', type: 'fuel_theft', params: { litres: 25, allowanceLph: 300 }, allVehicles: true })
+    expect(allow.status).toBe(400)
+    expect(allow.body.error.details).toHaveProperty('allowanceLph')
     const low = await request(app).post('/api/alerts').set(auth(fx.tokens.bgUserA1a)).send({ bgId: fx.bgA1a.id, name: 'Low', type: 'low_fuel', params: { litres: null, percent: 0 }, allVehicles: true })
     expect(low.status).toBe(400)
     expect(low.body.error.details).toHaveProperty('percent')

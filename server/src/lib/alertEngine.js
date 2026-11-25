@@ -111,7 +111,7 @@ export const TYPES = Object.freeze({
   panic:          { label: 'Panic (SOS)',    defaults: {}, severity: 'Critical' },
   // Client, 2026-11-24: fuel, from the stored fuel readings and each vehicle's
   // calibration (lib/fuelAlerts.js runs these, after each Uffizio poll).
-  fuel_theft:     { label: 'Fuel Theft (drain while stopped)', defaults: { litres: 15 }, severity: 'High' },
+  fuel_theft:     { label: 'Fuel Drain / Theft', defaults: { litres: 15, allowanceLph: 0 }, severity: 'High' },
   fuel_fill:      { label: 'Fuel Fill',      defaults: { litres: 15 }, severity: 'Low' },
   low_fuel:       { label: 'Low Fuel',       defaults: { litres: null, percent: 15 } },
 })

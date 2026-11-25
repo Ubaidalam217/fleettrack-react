@@ -78,12 +78,24 @@ function HarshSettings({ settings, errors, onChange }) {
 }
 
 function FuelRunSettings({ settings, errors, onChange, type }) {
+  const fill = type === 'fuel_fill'
   return (
-    <NumberField
-      label={type === 'fuel_fill' ? 'Fill Of At Least (litres)' : 'Drop Of At Least (litres)'} name="litres" placeholder="15"
-      hint={type === 'fuel_fill' ? '1 – 1000 L' : '1 – 1000 L, while the vehicle stands (ignition off or speed 0). Fuel used while driving is not counted.'}
-      value={settings.litres} error={errors.litres} onChange={onChange}
-    />
+    <>
+      <NumberField
+        label={fill ? 'Fill Of At Least (litres)' : 'Drop Of At Least (litres)'} name="litres" placeholder="15"
+        hint={fill
+          ? '1 – 1000 L between two readings, at any time.'
+          : '1 – 1000 L between two readings, at any time: while moving, at idle, stopped, between trips or after a gap in the data.'}
+        value={settings.litres} error={errors.litres} onChange={onChange}
+      />
+      {!fill && (
+        <NumberField
+          label="Consumption Allowance (L/h)" name="allowanceLph" placeholder="0" required={false}
+          hint="Optional, 0 – 200. Litres per hour the engine may use, taken off a drop. Leave empty for the pure threshold."
+          value={settings.allowanceLph} error={errors.allowanceLph} onChange={onChange}
+        />
+      )}
+    </>
   )
 }
 
