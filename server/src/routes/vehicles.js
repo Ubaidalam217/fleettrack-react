@@ -31,6 +31,7 @@ import { TYPES as ALERT_TYPES } from '../lib/alertEngine.js'
 import { applyOdometerReading, deviceOdometers, odometerRow, adjustmentRow } from '../lib/odometer.js'
 import { importVehicles, MAX_IMPORT_ROWS } from '../lib/vehicleImport.js'
 import { SHARES_INCLUDE, dropSharesForTransfer, stripLostAccess, withShares, withSharesOne } from '../lib/vehicleShares.js'
+import { SOURCE as UFFIZIO_SOURCE, archiveUffizioVehicle } from '../lib/uffizio.js'
 
 const router = Router()
 
@@ -865,6 +866,20 @@ router.delete(
   asyncHandler(async (req, res) => {
     assertCanWrite(req.scope, 'vehicle')
     const existing = await findScopedOrThrow('ownedVehicle', req.params.id, req.scope)
+
+    // An Uffizio vehicle is archived, not deleted (client, 2026-11-25: a
+    // deleted one must not come back on the next poll). Settings › Master ›
+    // Fuel lists it as "removed in FleetmaxX" with a Restore button.
+    if (existing.dataSource === UFFIZIO_SOURCE) {
+      const [subusers, alerts] = await Promise.all([
+        prisma.subuserVehicle.count({ where: { vehicleId: existing.id } }),
+        prisma.alertVehicle.count({ where: { vehicleId: existing.id } }),
+      ])
+      await archiveUffizioVehicle(existing, actorOf(req))
+      await revokeGrantsForBg(existing.bgId)
+      res.json({ data: { id: existing.id, archived: true, subuserAssignmentsStripped: subusers, alertAssignmentsStripped: alerts } })
+      return
+    }
 
     const [subusers, alerts] = await Promise.all([
       prisma.subuserVehicle.count({ where: { vehicleId: existing.id } }),

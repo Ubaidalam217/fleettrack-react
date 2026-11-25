@@ -181,7 +181,7 @@ describe('polling', () => {
     expect(up.flespiCalls.filter(c => !c.startsWith('GET'))).toEqual([])
   })
 
-  it('is idempotent: the same record twice adds nothing; a new Datetime adds readings; a new plate renames', async () => {
+  it('is idempotent: the same record twice adds nothing; a new Datetime adds readings; a rename in Uffizio is only noted', async () => {
     await U.pollOnce({ now })
     later(125)
     const again = await U.pollOnce({ now })
@@ -189,15 +189,74 @@ describe('polling', () => {
     expect(await prisma.vehicle.count({ where: { dataSource: 'UFFIZIO' } })).toBe(2)
     expect(await prisma.fuelReading.count()).toBe(2)
 
-    up.rows = [row(1, { Datetime: '24-11-2026 13:07:10', Fuel: [{ port_name: 'BLE Fuel Level #1', value: 2950 }] }), row(2, { Vehicle_Name: 'ZZ 2002 Q9' })]
+    up.rows = [row(1, { Datetime: '24-11-2026 13:07:10', Fuel: [{ port_name: 'BLE Fuel Level #1', value: 2950 }] }), row(2, { Vehicle_Name: 'ZZ 2002 Q9', DeviceModel: 'FMM130' })]
     later(125)
     const third = await U.pollOnce({ now })
     expect(third).toMatchObject({ ok: true, created: 0, updated: 1, inserted: 1 })
     expect(await prisma.fuelReading.count()).toBe(3)
-    const renamed = await prisma.vehicle.findUnique({ where: { imei: '350000000000002' } })
-    expect(renamed.plateNo).toBe('ZZ 2002 Q9')
-    const hist = await prisma.vehicleMove.findFirst({ where: { vehicleId: renamed.id, level: 'rename' } })
-    expect(hist).toMatchObject({ fromName: 'ZZ 1002 Q1', toName: 'ZZ 2002 Q9', movedByName: 'Uffizio sync' })
+    // Imported as it was, edited in FleetmaxX later: Uffizio's new name is kept beside it, not copied.
+    const v2 = await prisma.vehicle.findUnique({ where: { imei: '350000000000002' } })
+    expect(v2).toMatchObject({ plateNo: 'ZZ 1002 Q1', deviceType: 'FMC130', uffizioName: 'ZZ 2002 Q9', uffizioNo: '90 002 01' })
+    expect(await prisma.vehicleMove.count({ where: { vehicleId: v2.id, level: 'rename' } })).toBe(0)
+    const st = await request(app).get('/api/uffizio/status').set(auth(fx.tokens.superAdmin))
+    expect(st.body.data.renamed).toEqual([expect.objectContaining({ id: v2.id, plateNo: 'ZZ 1002 Q1', uffizioName: 'ZZ 2002 Q9' })])
+  })
+
+  it('edits made in FleetmaxX survive every poll', async () => {
+    await U.pollOnce({ now })
+    const v1 = await prisma.vehicle.findUnique({ where: { imei: '350000000000001' } })
+    const branch = await prisma.branch.create({ data: { bgId: fx.bgA2.id, name: 'Invented Depot' } })
+    const edit = await request(app).put(`/api/vehicles/${v1.id}`).set(auth(fx.tokens.superAdmin))
+      .send({ plateNo: 'AA 111 X', fleetNo: 'FL-7', model: 'Actros', deviceType: 'Teltonika FMC130 (edited)', branchId: branch.id })
+    expect(edit.status).toBe(200)
+    await request(app).put(`/api/vehicles/${v1.id}/custom-fields`).set(auth(fx.tokens.superAdmin)).send({ fields: [{ name: 'Contract', value: 'C-1' }] })
+    later(125)
+    up.rows = [row(1, { Datetime: '24-11-2026 13:09:00' }), row(2)]
+    expect(await U.pollOnce({ now })).toMatchObject({ ok: true, created: 0 })
+    const after = await prisma.vehicle.findUnique({ where: { id: v1.id } })
+    expect(after).toMatchObject({ plateNo: 'AA 111 X', fleetNo: 'FL-7', model: 'Actros', deviceType: 'Teltonika FMC130 (edited)', branchId: branch.id, uffizioName: 'ZZ 1001 Q1' })
+    expect(up.flespiCalls.filter(c => !c.startsWith('GET'))).toEqual([])
+  })
+
+  it('a vehicle removed in FleetmaxX stays removed, is listed, and can be restored; a new one is still imported', async () => {
+    await U.pollOnce({ now })
+    const v1 = await prisma.vehicle.findUnique({ where: { imei: '350000000000001' } })
+    const del = await request(app).delete(`/api/vehicles/${v1.id}`).set(auth(fx.tokens.superAdmin))
+    expect(del.status).toBe(200)
+    expect(del.body.data).toMatchObject({ id: v1.id, archived: true })
+    const archived = await prisma.vehicle.findUnique({ where: { id: v1.id } })
+    expect(archived.deletedAt).not.toBeNull()
+    expect(archived.imei).toBe('350000000000001')
+    // Gone from the register.
+    const list = await request(app).get('/api/vehicles').set(auth(fx.tokens.superAdmin))
+    expect(list.body.data.map(v => v.id)).not.toContain(v1.id)
+
+    up.rows = [row(1, { Datetime: '24-11-2026 13:09:00' }), row(2), row(3)]
+    later(125)
+    const r = await U.pollOnce({ now })
+    expect(r).toMatchObject({ ok: true, created: 1, removed: 1 })
+    expect(await prisma.vehicle.count({ where: { imei: '350000000000001' } })).toBe(1)
+    expect(await prisma.fuelReading.count({ where: { vehicleId: v1.id } })).toBe(1) // nothing new for it
+    expect(await prisma.vehicle.findUnique({ where: { imei: '350000000000003' } })).toMatchObject({ dataSource: 'UFFIZIO', bgId: fx.bgA2.id })
+
+    const st = await request(app).get('/api/uffizio/status').set(auth(fx.tokens.superAdmin))
+    expect(st.body.data.removed).toEqual([expect.objectContaining({ id: v1.id, imei: '350000000000001', plateNo: 'ZZ 1001 Q1' })])
+    expect(st.body.data.vehicles).toBe(2)
+
+    expect((await request(app).post(`/api/uffizio/vehicles/${v1.id}/restore`).set(auth(fx.tokens.bgUserA1a))).status).toBe(403)
+    const back = await request(app).post(`/api/uffizio/vehicles/${v1.id}/restore`).set(auth(fx.tokens.superAdmin))
+    expect(back.status).toBe(200)
+    expect(back.body.data.status.removed).toEqual([])
+    expect((await prisma.vehicle.findUnique({ where: { id: v1.id } })).deletedAt).toBeNull()
+    expect((await request(app).post(`/api/uffizio/vehicles/${v1.id}/restore`).set(auth(fx.tokens.superAdmin))).status).toBe(404)
+    const hist = await prisma.vehicleMove.findMany({ where: { vehicleId: v1.id, level: 'device' }, orderBy: { movedAt: 'asc' } })
+    expect(hist.map(h => h.note)).toEqual(['Added from Uffizio', expect.stringMatching(/^Removed in FleetmaxX/), 'Restored in FleetmaxX'])
+  })
+
+  it('a Flespi vehicle is still deleted for good', async () => {
+    const res = await request(app).delete(`/api/vehicles/${fx.vehicles.v1.id}`).set(auth(fx.tokens.superAdmin))
+    expect(res.status).toBe(200)
+    expect(await prisma.vehicle.findUnique({ where: { id: fx.vehicles.v1.id } })).toBeNull()
   })
 
   it('never takes over a Flespi vehicle with the same IMEI', async () => {

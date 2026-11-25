@@ -29,10 +29,12 @@
  *
  * ── What it writes ─────────────────────────────────────────────────────────
  *
- *   - vehicles: upserted by IMEI into the Business Group UFFIZIO_BG_ID with
+ *   - vehicles: a NEW IMEI is created in the Business Group UFFIZIO_BG_ID with
  *     dataSource 'UFFIZIO' (plateNo = Vehicle_Name, fleetNo = Vehicle_No,
- *     deviceType = DeviceModel). Never a Flespi device. An IMEI that belongs
- *     to a FLESPI vehicle is left alone and reported as a conflict.
+ *     deviceType = DeviceModel). After that FleetmaxX owns the vehicle: polls
+ *     only refresh the uffizioName / uffizioNo snapshot, and a vehicle removed
+ *     in FleetmaxX stays removed (syncVehicles). Never a Flespi device. An IMEI
+ *     that belongs to a FLESPI vehicle is left alone and reported as a conflict.
  *   - FuelReading rows, one per fuel port, only when the vehicle's Datetime
  *     moved on; rows older than 90 days are deleted by the same job.
  *
@@ -44,7 +46,7 @@
 
 import prisma from '../prisma.js'
 import env from '../env.js'
-import { deviceRow, renameRow } from './vehicleMoves.js'
+import { deviceRow } from './vehicleMoves.js'
 import { activeCalibrations, readingLitres } from './fuel.js'
 import { runFuelAlertPass } from './fuelAlerts.js'
 
@@ -343,36 +345,55 @@ export function normaliseRow(r) {
 
 // ── storing ─────────────────────────────────────────────────────────────────
 
+const SYNC_SELECT = {
+  id: true, bgId: true, imei: true, plateNo: true, fleetNo: true, deviceType: true, dataSource: true,
+  deletedAt: true, uffizioName: true, uffizioNo: true,
+}
+
 /**
- * Upsert the vehicles by IMEI. New ones go into `bgId` as UFFIZIO vehicles;
- * known UFFIZIO ones get Uffizio's current plate / fleet no. / device model
- * (with a rename row in the Reallocation History). A FLESPI vehicle or an
- * archived one with the same IMEI is never touched: it is a conflict.
+ * Upsert the vehicles by IMEI (client, 2026-11-25: "import all data as it is
+ * and edit later").
  *
- * @returns {{ byImei: Map<string, object>, created: number, updated: number, conflicts: object[] }}
+ *   - NEW IMEI: created in `bgId` as an UFFIZIO vehicle, with Uffizio's name
+ *     as the plate, its number as the fleet no. and its device model — the
+ *     only time Uffizio fills those fields.
+ *   - KNOWN UFFIZIO vehicle: FleetmaxX owns it now. A poll never changes its
+ *     plate, fleet no., model, branch or anything else an admin edits; it only
+ *     keeps `uffizioName` / `uffizioNo` — what Uffizio calls it today, shown as
+ *     information (a rename in Uffizio is seen, not copied).
+ *   - REMOVED in FleetmaxX (soft-deleted, deletedAt): stays removed. It is not
+ *     re-created and gets no readings; the status lists it so an admin can
+ *     restore it.
+ *   - A FLESPI vehicle with the same IMEI is never touched: a conflict.
+ *
+ * @returns {{ byImei: Map<string, object>, created: number, updated: number, conflicts: object[], removed: object[] }}
+ *   updated = vehicles whose Uffizio name/number snapshot changed
  */
 export async function syncVehicles(rows, bgId) {
   const list = rows.filter(Boolean)
   const imeis = [...new Set(list.map(r => r.imei))]
   const existing = imeis.length
-    ? await prisma.vehicle.findMany({
-      where: { imei: { in: imeis } },
-      select: { id: true, bgId: true, imei: true, plateNo: true, fleetNo: true, deviceType: true, dataSource: true, deletedAt: true },
-    })
+    ? await prisma.vehicle.findMany({ where: { imei: { in: imeis } }, select: SYNC_SELECT })
     : []
   const known = new Map(existing.map(v => [v.imei, v]))
   const byImei = new Map()
   const conflicts = []
+  const removed = []
+  const seen = new Set()
   let created = 0, updated = 0
 
   for (const r of list) {
-    if (byImei.has(r.imei)) continue
+    if (seen.has(r.imei)) continue
+    seen.add(r.imei)
     const v = known.get(r.imei)
     if (!v) {
       const made = await prisma.$transaction(async tx => {
         const row = await tx.vehicle.create({
-          data: { bgId, imei: r.imei, plateNo: r.plate, fleetNo: r.fleetNo, deviceType: r.model, dataSource: SOURCE },
-          select: { id: true, bgId: true, imei: true, plateNo: true, fleetNo: true, deviceType: true, dataSource: true, deletedAt: true },
+          data: {
+            bgId, imei: r.imei, plateNo: r.plate, fleetNo: r.fleetNo, deviceType: r.model, dataSource: SOURCE,
+            uffizioName: r.plate, uffizioNo: r.fleetNo,
+          },
+          select: SYNC_SELECT,
         })
         await tx.vehicleMove.create({ data: deviceRow(row, row.imei, true, SYNC_ACTOR, 'Added from Uffizio') })
         return row
@@ -381,7 +402,7 @@ export async function syncVehicles(rows, bgId) {
       byImei.set(r.imei, made)
       continue
     }
-    if (v.deletedAt || v.dataSource !== SOURCE) {
+    if (v.dataSource !== SOURCE) {
       conflicts.push({
         imei: r.imei,
         plate: r.plate,
@@ -392,22 +413,20 @@ export async function syncVehicles(rows, bgId) {
       })
       continue
     }
-    const change = {}
-    if (r.plate && r.plate !== v.plateNo) change.plateNo = r.plate
-    if (r.fleetNo && r.fleetNo !== v.fleetNo) change.fleetNo = r.fleetNo
-    if (r.model && r.model !== v.deviceType) change.deviceType = r.model
-    if (Object.keys(change).length) {
-      const renamed = renameRow(v, { ...v, ...change }, SYNC_ACTOR)
-      const ops = [prisma.vehicle.update({ where: { id: v.id }, data: change })]
-      if (renamed) ops.push(prisma.vehicleMove.create({ data: renamed }))
-      await prisma.$transaction(ops)
-      updated++
-      byImei.set(r.imei, { ...v, ...change })
-    } else {
-      byImei.set(r.imei, v)
+    if (v.deletedAt) {
+      removed.push({ id: v.id, imei: r.imei, uffizioName: r.plate })
+      continue
     }
+    const snap = {}
+    if ((r.plate ?? null) !== (v.uffizioName ?? null)) snap.uffizioName = r.plate ?? null
+    if ((r.fleetNo ?? null) !== (v.uffizioNo ?? null)) snap.uffizioNo = r.fleetNo ?? null
+    if (Object.keys(snap).length) {
+      await prisma.vehicle.update({ where: { id: v.id }, data: snap })
+      updated++
+    }
+    byImei.set(r.imei, { ...v, ...snap })
   }
-  return { byImei, created, updated, conflicts }
+  return { byImei, created, updated, conflicts, removed }
 }
 
 /** The newest stored reading time per vehicle (ms). */
@@ -485,6 +504,7 @@ export async function pollOnce({ now = Date.now } = {}) {
       state.lastErrorAt = null
       state.lastResult = {
         rows: raw.length, vehicles: sync.byImei.size, created: sync.created, updated: sync.updated, inserted,
+        removed: sync.removed.length,
         withFuel: rows.filter(r => r.fuel.length).length, conflicts: sync.conflicts.slice(0, 20),
       }
       await saveState()
@@ -528,11 +548,25 @@ export async function statusView() {
   const missing = missingSettings(c)
   const bg = c.bgId ? await prisma.businessGroup.findUnique({ where: { id: c.bgId }, select: { id: true, name: true } }) : null
   const since = new Date(Date.now() - 86400_000)
-  const [vehicles, withReadings, readings24h] = await Promise.all([
+  const [vehicles, withReadings, readings24h, removedRows, liveRows] = await Promise.all([
     prisma.vehicle.count({ where: { dataSource: SOURCE, deletedAt: null } }),
     prisma.fuelReading.groupBy({ by: ['vehicleId'], where: { ts: { gte: since } } }).then(r => r.length),
     prisma.fuelReading.count({ where: { ts: { gte: since } } }),
+    prisma.vehicle.findMany({
+      where: { dataSource: SOURCE, deletedAt: { not: null }, mergedIntoId: null },
+      select: { id: true, imei: true, plateNo: true, fleetNo: true, uffizioName: true, uffizioNo: true, deletedAt: true, deletedBy: true },
+      orderBy: { deletedAt: 'desc' },
+      take: 100,
+    }),
+    prisma.vehicle.findMany({
+      where: { dataSource: SOURCE, deletedAt: null, uffizioName: { not: null } },
+      select: { id: true, imei: true, plateNo: true, fleetNo: true, uffizioName: true, uffizioNo: true },
+    }),
   ])
+  // Edited in FleetmaxX (or renamed in Uffizio): shown as information only.
+  const renamed = liveRows
+    .filter(v => (v.uffizioName && v.uffizioName !== v.plateNo) || (v.uffizioNo && v.uffizioNo !== v.fleetNo))
+    .slice(0, 100)
   let host = null
   try { host = c.base ? new URL(c.base).host : null } catch { host = null }
   const next = nextAllowedAt()
@@ -555,7 +589,42 @@ export async function statusView() {
     vehicles,
     vehiclesReporting24h: withReadings,
     readings24h,
+    removed: removedRows,
+    renamed,
   }
+}
+
+/**
+ * Remove an Uffizio vehicle in FleetmaxX: archived (deletedAt), never
+ * deleted, so the next poll knows it and does not add it again. Its IMEI
+ * stays on it (the join key with Uffizio, and so the bulk import cannot reuse
+ * it by mistake). Like a delete it leaves every list, its sub-user and alert
+ * memberships go and its driver is unassigned; the fuel readings and the
+ * history stay. `existing` is already scope- and write-checked.
+ */
+export async function archiveUffizioVehicle(existing, by) {
+  const now = new Date()
+  await prisma.$transaction(async tx => {
+    await tx.subuserVehicle.deleteMany({ where: { vehicleId: existing.id } })
+    await tx.alertVehicle.deleteMany({ where: { vehicleId: existing.id } })
+    await tx.driver.updateMany({ where: { vehicleId: existing.id }, data: { vehicleId: null } })
+    await tx.vehicle.update({ where: { id: existing.id }, data: { deletedAt: now, deletedBy: by?.name ?? null } })
+    await tx.vehicleMove.create({
+      data: deviceRow(existing, existing.imei, false, by, 'Removed in FleetmaxX (Uffizio vehicle: kept archived so the feed does not add it again)'),
+    })
+  })
+  return { id: existing.id, archived: true }
+}
+
+/** Bring a removed Uffizio vehicle back (Settings › Master › Fuel, Uffizio card). */
+export async function restoreUffizioVehicle(id, by) {
+  const v = await prisma.vehicle.findFirst({ where: { id, dataSource: SOURCE, deletedAt: { not: null }, mergedIntoId: null } })
+  if (!v) return null
+  const [row] = await prisma.$transaction([
+    prisma.vehicle.update({ where: { id }, data: { deletedAt: null, deletedBy: null } }),
+    prisma.vehicleMove.create({ data: deviceRow(v, v.imei, true, by, 'Restored in FleetmaxX') }),
+  ])
+  return row
 }
 
 // ── the job ─────────────────────────────────────────────────────────────────

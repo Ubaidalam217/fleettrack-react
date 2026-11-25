@@ -9,6 +9,8 @@ import { request } from './http.js'
 export const fetchUffizioStatus = () => request('/api/uffizio/status')
 export const pollUffizio = () => request('/api/uffizio/poll', { method: 'POST', body: {} })
 export const testUffizio = () => request('/api/uffizio/test', { method: 'POST', body: {} })
+/** An Uffizio vehicle removed in FleetmaxX, back again: { id, plateNo, status }. */
+export const restoreUffizioVehicle = id => request(`/api/uffizio/vehicles/${encodeURIComponent(id)}/restore`, { method: 'POST', body: {} })
 
 // ── calibrations (server/src/routes/fuel.js) ────────────────────────────────
 

@@ -257,6 +257,12 @@ model Vehicle {
   /// Uffizio/Trakzee system, pulled in by lib/uffizio.js: it never has a
   /// Flespi device, and nothing may create or rename one for it.
   dataSource String @default("FLESPI")
+  /// An UFFIZIO vehicle: what Uffizio calls it today (Vehicle_Name /
+  /// Vehicle_No), refreshed by every poll (client, 2026-11-25: "import as it
+  /// is and edit later"). Information only — Uffizio sets plateNo / fleetNo
+  /// once, at the first import; FleetmaxX owns them after that.
+  uffizioName String?
+  uffizioNo   String?
   odometerOffsetKm Float?
   odometerSetAt    DateTime?
   /// Who set it, as a name to show.

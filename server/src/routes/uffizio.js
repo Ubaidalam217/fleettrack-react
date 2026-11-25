@@ -6,15 +6,19 @@
  *   POST /api/uffizio/poll     poll now — still within Uffizio's one call per 120 s;
  *                              429 with nextAllowedAt when it is too soon
  *   POST /api/uffizio/test     sign in only (does not use up the 120 s)
+ *   POST /api/uffizio/vehicles/:id/restore   a vehicle removed in FleetmaxX back
  *
  * Who: a Super Admin, or an account (not a sub-user) whose scope holds the
  * Business Group the feed fills (UFFIZIO_BG_ID).
  */
 
 import { Router } from 'express'
-import { asyncHandler, forbidden, HttpError } from '../lib/http.js'
-import { findScoped, isSubUser, isSuperAdmin } from '../lib/scope.js'
-import { config, nextAllowedAt, pollOnce, statusView, testConnection } from '../lib/uffizio.js'
+import prisma from '../prisma.js'
+import { asyncHandler, forbidden, HttpError, notFound } from '../lib/http.js'
+import { assertCanWrite, findScoped, isSubUser, isSuperAdmin } from '../lib/scope.js'
+import { revokeGrantsForBg } from '../lib/flespiGrant.js'
+import { actorOf } from '../lib/vehicleMoves.js'
+import { config, nextAllowedAt, pollOnce, restoreUffizioVehicle, statusView, testConnection } from '../lib/uffizio.js'
 
 const router = Router()
 
@@ -47,6 +51,21 @@ router.post('/poll', asyncHandler(async (_req, res) => {
 router.post('/test', asyncHandler(async (_req, res) => {
   const result = await testConnection()
   send(res, result)
+}))
+
+/**
+ * POST /api/uffizio/vehicles/:id/restore — bring back an Uffizio vehicle that
+ * was removed in FleetmaxX (it stays archived, so polls do not re-add it).
+ * Needs vehicle write access and the vehicle's Business Group in scope.
+ */
+router.post('/vehicles/:id/restore', asyncHandler(async (req, res) => {
+  assertCanWrite(req.scope, 'vehicle')
+  const v = await prisma.vehicle.findFirst({ where: { id: req.params.id, dataSource: 'UFFIZIO', deletedAt: { not: null }, mergedIntoId: null }, select: { id: true, bgId: true } })
+  const bg = v ? await findScoped('bg', v.bgId, req.scope, { select: { id: true } }) : null
+  if (!v || !bg) throw notFound('Removed Uffizio vehicle')
+  const row = await restoreUffizioVehicle(v.id, actorOf(req))
+  await revokeGrantsForBg(v.bgId)
+  send(res, { id: row.id, plateNo: row.plateNo, status: await statusView() })
 }))
 
 export default router

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CloudDownload, PlugZap, RefreshCw, CircleCheck, AlertTriangle, CirclePause } from 'lucide-react'
+import { CloudDownload, PlugZap, RefreshCw, CircleCheck, AlertTriangle, CirclePause, Archive, Info, RotateCcw } from 'lucide-react'
 import { ApiError } from '../../data/http'
-import { fetchUffizioStatus, pollUffizio, testUffizio } from '../../data/fuel'
+import { fetchUffizioStatus, pollUffizio, testUffizio, restoreUffizioVehicle } from '../../data/fuel'
 
 /**
  * Settings › Master › Fuel — "Uffizio (fuel vehicles)" (client, 2026-11-24).
@@ -31,6 +31,11 @@ const CSS = `
 .uf-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:750;padding:3px 9px;border-radius:999px;white-space:nowrap}
 .uf-msg{margin-top:12px;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.5;display:flex;gap:8px;align-items:flex-start}
 .uf-list{margin:6px 0 0;padding-left:18px;font-size:12px;color:var(--c-text2)}
+.uf-rows{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}
+.uf-rows li{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;padding:6px 8px;border-radius:9px;background:var(--c-card);border:1px solid var(--c-border2)}
+.uf-rname{font-size:12.5px;font-weight:750;color:var(--c-text1)}
+.uf-rmeta{font-size:11.5px;color:var(--c-text3);flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
+.uf-btn.uf-small{height:28px;padding:0 10px;font-size:12px;margin-left:auto}
 @media (max-width:760px){.uf-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.uf-acts{margin-left:0;width:100%}}
 `
 
@@ -99,6 +104,19 @@ export default function UffizioCard({ push }) {
     }
   }
 
+  const restore = async v => {
+    setBusy(`restore:${v.id}`)
+    try {
+      const d = await restoreUffizioVehicle(v.id)
+      setStatus(d.status)
+      push?.(`${d.plateNo || v.imei} restored`, { tone: 'success' })
+    } catch (err) {
+      push?.(err?.message || 'Restore failed', { tone: 'error' })
+    } finally {
+      setBusy('')
+    }
+  }
+
   const r = status?.lastResult
   return (
     <section className="uf-card" aria-labelledby="uf-title">
@@ -155,6 +173,44 @@ export default function UffizioCard({ push }) {
             <div className="uf-msg" style={tint('#dc2626')}>
               <AlertTriangle size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
               <div style={{ color: 'var(--c-text1)' }}><b>Last error</b> ({when(status.lastErrorAt)}): {status.lastError}</div>
+            </div>
+          )}
+          {status.removed?.length > 0 && (
+            <div className="uf-msg" style={tint('#64748b')}>
+              <Archive size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+              <div style={{ color: 'var(--c-text1)', minWidth: 0, flex: 1 }}>
+                <b>{status.removed.length} removed in FleetmaxX</b>
+                <span style={{ color: 'var(--c-text2)' }}> — still in Uffizio, not added again by the feed.</span>
+                <ul className="uf-rows">
+                  {status.removed.map(v => (
+                    <li key={v.id}>
+                      <span className="uf-rname">{v.plateNo || v.uffizioName || v.imei}</span>
+                      <span className="uf-rmeta">
+                        IMEI {v.imei}{v.uffizioName && v.uffizioName !== v.plateNo ? ` · Uffizio: ${v.uffizioName}` : ''} · removed {when(v.deletedAt)}{v.deletedBy ? ` by ${v.deletedBy}` : ''}
+                      </span>
+                      <button type="button" className="uf-btn uf-small" onClick={() => restore(v)} disabled={!!busy}>
+                        <RotateCcw size={13} aria-hidden="true" />{busy === `restore:${v.id}` ? 'Restoring…' : 'Restore'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+          {status.renamed?.length > 0 && (
+            <div className="uf-msg" style={tint('#0ea5e9')}>
+              <Info size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+              <div style={{ color: 'var(--c-text1)', minWidth: 0 }}>
+                <b>{status.renamed.length} named differently in Uffizio</b>
+                <span style={{ color: 'var(--c-text2)' }}> — FleetmaxX keeps its own names; for information only.</span>
+                <ul className="uf-list">
+                  {status.renamed.map(v => (
+                    <li key={v.id}>
+                      {v.plateNo || '—'}{v.fleetNo ? ` (${v.fleetNo})` : ''} — Uffizio: {v.uffizioName || '—'}{v.uffizioNo ? ` (${v.uffizioNo})` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
           {r?.conflicts?.length > 0 && (

@@ -848,7 +848,9 @@ export default function Vehicle(props) {
           body={`${vehicleLabel(pending)} will be removed from ${companyNameFor(pending.companyId)}.`}
           note={[
             'It is also unassigned from any sub-user or alert that could see it.',
-            modeNote('This cannot be undone.', 'This is mock data — nothing is sent to a server.'),
+            pending.dataSource === 'UFFIZIO'
+              ? 'Its data comes from Uffizio: it is kept archived so the feed does not add it again, and can be restored in Settings › Master › Fuel.'
+              : modeNote('This cannot be undone.', 'This is mock data — nothing is sent to a server.'),
           ].join(' ')}
           confirmLabel="Delete"
           onConfirm={confirmDelete}
