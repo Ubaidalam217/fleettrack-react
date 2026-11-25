@@ -278,7 +278,7 @@ export default function ViolationOverviewReport(props) {
   })
 
   return (
-    <ReportFrame title={title} desc="How many times each alert rule was broken, day by day and per driver or vehicle." {...props}>
+    <ReportFrame excludesUffizio title={title} desc="How many times each alert rule was broken, day by day and per driver or vehicle." {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}

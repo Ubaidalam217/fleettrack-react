@@ -32,6 +32,7 @@ import { ReportLogoPicker } from '../components/reports/ReportLogo'
 import { useHiddenColumns } from '../utils/reportColumns'
 import { useDriverDimension } from '../hooks/useDriverDimension'
 import { driverFilterLabel } from '../utils/driverAtTime'
+import UffizioExcludedNote from '../components/reports/UffizioExcludedNote'
 
 // How many rows the on-screen table renders before asking. Exports and Print
 // always emit everything; this only keeps the DOM from carrying five thousand
@@ -403,6 +404,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                 Per-vehicle movement log derived from Flespi telemetry — start-ups, driving, idling and ignition-off events with cumulative distance and location.
               </p>
             </div>
+            <UffizioExcludedNote />
 
             {/* ── Filter form ── */}
             <div className="report-screen-only" style={{

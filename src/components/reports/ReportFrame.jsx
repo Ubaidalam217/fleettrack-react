@@ -2,13 +2,18 @@ import { useState } from 'react'
 import Sidebar from '../Sidebar'
 import Header from '../Header'
 import ReportsBackLink from './ReportsBackLink'
+import UffizioExcludedNote from './UffizioExcludedNote'
 
 /**
  * Page chrome shared by the simpler reports (the Vehicle and Driver lists, the
  * Event Occurrence Report): sidebar, header, the "All reports" link, a title,
  * and the print rules that send only `#report-paper` to the printer.
  */
-export default function ReportFrame({ title, desc, children, isDark, toggleTheme, themeMode, setTheme }) {
+/**
+ * `excludesUffizio`: the report reads Flespi tracker data, so the Uffizio
+ * vehicles are not in it — a short note says so (UffizioExcludedNote).
+ */
+export default function ReportFrame({ title, desc, children, isDark, toggleTheme, themeMode, setTheme, excludesUffizio = false }) {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   )
@@ -35,6 +40,7 @@ export default function ReportFrame({ title, desc, children, isDark, toggleTheme
               <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>{title}</h1>
               {desc && <p style={{ fontSize: 12.5, color: 'var(--c-text3)', margin: '4px 0 0' }}>{desc}</p>}
             </div>
+            {excludesUffizio && <UffizioExcludedNote />}
             {children}
           </div>
         </main>

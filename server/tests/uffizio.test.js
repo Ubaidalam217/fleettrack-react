@@ -20,6 +20,7 @@ const { __resetFlespiDevices } = await import('../src/lib/flespiDevices.js')
 const { buildAcl } = await import('../src/lib/flespiGrant.js')
 const { buildScope } = await import('../src/lib/scope.js')
 const U = await import('../src/lib/uffizio.js')
+const { signToken } = await import('../src/lib/jwt.js')
 import { auth, resetDb, seedFixture } from './factories.js'
 
 const app = createApp()
@@ -379,6 +380,87 @@ describe('who may see it', () => {
     expect((await request(app).get('/api/uffizio/status').set(auth(fx.tokens.groupAdminA1))).status).toBe(403) // A2 is not in group A1
     expect((await request(app).get('/api/uffizio/status').set(auth(fx.tokens.bgUserA1a))).status).toBe(403)
     expect((await request(app).get('/api/uffizio/status').set(auth(fx.tokens.subUserA1a))).status).toBe(403)
+  })
+})
+
+describe('Live Map data (state, trail, endpoints)', () => {
+  it('normalises the rest of the live row', () => {
+    const r = U.normaliseRow(row(5, {
+      Angle: '179', Status: 'running', Temperature: 'analog 2 : 85.16', Odometer: '151983000', SOS: '--', battery_percentage: '87',
+      satellite_count: 9, Power: 'ON', Driver_First_Name: 'Sample', Driver_Middle_Name: 'null', Driver_Last_Name: 'Driver', username: 'api-user@invented',
+    }))
+    expect(r).toMatchObject({ heading: 179, status: 'RUNNING', temperature: 85.16, odometerKm: 151983, sos: null, batteryPct: 87, satellites: 9, power: true, driverName: 'Sample Driver', vehicleType: 'Truck' })
+    expect(r.raw).not.toHaveProperty('username')
+    expect(r.raw.Angle).toBe('179')
+    expect(U.normaliseRow(row(5, { Temperature1: '21.5', SOS: '1' }))).toMatchObject({ temperature: 21.5, sos: true })
+  })
+
+  it('keeps the latest row per vehicle and a position per new record', async () => {
+    up.rows = [row(1, { Angle: '90', Status: 'STOP' }), row(2, { Latitude: '0', Longitude: '0' })]
+    expect(await U.pollOnce({ now })).toMatchObject({ ok: true, positions: 1 })
+    const v1 = await prisma.vehicle.findUnique({ where: { imei: '350000000000001' } })
+    expect(await prisma.uffizioState.count()).toBe(2)
+    expect(await prisma.uffizioPosition.count()).toBe(1) // no fix, no sample
+    later(125)
+    expect(await U.pollOnce({ now })).toMatchObject({ ok: true, positions: 0 }) // same record
+    up.rows = [row(1, { Datetime: '24-11-2026 13:07:10', Speed: '48', IGN: 'ON', Status: 'RUNNING', Latitude: '24.45' }), row(2)]
+    later(125)
+    await U.pollOnce({ now })
+    const st = await prisma.uffizioState.findUnique({ where: { vehicleId: v1.id } })
+    expect(st).toMatchObject({ speed: 48, ign: true, status: 'RUNNING', lat: 24.45 })
+    expect(st.ts.toISOString()).toBe('2026-11-24T09:07:10.000Z')
+    expect(await prisma.uffizioPosition.count({ where: { vehicleId: v1.id } })).toBe(2)
+  })
+
+  it('GET /api/live/uffizio: the account’s own Uffizio vehicles, in the Live Map shape', async () => {
+    await U.pollOnce({ now })
+    const v1 = await prisma.vehicle.findUnique({ where: { imei: '350000000000001' } })
+    const res = await request(app).get('/api/live/uffizio').set(auth(fx.tokens.superAdmin))
+    expect(res.status).toBe(200)
+    const a = res.body.data.find(x => x.vehicleId === v1.id)
+    expect(a).toMatchObject({
+      id: `uffizio:${v1.id}`, imei: '350000000000001', source: 'UFFIZIO', speed: 0, heading: 90, ign: false, status: 'STOP',
+      externalVolt: 27.1, location: 'Invented Road, Test City', ts: Date.parse('2026-11-24T09:05:09Z') / 1000,
+      fuel: { port: 'BLE Fuel Level #1', raw: 3001, calibrated: false, litres: null },
+    })
+    expect(a.raw).toMatchObject({ Vehicle_Name: 'ZZ 1001 Q1' })
+    // Another BG's user sees none of them; the fuel BG's own user sees both.
+    expect((await request(app).get('/api/live/uffizio').set(auth(fx.tokens.bgUserA1a))).body.data).toEqual([])
+    const user = await prisma.user.create({ data: { email: 'a2-live@example.test', passwordHash: 'x', role: 'BG_USER', bgId: fx.bgA2.id, mustChangePassword: false } })
+    const mine = await request(app).get('/api/live/uffizio').set(auth(signToken(user)))
+    expect(mine.status).toBe(200)
+    expect(mine.body.data.map(x => x.imei).sort()).toEqual(['350000000000001', '350000000000002'])
+    // A removed one is gone from the map.
+    await request(app).delete(`/api/vehicles/${v1.id}`).set(auth(fx.tokens.superAdmin))
+    const after = await request(app).get('/api/live/uffizio').set(auth(fx.tokens.superAdmin))
+    expect(after.body.data.map(x => x.vehicleId)).not.toContain(v1.id)
+  })
+
+  it('GET /api/live/uffizio/:id/messages: the trail in Flespi’s message shape', async () => {
+    await U.pollOnce({ now })
+    up.rows = [row(1, { Datetime: '24-11-2026 13:07:10', Speed: '48', IGN: 'ON', Angle: '45', Odometer: '20000' }), row(2)]
+    later(125)
+    await U.pollOnce({ now })
+    const v1 = await prisma.vehicle.findUnique({ where: { imei: '350000000000001' } })
+    const from = Date.parse('2026-11-24T09:00:00Z') / 1000
+    const res = await request(app).get(`/api/live/uffizio/${v1.id}/messages?from=${from}&to=${from + 3600}`).set(auth(fx.tokens.superAdmin))
+    expect(res.status).toBe(200)
+    expect(res.body.result).toHaveLength(2)
+    expect(res.body.result[1]).toMatchObject({
+      'device.id': `uffizio:${v1.id}`, timestamp: Date.parse('2026-11-24T09:07:10Z') / 1000, 'position.speed': 48,
+      'position.direction': 45, 'engine.ignition.status': true, 'vehicle.mileage': 20, 'position.valid': true,
+    })
+    expect((await request(app).get(`/api/live/uffizio/${v1.id}/messages?from=${from}&to=${from + 3600}`).set(auth(fx.tokens.bgUserA1a))).status).toBe(404)
+    expect((await request(app).get(`/api/live/uffizio/${fx.vehicles.v1.id}/messages?from=${from}&to=${from + 3600}`).set(auth(fx.tokens.superAdmin))).status).toBe(404)
+    expect((await request(app).get(`/api/live/uffizio/${v1.id}/messages?from=${from}&to=${from + 40 * 86400}`).set(auth(fx.tokens.superAdmin))).status).toBe(400)
+  })
+
+  it('positions follow the 90-day retention', async () => {
+    await U.pollOnce({ now })
+    const v = await prisma.vehicle.findFirst({ where: { dataSource: 'UFFIZIO' } })
+    await prisma.uffizioPosition.create({ data: { vehicleId: v.id, ts: new Date(Date.now() - 91 * 86400_000), lat: 24, lng: 54 } })
+    await U.cleanup()
+    expect(await prisma.uffizioPosition.count({ where: { ts: { lt: new Date(Date.now() - 90 * 86400_000) } } })).toBe(0)
   })
 })
 

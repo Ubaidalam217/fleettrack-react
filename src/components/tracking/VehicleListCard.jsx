@@ -1,6 +1,7 @@
 import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { useAddress } from '../../hooks/useAddress'
 import { useDriverForDevice } from '../../data/settings'
+import { isUffizioVehicle, fuelText, UFFIZIO_NOTE } from '../../utils/uffizioLive'
 
 // The open/close animation uses grid-template-rows 0fr -> 1fr, which is the one
 // way to transition to a content-determined height without measuring it or
@@ -63,6 +64,7 @@ export default function VehicleListCard({ v, open, onCenter }) {
   const hasCoords = v.lat != null && v.lng != null
   // Settings > Driver first, the device's own metadata as the fallback.
   const driverName = useDriverForDevice(v)?.driver.name || v.master?.driver?.name || ''
+  const uff = isUffizioVehicle(v) ? v.uffizio ?? {} : null
 
   return (
     <div className="vl-card" data-open={open ? 'true' : 'false'}>
@@ -91,6 +93,8 @@ export default function VehicleListCard({ v, open, onCenter }) {
             {driverName && <Cell label="Driver" value={driverName} />}
             <Cell label="Heading" value={headingLabel(v.heading)} />
             <Cell label="Last Update" value={fmt(v.lastTs)} />
+            {uff && <Cell label="Ignition" value={v.ignition === true ? 'On' : v.ignition === false ? 'Off' : null} />}
+            {uff && <Cell label="Fuel" value={fuelText(uff.fuel)} />}
           </div>
 
           <div style={{ marginBottom: 11 }}>
@@ -104,8 +108,9 @@ export default function VehicleListCard({ v, open, onCenter }) {
             <span style={{ fontSize: 11.5, color: 'var(--c-text2)', lineHeight: 1.5 }}>
               {!hasCoords
                 ? 'No position reported'
-                : address ?? `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}`}
+                : address ?? (uff?.location || `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}`)}
             </span>
+            {uff && <span style={{ display: 'block', marginTop: 4, fontSize: 10.5, color: 'var(--c-text3)' }}>{UFFIZIO_NOTE}</span>}
           </div>
 
           <button

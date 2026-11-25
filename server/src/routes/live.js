@@ -20,6 +20,7 @@ import { Router } from 'express'
 import { asyncHandler } from '../lib/http.js'
 import { buildAcl } from '../lib/flespiGrant.js'
 import { isServing, onTelemetry, telemetryItems } from '../lib/telemetry.js'
+import { liveUffizio, uffizioMessages } from '../lib/uffizioLive.js'
 
 const router = Router()
 
@@ -73,5 +74,25 @@ router.get(
     res.on('close', cleanup)
   })
 )
+
+/**
+ * GET /api/live/uffizio — the Uffizio vehicles this account may see, with
+ * their latest Uffizio row and fuel (lib/uffizioLive.js). The Live Map polls
+ * it about once a minute; the data itself moves every ~2 minutes.
+ */
+router.get('/uffizio', asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  res.json({ data: await liveUffizio(req.scope) })
+}))
+
+/**
+ * GET /api/live/uffizio/:vehicleId/messages?from&to — an Uffizio vehicle's
+ * position samples in Flespi's message shape (unix seconds), for the replay
+ * and the vehicle panel.
+ */
+router.get('/uffizio/:vehicleId/messages', asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  res.json(await uffizioMessages(req.scope, req.params.vehicleId, Number(req.query.from), Number(req.query.to)))
+}))
 
 export default router

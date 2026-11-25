@@ -265,8 +265,11 @@ export const REPORT_EVENT_LIMIT = 2000
  *
  * @returns {Promise<{ events: object[], truncated: boolean }>}
  */
-export async function fetchAlertEventsInRange({ fromTs, toTs, deviceIds }) {
-  if (!IS_REAL || !deviceIds?.length) return { events: [], truncated: false }
+export async function fetchAlertEventsInRange({ fromTs, toTs, deviceIds: ids }) {
+  // Flespi device ids only: an Uffizio vehicle ("uffizio:…") has no device id
+  // on its events (its fuel alerts carry the vehicle), so the replay shows none.
+  const deviceIds = (ids ?? []).filter(id => Number.isInteger(Number(id)) && Number(id) > 0)
+  if (!IS_REAL || !deviceIds.length) return { events: [], truncated: false }
   let rows
   try {
     rows = await request('/api/alert-events', {

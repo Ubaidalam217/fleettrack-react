@@ -29,6 +29,8 @@ import { licenceExpiryState, formatExpiryDate } from '../../utils/licenceExpiry'
 import { BASE_URL, HEADERS } from '../../hooks/flespiConfig'
 import SharedChip from '../SharedChip'
 import { sharedFromText } from '../../utils/vehiclePlacement'
+import { isUffizioVehicle, fuelText, UFFIZIO_NOTE } from '../../utils/uffizioLive'
+import { CloudDownload } from 'lucide-react'
 
 // Replay used to be a tab here. It now lives in its own dock over the map and
 // is started from the vehicle's card in the list or from its marker popup.
@@ -232,7 +234,7 @@ function VehicleInfo({ v, onOpenInfo, onOpenConsole }) {
   const branchName = profile.linked && profile.branchName !== '—' ? profile.branchName : ''  // the client's name when it has no branch
   const fields = row?.customFields ?? []
   const color = statusColor(v.status)
-  const position = address ?? (v.lat != null && v.lng != null ? `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}` : null)
+  const position = address ?? (v.uffizio?.location || (v.lat != null && v.lng != null ? `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}` : null))
 
   return (
     <>
@@ -344,9 +346,86 @@ function VehicleInfo({ v, onOpenInfo, onOpenConsole }) {
           )}
         </InfoCard>
 
+        {isUffizioVehicle(v) && <UffizioCard v={v} />}
+
         <VehicleExpenses imei={v.ident} />
       </div>
       </div>
+    </>
+  )
+}
+
+// ── Uffizio vehicles (client, 2026-11-25: "show ALL data here") ────────────
+// Their data comes from the client's Uffizio system about every 2 minutes
+// (server/src/lib/uffizio.js); everything Uffizio sends is shown here.
+
+const yesNo = (b, yes = 'On', no = 'Off') => (b === true ? yes : b === false ? no : null)
+const num = (n, unit, digits = 1) => (typeof n === 'number' && Number.isFinite(n) ? `${Number(n.toFixed(digits))}${unit}` : null)
+
+function UffizioCard({ v }) {
+  const u = v.uffizio ?? {}
+  const updated = u.updatedAt ? new Date(u.updatedAt).toLocaleString() : null
+  return (
+    <InfoCard
+      icon={CloudDownload}
+      title="Uffizio data"
+      wide
+      aside={<span className="vinfo-pill" style={{ color: 'var(--ft-accent)', background: 'color-mix(in srgb, var(--ft-accent) 12%, transparent)' }}>{UFFIZIO_NOTE}</span>}
+    >
+      <div className="vinfo-fields four">
+        <InfoField label="Uffizio Status" value={u.status} />
+        <InfoField label="Ignition (IGN)" value={yesNo(v.ignition)} />
+        <InfoField label="Speed" value={num(v.speed, ' km/h', 0)} />
+        <InfoField label="Heading" value={num(v.heading, '°', 0)} />
+        <InfoField label="Odometer" value={num(u.odometerKm, ' km', 1)} />
+        <InfoField label="Fuel" value={fuelText(u.fuel)} />
+        <InfoField label="Driver" value={u.driverName} />
+        <InfoField label="Driver tag (iButton / RFID)" value={u.driverTag} mono />
+        <InfoField label="External Volt" value={num(u.externalVolt, ' V', 2)} />
+        <InfoField label="Battery" value={num(u.batteryPct, ' %', 0)} />
+        <InfoField label="Temperature" value={num(v.temperature, ' °C', 1)} />
+        <InfoField label="SOS" value={yesNo(u.sos, 'Pressed', 'No')} color={u.sos ? '#ef4444' : undefined} />
+        <InfoField label="Main power" value={yesNo(u.power)} />
+        <InfoField label="Satellites" value={u.satellites} />
+        <InfoField label="Record time" value={fmtTs(v.lastTs)} />
+        <InfoField label="Read from Uffizio" value={updated} />
+        <InfoField label="Location (Uffizio)" value={u.location} span wrap />
+      </div>
+    </InfoCard>
+  )
+}
+
+/** Everything Uffizio sent in its last row (the "Live Data" tab of an Uffizio vehicle). */
+function UffizioRaw({ v }) {
+  const raw = v.uffizio?.raw ?? {}
+  const [query, setQuery] = useState('')
+  const rows = Object.entries(raw)
+    .map(([k, val]) => [k, typeof val === 'object' ? JSON.stringify(val) : String(val ?? '')])
+    .filter(([k, val]) => !query || `${k} ${val}`.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a, b) => a[0].localeCompare(b[0]))
+  if (!Object.keys(raw).length) return <Pending note="Uffizio has not sent a row for this vehicle yet." />
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search Uffizio fields…"
+          style={{
+            flex: '1 1 200px', minWidth: 0, padding: '7px 10px', fontSize: 12.5, borderRadius: 8,
+            border: '1px solid var(--c-border2)', backgroundColor: 'var(--c-card)', color: 'var(--c-text1)', outline: 'none',
+          }}
+        />
+        <span style={{ fontSize: 11, color: 'var(--c-text3)' }}>{rows.length} fields · {UFFIZIO_NOTE}</span>
+      </div>
+      <Section title="Uffizio row" caption={`record time ${fmtTs(v.lastTs)}`}>
+        {rows.map(([k, val]) => (
+          <div key={k} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.3fr)', gap: 12, alignItems: 'baseline', padding: '6px 2px', borderBottom: '1px solid var(--c-border)' }}>
+            <span title={k} style={{ fontSize: 12, color: 'var(--c-text2)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k}</span>
+            <span title={val} style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text1)', overflowWrap: 'anywhere' }}>{val === '' ? '—' : val}</span>
+          </div>
+        ))}
+      </Section>
     </>
   )
 }
@@ -1258,11 +1337,15 @@ export default function VehicleDetailPanel({
         {tab === 'Vehicle Info' && <VehicleInfo v={vehicle} onOpenInfo={onOpenInfo} onOpenConsole={onOpenConsole} />}
         {tab === 'Driver Info'  && <DriverInfo  v={vehicle} />}
         {tab === 'Usage'        && <Usage       v={vehicle} />}
-        {tab === 'Sensors'      && <Sensors     v={vehicle} />}
+        {tab === 'Sensors'      && (isUffizioVehicle(vehicle)
+          ? <><style>{VI_CSS}</style><div className="vinfo-wrap"><div className="vinfo"><UffizioCard v={vehicle} /></div></div></>
+          : <Sensors v={vehicle} />)}
         {tab === 'Alerts'       && <Alerts     v={vehicle} />}
         {tab === 'Documents'    && <VehicleDocumentsTab v={vehicle} />}
-        {tab === 'Live Data'    && <Parameters  key={vehicle.id} v={vehicle} />}
-        {tab === 'Parameters'   && <DeviceSettingsTab key={vehicle.id} v={vehicle} />}
+        {tab === 'Live Data'    && (isUffizioVehicle(vehicle) ? <UffizioRaw key={vehicle.id} v={vehicle} /> : <Parameters key={vehicle.id} v={vehicle} />)}
+        {tab === 'Parameters'   && (isUffizioVehicle(vehicle)
+          ? <Pending note="This vehicle’s tracker reports to Uffizio, so its settings are kept in Uffizio, not here." />
+          : <DeviceSettingsTab key={vehicle.id} v={vehicle} />)}
       </div>
     </div>
   )

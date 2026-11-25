@@ -4,6 +4,8 @@
 // 429 backoff schedule as replay.js, since it's the same endpoint and the same
 // per-account rate limit.
 import { BASE_URL, HEADERS } from '../hooks/flespiConfig'
+import { isUffizioId } from './uffizioLive'
+import { fetchUffizioMessages } from './replay'
 import { createDistanceStepper } from './distance'
 
 const MAX_MESSAGES = 3000
@@ -97,7 +99,11 @@ export function fetchTodayMessages(deviceId, onStatus) {
   // history), and a bare comma-separated `data` value is a hard 400.
   const data = JSON.stringify({ from: fromTs, to: toTs, count: MAX_MESSAGES, fields: FIELDS })
   const url = `${BASE_URL}/gw/devices/${deviceId}/messages?data=${encodeURIComponent(data)}`
-  const promise = fetchWithRetry(url, onStatus)
+  // An Uffizio vehicle: today's ~2-minute samples from our own copy (utils/replay.js).
+  const read = isUffizioId(deviceId)
+    ? fetchUffizioMessages(deviceId, fromTs, toTs, { onStatus }).then(r => ({ result: r.messages }))
+    : fetchWithRetry(url, onStatus)
+  const promise = read
     .then(json => (json.result || []).slice().sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)))
     .catch(err => {
       cache.delete(deviceId) // don't cache a failure — next attempt should retry

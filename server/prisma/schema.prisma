@@ -306,9 +306,65 @@ model Vehicle {
   journeyTemplates    JourneyTemplate[]
   fuelReadings        FuelReading[]
   fuelCalibrations    FuelCalibration[]
+  uffizioState        UffizioState?
+  uffizioPositions    UffizioPosition[]
 
   @@index([bgId])
   @@index([branchId])
+}
+
+/// The latest live row of an UFFIZIO vehicle (client, 2026-11-25: "show ALL
+/// their data here"), replaced when Uffizio's record time moves on
+/// (lib/uffizio.js storeLive). Read by the Live Map (GET /api/live/uffizio).
+/// `raw` is Uffizio's row as it came, minus the API user name.
+model UffizioState {
+  vehicleId    String    @id
+  ts           DateTime
+  gpsTs        DateTime?
+  lat          Float?
+  lng          Float?
+  speed        Float?
+  heading      Float?
+  ign          Boolean?
+  /// Uffizio's own state: RUNNING / IDLING / STOPPED / INACTIVE …
+  status       String?
+  odometerKm   Float?
+  driverName   String?
+  driverTag    String?
+  externalVolt Float?
+  batteryPct   Float?
+  temperature  Float?
+  sos          Boolean?
+  power        Boolean?
+  satellites   Int?
+  location     String?
+  vehicleType  String?
+  raw          Json      @default("{}")
+  updatedAt    DateTime  @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+}
+
+/// One position sample of an UFFIZIO vehicle per new Uffizio record with a
+/// fix (about every 2 minutes), kept 90 days: the trail for the replay and
+/// the vehicle panel's "today", served in Flespi's message shape
+/// (GET /api/live/uffizio/:vehicleId/messages).
+model UffizioPosition {
+  vehicleId    String
+  ts           DateTime
+  lat          Float
+  lng          Float
+  speed        Float?
+  heading      Float?
+  ign          Boolean?
+  odometerKm   Float?
+  driverTag    String?
+  externalVolt Float?
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleId, ts])
+  @@index([ts])
 }
 
 /// One raw fuel reading of one vehicle's fuel port (client, 2026-11-24: fuel

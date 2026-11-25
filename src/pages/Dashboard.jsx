@@ -22,6 +22,7 @@ import TripAnalysis          from '../components/TripAnalysis'
 import CostSummary           from '../components/CostSummary'
 import { useFlespiData }     from '../hooks/useFlespiData'
 import { useDashboardStats } from '../hooks/useDashboardStats'
+import { withoutUffizio }    from '../utils/uffizioLive'
 
 // ── Widget registry ────────────────────────────────────────────────────────
 const WIDGET_LIST = [
@@ -201,7 +202,7 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   )
-  const { data, loading, error, mqttFatalError, mqttRetryNotice, noVehicles, tokenError, lastUpdated, refresh, isConnected } = useFlespiData()
+  const { data, loading, error, mqttFatalError, mqttRetryNotice, noVehicles, tokenError, lastUpdated, refresh, isConnected } = useFlespiData({ withUffizio: true })
   const [refreshing, setRefreshing] = useState(false)
 
   const handleRefresh = async () => {
@@ -251,7 +252,11 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
   )
 
   // Distance, trips, safety, reminders and costs — every card's recorded figures.
-  const stats = useDashboardStats(data?.vehicles, filteredData?.vehicles)
+  // The Uffizio vehicles count in the live status figures but not yet in the
+  // recorded ones (distance, trips, safety): those read Flespi day records.
+  const statsAll = useMemo(() => (data?.vehicles ? withoutUffizio(data.vehicles) : data?.vehicles), [data?.vehicles])
+  const statsSel = useMemo(() => (filteredData?.vehicles ? withoutUffizio(filteredData.vehicles) : filteredData?.vehicles), [filteredData?.vehicles])
+  const stats = useDashboardStats(statsAll, statsSel)
 
   const panelVehicles = useMemo(() => {
     if (!data?.vehicles) return []

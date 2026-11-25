@@ -269,7 +269,7 @@ function TachoPage({ variant, ...props }) {
   const truncated = raw && [...raw.byDevice.values()].some(e => e?.truncated)
 
   return (
-    <ReportFrame title={V.title} desc={V.desc} {...props}>
+    <ReportFrame excludesUffizio title={V.title} desc={V.desc} {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {TACHO_PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}

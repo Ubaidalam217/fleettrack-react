@@ -3,6 +3,7 @@ import { statusColor, statusLabel } from '../../utils/vehicleStatus'
 import { useAddress } from '../../hooks/useAddress'
 import { shortenAddress } from '../../utils/geocode'
 import { headingLabel } from '../../utils/heading'
+import { isUffizioVehicle, fuelText, UFFIZIO_NOTE } from '../../utils/uffizioLive'
 
 // The popup is styled here rather than through inline styles because the
 // surface it sits on — the wrapper, the tip and the close button — belongs to
@@ -69,6 +70,8 @@ function Line({ label, children }) {
 export default function VehiclePopup({ v, name, open, onReplay }) {
   const address = useAddress(v.lat, v.lng, open)
   const hasCoords = v.lat != null && v.lng != null
+  const uff = isUffizioVehicle(v) ? v.uffizio ?? {} : null
+  const fuel = uff ? fuelText(uff.fuel) : null
 
   return (
     <Popup className="veh-popup ft-mapcard" maxWidth={260} minWidth={196} autoPan={false}>
@@ -89,6 +92,9 @@ export default function VehiclePopup({ v, name, open, onReplay }) {
         <Line label="Speed">{v.speed != null ? `${v.speed} km/h` : '—'}</Line>
         <Line label="Time">{fmtClock(v.lastTs)}</Line>
         <Line label="Heading">{headingLabel(v.heading)}</Line>
+        {uff && <Line label="IGN">{v.ignition === true ? 'On' : v.ignition === false ? 'Off' : '—'}{uff.status ? ` · ${uff.status}` : ''}</Line>}
+        {fuel && <Line label="Fuel">{fuel}</Line>}
+        {uff?.driverName && <Line label="Driver">{uff.driverName}</Line>}
 
         {/* Full width rather than a label/value row: an address squeezed into
             the value column wraps to one word per line. */}
@@ -99,9 +105,11 @@ export default function VehiclePopup({ v, name, open, onReplay }) {
               ? 'No position'
               : address
                 ? shortenAddress(address)
-                : `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}`}
+                : uff?.location || `${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}`}
           </div>
         </div>
+        {/* Nobody should expect second-level data from it. */}
+        {uff && <div style={{ marginTop: 4, fontSize: 10, color: 'var(--ft-card-label)' }}>{UFFIZIO_NOTE}</div>}
 
         {onReplay && (
           <button className="veh-popup-replay ft-mapcard-btn" onClick={() => onReplay(v)}>

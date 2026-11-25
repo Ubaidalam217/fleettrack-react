@@ -297,6 +297,46 @@ function ignitionOf(v) {
   return null
 }
 
+/** ON/1/YES/TRUE → true, OFF/0/NO/FALSE → false, anything else ('--', '') → null. */
+function flagOf(v) {
+  const s = clean(v).toUpperCase()
+  if (['ON', '1', 'YES', 'TRUE', 'ACTIVE'].includes(s)) return true
+  if (['OFF', '0', 'NO', 'FALSE', 'INACTIVE'].includes(s)) return false
+  return null
+}
+
+/** Temperature1 (the number), else the number inside Temperature ("analog 2 : 85.16"). */
+function temperatureOf(r) {
+  const t1 = numOrNull(r.Temperature1)
+  if (t1 !== null) return t1
+  const m = /(-?\d+(?:\.\d+)?)\s*$/.exec(clean(r.Temperature))
+  return m && /:/.test(clean(r.Temperature)) ? Number(m[1]) : numOrNull(r.Temperature)
+}
+
+/**
+ * Uffizio's Odometer in km. The unit "depends on configuration" (their manual);
+ * their sample (151983000) only makes sense in metres, so metres is the
+ * default. UFFIZIO_ODOMETER_UNIT=km if the client's account sends km.
+ */
+export function odometerKmOf(v) {
+  const n = numOrNull(v)
+  if (n === null || n < 0) return null
+  return clean(process.env.UFFIZIO_ODOMETER_UNIT).toLowerCase() === 'km' ? n : n / 1000
+}
+
+/** Fields of a row that are never kept (an account name of the API user). */
+const RAW_DROP = new Set(['username'])
+
+/** The row as it came, minus RAW_DROP, values cut short — kept as the vehicle's latest "Live Data". */
+export function rawOf(r) {
+  const out = {}
+  for (const [k, v] of Object.entries(r ?? {})) {
+    if (RAW_DROP.has(k)) continue
+    out[k.slice(0, 60)] = typeof v === 'string' ? v.slice(0, 300) : v
+  }
+  return out
+}
+
 /** The driver tag: iButton / RFID when it is not empty or all zeros. */
 function driverTagOf(r) {
   const t = clean(r['Ibutton/RFID'] ?? r.Ibutton ?? r.RFID)
@@ -320,7 +360,8 @@ export function normaliseRow(r) {
     const port = clean(f?.port_name) || 'Fuel'
     if (raw !== null) fuel.push({ port: port.slice(0, 80), raw })
   }
-  const driverName = [r.Driver_First_Name, r.Driver_Middle_Name, r.Driver_Last_Name].map(clean).filter(x => x && x !== '--').join(' ')
+  const driverName = [r.Driver_First_Name, r.Driver_Middle_Name, r.Driver_Last_Name].map(clean).filter(x => x && x !== '--' && x.toLowerCase() !== 'null').join(' ')
+  const heading = numOrNull(r.Angle ?? r.course)
   return {
     imei,
     plate: clean(r.Vehicle_Name).slice(0, 60) || null,
@@ -340,6 +381,17 @@ export function normaliseRow(r) {
     driverTag: driverTagOf(r),
     driverName: driverName || null,
     fuel,
+    // The rest of the live row (Live Map, vehicle panel).
+    heading: heading !== null && heading >= 0 && heading <= 360 ? heading : null,
+    status: clean(r.Status).toUpperCase().slice(0, 40) || null,
+    odometerKm: odometerKmOf(r.Odometer),
+    batteryPct: numOrNull(r.battery_percentage),
+    temperature: temperatureOf(r),
+    sos: flagOf(r.SOS),
+    power: flagOf(r.Power),
+    satellites: (() => { const n = numOrNull(r.satellite_count); return n === null ? null : Math.round(n) })(),
+    vehicleType: clean(r.Vehicletype).slice(0, 40) || null,
+    raw: rawOf(r),
   }
 }
 
@@ -465,10 +517,57 @@ export async function storeReadings(rows, byImei) {
   return res.count
 }
 
-/** Delete readings older than the retention. */
+/** What UffizioState / UffizioPosition keep of a normalised row. */
+const stateData = r => ({
+  ts: new Date(r.ts), gpsTs: r.gpsTs ? new Date(r.gpsTs) : null,
+  lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading ?? null, ign: r.ign,
+  status: r.status ?? null, odometerKm: r.odometerKm ?? null,
+  driverName: r.driverName, driverTag: r.driverTag, externalVolt: r.externalVolt,
+  batteryPct: r.batteryPct ?? null, temperature: r.temperature ?? null, sos: r.sos ?? null,
+  power: r.power ?? null, satellites: r.satellites ?? null, location: r.location ? r.location.slice(0, 300) : null,
+  vehicleType: r.vehicleType ?? null, raw: r.raw ?? {},
+})
+
+/**
+ * The Live Map's data for Uffizio vehicles (client, 2026-11-25: "show ALL
+ * data here"): the latest row per vehicle (UffizioState, replaced when the
+ * record time moved on) and a position sample per new record with a fix
+ * (UffizioPosition, 90 days) — a ~2-minute trail for the replay and the
+ * vehicle panel's "today".
+ * @returns {Promise<{ states: number, positions: number }>}
+ */
+export async function storeLive(rows, byImei) {
+  const mine = rows.filter(r => r && r.ts !== null && byImei.get(r.imei) && r.ts <= Date.now() + 10 * 60_000)
+  if (!mine.length) return { states: 0, positions: 0 }
+  const ids = [...new Set(mine.map(r => byImei.get(r.imei).id))]
+  const known = new Map((await prisma.uffizioState.findMany({ where: { vehicleId: { in: ids } }, select: { vehicleId: true, ts: true } }))
+    .map(s => [s.vehicleId, s.ts.getTime()]))
+  const ops = []
+  const positions = []
+  for (const r of mine) {
+    const vehicleId = byImei.get(r.imei).id
+    const last = known.get(vehicleId)
+    if (last !== undefined && r.ts <= last) continue // the same record as last time
+    known.set(vehicleId, r.ts)
+    const data = stateData(r)
+    ops.push(prisma.uffizioState.upsert({ where: { vehicleId }, create: { vehicleId, ...data }, update: data }))
+    if (r.lat !== null && r.lng !== null) {
+      positions.push({
+        vehicleId, ts: new Date(r.ts), lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading ?? null, ign: r.ign,
+        odometerKm: r.odometerKm ?? null, driverTag: r.driverTag, externalVolt: r.externalVolt,
+      })
+    }
+  }
+  if (positions.length) ops.push(prisma.uffizioPosition.createMany({ data: positions, skipDuplicates: true }))
+  if (ops.length) await prisma.$transaction(ops)
+  return { states: ops.length - (positions.length ? 1 : 0), positions: positions.length }
+}
+
+/** Delete readings and position samples older than the retention. */
 export async function cleanup(nowMs = Date.now()) {
   const before = new Date(nowMs - RETENTION_DAYS * 86400_000)
   const res = await prisma.fuelReading.deleteMany({ where: { ts: { lt: before } } })
+  await prisma.uffizioPosition.deleteMany({ where: { ts: { lt: before } } })
   return res.count
 }
 
@@ -498,13 +597,14 @@ export async function pollOnce({ now = Date.now } = {}) {
       const rows = raw.map(normaliseRow).filter(Boolean)
       const sync = await syncVehicles(rows, c.bgId)
       const inserted = await storeReadings(rows, sync.byImei)
+      const live = await storeLive(rows, sync.byImei)
       state.lastPollAt = new Date(startedAt).toISOString()
       state.lastOkAt = state.lastPollAt
       state.lastError = null
       state.lastErrorAt = null
       state.lastResult = {
         rows: raw.length, vehicles: sync.byImei.size, created: sync.created, updated: sync.updated, inserted,
-        removed: sync.removed.length,
+        removed: sync.removed.length, positions: live.positions,
         withFuel: rows.filter(r => r.fuel.length).length, conflicts: sync.conflicts.slice(0, 20),
       }
       await saveState()

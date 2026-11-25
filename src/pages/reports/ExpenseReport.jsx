@@ -284,7 +284,7 @@ export default function ExpenseReport(props) {
   const types = category ? EXPENSE_TYPES[category] : [...EXPENSE_TYPES.Variable, ...EXPENSE_TYPES.Fix]
 
   return (
-    <ReportFrame title={title} desc="Every expense of the chosen vehicles in a period, and what each vehicle cost per km, per day and per engine hour." {...props}>
+    <ReportFrame excludesUffizio title={title} desc="Every expense of the chosen vehicles in a period, and what each vehicle cost per km, per day and per engine hour." {...props}>
       {!IS_REAL ? (
         <div style={{ ...CARD_SURFACE, padding: 24, fontSize: 13, color: 'var(--c-text2)' }}>Expenses are kept on the server, so this report needs the server and is not available in demo mode.</div>
       ) : (

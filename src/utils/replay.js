@@ -2,7 +2,9 @@
 // into a plottable, playable track. Same BASE_URL/HEADERS + defensive field
 // reads as VehicleActivity.jsx's /messages call, scoped to one device.
 import { BASE_URL, HEADERS } from '../hooks/flespiConfig'
+import { API_URL } from '../data/mode'
 import { statusColor } from './vehicleStatus'
+import { isUffizioId, uffizioVehicleId } from './uffizioLive'
 
 // Hard cap so one request can't ask Flespi for an unbounded reply. If a range
 // hits the cap the track is silently incomplete, so callers should surface
@@ -117,6 +119,9 @@ async function fetchWithRetry(url, onStatus, signal) {
  */
 export async function fetchDeviceMessages(deviceId, fromTs, toTs, opts = {}) {
   const { fields = TRACK_FIELDS, onStatus, signal } = opts
+  // An Uffizio vehicle (client, 2026-11-25) has no Flespi device: its ~2-minute
+  // samples come from our own copy, already in Flespi's message shape.
+  if (isUffizioId(deviceId)) return fetchUffizioMessages(deviceId, fromTs, toTs, { onStatus, signal })
 
   const chunks = []
   for (let start = fromTs; start < toTs; start += CHUNK_SECONDS) {
@@ -153,6 +158,27 @@ export async function fetchDeviceMessages(deviceId, fromTs, toTs, opts = {}) {
   return { messages: allMsgs, truncated }
 }
 
+/**
+ * An Uffizio vehicle's position samples (GET /api/live/uffizio/:id/messages):
+ * about one every 2 minutes, in Flespi's message shape (timestamp,
+ * position.*, engine.ignition.status, vehicle.mileage …). Up to 31 days a call.
+ * @returns {Promise<{messages: object[], truncated: boolean}>}
+ */
+export async function fetchUffizioMessages(deviceId, fromTs, toTs, { onStatus, signal } = {}) {
+  const id = encodeURIComponent(uffizioVehicleId(deviceId))
+  const messages = []
+  let truncated = false
+  const SPAN = 31 * 86400
+  for (let start = fromTs; start <= toTs; start += SPAN) {
+    if (signal?.aborted) throw abortError()
+    const end = Math.min(toTs, start + SPAN - 1)
+    const json = await fetchWithRetry(`${API_URL}/api/live/uffizio/${id}/messages?from=${start}&to=${end}`, onStatus, signal)
+    messages.push(...(json.result || []))
+    if (json.truncated) truncated = true
+  }
+  return { messages, truncated }
+}
+
 /** Days fetched at once by fetchFleetMessages. */
 const FLEET_CONCURRENCY = 4
 
@@ -172,6 +198,17 @@ const FLEET_CONCURRENCY = 4
  */
 export async function fetchFleetMessages(deviceIds, fromTs, toTs, opts = {}) {
   const { fields = TRACK_FIELDS, onStatus, signal } = opts
+  // Uffizio vehicles are read one by one from our own copy; the Flespi ones as before.
+  const uffizio = deviceIds.filter(isUffizioId)
+  if (uffizio.length) {
+    const flespiIds = deviceIds.filter(id => !isUffizioId(id))
+    const [rest, ...own] = await Promise.all([
+      fetchFleetMessages(flespiIds, fromTs, toTs, opts),
+      ...uffizio.map(id => fetchUffizioMessages(id, fromTs, toTs, { signal })),
+    ])
+    uffizio.forEach((id, i) => rest.set(id, own[i]))
+    return rest
+  }
   const byDevice = new Map(deviceIds.map(id => [id, { messages: [], truncated: false }]))
   if (!deviceIds.length) return byDevice
 

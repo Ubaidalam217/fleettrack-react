@@ -35,6 +35,7 @@ import { useHiddenColumns, columnChoices } from '../../utils/reportColumns'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { driverFilterLabel } from '../../utils/driverAtTime'
 import { applyGeoZoneDrivers } from '../../utils/geoZoneDriver'
+import UffizioExcludedNote from '../../components/reports/UffizioExcludedNote'
 
 // Hard cap the user explicitly asked for: a long range across many vehicles
 // can hammer Flespi (each day of range is one request per vehicle), so the
@@ -434,6 +435,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                 Trips, visits and dwell time at your geofences and addresses, derived from one Flespi fetch per run.
               </p>
             </div>
+            <UffizioExcludedNote />
 
             {/* ── Sub-report tabs ── */}
             <div className="report-screen-only" style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>

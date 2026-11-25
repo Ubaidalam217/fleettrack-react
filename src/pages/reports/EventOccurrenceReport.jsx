@@ -263,7 +263,7 @@ export default function EventOccurrenceReport(props) {
   const total = report?.totalRows ?? 0
 
   return (
-    <ReportFrame
+    <ReportFrame excludesUffizio
       title={title}
       desc="Every alert raised in the period, laid out like the Movement Report, with the vehicle's status, speed and location at that moment."
       {...props}

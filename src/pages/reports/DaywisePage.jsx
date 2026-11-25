@@ -25,6 +25,7 @@ import { useReportTitle, fileNameOf } from '../../components/reports/useReportTi
 import ReportsBackLink from '../../components/reports/ReportsBackLink'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { driverFilterLabel, driverPasses, NO_DRIVER } from '../../utils/driverAtTime'
+import UffizioExcludedNote from '../../components/reports/UffizioExcludedNote'
 
 /**
  * Daywise Work Hour and Daywise Distance.
@@ -376,6 +377,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
               <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>{reportTitle}</h1>
               <p style={{ fontSize: 12.5, color: 'var(--c-text3)', margin: '4px 0 0' }}>{V.subtitle}</p>
             </div>
+            <UffizioExcludedNote />
 
             {/* ── toolbar ── */}
             <div className="report-screen-only" style={{

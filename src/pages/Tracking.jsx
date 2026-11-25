@@ -31,6 +31,7 @@ import ConfirmDialog from '../components/tracking/ConfirmDialog'
 import ToastStack from '../components/tracking/Toasts'
 import { useToasts } from '../hooks/useToasts'
 import { useFlespiMQTT } from '../hooks/useFlespiMQTT'
+import { isUffizioVehicle } from '../utils/uffizioLive'
 import {
   ALL, FILTERS, statusColor, statusLabel,
   filterLabel, filterColor, countByFilter, matchesFilter,
@@ -487,7 +488,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // render immediately — nothing here gates the UI. Vehicles appear as MQTT
   // messages arrive; the hook's background REST bootstrap only fills in names
   // and last-known positions if and when it returns.
-  const { vehicles: liveVehicles, isConnected, error, noVehicles, tokenError } = useFlespiMQTT()
+  // With the Uffizio vehicles (client, 2026-11-25): first-class on the map,
+  // the list, the counts and the filters; data every ~2 min (utils/uffizioLive.js).
+  const { vehicles: liveVehicles, isConnected, error, noVehicles, tokenError } = useFlespiMQTT({ withUffizio: true })
   // Account Settings › Live refresh: the list, markers and counts redraw from
   // the feed at most this often (0 = every message). Traces still take every
   // fix from liveVehicles, so a traced path loses no points between ticks.
@@ -1243,7 +1246,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
     },
     { type: 'separator' },
     // A command writes to the tracker: its owner's only (a shared vehicle is read-only here).
-    ...(isSharedIn(v) ? [] : [{
+    // An Uffizio vehicle has no Flespi device to command.
+    ...(isSharedIn(v) || isUffizioVehicle(v) ? [] : [{
       key: 'poll',
       label: 'Poll',
       icon: MenuIcon.poll,
@@ -1255,12 +1259,13 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
       icon: MenuIcon.nearest,
       onSelect: () => setNearestVehicleId(v.id),
     },
-    {
+    // The public live-location page reads Flespi: not for an Uffizio vehicle yet.
+    ...(isUffizioVehicle(v) ? [] : [{
       key: 'share-location',
       label: 'Share Live Location',
       icon: MenuIcon.share,
       onSelect: () => setShareVehicleId(v.id),
-    },
+    }]),
   ]
 
   const replay = {
@@ -1937,7 +1942,9 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
 
                 {/* Vehicle list */}
                 <div className="track-list">
-                  {statusMessage ? (
+                  {/* With vehicles to show (Uffizio ones while Flespi is down, or
+                      the last Flespi read) the list stays; the banner says why. */}
+                  {statusMessage && vehicles.length === 0 ? (
                     <div style={{ padding: '16px 14px', color: '#ef4444', fontSize: 12, lineHeight: 1.6 }}>
                       <strong>Error:</strong> {statusMessage}
                     </div>
@@ -2219,7 +2226,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       onToggleMin={toggleSheetMin}
                       onToggleMax={isDesktop ? toggleSheetMax : undefined}
                       onRestore={restoreSheet}
-                      onOpenConsole={sheetVehicle ? () => setConsoleVehicleId(sheetVehicle.id) : undefined}
+                      // The Console edits the Flespi device: none for an Uffizio vehicle (edit it in Settings).
+                      onOpenConsole={sheetVehicle && !isUffizioVehicle(sheetVehicle) ? () => setConsoleVehicleId(sheetVehicle.id) : undefined}
                       onOpenInfo={sheetVehicle ? () => setInfoVehicleId(sheetVehicle.id) : undefined}
                     />
                   </div>

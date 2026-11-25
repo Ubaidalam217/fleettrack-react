@@ -175,7 +175,7 @@ export default function VehicleListReport(props) {
   })
 
   return (
-    <ReportFrame
+    <ReportFrame excludesUffizio
       title={title}
       desc="Every vehicle with its registration details, driver, live status, last update and last location."
       {...props}

@@ -4,11 +4,16 @@ import { useFlespiMQTT } from './useFlespiMQTT'
 // Re-exported for useNotificationEngine.js, which still does its own one-off REST snapshot fetch.
 export { BASE_URL, HEADERS } from './flespiConfig'
 
-export function useFlespiData() {
+/**
+ * @param {{ withUffizio?: boolean }} [opts]  also the Uffizio vehicles (see
+ *   useFlespiMQTT). Off by default: the reports read Flespi telemetry per
+ *   device and leave the Uffizio vehicles out.
+ */
+export function useFlespiData(opts) {
   const {
     vehicles, isConnected, lastUpdated, error,
     mqttFatalError, mqttRetryNotice, noVehicles, tokenError,
-  } = useFlespiMQTT()
+  } = useFlespiMQTT(opts)
 
   // Loading until the MQTT session has connected at least once (or produced vehicles/errored).
   // The two MQTT banners also end the loading state: if the broker is refusing us

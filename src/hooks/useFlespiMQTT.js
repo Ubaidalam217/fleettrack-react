@@ -6,6 +6,8 @@ import { useScopedSnapshot } from '../data/fleetScope'
 import { useVehicles } from '../pages/settings/mockData'
 import { withRegisterLabels } from '../utils/vehicleLabel'
 import { liveFuelLevel, liveTemperature, probeTemperature, flatTelemetry } from '../utils/sensorReadings'
+import { useUffizioLive } from '../data/uffizioLive'
+import { mergeLive } from '../utils/uffizioLive'
 
 // Live fleet state, kept fresh by polling the Flespi proxy.
 //
@@ -392,14 +394,35 @@ function useRegisterLabels(snapshot) {
 }
 
 /**
+ * The Flespi snapshot with the Uffizio vehicles added (data/uffizioLive.js).
+ * Identity is kept while neither side changes. An account whose only
+ * vehicles are Uffizio ones is not "no vehicles".
+ */
+function useWithUffizio(snap, enabled) {
+  const { vehicles: extra } = useUffizioLive(enabled)
+  return useMemo(() => {
+    if (!enabled || !extra.length) return snap
+    const vehicles = mergeLive(snap.vehicles, extra)
+    return vehicles === snap.vehicles ? snap : { ...snap, vehicles, noVehicles: false }
+  }, [snap, extra, enabled])
+}
+
+/**
  * The live fleet, scoped to what the signed-in account may see.
  *
  * In real mode the proxy already answers with this account's devices only — that
  * is the boundary. useScopedSnapshot still filters by IMEI on top (and covers the
  * Super Admin case, whose proxy scope is the whole account). In mock mode it
  * returns the snapshot unchanged.
+ *
+ * `withUffizio` (client, 2026-11-25): also the vehicles that report only to
+ * the client's Uffizio system (id "uffizio:<vehicleId>", source 'UFFIZIO',
+ * data every ~2 min — utils/uffizioLive.js). Off by default, so every reader
+ * of Flespi telemetry (reports, engines) keeps seeing Flespi devices only;
+ * the Live Map, the Dashboard counts and the Vehicles Driven Today card turn
+ * it on.
  */
-export function useFlespiMQTT() {
+export function useFlespiMQTT({ withUffizio = false } = {}) {
   const snap = useSyncExternalStore(subscribe, getSnapshot)
-  return useRegisterLabels(useScopedSnapshot(snap))
+  return useRegisterLabels(useScopedSnapshot(useWithUffizio(snap, withUffizio)))
 }

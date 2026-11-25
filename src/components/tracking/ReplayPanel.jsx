@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { fmtDuration, localDay, isZeroTrip } from '../../utils/replayTrips'
 import { REPLAY_FIELDS } from './replayFields'
 import ShareReplayDialog from './ShareReplayDialog'
+import { isUffizioId } from '../../utils/uffizioLive'
 import ReplayTripsList from './ReplayTripsList'
 import ReplayExportMenu from './ReplayExportMenu'
 import { CARD_DOCKS } from '../../utils/replayCard'
@@ -377,7 +378,8 @@ export default function ReplayPanel({ replay, vehicleName }) {
                 placement="down"
               />
             )}
-            {hasPoints && range && (
+            {/* A public replay link reads Flespi; an Uffizio vehicle has none (follow-up). */}
+            {hasPoints && range && !isUffizioId(vehicleId) && (
               <button
                 className="rp-tool"
                 onClick={() => setShareOpen(true)}
@@ -596,6 +598,11 @@ export default function ReplayPanel({ replay, vehicleName }) {
         {!error && !loading && allPoints.length === 0 && (
           <div style={{ padding: 14, fontSize: 11.5, color: 'var(--c-text3)', lineHeight: 1.5 }}>
             No route loaded yet — pick a period above.
+          </div>
+        )}
+        {isUffizioId(vehicleId) && (
+          <div style={{ padding: '8px 14px 12px', fontSize: 11.5, color: 'var(--c-text3)', lineHeight: 1.5 }}>
+            Source: Uffizio — one position about every 2 minutes, so the route is drawn between those points.
           </div>
         )}
       </div>
