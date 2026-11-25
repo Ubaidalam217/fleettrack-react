@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, BarChart2,
   MessageCircle, Bell, Megaphone, ChevronDown,
-  Route, Radio, CirclePlus, ShieldCheck, Settings2, BookMarked, BellRing, Wand2,
+  Route,
 } from 'lucide-react'
 import { useCurrentUser, initials, firstName } from '../services/authUser'
 import SettingsMenu from './sidebar/SettingsMenu'
@@ -30,22 +30,10 @@ const NAV_SECTIONS = [
       // Oil & Gas is a tab inside it (client, 2026-11-10), not a menu of its own.
       { id: 'reports', custom: 'reports-menu' },
       { label: 'Charts',    icon: BarChart2,       path: '/charts' },
-    ],
-  },
-  {
-    // Journey Management (client 2026-11-13/16/17, design §A.7).
-    id: 'journeys',
-    title: 'Journey Management',
-    items: [
-      // Also lit on a journey's own page (/journeys/<id>).
-      { label: 'Journeys',        icon: Route,       path: '/journeys', match: p => p === '/journeys' || (/^\/journeys\/[^/]+(\/edit)?$/.test(p) && !['/journeys/live', '/journeys/new', '/journeys/approvals', '/journeys/settings', '/journeys/checkpoints', '/journeys/alerts', '/journeys/optimize'].includes(p)) },
-      { label: 'Live Journeys',   icon: Radio,       path: '/journeys/live' },
-      { label: 'New Journey',     icon: CirclePlus,  path: '/journeys/new', minLevel: 'modify' },
-      { label: 'Approvals',       icon: ShieldCheck, path: '/journeys/approvals' },
-      { label: 'Journey Alerts',  icon: BellRing,    path: '/journeys/alerts' },
-      { label: 'Checkpoints & Routes', icon: BookMarked, path: '/journeys/checkpoints' },
-      { label: 'Route Optimization', icon: Wand2,    path: '/journeys/optimize', minLevel: 'modify' },
-      { label: 'Journey Settings', icon: Settings2,  path: '/journeys/settings' },
+      // One entry for the whole module (client, 2026-11-25): Live, New, Approvals,
+      // Alerts, Checkpoints & Routes, Route Optimization and Settings are the tab
+      // bar at the top of every journey page, so the sidebar needs no sub-items.
+      { label: 'Journey Management', icon: Route, path: '/journeys', match: p => p === '/journeys' || p.startsWith('/journeys/') },
     ],
   },
   {
