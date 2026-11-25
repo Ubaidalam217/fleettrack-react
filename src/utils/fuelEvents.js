@@ -119,11 +119,14 @@ export function eventContext(pts, a, b) {
   let maxGap = 0
   for (let i = 1; i < seg.length; i++) maxGap = Math.max(maxGap, seg[i].ts - seg[i - 1].ts)
   const gapMin = maxGap > GAP_MS ? Math.round(maxGap / 60_000) : null
-  const states = seg.map(readingState)
+  // What the vehicle was doing where the level moved: the readings after the
+  // first one (the first is the level "before", often the last one driving).
+  const moved = seg.length > 1 ? seg.slice(1) : seg
+  const states = moved.map(readingState)
   const last = seg[seg.length - 1]
   let context
   if (last?.ign === true && seg.slice(0, -1).some(r => r.ign === false)) context = 'between_trips'
-  else if (seg.every(r => r.ign === false)) context = 'stopped'
+  else if (moved.every(r => r.ign === false)) context = 'stopped'
   else if (gapMin) context = 'gap'
   else if (states.includes('moving')) context = 'moving'
   else if (states.includes('idle')) context = 'idle'

@@ -132,6 +132,12 @@ describe('context and settling', () => {
     expect(readingState({ ign: true, speed: 0 })).toBe('idle')
     expect(readingState({ ign: null, speed: null })).toBe('unknown')
   })
+  it('the context is where the level moved, not the reading before it', () => {
+    // Drove in, switched off, refuelled.
+    const ev = run([80, 79.6, 79.2, 120, 160, 160, 160], i => (i < 3 ? driving() : parked()))
+    expect(ev).toEqual([expect.objectContaining({ kind: 'fill', context: 'stopped' })])
+  })
+
   it('engine off then on inside the event is between trips', () => {
     const pts = series([100, 80, 60], i => (i === 0 ? parked() : driving()))
     expect(eventContext(pts, 0, 2)).toEqual({ context: 'between_trips', gapMin: null })
