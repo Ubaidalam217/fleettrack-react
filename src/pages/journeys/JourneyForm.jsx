@@ -4,6 +4,7 @@ import { History, PenLine, Route, Navigation, Plus, X, ChevronDown, ChevronUp, S
 import JourneyShell from './JourneyShell'
 import JourneyMap from '../../components/journeys/JourneyMap'
 import { useFlespiData } from '../../hooks/useFlespiData'
+import { appendStops } from '../../utils/journeyStops'
 import { ErrorNote, Toggle } from '../../components/journeys/JourneyBits'
 import { JModal, AddressPicker, StopsImport } from '../../components/journeys/JourneyDialogs'
 import {
@@ -245,9 +246,7 @@ export default function JourneyForm(props) {
   const addStopAt = (lat, lng) => setStops(list => {
     const empty = list.findIndex(s => !Number.isFinite(s.lat) && s.arrivalType === 'RADIUS')
     if (empty >= 0) return list.map((s, k) => (k === empty ? { ...s, lat, lng, name: s.name || (k === 0 ? 'Start' : k === list.length - 1 ? 'Destination' : `Stop ${k}`) } : s))
-    const out = [...list]
-    out.splice(out.length - 1, 0, newStop({ lat, lng, name: `Stop ${out.length - 1}`, stayMin: 15 }))
-    return out
+    return appendStops(list, [{ lat, lng }], newStop)
   })
   const onMapClick = ([lat, lng]) => {
     if (routeSource === 'DRAWN' && clickMode === 'draw') setPath(p => [...(p ?? []), [lat, lng]])
@@ -294,8 +293,7 @@ export default function JourneyForm(props) {
       for (let i = 0; i < out.length && queue.length; i++) {
         if (!Number.isFinite(out[i].lat) && out[i].arrivalType === 'RADIUS') out[i] = { ...queue.shift(), key: out[i].key }
       }
-      if (queue.length) out.splice(out.length - 1, 0, ...queue)
-      return out
+      return queue.length ? appendStops(out, queue, newStop) : out
     })
   }
 
@@ -793,7 +791,7 @@ export default function JourneyForm(props) {
                   )
                 })}
               </div>
-              <button type="button" className="j-btn j-btn--sm" onClick={() => setStops(list => { const out = [...list]; out.splice(out.length - 1, 0, newStop({ stayMin: 15 })); return out })}>
+              <button type="button" className="j-btn j-btn--sm" onClick={() => setStops(list => appendStops(list, [{ lat: null, lng: null }], newStop))}>
                 <Plus size={13} /> Add a stop <span className="j-muted" style={{ fontWeight: 400 }}>or click the map</span>
               </button>
               {fieldErrors.stops && <div className="j-err" style={{ marginTop: 6 }}>{fieldErrors.stops}</div>}
