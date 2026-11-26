@@ -7,6 +7,8 @@ import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, HelpTip, Repo
 import { useFlespiData } from '../../hooks/useFlespiData'
 import { useGeofences } from '../../data/settings'
 import { IS_REAL } from '../../data/mode'
+import { fetchFuelReport } from '../../data/fuel'
+import { isUffizioId, uffizioVehicleId } from '../../utils/uffizioLive'
 import {
   fetchGeoZoneMessages, estimateRequestCount, rangeDays, isAbortError,
 } from '../../utils/geoZoneFetch'
@@ -200,6 +202,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
 
   // ── report state ──
   const [byDeviceMessages, setByDeviceMessages] = useState(null)
+  const [fuelByDevice, setFuelByDevice] = useState(null) // Uffizio vehicles' calibrated fuel
   const [applied,   setApplied]   = useState(null)
   const [progress,  setProgress]  = useState(null)
   const [error,     setError]     = useState(null)
@@ -275,6 +278,19 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
         signal: controller.signal,
       })
       if (controller.signal.aborted) return
+      // The Uffizio vehicles' calibrated fuel, for the Trip Report's fuel
+      // columns (2026-11-26). Without it those columns stay 0.0, as for every
+      // tracker that sends no fuel.
+      const uffizio = effectiveVehicleIds.filter(isUffizioId)
+      let fuel = null
+      if (IS_REAL && uffizio.length) {
+        try {
+          const r = await fetchFuelReport({ from: new Date(fromTs * 1000).toISOString(), to: new Date(toTs * 1000).toISOString(), vehicleIds: uffizio.map(uffizioVehicleId) })
+          fuel = new Map((r?.vehicles ?? []).filter(v => v.calibrated).map(v => [`uffizio:${v.vehicleId}`, v]))
+        } catch { fuel = null }
+      }
+      if (controller.signal.aborted) return
+      setFuelByDevice(fuel)
       setByDeviceMessages(messages)
       setApplied(snapshot)
     } catch (err) {
@@ -313,7 +329,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
     })
   }, [vehicleAnalysis, fetchedVehicles, driverDim, driverFilter, groupBy])
 
-  const tripReport    = useMemo(() => (analysis ? buildTripReport(analysis)      : null), [analysis])
+  const tripReport    = useMemo(() => (analysis ? buildTripReport(analysis, fuelByDevice) : null), [analysis, fuelByDevice])
   const visitedReport = useMemo(() => (analysis ? buildVisitedSummary(analysis)  : null), [analysis])
   const addressReport = useMemo(() => (analysis ? buildAddressVisits(analysis)   : null), [analysis])
   const historyReport = useMemo(() => (analysis ? buildGeofenceHistory(analysis) : null), [analysis])

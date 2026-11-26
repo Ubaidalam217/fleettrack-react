@@ -24,6 +24,7 @@
 // sensor data gets too.
 import { analyzeVehicle } from './geoZoneEngine'
 import { vehicleLabel } from './vehicleLabel.js'
+import { fuelOverWindow } from './uffizioReports.js'
 import { probeTemperature } from './sensorReadings'
 import { settingsProfileForImei } from '../data/settings'
 import { reverseGeocodeMany, geocodeKey, shortenAddress, countUncached } from './geocode'
@@ -194,8 +195,15 @@ export function buildGeoZoneAnalysis(byDeviceMessages, vehicles, geofenceZones, 
 // source row read for this build) — assumed equal to the trip's own
 // distanceKm, same as Distance, rather than guessed at a second meaning.
 
-export function buildTripReport(analysis) {
+/**
+ * @param {Map<string, object>} [fuelByDevice]  calibrated fuel per device id
+ *   (an Uffizio vehicle's Fuel Report entry, 2026-11-26): its trips get start /
+ *   end fuel, refill, drain and consumed (uffizioReports.js fuelOverWindow).
+ *   Every other vehicle keeps the 0.0 the trackers give no reading for.
+ */
+export function buildTripReport(analysis, fuelByDevice = null) {
   let totalDistance = 0, totalRunning = 0, totalIdle = 0, totalStop = 0, totalInactive = 0
+  let totalFuel = 0
   const perVehiclePages = []
   const locationRefs = []
 
@@ -222,6 +230,15 @@ export function buildTripReport(analysis) {
         startFuel: '0.0', endFuel: '0.0', refill: '0.0', drain: '0.0',
         fuelConsumed: '0.0', fuelCost: '--',
       }
+      const fuel = fuelByDevice?.get(meta.deviceId)
+      const f = fuel ? fuelOverWindow(fuel, t.start.ts * 1000, t.end.ts * 1000) : null
+      if (f) {
+        Object.assign(row, {
+          startFuel: f.startL.toFixed(1), endFuel: f.endL.toFixed(1), refill: f.refillL.toFixed(1),
+          drain: f.drainL.toFixed(1), fuelConsumed: f.consumedL.toFixed(1),
+        })
+        totalFuel += f.consumedL
+      }
       locationRefs.push({ obj: row, latKey: 'startLat', lngKey: 'startLng', textKey: 'startLocation' })
       locationRefs.push({ obj: row, latKey: 'endLat', lngKey: 'endLng', textKey: 'endLocation' })
       return row
@@ -240,7 +257,7 @@ export function buildTripReport(analysis) {
       distanceKm: totalDistance.toFixed(2),
       runningSec: formatHMS(totalRunning), idleSec: formatHMS(totalIdle),
       stopSec: formatHMS(totalStop), inactiveSec: formatHMS(totalInactive),
-      fuelConsumed: '0.0',
+      fuelConsumed: totalFuel.toFixed(1),
     },
     perVehiclePages,
     locationRefs,

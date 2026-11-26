@@ -315,3 +315,36 @@ export function uffizioNotes({ present, estimated = [], extra = [] }) {
   if (estimated.length) out.push(`Distance estimated from GPS positions (no usable odometer reading) for: ${estimated.join(', ')}.`)
   return [...out, ...extra.filter(Boolean)]
 }
+
+/**
+ * Fuel over one window from a calibrated Fuel Report vehicle (GET
+ * /api/fuel/report: `series` [{ts ms, v litres}], `events` [{kind, startTs
+ * ms, litres}]) — the Geofence Trip Report's fuel columns for an Uffizio
+ * vehicle. Start = the level at the window's start (the last reading at or
+ * before it, else the first inside); end = the last reading at or before its
+ * end; refill / drain = the fills / drains that began inside it; consumed =
+ * start + refill - drain - end (not below 0). null when the vehicle is not
+ * calibrated or no reading reaches the window.
+ *
+ * @returns {{ startL: number, endL: number, refillL: number, drainL: number, consumedL: number } | null}
+ */
+export function fuelOverWindow(fuel, fromMs, toMs) {
+  if (!fuel?.calibrated || !Array.isArray(fuel.series) || !fuel.series.length) return null
+  const pts = fuel.series.filter(p => num(p?.ts) !== null && num(p?.v) !== null).sort((a, b) => a.ts - b.ts)
+  let start = null, end = null
+  for (const p of pts) {
+    if (p.ts <= fromMs) start = p
+    if (p.ts <= toMs) end = p
+  }
+  if (!start) start = pts.find(p => p.ts >= fromMs && p.ts <= toMs) ?? null
+  if (!start || !end || end.ts < start.ts) return null
+  const sum = kind => (fuel.events ?? [])
+    .filter(e => e?.kind === kind && num(e.startTs) !== null && e.startTs >= fromMs && e.startTs <= toMs)
+    .reduce((s, e) => s + (num(e.litres) ?? 0), 0)
+  const refillL = sum('fill'), drainL = sum('drain')
+  const r1 = v => Math.round(v * 10) / 10
+  return {
+    startL: r1(start.v), endL: r1(end.v), refillL: r1(refillL), drainL: r1(drainL),
+    consumedL: r1(Math.max(0, start.v + refillL - drainL - end.v)),
+  }
+}
