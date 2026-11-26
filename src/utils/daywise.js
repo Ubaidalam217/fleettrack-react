@@ -61,6 +61,9 @@ import { BASE_URL, HEADERS } from '../hooks/flespiConfig'
 import { IS_REAL } from '../data/mode'
 import { get as apiGet } from '../data/http'
 import { isSettled, readDay, writeDay } from './dayCache'
+import { fetchUffizioMessages } from './replay'
+import { isUffizioId } from './uffizioLive'
+import { deriveUffizioMonth, compareIds } from './uffizioReports'
 import {
   UAE_OFFSET_SEC, MAX_MESSAGES, DAYWISE_FIELDS as FIELDS,
   uaeDayStart, daysInMonth, currentUaeMonth, uaeDayOf, lastElapsedDay, deriveDeviceMonth,
@@ -261,6 +264,17 @@ async function fetchDay(deviceIds, dayStart, opts = {}) {
 export async function fetchDaywiseMonth(deviceIds, year, month, opts = {}) {
   const { signal, onProgress } = opts
   if (!deviceIds.length) return { byDevice: new Map(), capped: false }
+  // Uffizio vehicles (client, 2026-11-26) come from our own copy of their
+  // ~2-minute samples, one request per vehicle; the Flespi ones as before.
+  if (deviceIds.some(isUffizioId)) {
+    const uffizio = deviceIds.filter(isUffizioId)
+    const [rest, own] = await Promise.all([
+      fetchDaywiseMonth(deviceIds.filter(id => !isUffizioId(id)), year, month, opts),
+      fetchUffizioMonth(uffizio, year, month, signal),
+    ])
+    for (const [id, entry] of own.byDevice) rest.byDevice.set(id, entry)
+    return { byDevice: rest.byDevice, capped: rest.capped || own.capped }
+  }
 
   const lastDay = lastFetchDay(year, month)
 
@@ -364,6 +378,16 @@ const months = new Map()
  * @returns {Promise<{ derived: Map<number, ReturnType<typeof deriveDeviceMonth>>, capped: boolean }>}
  */
 export function loadDaywiseMonth(deviceIds, year, month, opts = {}) {
+  // Uffizio vehicles (client, 2026-11-26) have no Flespi device and no
+  // DailyUsage row: their month is worked out from their own samples, on the
+  // server when it can (GET /api/reports/uffizio-daywise), else here.
+  if (deviceIds.some(isUffizioId)) {
+    const flespi = deviceIds.filter(id => !isUffizioId(id))
+    return Promise.all([
+      flespi.length ? loadDaywiseMonth(flespi, year, month, opts) : Promise.resolve({ derived: new Map(), capped: false }),
+      loadUffizioMonth(deviceIds.filter(isUffizioId), year, month, opts),
+    ]).then(([a, b]) => ({ derived: new Map([...a.derived, ...b.derived]), capped: a.capped || b.capped }))
+  }
   const ids = [...deviceIds].sort((a, b) => a - b)
   const key = `${ids.join(',')}|${year}-${month}`
   const hit = months.get(key)
@@ -391,6 +415,94 @@ export function loadDaywiseMonth(deviceIds, year, month, opts = {}) {
       return result
     })
   // A failed month must not stay cached as a failure.
+  entry.promise.catch(() => { if (months.get(key) === entry) months.delete(key) })
+  months.set(key, entry)
+  return untilAborted(entry.promise, opts.signal)
+}
+
+// ── Uffizio vehicles ────────────────────────────────────────────────────────
+
+/** Samples before the month that still count: the interval across its first midnight is split. */
+const UFFIZIO_LEAD_SEC = 6 * 3600
+/** The Uffizio samples arrive as they happen (the ~2-minute poll): a month is final an hour after it ends. */
+const UFFIZIO_SETTLE_MS = 3600 * 1000
+/** Vehicles read at once in the browser fallback. */
+const UFFIZIO_CONCURRENCY = 3
+
+/** [from, to] unix seconds of an Uffizio month read: a little before it, never past now. */
+function uffizioMonthRange(year, month) {
+  const from = uaeDayStart(year, month, 1) - UFFIZIO_LEAD_SEC
+  const end = uaeDayStart(year, month, daysInMonth(year, month)) + 86400 - 1
+  return [from, Math.max(from, Math.min(end, Math.floor(Date.now() / 1000)))]
+}
+
+/** A month of Uffizio samples per vehicle, in fetchDaywiseMonth's shape. */
+async function fetchUffizioMonth(ids, year, month, signal) {
+  const [from, to] = uffizioMonthRange(year, month)
+  const byDevice = new Map()
+  let capped = false
+  let cursor = 0
+  const worker = async () => {
+    for (;;) {
+      if (signal?.aborted) throw abortError()
+      const id = ids[cursor++]
+      if (id === undefined) return
+      const { messages, truncated } = await fetchUffizioMessages(id, from, to, { signal })
+      if (truncated) capped = true
+      byDevice.set(id, messages)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(UFFIZIO_CONCURRENCY, ids.length) }, worker))
+  return { byDevice, capped }
+}
+
+/** Real mode: the server's derivation of every Uffizio vehicle in scope (null when it cannot answer). */
+async function uffizioFromServer(year, month) {
+  try {
+    const data = await apiGet('/api/reports/uffizio-daywise', { year, month })
+    if (!data || !Array.isArray(data.devices)) return null
+    return { derived: new Map(data.devices.map(d => [d.deviceId, d])), capped: !!data.capped }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The Uffizio vehicles' months, kept like the Flespi ones in `months`
+ * (key prefixed "uffizio|"). Every requested id is in the answer; one the
+ * server does not list (out of scope, deleted) gets an empty month.
+ */
+function loadUffizioMonth(deviceIds, year, month, opts = {}) {
+  const ids = [...deviceIds].sort(compareIds)
+  const key = `uffizio|${ids.join(',')}|${year}-${month}`
+  const hit = months.get(key)
+  const monthEndMs = (uaeDayStart(year, month, daysInMonth(year, month)) + 86400) * 1000
+  const settled = Date.now() - monthEndMs > UFFIZIO_SETTLE_MS
+  const ttl = hit?.fromServer ? SERVER_TTL_MS : RECENT_TTL_MS
+  const fresh = hit && (!hit.done || settled || Date.now() - hit.at < ttl)
+  if (fresh) return untilAborted(hit.promise, opts.signal)
+
+  const entry = { at: Date.now(), done: false, fromServer: false, promise: null }
+  const pick = derived => {
+    const out = new Map()
+    for (const id of ids) out.set(id, derived.get(id) ?? deriveUffizioMonth([], year, month))
+    return out
+  }
+  const inBrowser = () => fetchUffizioMonth(ids, year, month).then(({ byDevice, capped }) => {
+    const derived = new Map()
+    for (const id of ids) derived.set(id, deriveUffizioMonth(byDevice.get(id) ?? [], year, month))
+    return { derived, capped }
+  })
+  entry.promise = (IS_REAL ? uffizioFromServer(year, month) : Promise.resolve(null))
+    .then(server => {
+      entry.fromServer = !!server
+      return server ? { derived: pick(server.derived), capped: server.capped } : inBrowser()
+    })
+    .then(result => {
+      entry.at = Date.now()
+      entry.done = true
+      return result
+    })
   entry.promise.catch(() => { if (months.get(key) === entry) months.delete(key) })
   months.set(key, entry)
   return untilAborted(entry.promise, opts.signal)

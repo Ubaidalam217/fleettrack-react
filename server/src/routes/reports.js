@@ -21,6 +21,7 @@ import { z } from 'zod'
 import { asyncHandler } from '../lib/http.js'
 import { buildAcl } from '../lib/flespiGrant.js'
 import { readMonth, requestDays } from '../lib/dailyUsage.js'
+import { uffizioDaywise } from '../lib/uffizioReports.js'
 import { validate } from '../middleware/validate.js'
 
 const router = Router()
@@ -40,6 +41,25 @@ router.get(
     if (result.missingDays.length) requestDays(result.missingDays)
     res.set('Cache-Control', 'no-store')
     res.json({ data: { year, month, ...result } })
+  })
+)
+
+/**
+ * GET /api/reports/uffizio-daywise?year=2026&month=11
+ *   → { data: { year, month, devices: [{ deviceId: "uffizio:<vehicleId>",
+ *       distanceKm[], ignitionSec[], estimatedKm[], samplesPerDay[], totalKm,
+ *       totalSec, totalEstimatedKm, noData }], capped } }
+ *
+ * The Uffizio vehicles' months (client, 2026-11-26), from their own samples
+ * (lib/uffizioReports.js), scoped like every vehicle read.
+ */
+router.get(
+  '/uffizio-daywise',
+  validate(monthQuery, 'query'),
+  asyncHandler(async (req, res) => {
+    const { year, month } = req.validatedQuery
+    res.set('Cache-Control', 'no-store')
+    res.json({ data: await uffizioDaywise(req.scope, year, month) })
   })
 )
 

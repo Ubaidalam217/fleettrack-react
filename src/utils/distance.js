@@ -88,10 +88,30 @@ export function haversineMeters(lat1, lng1, lat2, lng2) {
  * Every message must go through the stepper, including ones the caller does
  * not count (outside a window, say) — skipping one breaks the odometer anchor.
  *
+ * An Uffizio vehicle's ~2-minute samples (device id "uffizio:<vehicleId>",
+ * see sparseStepper below) get the sparse-feed rule; every Flespi device keeps
+ * the rule above, unchanged.
+ *
  * @returns {(cur: object) => { km: number, source: 'odometer' | 'gps' | null }}
  *          source null = nothing could be measured (km is 0)
  */
 export function createDistanceStepper() {
+  let impl = null
+  return function step(cur) {
+    // The feed is known from the first message: an Uffizio sample carries the
+    // string id "uffizio:<vehicleId>", a Flespi message a numeric device id.
+    if (!impl) impl = isSparseMessage(cur) ? sparseStepper() : flespiStepper()
+    return impl(cur)
+  }
+}
+
+/** A message from a sparse feed: an Uffizio vehicle's samples (utils/uffizioLive.js ids). */
+export function isSparseMessage(m) {
+  const id = m?.['device.id']
+  return typeof id === 'string' && id.startsWith('uffizio:')
+}
+
+function flespiStepper() {
   let prev = null
   let anchor = null          // last vehicle.mileage reading seen
   let gpsSinceAnchor = 0     // km GPS credited since that reading
@@ -131,6 +151,85 @@ export function createDistanceStepper() {
     prev = cur
     return out
   }
+}
+
+// ── Sparse feeds: the Uffizio vehicles (client, 2026-11-26) ─────────────────
+//
+// An Uffizio vehicle is read about every 2 minutes (server/src/lib/uffizio.js),
+// so one interval can hold several kilometres of road and a sampled speed of 0
+// (a red light) says little about the 2 minutes around it. The odometer is the
+// distance: the samples' odometer readings are summed as SIGNED deltas, which
+// over any period is the last reading minus the first. Only where it cannot be
+// trusted is GPS used, and that kilometre is "estimated" (source 'gps'):
+//   - no odometer on either end;
+//   - a fall of ODOMETER_RESET_KM or more (a reset or a replaced unit);
+//   - a rise no drive could explain: more than GPS x2 + 3 km over the span AND
+//     faster than SPARSE_MAX_KMH on average since the last reading (the second
+//     bound lets a real drive across a data gap through).
+// The GPS step counts when the vehicle moved at either end, or when the
+// ignition was on at either end and the fixes are SPARSE_MIN_STEP_M apart (a
+// 2-minute gap hides movement that a sampled speed of 0 would deny), and never
+// at an impossible speed.
+
+/** Average speed above which an odometer rise across a span is a glitch. */
+export const SPARSE_MAX_KMH = 160
+/** An ignition-on step without a speed counts from this many metres (GPS drift is below it). */
+export const SPARSE_MIN_STEP_M = 100
+
+function sparseStepper() {
+  let prev = null
+  let anchor = null          // last odometer reading
+  let anchorTs = null        // …and its time
+  let gpsSinceAnchor = 0     // km GPS credited since that reading
+
+  return function step(cur) {
+    const mileage = num(cur?.['vehicle.mileage'])
+    let out = { km: 0, source: null }
+
+    if (prev) {
+      const gps = sparseGpsKm(prev, cur)
+      const delta = mileage != null && anchor != null ? mileage - anchor : null
+      if (delta != null) {
+        const dt = Math.max(0, (cur.timestamp ?? 0) - (anchorTs ?? 0))
+        const evidenceKm = gpsSinceAnchor + Math.max(gps.km, straightKm(prev, cur))
+        const cap = Math.max(evidenceKm * ODO_VS_GPS_FACTOR + ODO_VS_GPS_SLACK_KM, (dt / 3600) * SPARSE_MAX_KMH)
+        if (delta > -ODOMETER_RESET_KM && delta <= cap) {
+          const km = delta - gpsSinceAnchor
+          out = { km: km > -ODOMETER_RESET_KM ? km : 0, source: 'odometer' }
+        } else {
+          out = gps
+        }
+      } else {
+        out = gps
+      }
+    }
+
+    if (mileage != null) {
+      anchor = mileage
+      anchorTs = cur.timestamp ?? null
+      gpsSinceAnchor = 0
+    } else if (anchor != null) {
+      gpsSinceAnchor += out.km
+    }
+    prev = cur
+    return out
+  }
+}
+
+/** The sparse feed's GPS step (see above). */
+function sparseGpsKm(prev, cur) {
+  const lat0 = num(prev?.['position.latitude']), lng0 = num(prev?.['position.longitude'])
+  const lat1 = num(cur?.['position.latitude']), lng1 = num(cur?.['position.longitude'])
+  if (lat0 == null || lng0 == null || lat1 == null || lng1 == null) return { km: 0, source: null }
+  if ((lat0 === 0 && lng0 === 0) || (lat1 === 0 && lng1 === 0)) return { km: 0, source: null }
+  if (prev['position.valid'] === false || cur['position.valid'] === false) return { km: 0, source: null }
+  const km = haversineMeters(lat0, lng0, lat1, lng1) / 1000
+  const dt = (cur.timestamp ?? 0) - (prev.timestamp ?? 0)
+  if (!(dt > 0) || (km / dt) * 3600 > GPS_MAX_KMH) return { km: 0, source: 'gps' }
+  const moving = (num(prev['position.speed']) ?? 0) > GPS_MOVING_KMH || (num(cur['position.speed']) ?? 0) > GPS_MOVING_KMH
+  const on = prev['engine.ignition.status'] === true || cur['engine.ignition.status'] === true
+  if (moving || (on && km * 1000 >= SPARSE_MIN_STEP_M)) return { km, source: 'gps' }
+  return { km: 0, source: 'gps' }
 }
 
 /** Straight-line km between two messages' fixes, 0 when either lacks one. */
