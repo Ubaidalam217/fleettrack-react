@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { createDistanceStepper, haversineMeters, isSparseMessage } from './distance'
 import {
   uffizioDistance, uffizioDayRecords, deriveUffizioMonth, estimatedUffizioIds, compareIds, hasUffizio,
-  sourceOf, uaeDate, uaeMidnight,
+  sourceOf, uaeDate, uaeMidnight, uffizioNotes, UFFIZIO_FOOTNOTE,
 } from './uffizioReports'
+import { flespiNameNote } from './vehicleLabel'
 import { deriveDeviceMonth, uaeDayStart } from './daywiseCore'
 import { deriveTrips } from './usageReports'
 
@@ -268,5 +269,21 @@ describe('helpers', () => {
     expect(sourceOf(10, 0)).toBe('odometer')
     expect(sourceOf(10, 10)).toBe('estimated')
     expect(sourceOf(10, 2)).toBe('mixed')
+  })
+})
+
+describe('report notes', () => {
+  it('nothing without an Uffizio vehicle; the footnote once; the estimated ones named', () => {
+    expect(uffizioNotes({ present: false, estimated: ['X'] })).toEqual([])
+    expect(uffizioNotes({ present: true })).toEqual([UFFIZIO_FOOTNOTE])
+    const n = uffizioNotes({ present: true, estimated: ['ZZ 1 Q1', 'ZZ 2 Q1'], extra: ['More.'] })
+    expect(n[0]).toBe(UFFIZIO_FOOTNOTE)
+    expect(n[1]).toMatch(/estimated from GPS.*ZZ 1 Q1, ZZ 2 Q1/)
+    expect(n[2]).toBe('More.')
+  })
+
+  it('a picker shows no "Flespi name" for an Uffizio vehicle', () => {
+    expect(flespiNameNote({ id: ID, source: 'UFFIZIO', name: '359990000000101', label: 'ZZ 7001 Q9' })).toBeNull()
+    expect(flespiNameNote({ id: 4711, name: 'Old Flespi name', label: 'ZZ 7002 Q9' })).toBe('Old Flespi name')
   })
 })

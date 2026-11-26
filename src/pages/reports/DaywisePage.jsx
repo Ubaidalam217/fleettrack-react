@@ -25,7 +25,8 @@ import { useReportTitle, fileNameOf } from '../../components/reports/useReportTi
 import ReportsBackLink from '../../components/reports/ReportsBackLink'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { driverFilterLabel, driverPasses, NO_DRIVER } from '../../utils/driverAtTime'
-import UffizioExcludedNote from '../../components/reports/UffizioExcludedNote'
+import UffizioFootnote from '../../components/reports/UffizioFootnote'
+import { isUffizioId, uffizioNotes, ESTIMATED_MIN_KM } from '../../utils/uffizioReports'
 
 /**
  * Daywise Work Hour and Daywise Distance.
@@ -146,7 +147,9 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   )
 
-  const { data, noVehicles } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): their month comes from
+  // their own samples (utils/daywise.js loadDaywiseMonth), distance from the odometer.
+  const { data, noVehicles } = useFlespiData({ withUffizio: true })
   // Subscribed so a BG renamed on the Company page, or a vehicle registered
   // after this page mounted, changes the Company column without a reload —
   // settingsProfileForImei reads both stores.
@@ -298,7 +301,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
   const fleetKey = vehicles.map(v => v.id).join(',')
   useEffect(() => {
     if (!fleetKey) return
-    warmDaywiseMonth(fleetKey.split(',').map(Number), year, monthNo)
+    warmDaywiseMonth(fleetKey.split(',').map(x => (isUffizioId(x) ? x : Number(x))), year, monthNo)
   }, [fleetKey, year, monthNo])
 
   // ── view model ──
@@ -338,7 +341,8 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
 
   const allColumns = useMemo(() => [
     ...V.identity,
-    { key: 'total', label: V.totalLabel, width: 92, align: 'right', get: r => V.format(V.totalOf(r)) },
+    // An Uffizio vehicle without a single sample in the month says so instead of 0.
+    { key: 'total', label: V.totalLabel, width: 92, align: 'right', get: r => (r.noData ? 'No data' : V.format(V.totalOf(r))) },
   ], [V])
   const columns = useMemo(() => visibleColumns(allColumns, hiddenCols), [allColumns, hiddenCols])
 
@@ -354,6 +358,13 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
     bgLabel,
     printDate: report?.printDate,
   }
+  // The footnote, once, when an Uffizio vehicle is in the report; the ones
+  // whose distance is (partly) estimated from GPS are named.
+  const notes = uffizioNotes({
+    present: visibleRows.some(r => isUffizioId(r.deviceId)),
+    estimated: variant === 'distance' ? visibleRows.filter(r => isUffizioId(r.deviceId) && r.totalEstimatedKm >= ESTIMATED_MIN_KM).map(r => r.label) : [],
+  })
+  exportMeta.notes = notes
   const exportModel = { rows: visibleRows, days, lastElapsed, columns, format: V.format, valueOf: V.valueOf, totalOf: V.totalOf }
 
   return (
@@ -377,7 +388,6 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
               <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>{reportTitle}</h1>
               <p style={{ fontSize: 12.5, color: 'var(--c-text3)', margin: '4px 0 0' }}>{V.subtitle}</p>
             </div>
-            <UffizioExcludedNote />
 
             {/* ── toolbar ── */}
             <div className="report-screen-only" style={{
@@ -555,6 +565,7 @@ export default function DaywisePage({ variant, isDark, toggleTheme, themeMode, s
                     sort={sort}
                     onSort={onSort}
                   />
+                  <UffizioFootnote notes={notes} style={{ margin: '8px 6px 0' }} />
                   <PaperFoot printDate={report.printDate} />
                 </PaperSheet>
               </div>

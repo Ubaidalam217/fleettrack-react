@@ -9,6 +9,7 @@ import LocationMapModal from '../../components/reports/LocationMapModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, HelpTip, ReportByToggle, DriverMultiSelect } from '../../components/reports/controls'
 import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import { useFlespiData } from '../../hooks/useFlespiData'
+import UffizioFootnote, { useUffizioNotes } from '../../components/reports/UffizioFootnote'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { settingsProfileForImei, useVehicles, useCompanies } from '../../data/settings'
 import { siteOf } from '../../utils/vehicleSite'
@@ -283,7 +284,8 @@ function detailsSheet(perVehicle) {
 function UtilizationDetails(props) {
   const title = useReportTitle('Asset Utilization Report') // Oil & Gas opens it as "Utilization Details"
   const file = title === 'Asset Utilization Report' ? 'Asset_Utilization_Report' : fileNameOf(title)
-  const { data } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): odometer distance, ~2-minute samples.
+  const { data } = useFlespiData({ withUffizio: true })
   const settingsVehicles = useVehicles()
   const companies = useCompanies()
   const dims = useDriverDimension()
@@ -452,6 +454,7 @@ function UtilizationDetails(props) {
     ['To', ctrackDateTime(applied.toTs - 1)], ['End', `${applied.workEnd}:00`], ['Entity Group', byDriver ? 'Driver' : 'Asset'],
   ] : []
 
+  const notes = useUffizioNotes(raw?.byDevice, vehicles, applied?.fromTs, applied?.toTs)
   const ctrackOpts = () => ({
     title,
     pageSize: DETAILS_PAGE,
@@ -468,12 +471,13 @@ function UtilizationDetails(props) {
     tables: built.tables.map(x => ({ ...x, columns: forPdf(x.columns) })),
     summaryTitle: 'Report Summary',
     summary: built.summary,
+    notes,
   })
 
   const truncated = raw && [...raw.byDevice.values()].some(e => e?.truncated)
 
   return (
-    <ReportFrame excludesUffizio title={title} desc="Per day and driver (or vehicle): driving, standing, idling and resting time, distance and speeds." {...props}>
+    <ReportFrame title={title} desc="Per day and driver (or vehicle): driving, standing, idling and resting time, distance and speeds." {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}
@@ -580,6 +584,7 @@ function UtilizationDetails(props) {
             printDate={applied.printDate}
             emptyText={byDriver ? 'No driving in this period for the selected drivers.' : 'No driving in this period for the selected vehicles.'}
           />
+          <UffizioFootnote notes={notes} />
         </>
       )}
     </ReportFrame>
@@ -594,7 +599,8 @@ function UtilizationSummary({ variant, ...props }) {
   const [hiddenCols, setHiddenCols] = useHiddenColumns(`utilization-${variant}`)
   const shownCols = useVisibleColumns(V.columns, hiddenCols)
 
-  const { data } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): odometer distance, ~2-minute samples.
+  const { data } = useFlespiData({ withUffizio: true })
   // Subscribed so a BG or branch changed in Settings re-labels the rows;
   // settingsProfileForImei reads these stores.
   const settingsVehicles = useVehicles()
@@ -769,6 +775,7 @@ function UtilizationSummary({ variant, ...props }) {
 
   const dataRows = groups.reduce((n, g) => n + g.rows.filter(r => r.kind !== 'band').length, 0)
 
+  const notes = useUffizioNotes(raw?.byDevice, vehicles, applied?.fromTs, applied?.toTs)
   const exportOpts = () => ({
     title,
     subtitle: 'FleetmaxX',
@@ -780,6 +787,7 @@ function UtilizationSummary({ variant, ...props }) {
       columns: shownCols.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, hrefKey: c.locate ? 'mapUrl' : undefined })),
       rows: g.rows, // date/total bands print as the Movement PDF's yellow bands
     })),
+    notes,
   })
 
   const truncated = raw && [...raw.byDevice.values()].some(e => e?.truncated)
@@ -792,7 +800,7 @@ function UtilizationSummary({ variant, ...props }) {
   }[variant]
 
   return (
-    <ReportFrame excludesUffizio title={title} desc={V.desc} {...props}>
+    <ReportFrame title={title} desc={V.desc} {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}
@@ -900,6 +908,7 @@ function UtilizationSummary({ variant, ...props }) {
             onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: title, location: r.location })}
             emptyText={emptyText}
           />
+          <UffizioFootnote notes={notes} />
         </>
       )}
 

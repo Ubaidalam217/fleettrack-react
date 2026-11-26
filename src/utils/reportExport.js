@@ -425,6 +425,20 @@ export async function buildMovementPdf(report, filters, meta = {}) {
     }
   }
 
+  // Notes at the end (e.g. how the Uffizio vehicles' figures are measured).
+  for (const note of (meta.notes ?? []).filter(Boolean)) {
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(7)
+    const lines = doc.splitTextToSize(String(note), BORDER.w - 12)
+    if (y + 6 + lines.length * 9 > BODY_BOTTOM) startPage()
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(7)
+    doc.setTextColor(60, 60, 60)
+    doc.text(lines, BORDER.x + 6, y + 13)
+    y += 6 + lines.length * 9
+  }
+  doc.setTextColor(0, 0, 0)
+
   // "END OF REPORT", centred on the table, one row below the last one.
   y += 4
   if (y + LINE_H > BODY_BOTTOM) startPage()
@@ -573,6 +587,7 @@ export async function exportMovementExcel(report, filters, meta = {}) {
     }
   }
 
+  for (const note of (meta.notes ?? []).filter(Boolean)) ws.addRow([String(note)]).getCell(1).font = { italic: true, size: 8 }
   ws.addRow([])
   const end = ws.addRow(['END OF REPORT'])
   end.getCell(1).font = { bold: true, size: 9 }

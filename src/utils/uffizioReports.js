@@ -300,3 +300,18 @@ export function uffizioDayRecords(messages, fromTs, toTs, opts = {}) {
     }
   })
 }
+
+/** Said where harsh driving would be counted: 2-minute samples cannot show it. */
+export const UFFIZIO_HARSH_NOTE = 'Harsh braking, acceleration and cornering need second-by-second data, so they are not counted for Uffizio vehicles; their speeds are samples.'
+
+/**
+ * The notes a report prints under its tables, [] when no Uffizio vehicle is in it.
+ * @param {{ present: boolean, estimated?: string[], extra?: string[] }} o
+ *        estimated: names of the vehicles whose distance is (partly) estimated
+ */
+export function uffizioNotes({ present, estimated = [], extra = [] }) {
+  if (!present) return []
+  const out = [UFFIZIO_FOOTNOTE]
+  if (estimated.length) out.push(`Distance estimated from GPS positions (no usable odometer reading) for: ${estimated.join(', ')}.`)
+  return [...out, ...extra.filter(Boolean)]
+}

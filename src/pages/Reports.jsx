@@ -32,7 +32,7 @@ import { ReportLogoPicker } from '../components/reports/ReportLogo'
 import { useHiddenColumns } from '../utils/reportColumns'
 import { useDriverDimension } from '../hooks/useDriverDimension'
 import { driverFilterLabel } from '../utils/driverAtTime'
-import UffizioExcludedNote from '../components/reports/UffizioExcludedNote'
+import UffizioFootnote, { useUffizioNotes } from '../components/reports/UffizioFootnote'
 
 // How many rows the on-screen table renders before asking. Exports and Print
 // always emit everything; this only keeps the DOM from carrying five thousand
@@ -118,7 +118,8 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
   const [driverPick, setDriverPick] = useState(null) // null = every driver
   const groupBy = reportBy
   const driverFilter = reportBy === 'driver' ? driverPick : null
-  const { data } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): ~2-minute samples, odometer distance.
+  const { data } = useFlespiData({ withUffizio: true })
   const vehicles = useMemo(
     () => (data?.vehicles ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
     [data]
@@ -346,7 +347,8 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
     company:         applied.company,
   }, [applied, applyTolerance, toleranceMeters, intervalSec, statusesLabel, driverFilter, groupBy, driverDim])
 
-  const exportMeta = { subtitle: applied?.company || 'FleetmaxX', systemName: 'FleetmaxX', printDate: applied?.printDate, hiddenColumns: hiddenCols }
+  const uffizioNotes = useUffizioNotes(byDevice, vehicles, applied?.fromTs, applied ? applied.toTs + 1 : undefined)
+  const exportMeta = { subtitle: applied?.company || 'FleetmaxX', systemName: 'FleetmaxX', printDate: applied?.printDate, hiddenColumns: hiddenCols, notes: uffizioNotes }
 
   const showMore = useCallback(() => setVisible(v => v + PAGE_ROWS * 2), [])
 
@@ -404,7 +406,6 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                 Per-vehicle movement log derived from Flespi telemetry — start-ups, driving, idling and ignition-off events with cumulative distance and location.
               </p>
             </div>
-            <UffizioExcludedNote />
 
             {/* ── Filter form ── */}
             <div className="report-screen-only" style={{
@@ -656,6 +657,7 @@ export default function Reports({ isDark, toggleTheme, themeMode, setTheme }) {
                   onLocate={setLocated}
                   hidden={hiddenCols}
                 />
+                <UffizioFootnote notes={uffizioNotes} />
                 <LocationMapModal point={located} onClose={closeLocated} />
               </>
             )}

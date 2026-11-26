@@ -286,6 +286,20 @@ export async function buildCtrackPdf(o) {
     }
   }
 
+  // Notes at the end (e.g. how the Uffizio vehicles' figures are measured).
+  const notes = (o.notes ?? []).filter(Boolean)
+  if (notes.length) {
+    y += 12
+    doc.setFont('times', 'italic'); doc.setFontSize(8); doc.setTextColor(...GREY)
+    for (const note of notes) {
+      const lines = doc.splitTextToSize(str(note), usable - 8)
+      if (y + lines.length * 10 > BOTTOM) { newPage(false); doc.setFont('times', 'italic'); doc.setFontSize(8); doc.setTextColor(...GREY) }
+      doc.text(lines, M + 4, y)
+      y += lines.length * 10
+    }
+    doc.setTextColor(0, 0, 0)
+  }
+
   // Footers last, so each page knows the total.
   const pages = doc.getNumberOfPages()
   for (let p = 1; p <= pages; p++) {
@@ -522,6 +536,7 @@ export async function exportCtrackExcel(o, filenameBase) {
     }
     if (o.summaryTable) writeTable(o.summaryTable)
   }
+  for (const note of (o.notes ?? []).filter(Boolean)) ws.addRow([str(note)]).font = { italic: true, size: 9 }
   ws.addRow([])
   if (o.printDate !== '') ws.addRow([`Print Date: ${str(o.printDate)}`]).font = { italic: true, color: { argb: 'FF787878' } }
   ws.columns.forEach((c, i) => { c.width = i === 0 ? 34 : 18 })

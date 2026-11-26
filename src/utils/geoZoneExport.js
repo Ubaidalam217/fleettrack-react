@@ -327,6 +327,22 @@ export async function buildGeoZonePdf(opts) {
     }
   }
 
+  // Notes under the tables (e.g. how the Uffizio vehicles' figures are measured).
+  const notes = (opts.notes ?? []).filter(Boolean)
+  if (notes.length) {
+    y += 6
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(7)
+    doc.setTextColor(60, 60, 60)
+    for (const note of notes) {
+      const lines = doc.splitTextToSize(String(note), BORDER.w - 12)
+      if (y + lines.length * 9 > BODY_BOTTOM) startPage()
+      doc.text(lines, BORDER.x + 6, y + 7)
+      y += lines.length * 9
+    }
+    doc.setTextColor(0, 0, 0)
+  }
+
   // "END OF REPORT", centred on the table, one row below the last one.
   y += 4
   if (y + 9.25 > BODY_BOTTOM) startPage()
@@ -445,6 +461,12 @@ export async function exportGeoZoneExcel(opts, filenameBase) {
       r.getCell(1).font = { bold: true, size: 9 }
       r.getCell(2).font = { size: 9 }
     }
+  }
+
+  const notes = (opts.notes ?? []).filter(Boolean)
+  if (notes.length) {
+    ws.addRow([])
+    for (const note of notes) ws.addRow([String(note)]).getCell(1).font = { italic: true, size: 8 }
   }
 
   ws.addRow([])

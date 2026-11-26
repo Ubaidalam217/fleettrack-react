@@ -11,6 +11,8 @@ import LocationMapModal from '../../components/reports/LocationMapModal'
 import TripRouteModal from '../../components/reports/TripRouteModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, ReportByToggle, DriverMultiSelect } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
+import UffizioFootnote, { useUffizioNotes } from '../../components/reports/UffizioFootnote'
+import { UFFIZIO_HARSH_NOTE } from '../../utils/uffizioReports'
 import { ibuttonKey, useDrivers } from '../../data/settings'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { fetchMovementMessages, formatDateTime, formatDateLabel, formatTime, formatPrintDate, isAbortError } from '../../utils/movementReport'
@@ -663,7 +665,9 @@ function UsageReport({ variant, ...props }) {
     [V, entity, byDriver]
   )
   const shownCols = useVisibleColumns(columns, hiddenCols)
-  const { data } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): their ~2-minute samples
+  // go through the same trip engine; distance is their odometer.
+  const { data } = useFlespiData({ withUffizio: true })
   // The live feed hands over a new vehicle array on every poll. The report only
   // cares which vehicles there are and what they are called, so it keys on that:
   // otherwise each poll rebuilt the report and restarted the address lookup
@@ -919,6 +923,7 @@ function UsageReport({ variant, ...props }) {
     zebraStart: C.zebraStart,
     summary: built?.summary ?? [],
     chart: built?.chart,
+    notes,
   })
 
   const exportOpts = () => ({
@@ -933,15 +938,19 @@ function UsageReport({ variant, ...props }) {
       columns: shownCols.map(c => ({ key: c.key, label: c.label, width: c.pdf, align: c.align, hrefKey: c.locate ? 'mapUrl' : undefined })),
       rows: g.rows, // date/total bands print as the Movement PDF's yellow bands
     })),
+    notes,
   })
 
   const truncated = raw && [...raw.byDevice.values()].some(e => e?.truncated)
+  // Harsh events are columns of some variants; 2-minute samples cannot show them.
+  const harshCols = V.columns.some(c => c.key === 'hb' || c.key === 'ha')
+  const notes = useUffizioNotes(raw?.byDevice, vehicles, applied?.fromTs, applied ? applied.toTs + 1 : undefined, harshCols ? [UFFIZIO_HARSH_NOTE] : [])
   const onLocateRow = r => (r.route
     ? setTripRoute({ ...r.route, driver: r.driverName ?? r.driver, distance: km(r.route.distanceKm), points: routePoints(raw?.byDevice, r.route) })
     : setLocated({ lat: r.lat, lng: r.lng, ts: r.key, vehicleId: r.vehicle, status: title, location: r.location }))
 
   return (
-    <ReportFrame excludesUffizio title={title} desc={V.desc} {...props}>
+    <ReportFrame title={title} desc={V.desc} {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}
@@ -1116,6 +1125,7 @@ function UsageReport({ variant, ...props }) {
             />
           )}
           {built.chart?.length > 0 && <DistanceDrivenCharts data={built.chart} />}
+          <UffizioFootnote notes={notes} />
         </>
       )}
 

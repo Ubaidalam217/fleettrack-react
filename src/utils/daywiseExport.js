@@ -211,6 +211,20 @@ export async function buildDaywisePdf(model, meta) {
     }
     y += ROW_H
   }
+  // Notes at the end (e.g. how the Uffizio vehicles' figures are measured).
+  for (const note of (meta.notes ?? []).filter(Boolean)) {
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(7)
+    const lines = doc.splitTextToSize(String(note), BORDER.w - 12)
+    if (y + 6 + lines.length * 9 > BODY_BOTTOM) startPage()
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(7)
+    doc.setTextColor(60, 60, 60)
+    doc.text(lines, BORDER.x + 6, y + 13)
+    y += 6 + lines.length * 9
+  }
+  doc.setTextColor(0, 0, 0)
+
   y += 4
   if (y + 9.25 > BODY_BOTTOM) startPage()
   doc.setFont('helvetica', 'bold')
@@ -343,6 +357,7 @@ export async function exportDaywiseExcel(model, meta) {
     }
   }
 
+  for (const note of (meta.notes ?? []).filter(Boolean)) ws.addRow([String(note)]).getCell(1).font = { italic: true, size: 8 }
   ws.addRow([])
   const end = ws.addRow(['END OF REPORT'])
   end.getCell(1).font = { bold: true, size: 9 }

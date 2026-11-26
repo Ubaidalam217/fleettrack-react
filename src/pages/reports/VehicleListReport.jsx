@@ -7,6 +7,7 @@ import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import LocationMapModal from '../../components/reports/LocationMapModal'
 import { LABEL, FIELD, Chip, ToolbarButton } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
+import UffizioFootnote from '../../components/reports/UffizioFootnote'
 import {
   useVehicles, useCompanies, useDrivers, companyNameFor, branchNameFor, imeiKey, settingsProfileForImei,
 } from '../../data/settings'
@@ -42,12 +43,14 @@ const COLUMNS = [
 ]
 
 const NOT_REGISTERED = '__unregistered'
+const UFFIZIO_LIST_NOTE = 'Uffizio vehicles: status, last update and last location come from Uffizio, about every 2 minutes.'
 
 export default function VehicleListReport(props) {
   const title = useReportTitle('List of Vehicles')
   const [hiddenCols, setHiddenCols] = useHiddenColumns('vehicle-list')
   const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
-  const { data } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): their live columns come from Uffizio.
+  const { data } = useFlespiData({ withUffizio: true })
   const registered = useVehicles()
   const companies = useCompanies()
   const drivers = useDrivers()
@@ -92,6 +95,7 @@ export default function VehicleListReport(props) {
         lastUpdate: lv?.lastTs ? formatDateTime(lv.lastTs) : 'Never',
         lat: lv?.lat ?? null,
         lng: lv?.lng ?? null,
+        uffizio: reg?.dataSource === 'UFFIZIO' || lv?.source === 'UFFIZIO',
         cellStyle: { status: { color: STATUS[st]?.color, fontWeight: 700 } },
       }
     }
@@ -161,7 +165,10 @@ export default function VehicleListReport(props) {
     ['Total Vehicles', String(withLocation.length)],
   ]
 
+  // Said once when an Uffizio vehicle is listed.
+  const notes = withLocation.some(r => r.uffizio) ? [UFFIZIO_LIST_NOTE] : []
   const exportOpts = () => ({
+    notes,
     title,
     subtitle: company,
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
@@ -175,7 +182,7 @@ export default function VehicleListReport(props) {
   })
 
   return (
-    <ReportFrame excludesUffizio
+    <ReportFrame
       title={title}
       desc="Every vehicle with its registration details, driver, live status, last update and last location."
       {...props}
@@ -230,6 +237,7 @@ export default function VehicleListReport(props) {
         onLocate={r => setLocated({ lat: r.lat, lng: r.lng, ts: r.lastTs, vehicleId: r.vehicleId, status: r.status, location: r.location })}
         emptyText={data ? 'No vehicle matches this selection.' : 'Loading vehicles…'}
       />
+      <UffizioFootnote notes={notes} />
 
       <LocationMapModal point={located} onClose={closeLocated} />
     </ReportFrame>

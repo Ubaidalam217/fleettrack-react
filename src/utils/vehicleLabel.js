@@ -49,7 +49,8 @@ export function vehicleLabel(v) {
  * calls it. null when the two agree or there is no Flespi name.
  */
 export function flespiNameNote(device) {
-  if (!device) return null
+  // An Uffizio vehicle (live id "uffizio:<id>") has no Flespi device, so no Flespi name.
+  if (!device || device.source === 'UFFIZIO') return null
   const flespi = clean(device.flespiName ?? device.name)
   return flespi && flespi !== vehicleLabel(device) ? flespi : null
 }
