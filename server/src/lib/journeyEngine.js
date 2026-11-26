@@ -176,6 +176,13 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue, 
   // Progress is measured on the line. Straight legs count as road (× ROAD_FACTOR
   // in the plan), so what is stored and shown is scaled to the planned km.
   const scale = totalKm > 0 && S[last]?.alongKm > 0 ? S[last].alongKm / totalKm : 1
+  // Has the vehicle gone far enough along the route to be at stop k (in the plan's km)?
+  // Generous (15 % or 1.5 km short is fine): a different road, a GPS gap.
+  const advancedTo = k => {
+    const along = S[k]?.alongKm
+    if (!(along > 0)) return true
+    return st.progressKm * scale >= along - Math.max(1.5, 0.15 * along)
+  }
   const hasLine = journey.routeSource !== 'STRAIGHT' && Array.isArray(journey.plannedPath) && journey.plannedPath.length >= 2
   // Route tolerance: the journey's own (Uffizio's 50 m style), else the settings' km.
   const offM = journey.routeToleranceM > 0 ? journey.routeToleranceM : settings.offRouteKm * 1000
@@ -374,6 +381,11 @@ export function stepJourney({ journey, stops, messages, now, settings, fatigue, 
       for (let k = st.next; k <= Math.min(last, st.next + 2); k++) {
         const s = S[k]
         if (s.status !== 'PENDING') continue
+        // Reaching a LATER stop while an earlier one is still pending (so the earlier
+        // ones read as skipped) needs real progress along the route. A round trip's
+        // destination is the office itself: the vehicle still parked or manoeuvring in
+        // the start circle must not "reach" it and skip every stop (client 2026-11-26).
+        if (k > st.next && !advancedTo(k)) continue
         // A QR stop is reached when the driver scans it, not by position.
         if (s.visitVia === 'QR') continue
         const isIn = inStop(f.lat, f.lng, s)

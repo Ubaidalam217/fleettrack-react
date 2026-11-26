@@ -24,13 +24,13 @@ const LAT = 24.35
 const A = 54.5, B = 54.7, C = 54.9
 
 /** A journey A → B (stay 30) → C, 20 min legs, straight line. */
-function makeJourney({ stayB = 30, routeSource = 'STRAIGHT', path = null, start = T0 } = {}) {
+function makeJourney({ stayB = 30, routeSource = 'STRAIGHT', path = null, start = T0, destLng = C } = {}) {
   const sched = computeSchedule({
     plannedStart: start * 1000,
     stops: [
       { name: 'Depot', lat: LAT, lng: A, radiusM: 300, stayMin: 0 },
       { name: 'Fuel stop', lat: LAT, lng: B, radiusM: 300, stayMin: stayB, legDriveMin: 20, legSource: 'MANUAL' },
-      { name: 'Site C', lat: LAT, lng: C, radiusM: 300, stayMin: 0, legDriveMin: 20, legSource: 'MANUAL' },
+      { name: 'Site C', lat: LAT, lng: destLng, radiusM: 300, stayMin: 0, legDriveMin: 20, legSource: 'MANUAL' },
     ],
   })
   const stops = sched.stops.map((s, seq) => ({
@@ -226,6 +226,43 @@ describe('alerts on the way', () => {
   })
 })
 
+describe('a round trip: the destination is the depot itself', () => {
+  // Client 2026-11-26: the vehicle did visit both stops, but the journey was completed
+  // 4 minutes after it left the depot, with both stops "skipped": it was still in the
+  // start circle, which is also the destination circle.
+  it('does not reach the destination (or skip the stops) while the vehicle is still around the depot', () => {
+    const fx = makeJourney({ destLng: A })
+    const msgs = [
+      ...park(T0 - 600, 12, A),
+      ...drive(T0 + 120, 2, A, A + 0.006), // ~600 m out
+      ...drive(T0 + 240, 2, A + 0.006, A), // and back
+      ...park(T0 + 360, 6, A), // sits in the circle for 5+ minutes
+    ]
+    const r = run(fx, [msgs])
+    expect(r.stops[1].status).toBe('PENDING')
+    expect(r.stops[2].status).toBe('PENDING')
+    expect(r.journey.status).not.toBe('Completed')
+    expect(r.types).not.toContain('SKIPPED_STOP')
+  })
+
+  it('then follows the real trip: the stop, then the way back to the depot', () => {
+    const fx = makeJourney({ destLng: A })
+    const msgs = [
+      ...park(T0 - 600, 12, A),
+      ...drive(T0 + 120, 2, A, A + 0.006),
+      ...drive(T0 + 240, 2, A + 0.006, A),
+      ...park(T0 + 360, 6, A),
+      ...drive(T0 + 720, 20, A, B),
+      ...park(T0 + 1980, 7, B),
+      ...drive(T0 + 2400, 20, B, A),
+      ...park(T0 + 3660, 5, A),
+    ]
+    const r = run(fx, [msgs])
+    expect(['ARRIVED', 'DEPARTED']).toContain(r.stops[1].status)
+    expect(r.stops[2].status).toBe('ARRIVED')
+    expect(r.types).not.toContain('SKIPPED_STOP')
+  })
+})
 describe('one pass against the database', () => {
   let fx, approver
   const app = createApp()

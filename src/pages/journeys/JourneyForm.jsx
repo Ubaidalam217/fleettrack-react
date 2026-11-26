@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { History, PenLine, Route, Navigation, Plus, X, ChevronDown, ChevronUp, Send, Check, AlertTriangle, MapPin, Undo2, BookMarked, Upload, Copy, LayoutTemplate, Repeat, Thermometer, Truck } from 'lucide-react'
 import JourneyShell from './JourneyShell'
 import JourneyMap from '../../components/journeys/JourneyMap'
+import { useFlespiData } from '../../hooks/useFlespiData'
 import { ErrorNote, Toggle } from '../../components/journeys/JourneyBits'
 import { JModal, AddressPicker, StopsImport } from '../../components/journeys/JourneyDialogs'
 import {
@@ -40,6 +41,9 @@ const planOf = s => ({
 })
 
 const PURPOSES = ['LOADING', 'UNLOADING', 'DELIVERY', 'REST', 'OTHER']
+// Live statuses of a vehicle that is reporting (client 2026-11-26): Driving, Idle and Off
+// (ignition off, still reporting). Inactive and No Data vehicles are not offered.
+const ACTIVE_LIVE = ['Running', 'Idle', 'Stopped']
 
 function defaultStart() {
   const d = new Date(Date.now() + 2 * 3600_000)
@@ -471,6 +475,28 @@ export default function JourneyForm(props) {
 
   const vehicle = opts?.vehicles.find(v => v.id === vehicleId)
   const vehicleHasTemp = Boolean(vehicle?.hasTemperature)
+
+  // Live positions (Flespi and Uffizio vehicles, as on the Live Map), by IMEI.
+  // Client 2026-11-26: the vehicle list shows only active vehicles (reporting:
+  // Driving, Idle or Off; not Inactive or No Data), and picking one shows where
+  // it is now on the map.
+  const live = useFlespiData({ withUffizio: true })
+  const liveByImei = useMemo(() => {
+    const m = new Map()
+    for (const v of live.data?.vehicles ?? []) {
+      const k = String(v.ident ?? '').replace(/\D/g, '')
+      if (k) m.set(k, v)
+    }
+    return m
+  }, [live.data])
+  const pickable = useMemo(() => {
+    if (!opts) return []
+    // Until the live status is known (or when it cannot be read) every vehicle is offered.
+    if (!liveByImei.size) return opts.vehicles
+    return opts.vehicles.filter(v => ACTIVE_LIVE.includes(liveByImei.get(String(v.imei ?? '').replace(/\D/g, ''))?.status) || v.id === vehicleId)
+  }, [opts, liveByImei, vehicleId])
+  const hereNow = vehicle ? liveByImei.get(String(vehicle.imei ?? '').replace(/\D/g, '')) : null
+  const vehiclePin = hereNow && Number.isFinite(hereNow.lat) && Number.isFinite(hereNow.lng) ? { lat: hereNow.lat, lng: hereNow.lng, label: vehicle.label } : null
   const nextDays = useMemo(() => (when === 'RELATIVE' ? upcoming({ ...scheduleBody(), validFrom: scheduleBody().validFrom }, Date.now(), Math.max(14, Number(sched.horizonDays) || 7)).slice(0, 5) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [when, sched, start])
@@ -509,7 +535,7 @@ export default function JourneyForm(props) {
                 <span>Vehicle</span>
                 <select className="j-select" value={vehicleId} onChange={e => { setVehicleId(e.target.value); if (!driverId) { const v = opts.vehicles.find(x => x.id === e.target.value); if (v?.driver) setDriverId(v.driver.id) } }}>
                   <option value="">Pick a vehicle…</option>
-                  {opts.vehicles.map(v => <option key={v.id} value={v.id}>{v.label}{v.vehicleType ? ` · ${v.vehicleType}` : ''}</option>)}
+                  {pickable.map(v => <option key={v.id} value={v.id}>{v.label}{v.vehicleType ? ` · ${v.vehicleType}` : ''}</option>)}
                 </select>
                 {avail && (avail.free
                   ? <span className="j-ok-text"><Check size={12} style={{ verticalAlign: -2 }} /> Free at this time</span>
@@ -565,7 +591,7 @@ export default function JourneyForm(props) {
                   <div className="j-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
                     <select className="j-select" value={tripForm.vehicleId || vehicleId} onChange={e => setTripForm(f => ({ ...f, vehicleId: e.target.value }))} aria-label="Trip vehicle">
                       <option value="">Vehicle…</option>
-                      {opts.vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                      {pickable.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
                     </select>
                     <input className="j-input" type="datetime-local" value={tripForm.from} onChange={e => setTripForm(f => ({ ...f, from: e.target.value }))} aria-label="Trip from" />
                     <input className="j-input" type="datetime-local" value={tripForm.to} onChange={e => setTripForm(f => ({ ...f, to: e.target.value }))} aria-label="Trip to" />
@@ -855,7 +881,7 @@ export default function JourneyForm(props) {
                       {convoy.length < 5 && (
                         <select className="j-select" style={{ width: 'auto', minHeight: 32 }} value="" onChange={e => e.target.value && setConvoy(c => [...new Set([...c, e.target.value])])} aria-label="Add a convoy vehicle">
                           <option value="">Add a vehicle…</option>
-                          {opts.vehicles.filter(v => v.id !== vehicleId && !convoy.includes(v.id)).map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                          {pickable.filter(v => v.id !== vehicleId && !convoy.includes(v.id)).map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
                         </select>
                       )}
                       {convoy.length > 0 && (
@@ -905,7 +931,8 @@ export default function JourneyForm(props) {
                 height={typeof window !== 'undefined' && window.innerWidth < 640 ? 320 : 560}
                 onMapClick={onMapClick}
                 showAreas
-                fitKey={`${templateId}|${recordedFrom?.from}|${loaded}|${roadFit}`}
+                vehicle={vehiclePin}
+                fitKey={`${templateId}|${recordedFrom?.from}|${loaded}|${roadFit}|${vehiclePin ? vehicleId : ""}`}
               />
               <span className="j-pill j-pill--plain" style={{ position: 'absolute', top: 12, left: 12, zIndex: 500, background: 'rgba(30,45,54,.88)' }}>
                 <MapPin size={12} /> {routeSource === 'DRAWN' && clickMode === 'draw' ? 'Click the map to draw the route' : 'Click the map to add a stop'}
