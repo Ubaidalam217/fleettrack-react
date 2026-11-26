@@ -68,3 +68,20 @@ describe('GET /api/reports/uffizio-daywise', () => {
     expect((await request(app).get('/api/reports/uffizio-daywise?year=2026&month=13').set(auth(fx.tokens.superAdmin))).status).toBe(400)
   })
 })
+
+describe('GET /api/alert-events?vehicleIds (events of vehicles without a tracker id)', () => {
+  it('finds an Uffizio vehicle by vehicle, alone or with device ids', async () => {
+    const base = { bgId: fx.bgA2.id, type: 'fuel_drain', severity: 'High', title: 'Fuel drop', message: 'x', occurredAt: new Date((T0 + 600) * 1000) }
+    await prisma.alertEvent.createMany({ data: [
+      { ...base, vehicleId: veh.id },
+      { ...base, bgId: fx.bgA1a.id, deviceId: 101, type: 'overspeed' },
+    ] })
+    const get = query => request(app).get('/api/alert-events').query(query).set(auth(fx.tokens.superAdmin))
+    const mine = await get({ vehicleIds: veh.id, limit: 2000 })
+    expect(mine.status).toBe(200)
+    expect(mine.body.data.map(e => e.vehicleId)).toEqual([veh.id])
+    const both = await get({ vehicleIds: veh.id, deviceIds: '101', limit: 2000 })
+    expect(both.body.data).toHaveLength(2)
+    expect((await get({ vehicleIds: 'bad id;' })).status).toBe(400)
+  })
+})

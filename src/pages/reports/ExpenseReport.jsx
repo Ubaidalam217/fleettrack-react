@@ -21,6 +21,8 @@ import {
   aed, byCategory, daysBetween, expenseRows, groupByVehicle, monthsBetween, num, usageInRange, vehicleCost,
 } from '../../utils/expenseReport'
 import { loadUsageMonths } from '../../utils/expenseUsage'
+import { compareIds, uffizioNotes } from '../../utils/uffizioReports'
+import UffizioFootnote from '../../components/reports/UffizioFootnote'
 import { ReportSkeleton } from '../../components/Skeleton'
 
 /**
@@ -116,7 +118,8 @@ export default function ExpenseReport(props) {
   const { toasts, push, dismiss } = useToasts()
   const companies = useCompanies()
   const settingsVehicles = useVehicles()
-  const { data } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): their km from the odometer, engine hours from the ignition.
+  const { data } = useFlespiData({ withUffizio: true })
 
   const now = useMemo(() => new Date(), [])
   const [preset, setPreset] = useState('thisMonth')
@@ -169,7 +172,7 @@ export default function ExpenseReport(props) {
 
   // Kilometres and engine hours for the same range, from the Daywise figures.
   const allIds = useMemo(() => (data?.vehicles ?? []).map(v => v.id), [data?.vehicles])
-  const allKey = allIds.slice().sort((a, b) => a - b).join(',')
+  const allKey = allIds.slice().sort(compareIds).join(',')
   const deviceByImei = useMemo(() => new Map((data?.vehicles ?? []).map(v => [digits(v.ident), v.id])), [data?.vehicles])
   const [usage, setUsage] = useState(null) // { byDevice, partial, missing }
   useEffect(() => {
@@ -262,7 +265,11 @@ export default function ExpenseReport(props) {
     { label: 'Days', value: String(days) },
   ]
 
+  // The footnote when an Uffizio vehicle is chosen: its km come from its odometer.
+  const uffizioIds = new Set((settingsVehicles ?? []).filter(v => v.dataSource === 'UFFIZIO').map(v => String(v.id)))
+  const notes = uffizioNotes({ present: effectiveIds.some(id => uffizioIds.has(String(id))) })
   const exportOpts = () => ({
+    notes,
     title,
     subtitle: 'FleetmaxX',
     filters: paperFilters.map(([k, v]) => [k, plain(v)]),
@@ -284,7 +291,7 @@ export default function ExpenseReport(props) {
   const types = category ? EXPENSE_TYPES[category] : [...EXPENSE_TYPES.Variable, ...EXPENSE_TYPES.Fix]
 
   return (
-    <ReportFrame excludesUffizio title={title} desc="Every expense of the chosen vehicles in a period, and what each vehicle cost per km, per day and per engine hour." {...props}>
+    <ReportFrame title={title} desc="Every expense of the chosen vehicles in a period, and what each vehicle cost per km, per day and per engine hour." {...props}>
       {!IS_REAL ? (
         <div style={{ ...CARD_SURFACE, padding: 24, fontSize: 13, color: 'var(--c-text2)' }}>Expenses are kept on the server, so this report needs the server and is not available in demo mode.</div>
       ) : (
@@ -381,6 +388,7 @@ export default function ExpenseReport(props) {
                     groups={[{ key: 'cat', label: 'Expenses by Category and Type', rows: categoryRows, total: `Total : ${aed(grand)}` }]}
                     printDate={printDate}
                   />
+                  <UffizioFootnote notes={notes} style={{ margin: 0 }} />
                 </div>
               )}
             </>

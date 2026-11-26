@@ -5,6 +5,8 @@ import ReportFrame from '../../components/reports/ReportFrame'
 import CtrackPaper from '../../components/reports/CtrackPaper'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, HelpTip } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
+import UffizioFootnote from '../../components/reports/UffizioFootnote'
+import { hasUffizio, uffizioNotes } from '../../utils/uffizioReports'
 import { fetchFleetMessages, isAbortError } from '../../utils/replay'
 import { PRESETS, presetRange, dateStr, timeStr } from '../../utils/reportRange'
 import { exportCtrackPdf, exportCtrackExcel, CTRACK_RED } from '../../utils/ctrackExport'
@@ -75,10 +77,13 @@ const onScreen = cols => {
 const forPdf = cols => cols.map(c => ({ ...c, width: c.w }))
 const names = list => list.join(', ')
 
+const POWER_UFFIZIO_NOTE = 'Uffizio vehicles: power is read from the external voltage in their ~2-minute positions, so a cut shorter than that may not show and times are within about 2 minutes.'
+
 export default function PowerFailureReport(props) {
   const title = useReportTitle(TITLE) // Oil & Gas opens it as "Power Failure"
   const file = title === TITLE ? FILE : fileNameOf(title)
-  const { data } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): their external volts in the ~2-minute positions.
+  const { data } = useFlespiData({ withUffizio: true })
   // The live feed hands over a new vehicle array on every poll. The report only
   // cares which vehicles there are and what they are called, so it keys on that.
   const liveVehicles = data?.vehicles ?? []
@@ -217,8 +222,10 @@ export default function PowerFailureReport(props) {
   const applied = raw?.applied
   const pairs = applied ? [['From', ctrackDateTime(applied.fromTs)], ['To', ctrackDateTime(applied.toTs)]] : []
 
+  const notes = uffizioNotes({ present: !!raw && hasUffizio(raw.byDevice), extra: [POWER_UFFIZIO_NOTE] })
   // The sample's footer has the page number only, no print date.
   const ctrackOpts = () => ({
+    notes,
     title,
     pageSize: PAGE,
     fontSize: 9.8,
@@ -239,7 +246,7 @@ export default function PowerFailureReport(props) {
   const truncated = raw && [...raw.byDevice.values()].some(e => e?.truncated)
 
   return (
-    <ReportFrame excludesUffizio title={title} desc={DESC} {...props}>
+    <ReportFrame title={title} desc={DESC} {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}
@@ -350,6 +357,7 @@ export default function PowerFailureReport(props) {
             printDate=""
             emptyText="No power cuts in this period for the selected vehicles."
           />
+          <UffizioFootnote notes={notes} />
         </>
       )}
     </ReportFrame>

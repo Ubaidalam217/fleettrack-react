@@ -5,7 +5,8 @@
  *        newest first, scoped to the caller's BGs (and a sub-user's vehicles);
  *        `unreadCount` rides along so the bell needs no second request.
  *        &from=<ISO>&to=<ISO>&deviceIds=1,2,3 narrow it to a range and to some
- *        trackers — the Event Occurrence Report's query (up to 2000 rows).
+ *        trackers — the Event Occurrence Report's query (up to 2000 rows);
+ *        &vehicleIds=a,b adds vehicles without a tracker id (Uffizio).
  *   POST /api/alert-events/read   { ids?: string[] }   — omit ids to mark all read
  *
  * "Read" is shared by the BG rather than per user, the way a control room works:
@@ -29,6 +30,9 @@ const listQuery = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
   deviceIds: z.string().trim().regex(/^\d+(,\d+)*$/).max(4000).optional(),
+  // Vehicles without a Flespi device (the Uffizio ones, 2026-11-26): their
+  // events carry the vehicle only. With deviceIds too, either matches.
+  vehicleIds: z.string().trim().regex(/^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$/).max(8000).optional(),
   unread: z.enum(['true', 'false']).optional(),
   type: z.string().trim().min(1).optional(),
 })
@@ -53,7 +57,9 @@ router.get(
   '/',
   validate(listQuery, 'query'),
   asyncHandler(async (req, res) => {
-    const { limit, before, unread, type, from, to, deviceIds } = req.validatedQuery
+    const { limit, before, unread, type, from, to, deviceIds, vehicleIds } = req.validatedQuery
+    const byDevice = deviceIds ? { deviceId: { in: deviceIds.split(',').map(Number) } } : null
+    const byVehicle = vehicleIds ? { vehicleId: { in: vehicleIds.split(',') } } : null
     const scope = journeyFilter(req, scopedWhere('alertEvent', req.scope))
     const where = {
       AND: [
@@ -63,7 +69,7 @@ router.get(
         type ? { type } : {},
         from ? { occurredAt: { gte: new Date(from) } } : {},
         to ? { occurredAt: { lte: new Date(to) } } : {},
-        deviceIds ? { deviceId: { in: deviceIds.split(',').map(Number) } } : {},
+        byDevice && byVehicle ? { OR: [byDevice, byVehicle] } : byDevice ?? byVehicle ?? {},
       ],
     }
     const [rows, unreadCount] = await Promise.all([

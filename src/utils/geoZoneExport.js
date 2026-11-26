@@ -564,6 +564,7 @@ function tripReportExportOpts(report, filters, meta) {
     title: 'Geofence Trip Report',
     subtitle: meta.subtitle, filters: filters.pairs, filtersText: filters.rangeLabel, printDate: meta.printDate, systemName: meta.systemName,
     hiddenColumns: meta.hiddenColumns,
+    notes: meta.notes,
     summaryCards: tripReportSummaryCards(report),
     tables: tripReportTables(report),
   }
@@ -619,6 +620,7 @@ function visitedSummaryExportOpts(report, filters, meta) {
     title: 'Geofence Visited Summary',
     subtitle: meta.subtitle, filters: filters.pairs, filtersText: filters.rangeLabel, printDate: meta.printDate, systemName: meta.systemName,
     hiddenColumns: meta.hiddenColumns,
+    notes: meta.notes,
     summaryCards: [
       { label: 'No of Visits', value: report.summary.noOfVisits },
       { label: 'Geofence Duration', value: report.summary.geofenceDuration },
@@ -650,6 +652,7 @@ function addressVisitsExportOpts(report, filters, meta) {
     title: 'Address Visits',
     subtitle: meta.subtitle, filters: filters.pairs, filtersText: filters.rangeLabel, printDate: meta.printDate, systemName: meta.systemName,
     hiddenColumns: meta.hiddenColumns,
+    notes: meta.notes,
     summaryCards: [{ label: 'Total Visits', value: report.rows.length }],
     tables: [{ heading: null, columns: ADDRESS_VISITS_COLUMNS, rows: report.rows }],
   }
@@ -710,6 +713,7 @@ function geofenceHistoryExportOpts(report, filters, meta) {
     title: 'Geofence History',
     subtitle: meta.subtitle, filters: filters.pairs, filtersText: filters.rangeLabel, printDate: meta.printDate, systemName: meta.systemName,
     hiddenColumns: meta.hiddenColumns,
+    notes: meta.notes,
     summaryCards: [{ label: 'Geofence×Vehicle Pairs', value: report.groups.length }],
     tables: geofenceHistoryTables(report),
   }
@@ -772,6 +776,7 @@ function g2gTripSummaryExportOpts(report, filters, meta) {
     title: 'Geofence to Geofence Trip Summary',
     subtitle: meta.subtitle, filters: filters.pairs, filtersText: filters.rangeLabel, printDate: meta.printDate, systemName: meta.systemName,
     hiddenColumns: meta.hiddenColumns,
+    notes: meta.notes,
     summaryCards: [
       { label: 'No of Trips', value: report.summary.noOfTrips },
       { label: 'Distance (km)', value: report.summary.distanceKm },

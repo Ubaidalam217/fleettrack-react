@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { vehicleLabel, flespiNameNote } from '../../utils/vehicleLabel'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
+import { VIOLATION_EXCLUDED_REASON } from '../../components/reports/UffizioExcludedNote'
 import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import CtrackPaper from '../../components/reports/CtrackPaper'
 import EventTrackModal from '../../components/reports/EventTrackModal'
@@ -442,7 +443,7 @@ export default function ViolationReportPage({ variant = 'details', ...props }) {
   const truncated = raw?.byDevice && [...raw.byDevice.values()].some(e => e?.truncated)
 
   return (
-    <ReportFrame excludesUffizio title={title} desc={V.desc} {...props}>
+    <ReportFrame excludesUffizio={VIOLATION_EXCLUDED_REASON} title={title} desc={V.desc} {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}

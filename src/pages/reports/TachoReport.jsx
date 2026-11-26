@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { vehicleLabel, flespiNameNote } from '../../utils/vehicleLabel'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
+import { TACHO_EXCLUDED_REASON } from '../../components/reports/UffizioExcludedNote'
 import PaperTable from '../../components/reports/PaperTable'
 import ColumnPicker from '../../components/reports/ColumnPicker'
 import TachoGraph from '../../components/reports/TachoGraph'
@@ -269,7 +270,7 @@ function TachoPage({ variant, ...props }) {
   const truncated = raw && [...raw.byDevice.values()].some(e => e?.truncated)
 
   return (
-    <ReportFrame excludesUffizio title={V.title} desc={V.desc} {...props}>
+    <ReportFrame excludesUffizio={TACHO_EXCLUDED_REASON} title={V.title} desc={V.desc} {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {TACHO_PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}

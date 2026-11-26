@@ -9,6 +9,7 @@
 import { get as apiGet } from '../data/http'
 import { IS_REAL } from '../data/mode'
 import { currentUaeMonth, loadDaywiseMonth } from './daywise'
+import { compareIds, isUffizioId } from './uffizioReports'
 
 const TTL_MS = 5 * 60 * 1000
 const cache = new Map() // 'YYYY-M' -> { at, promise }
@@ -30,8 +31,23 @@ function serverMonth(year, month) {
  *   is still missing some of its days.
  */
 export function loadUsageMonths(months, allIds) {
+  // The Uffizio vehicles (2026-11-26) are in no DailyUsage row: their months
+  // come from their own samples (loadDaywiseMonth), any month, merged in.
+  const uffizio = allIds.filter(isUffizioId)
+  const flespi = allIds.filter(id => !isUffizioId(id))
+  return Promise.all(months.map(async m => {
+    const [base, own] = await Promise.all([
+      flespiUsageMonth(m, flespi),
+      uffizio.length ? loadDaywiseMonth(uffizio, m.year, m.month).then(r => r.derived).catch(() => null) : null,
+    ])
+    if (!own) return base
+    return { ...base, devices: new Map([...(base.devices ?? []), ...own]) }
+  }))
+}
+
+function flespiUsageMonth({ year, month }, allIds) {
   const cur = currentUaeMonth()
-  return Promise.all(months.map(async ({ year, month }) => {
+  return (async () => {
     if (IS_REAL) {
       const data = await serverMonth(year, month)
       if (data?.devices?.length) {
@@ -40,10 +56,10 @@ export function loadUsageMonths(months, allIds) {
     }
     if (cur.year === year && cur.month === month && allIds.length) {
       try {
-        const r = await loadDaywiseMonth([...allIds].sort((a, b) => a - b), year, month)
+        const r = await loadDaywiseMonth([...allIds].sort(compareIds), year, month)
         return { year, month, devices: r.derived, partial: false }
       } catch { /* no figures for this month */ }
     }
     return { year, month, devices: null, partial: false }
-  }))
+  })()
 }

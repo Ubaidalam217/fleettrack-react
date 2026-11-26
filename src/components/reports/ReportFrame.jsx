@@ -10,8 +10,8 @@ import UffizioExcludedNote from './UffizioExcludedNote'
  * and the print rules that send only `#report-paper` to the printer.
  */
 /**
- * `excludesUffizio`: the report reads Flespi tracker data, so the Uffizio
- * vehicles are not in it — a short note says so (UffizioExcludedNote).
+ * `excludesUffizio`: the report cannot include the Uffizio vehicles — a short
+ * note says so; a string is the precise reason (UffizioExcludedNote).
  */
 export default function ReportFrame({ title, desc, children, isDark, toggleTheme, themeMode, setTheme, excludesUffizio = false }) {
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -40,7 +40,7 @@ export default function ReportFrame({ title, desc, children, isDark, toggleTheme
               <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--c-text1)', margin: 0 }}>{title}</h1>
               {desc && <p style={{ fontSize: 12.5, color: 'var(--c-text3)', margin: '4px 0 0' }}>{desc}</p>}
             </div>
-            {excludesUffizio && <UffizioExcludedNote />}
+            {excludesUffizio && <UffizioExcludedNote reason={typeof excludesUffizio === 'string' ? excludesUffizio : undefined} />}
             {children}
           </div>
         </main>

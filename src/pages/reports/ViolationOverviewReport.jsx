@@ -3,6 +3,7 @@ import { vehicleLabel } from '../../utils/vehicleLabel'
 import { useLocation } from 'react-router-dom'
 import { FileDown, FileSpreadsheet, Printer, X, AlertTriangle } from 'lucide-react'
 import ReportFrame from '../../components/reports/ReportFrame'
+import { VIOLATION_EXCLUDED_REASON } from '../../components/reports/UffizioExcludedNote'
 import CtrackPaper from '../../components/reports/CtrackPaper'
 import EventListModal from '../../components/reports/EventListModal'
 import EventTrackModal from '../../components/reports/EventTrackModal'
@@ -278,7 +279,7 @@ export default function ViolationOverviewReport(props) {
   })
 
   return (
-    <ReportFrame excludesUffizio title={title} desc="How many times each alert rule was broken, day by day and per driver or vehicle." {...props}>
+    <ReportFrame excludesUffizio={VIOLATION_EXCLUDED_REASON} title={title} desc="How many times each alert rule was broken, day by day and per driver or vehicle." {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}

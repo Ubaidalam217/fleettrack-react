@@ -35,7 +35,10 @@ import { useHiddenColumns, columnChoices } from '../../utils/reportColumns'
 import { useDriverDimension } from '../../hooks/useDriverDimension'
 import { driverFilterLabel } from '../../utils/driverAtTime'
 import { applyGeoZoneDrivers } from '../../utils/geoZoneDriver'
-import UffizioExcludedNote from '../../components/reports/UffizioExcludedNote'
+import UffizioFootnote, { useUffizioNotes } from '../../components/reports/UffizioFootnote'
+
+// Said with the footnote when an Uffizio vehicle is in the report.
+const GEO_ZONE_UFFIZIO_NOTE = 'Geofence entry and exit for Uffizio vehicles are taken from their ~2-minute positions: times are within about 2 minutes, and a zone crossed between two positions may be missed.'
 
 // Hard cap the user explicitly asked for: a long range across many vehicles
 // can hammer Flespi (each day of range is one request per vehicle), so the
@@ -161,7 +164,8 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   )
-  const { data } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): entry and exit from their ~2-minute positions.
+  const { data } = useFlespiData({ withUffizio: true })
   const vehicles = useMemo(
     () => (data?.vehicles ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
     [data]
@@ -339,11 +343,13 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
   const pendingGeocodes = locationRefsForTab ? countGeoZonePendingGeocodes(locationRefsForTab) : 0
 
   // ── export plumbing ──
+  const uffizioNotes = useUffizioNotes(byDeviceMessages, vehicles, applied?.fromTs, applied ? applied.toTs + 1 : undefined, [GEO_ZONE_UFFIZIO_NOTE])
   const exportMeta = useMemo(() => ({
     subtitle: 'FleetmaxX', systemName: 'FleetmaxX',
     printDate: applied?.printDate ?? formatPrintDate(),
     hiddenColumns: hiddenCols,
-  }), [applied, hiddenCols])
+    notes: uffizioNotes,
+  }), [applied, hiddenCols, uffizioNotes])
 
   const exportFilters = useMemo(() => ({
     rangeLabel: applied
@@ -435,7 +441,6 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                 Trips, visits and dwell time at your geofences and addresses, derived from one Flespi fetch per run.
               </p>
             </div>
-            <UffizioExcludedNote />
 
             {/* ── Sub-report tabs ── */}
             <div className="report-screen-only" style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -672,6 +677,7 @@ export default function GeoZoneReport({ isDark, toggleTheme, themeMode, setTheme
                       ]} />
                     </>
                   )}
+                  <UffizioFootnote notes={uffizioNotes} style={{ margin: '8px 6px 0' }} />
                   <PaperFoot printDate={exportMeta.printDate} />
                 </PaperSheet>
               </>

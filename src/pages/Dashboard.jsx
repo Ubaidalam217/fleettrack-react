@@ -22,7 +22,6 @@ import TripAnalysis          from '../components/TripAnalysis'
 import CostSummary           from '../components/CostSummary'
 import { useFlespiData }     from '../hooks/useFlespiData'
 import { useDashboardStats } from '../hooks/useDashboardStats'
-import { withoutUffizio }    from '../utils/uffizioLive'
 
 // ── Widget registry ────────────────────────────────────────────────────────
 const WIDGET_LIST = [
@@ -252,11 +251,11 @@ export default function Dashboard({ isDark, toggleTheme, themeMode, setTheme }) 
   )
 
   // Distance, trips, safety, reminders and costs — every card's recorded figures.
-  // The Uffizio vehicles count in the live status figures but not yet in the
-  // recorded ones (distance, trips, safety): those read Flespi day records.
-  const statsAll = useMemo(() => (data?.vehicles ? withoutUffizio(data.vehicles) : data?.vehicles), [data?.vehicles])
-  const statsSel = useMemo(() => (filteredData?.vehicles ? withoutUffizio(filteredData.vehicles) : filteredData?.vehicles), [filteredData?.vehicles])
-  const stats = useDashboardStats(statsAll, statsSel)
+  // The Uffizio vehicles count everywhere (client, 2026-11-26): distance and
+  // utilisation from their own samples (odometer km, ignition hours), today's
+  // trips from the same trip engine. Safety stays over the Flespi vehicles,
+  // which are the ones that can raise violations (useDashboardStats).
+  const stats = useDashboardStats(data?.vehicles, filteredData?.vehicles)
 
   const panelVehicles = useMemo(() => {
     if (!data?.vehicles) return []

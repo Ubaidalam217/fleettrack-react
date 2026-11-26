@@ -9,6 +9,8 @@ import { useHiddenColumns, useVisibleColumns } from '../../utils/reportColumns'
 import EventTrackModal from '../../components/reports/EventTrackModal'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, ReportByToggle, DriverMultiSelect } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
+import UffizioFootnote from '../../components/reports/UffizioFootnote'
+import { isUffizioId, uffizioNotes } from '../../utils/uffizioReports'
 import { ALERT_TYPES, ALERT_SEVERITIES, alertTypeLabel, driverNameForDevice } from '../../data/settings'
 import { fetchAlertEventsInRange } from '../../data/alertEvents'
 import { IS_REAL } from '../../data/mode'
@@ -86,11 +88,15 @@ const COLUMNS = [
   { key: 'location', label: 'Location',            width: '30%', pdf: 22, locate: true },
 ]
 
+/** Which events an Uffizio vehicle can have (client, 2026-11-26). */
+const EVENT_UFFIZIO_NOTE = 'Events of Uffizio vehicles: the fuel alerts FleetmaxX raises from their readings (fill, drain, low fuel). Uffizio sends no other events; speed and idle alerts are not raised from 2-minute samples, and SOS shows on the Live Map only.'
+
 export default function EventOccurrenceReport(props) {
   const title = useReportTitle('Event Occurrence Report')
   const [hiddenCols, setHiddenCols] = useHiddenColumns('event-occurrence')
   const shownCols = useVisibleColumns(COLUMNS, hiddenCols)
-  const { data } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): their fuel alerts, by vehicle.
+  const { data } = useFlespiData({ withUffizio: true })
   const vehicles = useMemo(
     () => (data?.vehicles ?? []).slice().sort((a, b) => vehicleLabel(a).localeCompare(vehicleLabel(b))),
     [data]
@@ -166,7 +172,7 @@ export default function EventOccurrenceReport(props) {
     setError(null)
     setRaw(null)
     setProgress({ text: 'Loading alerts...' })
-    const applied = { fromTs, toTs, selectionLabel, printDate: formatPrintDate() }
+    const applied = { fromTs, toTs, selectionLabel, printDate: formatPrintDate(), uffizio: effectiveIds.some(isUffizioId) }
     try {
       const { events, truncated } = await fetchAlertEventsInRange({ fromTs, toTs, deviceIds: effectiveIds })
       if (controller.signal.aborted) return
@@ -243,7 +249,9 @@ export default function EventOccurrenceReport(props) {
     ...(groupBy === 'driver' ? [['Drivers', driverFilterLabel(driverFilter, driverDim.options)]] : []),
   ] : []
 
+  const notes = uffizioNotes({ present: !!applied?.uffizio, extra: [EVENT_UFFIZIO_NOTE] })
   const exportOpts = () => ({
+    notes,
     title,
     subtitle: 'FleetmaxX',
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
@@ -263,7 +271,7 @@ export default function EventOccurrenceReport(props) {
   const total = report?.totalRows ?? 0
 
   return (
-    <ReportFrame excludesUffizio
+    <ReportFrame
       title={title}
       desc="Every alert raised in the period, laid out like the Movement Report, with the vehicle's status, speed and location at that moment."
       {...props}
@@ -401,6 +409,7 @@ export default function EventOccurrenceReport(props) {
             })}
             emptyText="No alerts were raised for this selection."
           />
+          <UffizioFootnote notes={notes} />
         </>
       )}
 

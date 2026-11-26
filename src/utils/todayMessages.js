@@ -1,4 +1,5 @@
 import { fetchFleetMessages } from './replay'
+import { compareIds } from './uffizioReports'
 
 /**
  * Today's messages for a set of vehicles — one fleet-wide Flespi read, eight
@@ -19,7 +20,7 @@ const cache = new Map() // `${day}|${ids}` -> { expiresAt, promise }
 
 /** @returns {Promise<Map<number, {messages: object[], truncated: boolean}>>} */
 export function fetchTodayMessages(ids) {
-  const sorted = [...ids].sort((a, b) => a - b)
+  const sorted = [...ids].sort(compareIds)
   const midnight = new Date()
   midnight.setHours(0, 0, 0, 0)
   const fromTs = Math.floor(midnight.getTime() / 1000)

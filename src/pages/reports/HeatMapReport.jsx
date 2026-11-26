@@ -10,6 +10,8 @@ import HeatLayer from '../../components/reports/HeatLayer'
 import { useReportTitle, fileNameOf } from '../../components/reports/useReportTitle'
 import { LABEL, FIELD, Chip, MultiSelect, CheckRow, ToolbarButton, HelpTip, ReportByToggle, DriverMultiSelect } from '../../components/reports/controls'
 import { useFlespiData } from '../../hooks/useFlespiData'
+import UffizioFootnote from '../../components/reports/UffizioFootnote'
+import { isUffizioId, uffizioNotes } from '../../utils/uffizioReports'
 import { ALERT_TYPES, alertTypeLabel, settingsProfileForImei, useVehicles, useCompanies } from '../../data/settings'
 import { fetchAlertEventsInRange } from '../../data/alertEvents'
 import { IS_REAL } from '../../data/mode'
@@ -80,9 +82,14 @@ function FitTo({ points, mapRef }) {
   return null
 }
 
+/** A device id from a string: an Uffizio id stays as it is, a Flespi one is a number. */
+const idOf = x => (isUffizioId(x) ? x : Number(x))
+const HEAT_UFFIZIO_NOTE = 'Uffizio vehicles: their time is placed from positions about 2 minutes apart; their events are the fuel alerts only.'
+
 export default function HeatMapReport(props) {
   const title = useReportTitle('Heat Map')
-  const { data } = useFlespiData()
+  // With the Uffizio vehicles (client, 2026-11-26): presence from their ~2-minute positions.
+  const { data } = useFlespiData({ withUffizio: true })
   // Driver filter (client, 2026-11-12): only the time / events of the chosen drivers.
   const driverDim = useDriverDimension()
   // Report By: Vehicle or Driver. Driver covers every vehicle and keeps only the
@@ -166,7 +173,7 @@ export default function HeatMapReport(props) {
     setError(null)
     setRaw(null)
     setProgress({ text: view === 'events' ? 'Loading events...' : 'Loading the fleet’s positions...' })
-    const applied = { fromTs, toTs, selectionLabel, printDate: formatPrintDate() }
+    const applied = { fromTs, toTs, selectionLabel, printDate: formatPrintDate(), uffizio: effectiveIds.some(isUffizioId) }
     try {
       if (view === 'events') {
         const { events, truncated } = await fetchAlertEventsInRange({ fromTs, toTs, deviceIds: effectiveIds })
@@ -199,9 +206,9 @@ export default function HeatMapReport(props) {
     if (raw.view === 'events') {
       // An event's driver: the one the alert engine recorded, else the one assigned to the vehicle then.
       const whoOf = e => driverIdentity(e.driver)
-        ?? driverDim.assignedFor(liveById.get(Number(e.deviceId)), Math.floor(Date.parse(e.occurredAt) / 1000)) ?? NO_DRIVER
+        ?? driverDim.assignedFor(liveById.get(idOf(e.deviceId)), Math.floor(Date.parse(e.occurredAt) / 1000)) ?? NO_DRIVER
       const kept = raw.events.filter(e => types.includes(e.type) && driverPasses(whoOf(e), driverFilter))
-      const r = eventCells(kept, { labelOf: e => label.get(Number(e.deviceId)) ?? `Device ${e.deviceId}` })
+      const r = eventCells(kept, { labelOf: e => label.get(idOf(e.deviceId)) ?? `Device ${e.deviceId}` })
       return { ...r, amountOf: w => `${w}`, totalText: `${r.total} event${r.total === 1 ? '' : 's'}`, totalWeight: r.total }
     }
     // With a driver filter each vehicle's track is cut into that driver's runs.
@@ -210,7 +217,7 @@ export default function HeatMapReport(props) {
       const at = driverDim.timelineFor(liveById.get(id), messages)
       runsForDrivers(messages, at, driverFilter).forEach((run, i) => byRun.set(`${id}#${i}`, run))
     }
-    const r = presenceCells(byRun, { mode, labelOf: key => { const id = Number(String(key).split('#')[0]); return label.get(id) ?? `Device ${id}` } })
+    const r = presenceCells(byRun, { mode, labelOf: key => { const id = idOf(String(key).split('#')[0]); return label.get(id) ?? `Device ${id}` } })
     return { ...r, amountOf: w => hhmm(w), totalText: `${hhmm(r.totalSec)} h`, totalWeight: r.totalSec }
   }, [raw, vehicles, mode, types, driverFilter, driverDim, data])
 
@@ -262,7 +269,9 @@ export default function HeatMapReport(props) {
   ] : []
   const stale = raw && raw.view !== view
 
+  const notes = uffizioNotes({ present: !!applied?.uffizio, extra: [HEAT_UFFIZIO_NOTE] })
   const exportOpts = () => ({
+    notes,
     title,
     subtitle: 'FleetmaxX',
     filtersText: filters.map(([k, v]) => `${k}: ${v}`).join('     '),
@@ -276,7 +285,7 @@ export default function HeatMapReport(props) {
   })
 
   return (
-    <ReportFrame excludesUffizio title={title} desc="Where the vehicles spend their time, or where events keep happening, coloured on the map." {...props}>
+    <ReportFrame title={title} desc="Where the vehicles spend their time, or where events keep happening, coloured on the map." {...props}>
       <div className="report-screen-only" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
           {PRESETS.map(p => <Chip key={p.key} active={preset === p.key} onClick={() => applyPreset(p.key)}>{p.label}</Chip>)}
@@ -455,6 +464,7 @@ export default function HeatMapReport(props) {
               onLocate={r => mapRef.current?.flyTo([r.lat, r.lng], 16)}
               emptyText="Nothing to rank for this period."
             />
+            <UffizioFootnote notes={notes} />
           </div>
         </>
       )}

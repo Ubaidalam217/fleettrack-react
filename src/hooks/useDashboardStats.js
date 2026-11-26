@@ -8,6 +8,7 @@ import { getAll as getLocalNotifications } from '../services/notificationStore'
 import { currentUaeMonth, lastElapsedDay, loadDaywiseMonth, uaeDayStart } from '../utils/daywise'
 import { fetchTodayMessages } from '../utils/todayMessages'
 import { tripsByVehicle } from '../utils/usageReports'
+import { compareIds, isUffizioId } from '../utils/uffizioReports'
 import {
   SAFETY_WEIGHTS, monthFigures, utilization, safetyScore, violationCounts, liveUptime, fleetScore,
   todayFigures, driveEfficiency, maintenanceFigures, expenseFigures, imeiSet, pctChange,
@@ -45,13 +46,20 @@ function cached(key, load) {
 
 const prevMonthOf = ({ year, month }) => (month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 })
 
-/** Last month from the server, or null when it cannot answer all of it. */
-function loadPrevMonth(prev) {
+/**
+ * Last month from the server, or null when it cannot answer all of it. The
+ * Uffizio vehicles' month (their own samples, utils/daywise.js) is merged in,
+ * so this month and last month compare the same vehicles.
+ */
+function loadPrevMonth(prev, uffizioIds = []) {
   if (!IS_REAL) return Promise.resolve(null)
-  return cached(`prev|${prev.year}-${prev.month}`, async () => {
-    const data = await apiGet('/api/reports/daywise', prev)
+  return cached(`prev|${prev.year}-${prev.month}|${uffizioIds.join(',')}`, async () => {
+    const [data, own] = await Promise.all([
+      apiGet('/api/reports/daywise', prev),
+      uffizioIds.length ? loadDaywiseMonth(uffizioIds, prev.year, prev.month).then(r => r.derived) : null,
+    ])
     if (!data || data.missingDays?.length) return null
-    return new Map(data.devices.map(d => [d.deviceId, d]))
+    return new Map([...data.devices.map(d => [d.deviceId, d]), ...(own ?? [])])
   })
 }
 
@@ -145,13 +153,13 @@ export function useDashboardStats(allVehicles, selectedVehicles) {
 
   const now = currentUaeMonth()
   const prev = prevMonthOf(now)
-  const allIds = useMemo(() => (allVehicles ?? []).map(v => v.id).sort((a, b) => a - b), [allVehicles])
+  const allIds = useMemo(() => (allVehicles ?? []).map(v => v.id).sort(compareIds), [allVehicles])
   const allKey = allIds.join(',')
   const monthKey = `${now.year}-${now.month}`
   const prevStart = uaeDayStart(prev.year, prev.month, 1)
 
   const month = useLoad(() => loadDaywiseMonth(allIds, now.year, now.month).then(r => r.derived), [allKey, monthKey], tick)
-  const prevMonth = useLoad(() => loadPrevMonth(prev), [allKey, monthKey])
+  const prevMonth = useLoad(() => loadPrevMonth(prev, allIds.filter(isUffizioId)), [allKey, monthKey])
   const today = useLoad(() => fetchTodayMessages(allIds), [allKey], tick)
   const violations = useLoad(() => loadViolations(prevStart), [allKey, monthKey], tick)
   const reminders = useLoad(loadReminders, [allKey], tick)
@@ -187,8 +195,14 @@ export function useDashboardStats(allVehicles, selectedVehicles) {
 
     const todayStats = todayTrips ? todayFigures(todayTrips, ids) : null
 
-    const safety = watched && cur && curEvents ? safetyScore(curEvents, cur.totalKm) : null
-    const safetyPrev = watched && last && prevEvents ? safetyScore(prevEvents, last.totalKm) : null
+    // Safety is violations per km: only over the vehicles that can have
+    // violations (the Uffizio ones send none, 2-minute samples), or their km
+    // would dilute the rate.
+    const watchIds = ids.filter(id => !isUffizioId(id))
+    const curWatched = month.value && watchIds.length < ids.length ? monthFigures(month.value, watchIds, elapsed) : cur
+    const lastWatched = prevMonth.value && watchIds.length < ids.length ? monthFigures(prevMonth.value, watchIds, prevDays) : last
+    const safety = watched && curWatched && curEvents ? safetyScore(curEvents, curWatched.totalKm) : null
+    const safetyPrev = watched && lastWatched && prevEvents ? safetyScore(prevEvents, lastWatched.totalKm) : null
     const util = utilization(cur)
     const utilPrev = utilization(last)
     const uptime = liveUptime(selected)

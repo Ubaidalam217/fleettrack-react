@@ -266,10 +266,13 @@ export const REPORT_EVENT_LIMIT = 2000
  * @returns {Promise<{ events: object[], truncated: boolean }>}
  */
 export async function fetchAlertEventsInRange({ fromTs, toTs, deviceIds: ids }) {
-  // Flespi device ids only: an Uffizio vehicle ("uffizio:…") has no device id
-  // on its events (its fuel alerts carry the vehicle), so the replay shows none.
   const deviceIds = (ids ?? []).filter(id => Number.isInteger(Number(id)) && Number(id) > 0)
-  if (!IS_REAL || !deviceIds.length) return { events: [], truncated: false }
+  // An Uffizio vehicle ("uffizio:<vehicleId>", 2026-11-26) has no device id on
+  // its events (its fuel alerts carry the vehicle): asked by vehicle, and
+  // handed back with the "uffizio:" id so the reports match them to it.
+  const uffizio = (ids ?? []).filter(id => typeof id === 'string' && id.startsWith('uffizio:'))
+  const vehicleIds = uffizio.map(id => id.slice('uffizio:'.length))
+  if (!IS_REAL || (!deviceIds.length && !vehicleIds.length)) return { events: [], truncated: false }
   let rows
   try {
     rows = await request('/api/alert-events', {
@@ -277,7 +280,8 @@ export async function fetchAlertEventsInRange({ fromTs, toTs, deviceIds: ids }) 
         limit: REPORT_EVENT_LIMIT,
         from: new Date(fromTs * 1000).toISOString(),
         to: new Date(toTs * 1000).toISOString(),
-        deviceIds: deviceIds.join(','),
+        ...(deviceIds.length ? { deviceIds: deviceIds.join(',') } : {}),
+        ...(vehicleIds.length ? { vehicleIds: vehicleIds.join(',') } : {}),
       },
     })
   } catch (err) {
@@ -287,11 +291,13 @@ export async function fetchAlertEventsInRange({ fromTs, toTs, deviceIds: ids }) 
     rows = await pageBackTo(fromTs)
   }
   const wanted = new Set(deviceIds.map(Number))
+  const wantedVehicles = new Set(vehicleIds)
   const events = (Array.isArray(rows) ? rows : [])
+    .map(e => (e.deviceId == null && wantedVehicles.has(e.vehicleId) ? { ...e, deviceId: `uffizio:${e.vehicleId}` } : e))
     .map(withEpisode)
     .filter(e => {
       const t = Date.parse(e.occurredAt) / 1000
-      return t >= fromTs && t <= toTs && wanted.has(Number(e.deviceId))
+      return t >= fromTs && t <= toTs && (wanted.has(Number(e.deviceId)) || (typeof e.deviceId === 'string' && wantedVehicles.has(e.deviceId.slice('uffizio:'.length))))
     })
     .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt))
   return { events, truncated: events.length >= REPORT_EVENT_LIMIT }
