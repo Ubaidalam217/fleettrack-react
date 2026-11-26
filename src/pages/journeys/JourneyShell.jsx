@@ -65,7 +65,7 @@ export default function JourneyShell({ isDark, toggleTheme, themeMode, setTheme,
                   {title && <h1 className="j-title">{title}</h1>}
                   {subtitle && <p className="j-sub">{subtitle}</p>}
                 </div>
-                {actions && <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>{actions}</div>}
+                {actions && <div className="j-head-actions">{actions}</div>}
               </div>
             )}
             {children}

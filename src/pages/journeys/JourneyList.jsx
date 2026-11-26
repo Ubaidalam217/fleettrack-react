@@ -94,9 +94,9 @@ export default function JourneyList(props) {
       subtitle="Every planned and ongoing journey. Click a number to filter the list, a row to open the journey."
       actions={(
         <>
-          <div className="j-tabs" role="group" aria-label="Day">
+          <div className="j-tabs j-daybar" role="group" aria-label="Day">
             {DAYS.map(d => <button key={d.key} type="button" className="j-tab" aria-pressed={day === uaeDate(d.key)} onClick={() => setDay(uaeDate(d.key))}>{d.label}</button>)}
-            <input className="j-input j-input--sm" type="date" value={day} onChange={e => e.target.value && setDay(e.target.value)} aria-label="Pick a day" style={{ width: 150, minHeight: 34, border: 'none', background: 'transparent' }} />
+            <input className="j-input j-input--sm" type="date" value={day} onChange={e => e.target.value && setDay(e.target.value)} aria-label="Pick a day" />
           </div>
           <button type="button" className="j-iconbtn" onClick={load} title="Refresh" aria-label="Refresh"><RefreshCw size={15} /></button>
           <button type="button" className="j-iconbtn" disabled={!shown.length} onClick={() => exportCtrackPdf(listExport(shown, { dayText: day }), `Journeys_${day}`).catch(e => setError(e.message))} title="Download PDF" aria-label="Download PDF"><FileDown size={15} /></button>
@@ -109,45 +109,50 @@ export default function JourneyList(props) {
     >
       <ErrorNote error={error} />
 
-      <div className="j-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', marginBottom: 16 }}>
+      <div className="j-grid j-kpis">
         {KPIS.map(k => (
           <button
             key={k.key}
             type="button"
-            className={`j-card j-card--link${filter === k.key ? ' j-card--active' : ''}`}
-            style={{ textAlign: 'left', color: 'inherit', font: 'inherit' }}
+            className={`j-card j-card--link j-kpi${filter === k.key ? ' j-card--active' : ''}`}
             onClick={() => setFilter(f => (f === k.key ? null : k.key))}
             aria-pressed={filter === k.key}
           >
-            <span className="j-iconbtn" style={{ width: 34, height: 34, pointerEvents: 'none' }}><k.icon size={16} /></span>
-            <div className="j-big" style={{ fontSize: 40, marginTop: 12 }}>{rows ? counts[k.key] : '–'}</div>
-            <div className="j-strong" style={{ fontSize: 13.5, marginTop: 4 }}>{k.label}</div>
-            <div className="j-label">{k.sub}</div>
+            <span className="j-kpi-top">
+              <span className="j-kpi-ico"><k.icon size={16} /></span>
+              <span className="j-kpi-num">{rows ? counts[k.key] : '–'}</span>
+            </span>
+            <span className="j-kpi-label">{k.label}</span>
+            <span className="j-kpi-sub">{k.sub}</span>
           </button>
         ))}
       </div>
 
       <div className="j-card j-card--flush">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', flexWrap: 'wrap' }}>
+        <div className="j-toolbar">
           <button type="button" className="j-tab" aria-pressed={!filter} onClick={() => setFilter(null)}>All <span className="j-count">{rows?.length ?? 0}</span></button>
           {filter && <span className="j-pill j-pill--plain">{KPIS.find(k => k.key === filter).label}</span>}
           <div style={{ flex: 1 }} />
-          <label style={{ position: 'relative', minWidth: 220, flex: '0 1 320px' }}>
-            <Search size={15} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--j-text3)' }} />
-            <input className="j-input" style={{ paddingLeft: 34 }} placeholder="Search vehicle, driver or place" value={q} onChange={e => setQ(e.target.value)} aria-label="Search journeys" />
+          <label className="j-search">
+            <Search size={15} />
+            <input className="j-input" placeholder="Search vehicle, driver or place" value={q} onChange={e => setQ(e.target.value)} aria-label="Search journeys" />
           </label>
         </div>
 
-        {!rows && !error && <div style={{ padding: 16 }}>{[0, 1, 2].map(i => <div key={i} className="j-skel" style={{ height: 54, marginBottom: 10 }} />)}</div>}
+        {!rows && !error && <div style={{ padding: '4px 16px 16px' }}>{[0, 1, 2, 3].map(i => <div key={i} className="j-skel" style={{ height: 56, marginBottom: 10 }} />)}</div>}
         {rows && shown.length === 0 && <div className="j-empty">No journeys here{filter || q ? ' for this filter' : ' for this day'}.</div>}
 
         {rows && shown.length > 0 && (
           <>
-            <div className="j-hide-sm" style={{ overflowX: 'auto' }}>
-              <table className="j-table">
+            <div className="j-list-table">
+              <table className="j-table j-table--list">
+                <colgroup>
+                  <col style={{ width: '22%' }} /><col style={{ width: '14%' }} /><col style={{ width: '21%' }} /><col style={{ width: '13%' }} />
+                  <col className="j-col-stops" style={{ width: '9%' }} /><col className="j-col-dist" style={{ width: '9%' }} /><col style={{ width: '12%' }} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Journey</th><th>Vehicle and driver</th><th>From → To</th><th>Leaves → Arrives</th><th>Stops</th><th>Distance</th><th>Status</th>
+                    <th>Journey</th><th>Vehicle and driver</th><th>From → To</th><th>Leaves → Arrives</th><th className="j-col-stops">Stops</th><th className="j-col-dist">Distance</th><th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -155,7 +160,7 @@ export default function JourneyList(props) {
                 </tbody>
               </table>
             </div>
-            <div className="j-only-sm" style={{ padding: '0 12px 12px' }}>
+            <div className="j-list-cards">
               {shown.map(j => <MobileCard key={j.id} j={j} onOpen={() => navigate(`/journeys/${j.id}`)} />)}
             </div>
           </>
@@ -171,30 +176,31 @@ function Row({ j, onOpen }) {
   const sub = timesLine(j)
   return (
     <tr onClick={onOpen} onKeyDown={e => e.key === 'Enter' && onOpen()} tabIndex={0}>
-      <td style={{ maxWidth: 240 }}>
-        <div className="j-strong">{j.title}</div>
-        <div className="j-label">{j.ref}{j.customer ? ` · ${j.customer}` : ''} <NoApprovalChip journey={j} /></div>
-        {j.display === 'Rejected' && j.rejectReason && <div className="j-err" style={{ marginTop: 3 }}>Rejected: {j.rejectReason}</div>}
+      <td>
+        <div className="j-strong j-clamp2" title={j.title}>{j.title}</div>
+        <div className="j-label j-clip" title={`${j.ref}${j.customer ? ` · ${j.customer}` : ''}`}>{j.ref}{j.customer ? ` · ${j.customer}` : ''}</div>
+        <NoApprovalChip journey={j} />
+        {j.display === 'Rejected' && j.rejectReason && <div className="j-err j-clip2" title={j.rejectReason}>Rejected: {j.rejectReason}</div>}
         {j.display === 'Pending' && j.submittedAt && <div className="j-label">Sent for approval at {hhmm(j.submittedAt)}</div>}
       </td>
       <td>
-        <div className="j-strong">{j.vehicleLabel}</div>
-        <div className="j-label">{j.driverName || 'No driver'}</div>
+        <div className="j-strong j-clip" title={j.vehicleLabel}>{j.vehicleLabel}</div>
+        <div className="j-label j-clip" title={j.driverName || ''}>{j.driverName || 'No driver'}</div>
       </td>
-      <td style={{ maxWidth: 230 }}>
-        <span>{first?.name}</span> <span className="j-muted">→</span> <span>{last?.name}</span>
+      <td>
+        <div className="j-route" title={`${first?.name} → ${last?.name}`}><span>{first?.name}</span><span className="j-muted">→</span><span>{last?.name}</span></div>
         {j.stops.length > 2 && <div className="j-label">{j.stops.length - 2} stop{j.stops.length > 3 ? 's' : ''} in between</div>}
       </td>
       <td style={{ whiteSpace: 'nowrap' }}>
         <div className="j-strong">{hhmm(j.plannedStart)} <span className="j-muted">→</span> {hhmm(j.expectedArrival)}</div>
         {sub && <div className="j-label">{sub}</div>}
       </td>
-      <td style={{ whiteSpace: 'nowrap' }}>
+      <td className="j-col-stops" style={{ whiteSpace: 'nowrap' }}>
         <StopDots stops={j.stops} />
         <div className="j-label" style={{ marginTop: 4 }}>{j.stopsDone} of {j.stops.length - 1} reached</div>
       </td>
-      <td style={{ minWidth: 130 }}>
-        <div style={{ fontSize: 12.5 }}><span className="j-strong">{Math.round(p.done)}</span> <span className="j-muted">/ {Math.round(p.planned)} km</span></div>
+      <td className="j-col-dist">
+        <div style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}><span className="j-strong">{Math.round(p.done)}</span> <span className="j-muted">/ {Math.round(p.planned)} km</span></div>
         <div className="j-bar" style={{ marginTop: 6 }}><i style={{ width: `${p.ratio * 100}%` }} /></div>
       </td>
       <td><StatusPill journey={j} /></td>
@@ -205,22 +211,26 @@ function Row({ j, onOpen }) {
 function MobileCard({ j, onOpen }) {
   const first = j.stops[0], last = j.stops[j.stops.length - 1]
   const p = progressOf(j)
+  const sub = timesLine(j)
   return (
-    <button type="button" className="j-card j-card--link" onClick={onOpen} style={{ width: '100%', textAlign: 'left', color: 'inherit', font: 'inherit', marginTop: 10, padding: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+    <button type="button" className="j-card j-card--link j-mcard" onClick={onOpen}>
+      <div className="j-mcard-head">
         <div style={{ minWidth: 0 }}>
-          <div className="j-strong">{j.vehicleLabel}</div>
-          <div className="j-label">{j.driverName || 'No driver'}</div>
+          <div className="j-strong j-mcard-title">{j.title}</div>
+          <div className="j-label j-clip">{j.ref}{j.customer ? ` · ${j.customer}` : ''}</div>
         </div>
         <StatusPill journey={j} />
       </div>
-      <div style={{ marginTop: 10, fontSize: 13.5 }}>{first?.name} <span className="j-muted">→</span> {last?.name}</div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, gap: 10 }}>
+      <div className="j-mcard-who"><span className="j-strong">{j.vehicleLabel}</span><span className="j-muted"> · {j.driverName || 'No driver'}</span></div>
+      <div className="j-route j-route--wrap"><span>{first?.name}</span><span className="j-muted">→</span><span>{last?.name}</span></div>
+      <div className="j-mcard-foot">
         <StopDots stops={j.stops} />
-        <span className="j-label">{j.actualStart ? 'Arrives' : 'Leaves'} <span className="j-strong">{hhmm(j.actualStart ? j.etaAt ?? j.expectedArrival : j.plannedStart)}</span></span>
+        <span className="j-label">{hhmm(j.plannedStart)} → {hhmm(j.expectedArrival)}</span>
       </div>
-      <div className="j-bar" style={{ marginTop: 10 }}><i style={{ width: `${p.ratio * 100}%` }} /></div>
-      <div className="j-label" style={{ marginTop: 4 }}>{Math.round(p.done)} / {Math.round(p.planned)} km</div>
+      {sub && <div className="j-label">{sub}</div>}
+      <div className="j-bar"><i style={{ width: `${p.ratio * 100}%` }} /></div>
+      <div className="j-label">{Math.round(p.done)} / {Math.round(p.planned)} km</div>
+      {j.display === 'Rejected' && j.rejectReason && <div className="j-err j-clip2">Rejected: {j.rejectReason}</div>}
     </button>
   )
 }
