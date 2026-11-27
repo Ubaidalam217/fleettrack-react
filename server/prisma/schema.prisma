@@ -406,7 +406,7 @@ model FuelCalibration {
   id            String    @id @default(cuid())
   vehicleId     String
   /// 'PORT' (a named Uffizio fuel port), 'AIN1', 'AIN2' (analogue input 1 / 2),
-  /// 'CAN' (fuel level in percent: no table, only the tank capacity).
+  /// 'CAN' (fuel level in percent: no table, only the tank capacity), 'CAN_VOLUME' (litres, no table).
   method        String
   /// The port it reads: the Uffizio port name for PORT, else 'ain.1' / 'ain.2' / 'can'.
   port          String

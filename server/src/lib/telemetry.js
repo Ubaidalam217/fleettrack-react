@@ -67,6 +67,12 @@ export const EXTRA_FIELDS = Object.freeze([
   // client 2026-11-13); external.powersource.status above is its battery tamper.
   'device.tamper.status',
   'sos.alarm',
+  // Fuel from a Flespi tracker (lib/flespiFuel.js, client 2026-11-27): the
+  // analogue inputs (volts) and the CAN fuel level (%) / volume (L).
+  'ain.1',
+  'ain.2',
+  'can.fuel.level',
+  'can.fuel.volume',
 ])
 
 /**
@@ -76,7 +82,7 @@ export const EXTRA_FIELDS = Object.freeze([
  * time, so a July fuel 0 % read as live.
  */
 const SENSOR_COLUMNS = new Set(['fuel', 'temperature'])
-const isSensorKey = k => k.startsWith('ble.sensor.') || k.startsWith('can.fuel.')
+const isSensorKey = k => k.startsWith('ble.sensor.') || k.startsWith('can.fuel.') || k.startsWith('ain.')
 const withoutSensors = extra => {
   if (!extra) return extra
   const kept = Object.fromEntries(Object.entries(extra).filter(([k]) => !isSensorKey(k)))

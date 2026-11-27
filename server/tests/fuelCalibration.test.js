@@ -55,7 +55,7 @@ describe('applying a calibration', () => {
     const rows = await prisma.fuelCalibration.findMany({ where: { vehicleId: v1.id }, orderBy: { createdAt: 'asc' } })
     expect(rows.map(r => [r.method, r.active, !!r.replacedAt])).toEqual([['PORT', false, true], ['CAN', true, false]])
     const one = await request(app).get(`/api/fuel/vehicles/${v1.id}`).set(auth(fx.tokens.bgUserA1a))
-    expect(one.body.data.calibration).toMatchObject({ method: 'CAN', port: 'can', tankCapacityL: 300, points: [] })
+    expect(one.body.data.calibration).toMatchObject({ method: 'CAN', port: 'can.fuel.level', tankCapacityL: 300, points: [] })
     expect(one.body.data.history).toHaveLength(1)
 
     // Removing it keeps it too.
@@ -83,6 +83,14 @@ describe('applying a calibration', () => {
     const port = await apply(fx.tokens.bgUserA1a, { vehicleIds: [fx.vehicles.v1.id], method: 'PORT', port: '', points: TABLE })
     expect(port.status).toBe(400)
     expect(port.body.error.details).toHaveProperty('port')
+  })
+
+  it('CAN litres needs neither a table nor a tank; the input methods read ain.1 / ain.2', async () => {
+    const res = await apply(fx.tokens.bgUserA1a, { vehicleIds: [fx.vehicles.v1.id], method: 'CAN_VOLUME', tankCapacityL: null })
+    expect(res.status).toBe(201)
+    expect(res.body.data.applied[0]).toMatchObject({ method: 'CAN_VOLUME', port: 'can.fuel.volume', tankCapacityL: null, points: [] })
+    const ain = await apply(fx.tokens.bgUserA1a, { vehicleIds: [fx.vehicles.v1.id], method: 'AIN2', points: TABLE })
+    expect(ain.body.data.applied[0]).toMatchObject({ method: 'AIN2', port: 'ain.2' })
   })
 })
 

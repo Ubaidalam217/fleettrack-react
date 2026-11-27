@@ -409,7 +409,7 @@ export default function VehicleInfoDialog({ vehicle, title, onClose, onSaved, on
           ) : !editing ? (
             <>
               <OdometerSection vehicleId={row.id} canEdit={canEdit} onSaved={onSaved} />
-              <FuelSection vehicleId={row.id} hideEmpty />
+              <FuelSection vehicleId={row.id} vehicleName={vehicleTitle} hideEmpty showActions owned={!sharedIn} />
               <MutedAlertsSection vehicleId={row.id} canEdit={canEdit} onSaved={onSaved} />
               <VehicleHistorySection vehicleId={row.id} label={vehicleTitle} />
 

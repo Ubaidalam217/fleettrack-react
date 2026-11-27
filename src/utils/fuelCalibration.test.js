@@ -150,3 +150,13 @@ describe('sensor port names (client 2026-11-27: the calibration of 8 of 11 vehic
     expect(readingLitres({ port: 'BLE Fuel Level 2', raw: 500 }, cal)).toMatchObject({ litres: null, flag: 'other_port' })
   })
 })
+
+describe('Flespi sources (client 2026-11-27)', () => {
+  it('names the port of every method and converts CAN litres without a table', async () => {
+    const m = await import('./fuelCalibration')
+    expect(m.METHOD_PORT).toMatchObject({ AIN1: 'ain.1', AIN2: 'ain.2', CAN: 'can.fuel.level', CAN_VOLUME: 'can.fuel.volume' })
+    expect(m.FLESPI_FUEL_SOURCES.AIN2).toEqual({ field: 'ain.2', port: 'ain.2', unit: 'V' })
+    expect(m.readingLitres({ port: 'can.fuel.volume', raw: 22 }, { method: 'CAN_VOLUME' })).toEqual({ litres: 22, flag: null })
+    expect(m.readingLitres({ port: 'can.fuel.level', raw: 22 }, { method: 'CAN_VOLUME' }).flag).toBe('other_port')
+  })
+})

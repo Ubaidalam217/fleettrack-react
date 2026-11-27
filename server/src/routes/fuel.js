@@ -2,6 +2,7 @@
  * /api/fuel — fuel calibrations and readings (client, 2026-11-24).
  *
  *   GET    /api/fuel/calibrations            the calibration in use of every visible vehicle
+ *   GET    /api/fuel/series                  one vehicle's fuel over a period (panel + Replay)
  *   GET    /api/fuel/vehicles/:id            one vehicle: its calibration, history, ports as last seen
  *   POST   /api/fuel/calibrations            apply one table to one or many vehicles
  *   DELETE /api/fuel/calibrations/:id        stop using a calibration (it stays in the history)
@@ -19,7 +20,7 @@ import { validate } from '../middleware/validate.js'
 import { actorOf } from '../lib/vehicleMoves.js'
 import { vehicleLabel } from '../lib/vehicleLabel.js'
 import {
-  activeCalibrations, applyCalibration, buildFuelReport, calibrationView, checkCalibrationInput, latestPorts, readingLitres, REPORT_MAX_DAYS,
+  activeCalibrations, applyCalibration, buildFuelReport, calibrationView, checkCalibrationInput, latestPorts, readingLitres, samePort, REPORT_MAX_DAYS,
 } from '../lib/fuel.js'
 import { METHOD_VALUES, MAX_POINTS } from '../../../src/utils/fuelCalibration.js'
 import { DEFAULT_THRESHOLD_L } from '../../../src/utils/fuelEvents.js'
@@ -114,6 +115,35 @@ router.get('/report', validate(reportQuery, 'query'), asyncHandler(async (req, r
   report.sort((a, b) => a.label.localeCompare(b.label))
   res.set('Cache-Control', 'no-store')
   res.json({ data: { from, to, threshold: threshold ?? DEFAULT_THRESHOLD_L, allowanceLph: allowance ?? 0, vehicles: report } })
+}))
+
+/**
+ * GET /api/fuel/series?vehicleId&from&to — one vehicle's fuel over a period, for the
+ * vehicle panel's Fuel Monitoring and the Replay fuel line: the Fuel report's entry
+ * (graph series in litres or raw, fill / drain events with the report's thresholds,
+ * summary) plus `latest`, the newest reading of the port in use. Scoped like the
+ * other fuel reads; the period is capped like the report.
+ */
+const seriesQuery = z.object({
+  vehicleId: z.string().trim().min(1, 'Choose the vehicle'),
+  from: z.coerce.date({ message: 'Choose the From time' }),
+  to: z.coerce.date({ message: 'Choose the To time' }),
+  threshold: z.union([z.null(), z.coerce.number().min(1).max(1000)]).optional(),
+})
+
+router.get('/series', validate(seriesQuery, 'query'), asyncHandler(async (req, res) => {
+  const { vehicleId, from, to, threshold } = req.validatedQuery
+  if (to < from) throw badRequest('From must be before To', { from: 'After To' })
+  if (to - from > REPORT_MAX_DAYS * 86400_000 + 3600_000) throw badRequest(`Up to ${REPORT_MAX_DAYS} days at a time`, { to: `Up to ${REPORT_MAX_DAYS} days` })
+  const v = await findScopedOrThrow('vehicle', vehicleId, req.scope, {
+    select: { id: true, plateNo: true, fleetNo: true, imei: true, bg: { select: { name: true } } },
+  })
+  const [entry] = await buildFuelReport([v], { from, to, threshold: threshold ?? undefined })
+  const cal = entry.calibration ? { method: entry.calibration.method, port: entry.calibration.port, points: entry.calibration.points, tankCapacityL: entry.calibration.tankCapacityL } : null
+  const ports = await latestPorts(v.id, cal)
+  const latest = ports.find(p => entry.port && samePort(p.port, entry.port)) ?? ports[0] ?? null
+  res.set('Cache-Control', 'no-store')
+  res.json({ data: { ...entry, latest } })
 }))
 
 router.get('/vehicles/:id', asyncHandler(async (req, res) => {

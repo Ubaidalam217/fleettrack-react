@@ -21,15 +21,30 @@
 
 export const METHODS = Object.freeze([
   { value: 'PORT', label: 'Uffizio fuel port', table: true },
-  { value: 'AIN1', label: 'Analog input 1', table: true },
-  { value: 'AIN2', label: 'Analog input 2', table: true },
-  { value: 'CAN',  label: 'CAN (fuel level %, no calibration)', table: false },
+  { value: 'AIN1', label: 'Input 1 (analog, volts)', table: true },
+  { value: 'AIN2', label: 'Input 2 (analog, volts)', table: true },
+  { value: 'CAN',  label: 'CAN percent (fuel level %, x tank)', table: false },
+  { value: 'CAN_VOLUME', label: 'CAN litres (fuel volume, no table)', table: false },
 ])
 export const METHOD_VALUES = METHODS.map(m => m.value)
 export const methodLabel = v => METHODS.find(m => m.value === v)?.label ?? v
 
 /** The port a method reads, when it is not a named Uffizio port. */
-export const METHOD_PORT = Object.freeze({ AIN1: 'ain.1', AIN2: 'ain.2', CAN: 'can' })
+export const METHOD_PORT = Object.freeze({ AIN1: 'ain.1', AIN2: 'ain.2', CAN: 'can.fuel.level', CAN_VOLUME: 'can.fuel.volume' })
+
+/**
+ * Where a Flespi tracker's reading of each method comes from (client,
+ * 2026-11-27, Smart5): the telemetry parameter, the stored port name and the
+ * unit Flespi gives it in. An analogue input is volts there and is stored as
+ * millivolts, so the client's mV tables apply.
+ */
+export const FLESPI_FUEL_SOURCES = Object.freeze({
+  AIN1: { field: 'ain.1', port: 'ain.1', unit: 'V' },
+  AIN2: { field: 'ain.2', port: 'ain.2', unit: 'V' },
+  CAN: { field: 'can.fuel.level', port: 'can.fuel.level', unit: '%' },
+  CAN_VOLUME: { field: 'can.fuel.volume', port: 'can.fuel.volume', unit: 'L' },
+})
+export const FLESPI_FUEL_METHODS = Object.freeze(Object.keys(FLESPI_FUEL_SOURCES))
 
 /** How far outside the table (share of its span) a reading may be and still be held to the end. */
 export const OUT_OF_RANGE_FRACTION = 0.1
@@ -122,6 +137,12 @@ export function rawToLitres(raw, cal) {
   const r = toNumber(raw)
   if (r === null) return { litres: null, flag: 'out_of_range' }
   if (!cal) return { litres: null, flag: 'no_calibration' }
+  if (cal.method === 'CAN_VOLUME') {
+    // Litres as the vehicle reports them; no table. A figure far above the tank is a fault.
+    const tank = toNumber(cal.tankCapacityL)
+    if (r < 0 || (tank > 0 && r > tank * (1 + OUT_OF_RANGE_FRACTION))) return { litres: null, flag: 'out_of_range' }
+    return { litres: round2(r), flag: null }
+  }
   if (cal.method === 'CAN') {
     if (r < 0 || r > 100 * (1 + OUT_OF_RANGE_FRACTION)) return { litres: null, flag: 'out_of_range' }
     const tank = toNumber(cal.tankCapacityL)
@@ -158,7 +179,7 @@ const round2 = v => Math.round(v * 100) / 100
 export const canonicalPort = p => String(p ?? '').replace(/#/g, '').replace(/\s+/g, ' ').trim()
 export const samePort = (a, b) => canonicalPort(a).toLowerCase() === canonicalPort(b).toLowerCase()
 
-/** The port a calibration reads: the named Uffizio port, or ain.1 / ain.2 / can. */
+/** The port a calibration reads: the named Uffizio port, or ain.1 / ain.2 / can.fuel.level / can.fuel.volume. */
 export const calibrationPort = cal => (cal?.method === 'PORT' ? cal.port : METHOD_PORT[cal?.method] ?? cal?.port ?? null)
 
 /**

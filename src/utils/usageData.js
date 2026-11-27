@@ -70,6 +70,8 @@ const FIELDS = [
   'fuel.sensor.value',
   'can.fuel.consumed',
   'can.fuel.consumed.high.resolution',
+  // SMART5 and similar report the tank over CAN (Sensors tab, client 2026-11-27).
+  'can.fuel.volume',
   'ble.sensor.temperature.1',
   'ble.sensor.temperature.2',
   'ble.sensor.temperature.3',

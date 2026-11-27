@@ -58,10 +58,10 @@ const CSS = `
 
 const blankRows = () => [{ litres: '', mv: '' }, { litres: '', mv: '' }]
 
-export default function FuelCalibrationDialog({ vehicles, initialIds = [], current = null, knownPorts = [], onClose, onApplied, push }) {
+export default function FuelCalibrationDialog({ vehicles, initialIds = [], current = null, knownPorts = [], initialMode = 'file', onClose, onApplied, push }) {
   const [ids, setIds] = useState(() => new Set(initialIds))
   const [q, setQ] = useState('')
-  const [mode, setMode] = useState('file')
+  const [mode, setMode] = useState(initialMode)
   const [method, setMethod] = useState(current?.method ?? (knownPorts.length ? 'PORT' : 'AIN1'))
   const [port, setPort] = useState(current?.method === 'PORT' ? current.port : (knownPorts[0] ?? ''))
   const [tank, setTank] = useState(current?.tankCapacityL != null ? String(current.tankCapacityL) : '')
@@ -174,7 +174,7 @@ export default function FuelCalibrationDialog({ vehicles, initialIds = [], curre
               <select id="fc-method" className="fc-in" value={method} onChange={e => setMethod(e.target.value)}>
                 {METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
-              <div className="fc-hint">Where the fuel sensor is wired. CAN sends the level in percent and needs no table.</div>
+              <div className="fc-hint">Where the fuel sensor is wired: Input 1 / Input 2 need the voltage table; CAN litres and CAN percent need none. Input 1 / 2 and CAN read a Flespi tracker; the Uffizio port reads an Uffizio vehicle.</div>
             </div>
             {method === 'PORT' && (
               <div className="fc-field">
@@ -196,7 +196,9 @@ export default function FuelCalibrationDialog({ vehicles, initialIds = [], curre
             {!needsTable ? (
               <div className="fc-drop" style={{ display: 'block' }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text1)' }}>No table needed</div>
-                <div className="fc-hint">The CAN reading is the fuel level in percent; litres = percent × tank capacity.</div>
+                <div className="fc-hint">{method === 'CAN_VOLUME'
+                  ? 'The vehicle reports the fuel volume in litres over CAN; it is used as it is. The tank capacity is optional and only catches a faulty figure.'
+                  : 'The CAN reading is the fuel level in percent; litres = percent × tank capacity.'}</div>
               </div>
             ) : (
               <>

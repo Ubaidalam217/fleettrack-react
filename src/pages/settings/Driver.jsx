@@ -33,7 +33,6 @@ import PageNotice from './PageNotice'
 import { IS_REAL } from '../../data/mode'
 import { licenceExpiryState, formatExpiryDate } from '../../utils/licenceExpiry'
 import { squareJpegBase64, fileToBase64 } from '../../utils/imageUpload'
-import { vehicleLabel } from '../../utils/vehicleLabel'
 
 // Settings > Driver — the driver master (Driver Management, phase 1, client
 // 2026-11-06): profile, licence and other document details with their

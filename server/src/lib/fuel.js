@@ -54,6 +54,8 @@ export function checkCalibrationInput({ method, port, tankCapacityL, points }) {
     if (!(tankCapacityL > 0)) throw badRequest('CAN reads the level in percent, so the tank capacity is needed', { tankCapacityL: 'Enter the tank capacity' })
     return { method, port: METHOD_PORT.CAN, tankCapacityL, points: [], warnings: [] }
   }
+  // CAN litres: the vehicle reports litres itself; the tank is optional (it only catches a faulty figure).
+  if (method === 'CAN_VOLUME') return { method, port: METHOD_PORT.CAN_VOLUME, tankCapacityL: tankCapacityL ?? null, points: [], warnings: [] }
   const usePort = method === 'PORT' ? String(port ?? '').trim() : METHOD_PORT[method]
   if (!usePort) throw badRequest('Choose the Uffizio fuel port this calibration is for', { port: 'Choose the port' })
   const v = validateCalibration(points, { tankCapacityL })

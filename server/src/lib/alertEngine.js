@@ -44,6 +44,7 @@ import { SHARED_BG_RULES_APPLY } from './sharePolicy.js'
 import { liveTemperature } from '../../../src/utils/sensorReadings.js'
 import { runAsJob } from './requestSource.js'
 import { vehicleLabel } from './vehicleLabel.js'
+import { runFlespiFuelPass, fuelInputsOf, FUEL_TELEMETRY_FIELDS } from './flespiFuel.js'
 
 const UAE_OFFSET_SEC = 4 * 3600
 /** Telemetry older than this is not evaluated for speed / ignition / position rules. */
@@ -64,6 +65,8 @@ const TELEMETRY_FIELDS = [
   'vehicle.mileage',
   // The iTriangle's tamper, power and panic flags (client, 2026-11-13).
   'device.tamper.status', 'external.powersource.status', 'sos.alarm',
+  // Fuel from a Flespi tracker (lib/flespiFuel.js), read in the same request.
+  ...FUEL_TELEMETRY_FIELDS,
 ].join(',')
 
 /** An iButton code as stored on a driver: upper-case hex, '' when no tag is in. */
@@ -609,6 +612,7 @@ export async function fetchTelemetry() {
       tamper: typeof t['device.tamper.status']?.value === 'boolean' ? t['device.tamper.status'].value : null,
       power: typeof t['external.powersource.status']?.value === 'boolean' ? t['external.powersource.status'].value : null,
       sos: typeof t['sos.alarm']?.value === 'boolean' ? t['sos.alarm'].value : null,
+      fuel: fuelInputsOf(t),
       ts: t.timestamp?.value ?? (stamps.length ? Math.max(...stamps) : null),
     })
   }
@@ -1013,6 +1017,13 @@ async function tick() {
       if (events.length) console.log(`[fleetmax] alerts: ${events.length} raised`)
     } catch (err) {
       console.error(`[fleetmax] alert pass failed: ${err.message}`)
+    }
+    // Fuel from Flespi trackers that have a fuel configuration (lib/flespiFuel.js): no extra Flespi call.
+    try {
+      const stored = await runFlespiFuelPass(pre.telemetry, pre.deviceByImei)
+      if (stored) console.log(`[fleetmax] fuel: ${stored} Flespi readings stored`)
+    } catch (err) {
+      console.error(`[fleetmax] flespi fuel pass failed: ${err.message}`)
     }
     try {
       const reminders = await runReminderPass(pre.telemetry, pre.deviceByImei)

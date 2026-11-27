@@ -31,6 +31,10 @@ import SharedChip from '../SharedChip'
 import { sharedFromText } from '../../utils/vehiclePlacement'
 import { isUffizioVehicle, fuelText, UFFIZIO_NOTE } from '../../utils/uffizioLive'
 import { CloudDownload } from 'lucide-react'
+import { IS_REAL } from '../../data/mode'
+import { fetchFuelSeries } from '../../data/fuel'
+import { FuelCalibrateActions } from './FuelSection'
+import { vehicleLabel as liveLabel } from '../../utils/vehicleLabel'
 
 // Replay used to be a tab here. It now lives in its own dock over the map and
 // is started from the vehicle's card in the list or from its marker popup.
@@ -608,9 +612,29 @@ function sinceLabel(ts) {
   return s < 48 * 3600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`
 }
 
+/** "22 L", "22.0 L (not calibrated)" for a raw value, "40%" for the percent sensors. */
+function fuelLevelText(fuel, value) {
+  if (fuel.levelUnit === 'L') return `${Number(value).toFixed(1)} L`
+  if (fuel.levelUnit === 'raw') return `${Number(value)} raw (${fuel.note})`
+  return `${value.toFixed(0)}%`
+}
+
 function Sensors({ v }) {
   const { loading, error, status, messages } = useVehicleUsage(v.id)
-  const data = useMemo(() => computeSensors(messages, v), [messages, v])
+  const profile = useSettingsProfile(v.ident)
+  const registerId = profile.linked ? profile.vehicle?.id : null
+  const [fuelInfo, setFuelInfo] = useState(null)
+  const [fuelKey, setFuelKey] = useState(0)
+  // The fuel pipeline's view of today (a calibration or readings): level in litres, events, consumption.
+  useEffect(() => {
+    if (!IS_REAL || !registerId) { setFuelInfo(null); return undefined }
+    let alive = true
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0)
+    fetchFuelSeries({ vehicleId: registerId, from: midnight.toISOString(), to: new Date().toISOString() })
+      .then(d => { if (alive) setFuelInfo(d) }).catch(() => { if (alive) setFuelInfo(null) })
+    return () => { alive = false }
+  }, [registerId, fuelKey])
+  const data = useMemo(() => computeSensors(messages, v, fuelInfo), [messages, v, fuelInfo])
 
   if (loading) {
     // A rate-limit countdown (or any status) stays as text; otherwise a shimmer.
@@ -629,12 +653,24 @@ function Sensors({ v }) {
   }
 
   const { fuel, temperature } = data
+  // Upload calibration / Calibrate for this vehicle (same dialog and rights as Settings › Fuel).
+  const actions = registerId ? (
+    <FuelCalibrateActions
+      vehicle={{ id: registerId, label: liveLabel(v), company: profile.bgName, owned: profile.vehicle?.owned !== false }}
+      calibration={fuelInfo?.calibration ?? null}
+      ports={fuelInfo?.latest ? [fuelInfo.latest] : []}
+      onApplied={() => setFuelKey(k => k + 1)}
+    />
+  ) : null
 
   if (!fuel && !temperature) {
     return (
-      <div style={{ padding: '28px 4px', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: 'var(--c-text3)' }}>
-        No sensor data available for this vehicle.
-      </div>
+      <>
+        <div style={{ padding: '28px 4px', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: 'var(--c-text3)' }}>
+          No sensor data available for this vehicle.
+        </div>
+        {actions}
+      </>
     )
   }
 
@@ -644,12 +680,14 @@ function Sensors({ v }) {
         <Section title="Fuel Monitoring">
           <Grid>
             {fuel.currentLevel == null && fuel.lastLevel != null
-              ? <Field label="Last Fuel Level" value={`${fuel.lastLevel.toFixed(0)}% · ${sinceLabel(fuel.lastLevelAt)}`} />
-              : <Field label="Current Fuel Level" value={fuel.currentLevel != null ? `${fuel.currentLevel.toFixed(0)}%` : null} />}
+              ? <Field label="Last Fuel Level" value={`${fuelLevelText(fuel, fuel.lastLevel)} · ${sinceLabel(fuel.lastLevelAt)}`} />
+              : <Field label="Current Fuel Level" value={fuel.currentLevel != null ? fuelLevelText(fuel, fuel.currentLevel) : null} />}
             <Field label="Fuel Consumed Today" value={fuel.consumedToday != null ? `${fuel.consumedToday.toFixed(1)} L` : null} />
             <Field label="Fuel Filling Events" value={fuel.fillEvents} />
             <Field label="Fuel Theft Events" value={fuel.theftEvents} color={fuel.theftEvents ? '#ef4444' : undefined} />
           </Grid>
+          {fuel.note && <div style={{ fontSize: 11.5, color: 'var(--c-text3)', margin: '6px 0 2px' }}>Fuel is {fuel.note}.</div>}
+          {actions}
         </Section>
       )}
 

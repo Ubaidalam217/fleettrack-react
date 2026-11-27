@@ -23,6 +23,7 @@ import { messageTemperature } from './sensorReadings'
 const FUEL_LEVEL_FIELD = 'fuel.sensor.value'
 const FUEL_CONSUMED_FIELD = 'can.fuel.consumed.high.resolution'
 const FUEL_CONSUMED_FALLBACK_FIELD = 'can.fuel.consumed'
+const CAN_VOLUME_FIELD = 'can.fuel.volume'
 
 // A same-step jump this large reads as a filling event rather than normal
 // consumption drift.
@@ -38,7 +39,80 @@ function num(v) {
 // A cumulative fuel counter of 0 is a CAN bus with no fuel data, not an empty one.
 const counter = v => { const n = num(v); return n != null && n > 0 ? n : null }
 
-function computeFuel(messages, liveSnapshot) {
+/**
+ * The vehicle's fuel from the fuel pipeline (client, 2026-11-27: SMART5 sends
+ * its fuel over CAN, so the percent logic below showed nothing). `info` is
+ * GET /api/fuel/series for today: { calibrated, calibration, latest, series,
+ * events, summary }. Level in litres from the latest calibrated reading (the
+ * raw value with a 'not calibrated' note when there is no table), consumed
+ * today from the device's day counter when it has one, else from the series
+ * (start + fills - drains - end), and the fills / drains of the Fuel report.
+ * Null when the vehicle has no fuel configuration or reading.
+ */
+export const FRESH_LEVEL_SEC = 30 * 60
+
+function configuredFuel(messages, info, nowSec) {
+  if (!info || (!info.calibration && !(info.series?.length) && !info.latest)) return null
+  const latest = info.latest ?? null
+  const calibrated = !!info.calibration
+  const litres = calibrated && latest && latest.litres != null ? latest.litres : null
+  const value = litres ?? (latest ? latest.raw : null)
+  const fresh = latest?.ts ? nowSec - Math.floor(new Date(latest.ts).getTime() / 1000) <= FRESH_LEVEL_SEC : false
+  const fromCounter = counterConsumed(messages)
+  const used = info.calibrated && info.summary?.readings >= 2 ? info.summary.used : null
+  const events = info.calibrated ? info.events ?? [] : null
+  return {
+    levelUnit: litres != null ? 'L' : 'raw',
+    note: calibrated ? null : 'not calibrated',
+    currentLevel: fresh ? value : null,
+    lastLevel: !fresh ? value : null,
+    lastLevelAt: !fresh && latest?.ts ? Math.floor(new Date(latest.ts).getTime() / 1000) : null,
+    consumedToday: fromCounter ?? used,
+    fillEvents: events ? events.filter(e => e.kind === 'fill').length : null,
+    theftEvents: events ? events.filter(e => e.kind === 'drain').length : null,
+  }
+}
+
+/** The day's consumption from the device's own counter (last - first), or null. */
+function counterConsumed(messages) {
+  let first = null
+  let last = null
+  for (const m of messages) {
+    const c = counter(m[FUEL_CONSUMED_FIELD]) ?? counter(m[FUEL_CONSUMED_FALLBACK_FIELD])
+    if (c != null) { if (first == null) first = c; last = c }
+  }
+  return first != null ? last - first : null
+}
+
+/**
+ * A Flespi vehicle nobody has set a fuel input on, whose tracker reports the
+ * CAN fuel volume: show it in litres, read-only (SMART5 shows its 22 L before
+ * anyone configures it). Null when the device sends none above 0.
+ */
+function canVolumeFuel(messages, nowSec) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const v = num(messages[i][CAN_VOLUME_FIELD])
+    if (v != null && v > 0) {
+      const ts = messages[i].timestamp ?? null
+      const fresh = ts != null && nowSec - ts <= FRESH_LEVEL_SEC
+      return {
+        levelUnit: 'L', note: 'from the vehicle’s CAN, not set up in Fuel',
+        currentLevel: fresh ? v : null, lastLevel: fresh ? null : v, lastLevelAt: fresh ? null : ts,
+        consumedToday: counterConsumed(messages), fillEvents: null, theftEvents: null,
+      }
+    }
+  }
+  return null
+}
+
+function computeFuel(messages, liveSnapshot, fuelInfo, nowSec = Math.floor(Date.now() / 1000)) {
+  const configured = configuredFuel(messages, fuelInfo, nowSec)
+  if (configured) return configured
+  const hasPercent = messages.some(m => num(m[FUEL_LEVEL_FIELD]) != null) || num(liveSnapshot?.fuelLevel) != null
+  if (!hasPercent) {
+    const can = canVolumeFuel(messages, nowSec)
+    if (can) return can
+  }
   let levels = [] // { level, ignition, ts } per message that reported one, in order
   let consumedFirst = null
   let consumedLast = null
@@ -77,6 +151,7 @@ function computeFuel(messages, liveSnapshot) {
   }
 
   return {
+    levelUnit: '%',
     currentLevel,
     // When the live value is not current, the last reading today and its time.
     lastLevel: currentLevel == null && last ? last.level : null,
@@ -118,10 +193,11 @@ function computeTemperature(messages, liveSnapshot) {
  * @param {object[]} messages     today's messages, sorted ascending (from fetchTodayMessages)
  * @param {object} [liveSnapshot] the vehicle's live object (from useFlespiMQTT) — supplies
  *                                fuelLevel/temperature fresher than the cached messages when available
+ * @param {object} [fuelInfo]     today's GET /api/fuel/series of the vehicle (null: none / not loaded)
  */
-export function computeSensors(messages, liveSnapshot) {
+export function computeSensors(messages, liveSnapshot, fuelInfo = null, nowSec) {
   return {
-    fuel: computeFuel(messages || [], liveSnapshot),
+    fuel: computeFuel(messages || [], liveSnapshot, fuelInfo, nowSec),
     temperature: computeTemperature(messages || [], liveSnapshot),
     sensors: null,
   }

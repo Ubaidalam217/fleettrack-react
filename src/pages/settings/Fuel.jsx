@@ -84,7 +84,7 @@ export default function Fuel(props) {
   const anyFuel = all.some(v => v.hasFuel || v.calibration)
   const rows = all.filter(v => (!onlyFuel || !anyFuel || v.hasFuel || v.calibration)
     && (!q.trim() || `${v.label} ${v.company}`.toLowerCase().includes(q.trim().toLowerCase())))
-  const knownPorts = [...new Set((overview ?? []).flatMap(o => o.ports.map(p => p.port)).filter(p => !['ain.1', 'ain.2', 'can'].includes(p)))].sort()
+  const knownPorts = [...new Set((overview ?? []).flatMap(o => o.ports.map(p => p.port)).filter(p => !['ain.1', 'ain.2', 'can', 'can.fuel.level', 'can.fuel.volume'].includes(p)))].sort()
   const writable = all.filter(v => v.owned)
 
   const refresh = () => { load(); setReloadKey(k => k + 1) }
