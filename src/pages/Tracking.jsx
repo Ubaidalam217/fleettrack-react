@@ -13,6 +13,7 @@ import VehicleClusterLayer, { VEHICLE_CLUSTER_CSS } from '../components/tracking
 import { useLiveRefreshSec, useThrottledValue, vehiclesGained, liveRefreshTag } from '../data/liveRefresh'
 import ReplayPanel from '../components/tracking/ReplayPanel'
 import ReplayPlayerBar from '../components/tracking/ReplayPlayerBar'
+import useReplayFuel from '../hooks/useReplayFuel'
 import ReplayMapLayers, { REPLAY_LAYERS_CSS } from '../components/tracking/ReplayMapLayers'
 import ReplayInfoCard, { ReplayDockedCard, REPLAY_INFO_CSS } from '../components/tracking/ReplayInfoCard'
 import GeozoneControls from '../components/tracking/GeozoneControls'
@@ -1144,6 +1145,8 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
   // The track carries no vehicle type, so the replay marker borrows it from the
   // vehicle whose route is loaded — a bus replaying yesterday is still a bus.
   const replayVehicleType = replayVehicle?.master?.vehicleType
+  // The vehicle's fuel for the player's fuel line; null (nothing drawn) when it has none.
+  const replayFuel = useReplayFuel(replayVehicle?.ident ?? null, replayPoints)
   // Trips, events, filters, the red-route speed and drivers, shared by the
   // panel, the map and the player bar.
   const replayView = useReplayView({
@@ -2198,6 +2201,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       onEventClick={focusReplayEvent}
                       cardShown={cardPrefs.show}
                       onToggleCard={() => setCardPrefs({ ...cardPrefs, show: !cardPrefs.show })}
+                      fuel={replayFuel}
                     />
                   </div>
                 )}

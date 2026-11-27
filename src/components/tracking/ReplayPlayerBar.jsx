@@ -6,6 +6,7 @@ import {
 import { eventSummary } from '../../utils/replayEvents'
 import { useSettledAddress } from '../../hooks/useAddress'
 import { shortenAddress } from '../../utils/geocode'
+import { fuelAt, fuelGeometry } from '../../utils/replayFuel'
 
 const SPEEDS = [0.5, 1, 2, 5, 10]
 
@@ -65,6 +66,15 @@ const CSS = `
   }
   .rpb-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .rpb-limit { position: absolute; right: 0; top: 2px; font-size: 10px; font-weight: 700; color: #e53935; pointer-events: none; }
+  .rpb-fuelchip { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .rpb-fuelchip small { color: var(--c-text3); font-size: 10.5px; }
+  .rpb-fuel {
+    position: relative; margin: 6px 0 0 44px; height: 34px; cursor: pointer; touch-action: none;
+    border-top: 1px dashed var(--c-border);
+  }
+  .rpb-fuel svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .rpb-fuel-lbl { position: absolute; left: 0; top: 1px; font-size: 10px; font-weight: 700; color: var(--c-text3); pointer-events: none; }
+  .rpb-fm { position: absolute; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; border: 2px solid var(--c-card); box-shadow: 0 0 0 1px rgba(0,0,0,0.2); pointer-events: none; }
   @container (max-width: 640px) {
     .rpb-legend { display: none; }
     .rpb-speeds button { padding: 3px 5px; }
@@ -74,10 +84,10 @@ const CSS = `
     .rpb-row { flex-wrap: wrap; row-gap: 8px; }
     .rpb-speeds { order: 3; width: 100%; justify-content: center; }
     .rpb-info { padding-left: 0; flex-wrap: wrap; gap: 2px 10px; }
-    .rpb-chart { margin-left: 0; }
+    .rpb-chart, .rpb-fuel { margin-left: 0; }
   }
   @container (max-height: 380px) {
-    .rpb-chart { display: none; }
+    .rpb-chart, .rpb-fuel { display: none; }
   }
 `
 
@@ -124,6 +134,8 @@ export default function ReplayPlayerBar({
   events, activeEventId,
   onPlayToggle, onSeek, onSpeedChange, onEventClick,
   cardShown = true, onToggleCard,
+  // The replayed vehicle's fuel (hooks/useReplayFuel.js), or null: nothing is drawn.
+  fuel = null,
 }) {
   const trackRef = useRef(null)
   const chartRef = useRef(null)
@@ -138,6 +150,9 @@ export default function ReplayPlayerBar({
   )
 
   const current = points[index] ?? null
+  const fuelRef = useRef(null)
+  const fuelGeo = useMemo(() => (fuel ? fuelGeometry(fuel, t0, t1) : null), [fuel, t0, t1])
+  const fuelNow = fuel && current ? fuelAt(fuel.series, current.ts * 1000) : null
   const knob = current ? timeFraction(points, current.ts) : 0
   const state = STATE[pointState(current)] ?? STATE.stopped
   const address = useSettledAddress(current?.lat, current?.lng, !!current, playing ? 1500 : 500)
@@ -266,6 +281,12 @@ export default function ReplayPlayerBar({
         </span>
         <b style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{Math.round(current?.speed ?? 0)} km/h</b>
         <span style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{fmtStamp(current?.ts)}</span>
+        {fuelNow && (
+          <span className="rpb-fuelchip" title={fuel.note ? `Fuel ${fuel.note}` : 'Fuel at this moment'}>
+            <b>{fuel.unit === 'L' ? `${(Math.round(fuelNow.v * 10) / 10).toFixed(1)} L` : `raw ${Math.round(fuelNow.v * 10) / 10}`}</b>
+            {fuel.unit !== 'L' && <small>(not calibrated)</small>}
+          </span>
+        )}
         <span className="rpb-addr" title={address ?? undefined}>{address ? shortenAddress(address, 3) : ''}</span>
         <span className="rpb-legend" aria-hidden="true">
           <span><span className="rpb-dot" style={{ background: STATE.driving.color }} />Driving</span>
@@ -274,6 +295,24 @@ export default function ReplayPlayerBar({
           <span><span className="rpb-dot" style={{ background: 'var(--c-card)', boxShadow: '0 0 0 1.5px var(--c-text2)' }} />events</span>
         </span>
       </div>
+
+      {fuelGeo && (
+        <div ref={fuelRef} className="rpb-fuel" {...dragHandlers(fuelRef)} aria-hidden="true">
+          <span className="rpb-fuel-lbl">fuel {fuel.unit === 'L' ? 'L' : 'raw'} {Math.round(fuelGeo.lo)}–{Math.round(fuelGeo.hi)}</span>
+          <svg viewBox="0 0 1000 34" preserveAspectRatio="none">
+            <path d={fuelGeo.path} style={{ fill: 'none', stroke: '#0ea5e9' }} strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            <line x1={knob * 1000} y1="0" x2={knob * 1000} y2="34" style={{ stroke: 'var(--c-text1)' }} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+          </svg>
+          {fuelGeo.marks.map(m => (
+            <span
+              key={`${m.kind}${m.startTs}`}
+              className="rpb-fm"
+              style={{ left: `${m.x / 10}%`, top: `${(m.y / 34) * 100}%`, background: m.kind === 'fill' ? '#22c55e' : '#ef4444' }}
+              title={`${m.kind === 'fill' ? 'Fuel filled' : 'Fuel drained'} ${m.litres} L`}
+            />
+          ))}
+        </div>
+      )}
 
       <div ref={chartRef} className="rpb-chart" {...dragHandlers(chartRef)} aria-hidden="true">
         {limitY !== null && <span className="rpb-limit">limit {Math.round(limitKmh)}</span>}

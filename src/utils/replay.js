@@ -262,7 +262,8 @@ export async function fetchFleetMessages(deviceIds, fromTs, toTs, opts = {}) {
 // to agree with that report's kilometres. Two small fields; the rest of
 // TRACK_FIELDS' callers do not need them. ibutton.code names each trip's
 // driver the way the Trip Report does (utils/driverAtTime.js).
-const REPLAY_TRACK_FIELDS = `${TRACK_FIELDS},vehicle.mileage,position.valid,ibutton.code`
+// can.fuel.volume: the replay's fuel line for a tracker with no fuel set up (utils/replayFuel.js).
+const REPLAY_TRACK_FIELDS = `${TRACK_FIELDS},vehicle.mileage,position.valid,ibutton.code,can.fuel.volume`
 
 // fromTs/toTs are unix seconds. Returns { points, truncated }; points are
 // sorted ascending by timestamp and filtered to those with a position.
@@ -290,7 +291,10 @@ export async function fetchDeviceTrack(deviceId, fromTs, toTs, onStatus) {
       const volt     = m['external.powersource.voltage'] ?? null
       const ibutton  = typeof m['ibutton.code'] === 'string' ? m['ibutton.code'] : null
 
-      return { lat, lng, speed, heading, ignition, ts, mileage, valid, volt, ibutton, status: pointStatus(ignition, speed) }
+      const canFuel  = m['can.fuel.volume']
+      const fuelL    = typeof canFuel === 'number' && canFuel > 0 ? canFuel : null
+
+      return { lat, lng, speed, heading, ignition, ts, mileage, valid, volt, ibutton, fuelL, status: pointStatus(ignition, speed) }
     })
     .filter(Boolean)
     .sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0))
