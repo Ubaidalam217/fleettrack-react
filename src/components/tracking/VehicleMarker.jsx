@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Marker } from 'react-leaflet'
 import L from 'leaflet'
-import { vehicleArt, vehicleSvg } from './vehicleIcons'
+import { vehicleMarkerHtml } from './vehicleIcons'
 
 // Outer box. The ring is drawn on it, so it has to clear the artwork.
 export const VEHICLE_ICON_PX = 44
@@ -46,6 +46,23 @@ export const VEHICLE_MARKER_CSS = `
     will-change: transform;
   }
 
+  /* Status-coloured vehicle (client, 2026-11-27: "colour of the vehicle shape and
+     the round around it should represent the status colour"). The photo keeps its
+     light and shadow but loses its own colour (grayscale), and a flat layer in the
+     status colour, cut to the photo's own outline by a mask, is blended onto it in
+     'color' mode: hue and saturation from the status, brightness from the photo.
+     A white keel round the shape keeps it readable on a light and a dark map. */
+  .veh-tint { position: relative; isolation: isolate; }
+  .veh-tint .veh-img { width: 100%; height: 100%; filter: grayscale(1) brightness(0.6) contrast(1.35); }
+  .veh-fill {
+    position: absolute; inset: 0;
+    background: var(--veh-st);
+    -webkit-mask: var(--veh-art) center / contain no-repeat;
+    mask: var(--veh-art) center / contain no-repeat;
+    mix-blend-mode: color;
+  }
+  .veh-tint-keel { filter: drop-shadow(0 0 1px rgba(255,255,255,0.95)) drop-shadow(0 0 1px rgba(255,255,255,0.9)) drop-shadow(0 2px 3px rgba(0,0,0,0.45)); }
+
   /* contain, not cover: the art is already trimmed and square, and cover would
      crop a long vehicle's nose off the moment the box is not exactly square. */
   .veh-img {
@@ -64,21 +81,14 @@ export const VEHICLE_MARKER_CSS = `
 // rotation smooth.
 const iconCache = new Map()
 
-function vehicleIcon(type, color) {
-  const key    = `${type || ''}|${color}`
+function vehicleIcon(type, color, tint = true) {
+  const key    = `${type || ''}|${color}|${tint ? 't' : 'p'}`
   const cached = iconCache.get(key)
   if (cached) return cached
 
-  const art = vehicleArt(type)
-  // Both branches produce a `.veh-rot` box of identical size, so a fleet that
-  // mixes photographed and drawn types still lines up.
-  const inner = art
-    ? `<img class="veh-rot veh-img" src="${art}" alt="" draggable="false">`
-    : `<div class="veh-rot">${vehicleSvg(type, color)}</div>`
-
   const icon = L.divIcon({
     className: 'veh-marker',
-    html: `<div class="veh-ring" style="--veh-st:${color}">${inner}</div>`,
+    html: vehicleMarkerHtml(type, color, tint),
     iconSize:    [VEHICLE_ICON_PX, VEHICLE_ICON_PX],
     iconAnchor:  [VEHICLE_ICON_PX / 2, VEHICLE_ICON_PX / 2],
     popupAnchor: [0, -VEHICLE_ICON_PX / 2],
@@ -109,6 +119,8 @@ function vehicleIcon(type, color) {
  */
 export default function VehicleMarker({
   position, color, type, heading, autoOpenKey = null, eventHandlers, zIndexOffset, children,
+  // false: the photo keeps its own colours and only the ring carries the status (the replay marker).
+  tint = true,
 }) {
   const markerRef = useRef(null)
   // The *displayed* angle, which is allowed to run outside 0-360 so the vehicle
@@ -152,7 +164,7 @@ export default function VehicleMarker({
     }
   // `type` and `color` are in here because swapping either replaces the icon's
   // DOM node, and the replacement is born without the rotation we applied.
-  }, [heading, type, color])
+  }, [heading, type, color, tint])
 
   // A clustered marker is taken off the map and put back, with a brand-new node
   // that starts at 0deg, whenever its bubble opens or closes or it moves.
@@ -181,7 +193,7 @@ export default function VehicleMarker({
     <Marker
       ref={markerRef}
       position={position}
-      icon={vehicleIcon(type, color)}
+      icon={vehicleIcon(type, color, tint)}
       eventHandlers={eventHandlers}
       zIndexOffset={zIndexOffset}
     >

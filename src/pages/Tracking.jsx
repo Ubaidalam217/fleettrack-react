@@ -2162,6 +2162,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
                       type={replayVehicleType}
                       heading={replayPoint.heading}
                       zIndexOffset={1000}
+                      tint={false}
                     >
                       {/* Folded away while an event's card is open, so the two never overlap. */}
                       {!replayActiveEvent && cardPrefs.show && cardPrefs.dock === 'follow' && (

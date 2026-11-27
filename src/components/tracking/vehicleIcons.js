@@ -251,3 +251,21 @@ export function vehicleSvg(type, color) {
   // silhouettes land at exactly the same size as the photographs beside them.
   return `<svg viewBox="0 0 32 32" width="100%" height="100%" aria-hidden="true">${shape(color)}</svg>`
 }
+
+/**
+ * The marker's HTML: the status ring, and in it the vehicle. Both carry the status
+ * colour (client, 2026-11-27). A photographed type is grayscaled and a flat layer in
+ * the colour, cut to the photo's outline by a CSS mask, is blended onto it (see
+ * `.veh-tint` in VehicleMarker); `tint` false keeps the photo's own colours (replay
+ * marker). A drawn silhouette is filled with the colour itself. Both vehicle
+ * shapes are one `.veh-rot` box of the same size, so a mixed fleet lines up.
+ */
+export function vehicleMarkerHtml(type, color, tint = true) {
+  const art = vehicleArt(type)
+  const inner = art && tint
+    ? `<div class="veh-rot veh-tint veh-tint-keel" style="--veh-art:url('${art}')"><img class="veh-img" src="${art}" alt="" draggable="false"><span class="veh-fill"></span></div>`
+    : art
+      ? `<img class="veh-rot veh-img" src="${art}" alt="" draggable="false">`
+      : `<div class="veh-rot">${vehicleSvg(type, color)}</div>`
+  return `<div class="veh-ring" style="--veh-st:${color}">${inner}</div>`
+}
