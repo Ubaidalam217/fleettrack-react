@@ -113,7 +113,7 @@ describe('import: valid rows', () => {
     expect(v.customFieldsUpdatedBy).toBe('hassan@alhabtoorlog.ae')
 
     const moves = await prisma.vehicleMove.findMany({ where: { vehicleId: v.id } })
-    expect(moves.map(m => [m.level, m.imei, m.toName])).toEqual([['device', '350000000001004', 'T 1001']])
+    expect(moves.map(m => [m.level, m.imei, m.toName])).toEqual([['device', '350000000001004', 'Import Truck 4 - T 1001']])
     // Nothing was written to Flespi (and the vehicle is listed in its BG).
     expect(writes()).toEqual([])
     const list = await request(app).get('/api/vehicles').set(auth(fx.tokens.bgUserA1a))
