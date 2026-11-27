@@ -47,6 +47,7 @@ describe('data monitor formatting', () => {
 
   it('names a device by its vehicle', () => {
     expect(deviceTitle({ deviceId: 5, vehicle: { plateNo: 'AD 123' } })).toBe('AD 123')
+    expect(deviceTitle({ deviceId: 5, vehicle: { plateNo: 'AD 123', fleetNo: 'FL-9' } })).toBe('FL-9 - AD 123')
     expect(deviceTitle({ deviceId: 5, vehicle: null })).toBe('Device 5')
   })
 

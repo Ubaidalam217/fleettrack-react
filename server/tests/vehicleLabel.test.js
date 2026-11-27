@@ -24,7 +24,7 @@ import { auth, resetDb, seedFixture } from './factories.js'
 
 describe('vehicleLabel', () => {
   it('takes the plate, then the fleet no., then the Flespi name, then the IMEI', () => {
-    expect(vehicleLabel({ plateNo: 'AD 12411', fleetNo: 'FL-8', imei: '8646' }, 'Test Bench')).toBe('AD 12411')
+    expect(vehicleLabel({ plateNo: 'AD 12411', fleetNo: 'FL-8', imei: '8646' }, 'Test Bench')).toBe('FL-8 - AD 12411')
     expect(vehicleLabel({ plateNo: '', fleetNo: 'FL-8', imei: '8646' }, 'Test Bench')).toBe('FL-8')
     expect(vehicleLabel({ plateNo: null, fleetNo: '  ', imei: '8646' }, 'Test Bench')).toBe('Test Bench')
     expect(vehicleLabel({ plateNo: null, fleetNo: null, imei: '8646' })).toBe('8646')
@@ -35,6 +35,7 @@ describe('vehicleLabel', () => {
   it('trims, and is what a Flespi device is named after on save', () => {
     expect(vehicleLabel({ plateNo: ' AD 149 ' })).toBe('AD 149')
     expect(deviceName({ plateNo: '', fleetNo: 'FL-2', imei: '1' })).toBe('FL-2')
+    expect(deviceName({ plateNo: 'AD 1', fleetNo: 'FL-2', imei: '1' })).toBe('AD 1') // Flespi names stay plate-first
     expect(deviceName({ plateNo: ' ', fleetNo: '', imei: '863257062083821' })).toBe('863257062083821')
   })
 })
@@ -77,7 +78,7 @@ describe('the name now, on old alerts and share links', () => {
     const res = await request(app).get('/api/alert-events').set(auth(fx.tokens.bgUserA1a))
     expect(res.status).toBe(200)
     const [e] = res.body.data
-    expect(e.vehicleLabel).toBe('AD 99999')
+    expect(e.vehicleLabel).toBe('FL-01 - AD 99999')
     expect(e.vehicle.plateNo).toBe('AD 99999')
     expect(e.message).toBe('PLATE-1: Over speed: 130 km/h (limit 120 km/h)')
   })
@@ -96,10 +97,10 @@ describe('the name now, on old alerts and share links', () => {
     })
     const res = await request(app).get(`/api/public/location/${share.token}`)
     expect(res.status).toBe(200)
-    expect(res.body.data.vehicleName).toBe('PLATE-1')
+    expect(res.body.data.vehicleName).toBe('FL-01 - PLATE-1')
     await rename(fx.vehicles.v1, 'AD 12411')
     __clearLocationCache()
-    expect((await request(app).get(`/api/public/location/${share.token}`)).body.data.vehicleName).toBe('AD 12411')
+    expect((await request(app).get(`/api/public/location/${share.token}`)).body.data.vehicleName).toBe('FL-01 - AD 12411')
   })
 
   it('a replay link takes the name now only when that vehicle had the tracker then', async () => {
@@ -112,7 +113,7 @@ describe('the name now, on old alerts and share links', () => {
     await make('tok_replay_earlier_aaaaaaaaaaaaaaaaa', earlier)
     await rename(fx.vehicles.v1, 'AD 12411')
 
-    expect((await request(app).get('/api/public/replay/tok_replay_later_aaaaaaaaaaaaaaaaaaa')).body.data.vehicleName).toBe('AD 12411')
+    expect((await request(app).get('/api/public/replay/tok_replay_later_aaaaaaaaaaaaaaaaaaa')).body.data.vehicleName).toBe('FL-01 - AD 12411')
     // Registered after the replay starts: maybe not the same vehicle, so the stored name.
     expect((await request(app).get('/api/public/replay/tok_replay_earlier_aaaaaaaaaaaaaaaaa')).body.data.vehicleName).toBe('Test Bench')
 
@@ -123,7 +124,7 @@ describe('the name now, on old alerts and share links', () => {
 
   it('falls back to the stored name for a device with no registered vehicle', async () => {
     expect(await currentLabelForDevice(999, 'Test Bench')).toBe('Test Bench')
-    expect(await currentLabelForDevice(101, 'Test Bench')).toBe('PLATE-1')
+    expect(await currentLabelForDevice(101, 'Test Bench')).toBe('FL-01 - PLATE-1')
   })
 
   it('never writes to Flespi', async () => {

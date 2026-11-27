@@ -24,6 +24,7 @@ import { loadUsageMonths } from '../../utils/expenseUsage'
 import { compareIds, uffizioNotes } from '../../utils/uffizioReports'
 import UffizioFootnote from '../../components/reports/UffizioFootnote'
 import { ReportSkeleton } from '../../components/Skeleton'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 
 /**
  * Reports › Expense › Expense Report (client, 2026-11-12: "a report of all the
@@ -136,7 +137,7 @@ export default function ExpenseReport(props) {
 
   const vehicles = useMemo(() => (settingsVehicles ?? [])
     .filter(v => !bgId || String(v.companyId) === String(bgId))
-    .map(v => ({ id: String(v.id), label: v.vehicleNumber || v.vehicleId || v.imei || String(v.id), company: companies.find(c => String(c.id) === String(v.companyId))?.name ?? '' }))
+    .map(v => ({ id: String(v.id), label: vehicleLabel(v) || String(v.id), company: companies.find(c => String(c.id) === String(v.companyId))?.name ?? '' }))
     .sort((a, b) => a.label.localeCompare(b.label)), [settingsVehicles, companies, bgId])
   const effectiveIds = selectedIds ?? vehicles.map(v => v.id)
   const allSelected = selectedIds === null || (vehicles.length > 0 && selectedIds.length === vehicles.length)

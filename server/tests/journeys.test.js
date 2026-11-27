@@ -256,7 +256,7 @@ describe('permissions and scope', () => {
     // Drafts for tomorrow: outside today's default window, so ask for that day.
     const list = await get(`/api/journeys?from=${tomorrow(0).toISOString()}&to=${tomorrow(23).toISOString()}`, fx.tokens.subUserA1a)
     expect(list.status).toBe(200)
-    expect(list.body.data.map(j => j.vehicleLabel)).toEqual(['PLATE-1'])
+    expect(list.body.data.map(j => j.vehicleLabel)).toEqual(['FL-01 - PLATE-1'])
     expect((await post('/api/journeys', fx.tokens.subUserA1a, body(fx.vehicles.v1.id))).status).toBe(403)
   })
 

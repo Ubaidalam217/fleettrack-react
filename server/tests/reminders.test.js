@@ -172,7 +172,7 @@ describe('Reminder Status, Mark done and history', () => {
 
     const hist = await request(app).get('/api/reminders/acks').set(auth(fx.tokens.bgUserA1a))
     expect(hist.body.data).toHaveLength(1)
-    expect(hist.body.data[0]).toMatchObject({ ruleName: 'Oil every 10,000 km', vehicleLabel: fx.vehicles.v1.plateNo, odometer: 56500, note: 'Shell, 5W-30' })
+    expect(hist.body.data[0]).toMatchObject({ ruleName: 'Oil every 10,000 km', vehicleLabel: `${fx.vehicles.v1.fleetNo} - ${fx.vehicles.v1.plateNo}`, odometer: 56500, note: 'Shell, 5W-30' })
     expect((await request(app).get('/api/reminders/acks').set(auth(fx.tokens.bgUserB1a))).body.data).toHaveLength(0)
     expect((await request(app).post('/api/reminders/ack').set(auth(fx.tokens.subUserA1a)).send({ ruleId: rule.id, vehicleId: fx.vehicles.v1.id })).status).toBe(403)
   })
@@ -193,7 +193,7 @@ describe('runReminderPass', () => {
     const due = await run({ 'vehicle.mileage': 56600, 'engine.ignition.status': true, timestamp: now - 300 }, now)
     expect(due).toHaveLength(1)
     expect(due[0]).toMatchObject({ type: 'reminder', severity: 'Medium', title: 'Oil every 10,000 km', vehicleId: fx.vehicles.v1.id })
-    expect(due[0].message).toBe(`${fx.vehicles.v1.plateNo}: Oil Change is due, 9,600 of 10,000 km, 400 left`)
+    expect(due[0].message).toBe(`${fx.vehicles.v1.fleetNo} - ${fx.vehicles.v1.plateNo}: Oil Change is due, 9,600 of 10,000 km, 400 left`)
     expect(await run({ 'vehicle.mileage': 56700, 'engine.ignition.status': true, timestamp: now - 200 }, now)).toHaveLength(0)
     const over = await run({ 'vehicle.mileage': 57100, 'engine.ignition.status': true, timestamp: now - 100 }, now)
     expect(over[0]).toMatchObject({ severity: 'High' })

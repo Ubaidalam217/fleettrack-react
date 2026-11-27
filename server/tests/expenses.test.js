@@ -33,7 +33,7 @@ describe('expenses', () => {
     expect(res.body.data).toMatchObject({
       bgId: fx.bgA1a.id, category: 'Variable', type: 'Fuel', expenseDate: '2026-11-05', fromDate: null,
       odometer: 120450, workHours: '2:30', fuelSource: 'Fuel card', vendor: 'ADNOC', amount: 250.5,
-      vehicleLabel: fx.vehicles.v1.plateNo, createdByName: expect.any(String),
+      vehicleLabel: `${fx.vehicles.v1.fleetNo} - ${fx.vehicles.v1.plateNo}`, createdByName: expect.any(String),
     })
     expect(res.body.data.vehicle.id).toBe(fx.vehicles.v1.id)
   })
@@ -133,6 +133,6 @@ describe('expenses', () => {
 
     await prisma.vehicle.delete({ where: { id: fx.vehicles.v1.id } })
     const after = await prisma.expense.findUnique({ where: { id: e.id } })
-    expect(after).toMatchObject({ vehicleId: null, vehicleLabel: fx.vehicles.v1.plateNo })
+    expect(after).toMatchObject({ vehicleId: null, vehicleLabel: `${fx.vehicles.v1.fleetNo} - ${fx.vehicles.v1.plateNo}` })
   })
 })

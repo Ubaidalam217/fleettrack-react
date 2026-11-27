@@ -77,10 +77,10 @@ describe('merge', () => {
     const onTarget = await prisma.vehicleMove.findMany({ where: { vehicleId: v4.id }, orderBy: { movedAt: 'asc' } })
     expect(onTarget.map(m => m.level).sort()).toEqual(['branch', 'merge'])
     const mergeRow = onTarget.find(m => m.level === 'merge')
-    expect(mergeRow).toMatchObject({ fromName: 'PLATE-3', toName: 'PLATE-4', imei: v3.imei })
+    expect(mergeRow).toMatchObject({ fromName: 'FL-03 - PLATE-3', toName: 'FL-04 - PLATE-4', imei: v3.imei })
     expect(mergeRow.note).toMatch(/^same truck, tracker swapped in Flespi — Moved: /)
     const onStale = await prisma.vehicleMove.findMany({ where: { vehicleId: v3.id } })
-    expect(onStale.map(m => [m.level, m.imei, m.fromName]).sort()).toEqual([['archive', v3.imei, 'PLATE-3'], ['device', v3.imei, 'PLATE-3']])
+    expect(onStale.map(m => [m.level, m.imei, m.fromName]).sort()).toEqual([['archive', v3.imei, 'FL-03 - PLATE-3'], ['device', v3.imei, 'FL-03 - PLATE-3']])
 
     // Gone from every list and every write; the history still finds it by its old plate and IMEI.
     const list = await request(app).get('/api/vehicles').set(auth(fx.tokens.superAdmin))
@@ -131,7 +131,7 @@ describe('history', () => {
       ['PLATE-1', 'AD 149', null],
       ['Fleet no. FL-01', 'Fleet no. FL-99', null],
     ])
-    expect(rows[0].vehicleLabel).toBe('AD 149')
+    expect(rows[0].vehicleLabel).toBe('FL-01 - AD 149')
   })
 
   it('is searched by plate, old or new IMEI, user and vehicle, inside the caller’s scope', async () => {

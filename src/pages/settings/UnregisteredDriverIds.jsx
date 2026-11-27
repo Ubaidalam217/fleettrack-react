@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AlertTriangle, UserPlus, UserCheck, Copy, Check, ChevronDown } from 'lucide-react'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 
 /**
  * "Unregistered Driver IDs" on Settings › Driver (client, 2026-11-09): every
@@ -89,7 +90,7 @@ export default function UnregisteredDriverIds({ rows, canAdd, canWrite, onRegist
           <div key={r.code} className="urd-row">
             <div className="urd-cell urd-id"><code title={r.code}>{r.code}</code><CopyId code={r.code} /></div>
             <div className="urd-cell vehicle">
-              <div className="urd-main">{r.vehicle?.plateNo || r.vehicle?.fleetNo || (r.deviceId ? `Device ${r.deviceId}` : '—')}</div>
+              <div className="urd-main">{(r.vehicle && vehicleLabel(r.vehicle)) || (r.deviceId ? `Device ${r.deviceId}` : '—')}</div>
               <div className="urd-meta">{r.vehicle?.bgName || 'Vehicle not registered in Settings'}</div>
             </div>
             <div className="urd-cell seen">

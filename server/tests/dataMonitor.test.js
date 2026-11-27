@@ -242,7 +242,7 @@ describe('data overload events', () => {
     const e = created[0]
     expect(e).toMatchObject({ type: 'data_overload', bgId: null, vehicleId: fx.vehicles.v1.id, deviceId: 501, alertId: null, endedAt: null })
     const v1 = fx.vehicles.v1
-    expect(e.message.startsWith(`${v1.plateNo || v1.fleetNo}: `)).toBe(true) // the vehicle's name first
+    expect(e.message.startsWith(`${v1.fleetNo} - ${v1.plateNo}: `)).toBe(true) // the vehicle's name first
     expect(e.message).toMatch(/Reporting interval looks like ~1 s/)
     expect(e.message).toMatch(/Ask the client/)
 

@@ -24,7 +24,11 @@ const digits = s => String(s ?? '').replace(/\D/g, '')
 
 /** The rule itself, on named parts. '' when there is nothing to name it by. */
 export function labelOf({ plateNo, fleetNo, flespiPlate, flespiName, imei } = {}) {
-  return clean(plateNo) || clean(fleetNo) || clean(flespiPlate) || clean(flespiName) || clean(imei)
+  const plate = clean(plateNo)
+  const fleet = clean(fleetNo)
+  // Client 2026-11-27: the fleet no. goes in front of the plate, everywhere.
+  if (plate && fleet && plate.toLowerCase() !== fleet.toLowerCase()) return `${fleet} - ${plate}`
+  return plate || fleet || clean(flespiPlate) || clean(flespiName) || clean(imei)
 }
 
 const isRegisterRow = v => 'vehicleNumber' in v

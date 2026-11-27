@@ -11,6 +11,7 @@
  * only the share of it inside the report's range counts, by days — the same
  * rule the Dashboard's Cost Summary uses (dashboardStats.js expenseFigures).
  */
+import { vehicleLabel } from './vehicleLabel'
 
 const DAY_MS = 86_400_000
 const dayNum = s => Math.floor(Date.parse(`${String(s).slice(0, 10)}T00:00:00Z`) / DAY_MS)
@@ -50,7 +51,7 @@ export function expenseRows(expenses, from, to) {
     const base = {
       id: e.id,
       vehicleId: e.vehicle?.id ?? e.vehicleId ?? null,
-      plate: e.vehicle?.plateNo || e.vehicle?.fleetNo || e.plateNo || '—',
+      plate: (e.vehicle && vehicleLabel(e.vehicle)) || e.plateNo || '—',
       imei: digits(e.vehicle?.imei),
       company: e.bg?.name ?? '',
       branch: e.vehicle?.branch?.name ?? '',

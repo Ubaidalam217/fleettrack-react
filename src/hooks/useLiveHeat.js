@@ -35,7 +35,7 @@ const IDS_SETTLE_MS = 600
 const HEAT_FIELDS = 'timestamp,position.latitude,position.longitude,position.speed,engine.ignition.status'
 
 /** What the list and the caption call a vehicle: as the Live Map does. */
-export const vehicleLabel = v => (v ? v.master?.plateNo || v.name || v.ident || `Device ${v.id}` : '')
+export const vehicleLabel = v => (v ? v.label || v.master?.plateNo || v.name || v.ident || `Device ${v.id}` : '')
 
 const keyOf = ids => [...ids].sort((a, b) => a - b).join(',')
 const splitIds = key => (key ? key.split(',').map(Number) : [])

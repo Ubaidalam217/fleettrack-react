@@ -3,6 +3,7 @@
  * sizes, intervals, the status chips, the meters and the sparkline geometry.
  * Pure, so it is tested on its own (dataMonitor.test.js).
  */
+import { vehicleLabel } from './vehicleLabel'
 
 /** 1536 → "1.5 KB", 5_242_880 → "5.0 MB". Binary units, as Flespi counts. */
 export function fmtBytes(n) {
@@ -90,7 +91,7 @@ const round2 = v => Math.round(v * 100) / 100
 
 /** The vehicle a device row stands for, or the device itself. */
 export function deviceTitle(d) {
-  return d?.vehicle?.plateNo || d?.vehicle?.fleetNo || `Device ${d?.deviceId ?? '?'}`
+  return (d?.vehicle && vehicleLabel(d.vehicle)) || `Device ${d?.deviceId ?? '?'}`
 }
 
 /** A request source's role in words. */

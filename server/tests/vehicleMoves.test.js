@@ -28,9 +28,9 @@ describe('vehicle edit', () => {
     const res = await moves(fx.tokens.superAdmin)
     expect(res.status).toBe(200)
     const byPlate = Object.fromEntries(res.body.data.map(m => [m.vehicleLabel, m]))
-    expect(byPlate['PLATE-1']).toMatchObject({ level: 'branch', fromName: 'Mussafah Depot', toName: 'Al Ain Yard', movedByName: 'hassan@alhabtoorlog.ae', imei: v1.imei })
-    expect(byPlate['PLATE-4']).toMatchObject({ level: 'branch', fromName: fx.bgA1a.name, toName: 'Mussafah Depot' })
-    expect(byPlate['PLATE-1'].bg.name).toBe(fx.bgA1a.name)
+    expect(byPlate['FL-01 - PLATE-1']).toMatchObject({ level: 'branch', fromName: 'Mussafah Depot', toName: 'Al Ain Yard', movedByName: 'hassan@alhabtoorlog.ae', imei: v1.imei })
+    expect(byPlate['FL-04 - PLATE-4']).toMatchObject({ level: 'branch', fromName: fx.bgA1a.name, toName: 'Mussafah Depot' })
+    expect(byPlate['FL-01 - PLATE-1'].bg.name).toBe(fx.bgA1a.name)
   })
 
   it('records nothing when the branch and group stay', async () => {
@@ -62,7 +62,7 @@ describe('GET /api/vehicle-moves', () => {
     await put(fx.vehicles.v3, { branchId: fx.branches.depot.id })
     expect((await moves(fx.tokens.bgUserB1a)).body.data).toHaveLength(0)
     // The sub-user holds v1 and v2, and v3 once it is in its branch (depot).
-    expect((await moves(fx.tokens.subUserA1a)).body.data.map(m => m.vehicleLabel).sort()).toEqual(['PLATE-1', 'PLATE-3'])
+    expect((await moves(fx.tokens.subUserA1a)).body.data.map(m => m.vehicleLabel).sort()).toEqual(['FL-01 - PLATE-1', 'FL-03 - PLATE-3'])
     const later = new Date(Date.now() + 60_000).toISOString()
     expect((await moves(fx.tokens.superAdmin, { from: later })).body.data).toHaveLength(0)
     expect((await moves(fx.tokens.superAdmin, { from: 'yesterday' })).status).toBe(400)

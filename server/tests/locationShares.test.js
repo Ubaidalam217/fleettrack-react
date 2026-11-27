@@ -75,7 +75,7 @@ describe('GET /api/public/location/:token', () => {
     const { token } = (await make()).body.data
     const first = await open(token)
     expect(first.status).toBe(200)
-    expect(first.body.data).toMatchObject({ vehicleName: 'PLATE-1', refreshSec: 15, position: { lat: 24.45, lng: 54.37, speed: 42, heading: 90, ignition: true, ts: 1_800_000_000 } })
+    expect(first.body.data).toMatchObject({ vehicleName: 'FL-01 - PLATE-1', refreshSec: 15, position: { lat: 24.45, lng: 54.37, speed: 42, heading: 90, ignition: true, ts: 1_800_000_000 } })
     speed = 80
     expect((await open(token)).body.data.position.speed).toBe(42) // cached
     expect(telemetryCalls).toBe(1)

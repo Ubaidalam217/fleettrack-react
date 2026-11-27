@@ -29,7 +29,7 @@ function findings(vehicles, stats) {
   }
   if (quiet.length > 2) out.push(`${quiet.length - 2} more vehicle${quiet.length - 2 > 1 ? 's are' : ' is'} not reporting.`)
   for (const r of stats?.maintenance?.overdue?.slice(0, 2) ?? []) {
-    out.push(`${r.ruleName} is overdue on ${r.vehicle?.plateNo || r.vehicle?.fleetNo || 'a vehicle'}.`)
+    out.push(`${r.ruleName} is overdue on ${(r.vehicle && vehicleLabel(r.vehicle)) || 'a vehicle'}.`)
   }
   if (!out.length && vehicles.length) out.push('Every vehicle reported in the last 30 minutes and no reminder is overdue.')
   return out.slice(0, 3)

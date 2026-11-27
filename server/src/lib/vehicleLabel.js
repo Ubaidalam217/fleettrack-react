@@ -21,7 +21,11 @@ const digits = s => String(s ?? '').replace(/\D/g, '')
  * @returns {string} '' when there is nothing to name it by
  */
 export function vehicleLabel(v, flespiName = '') {
-  return clean(v?.plateNo) || clean(v?.fleetNo) || clean(flespiName) || clean(v?.imei)
+  const plate = clean(v?.plateNo)
+  const fleet = clean(v?.fleetNo)
+  // Client 2026-11-27: the fleet no. goes in front of the plate, everywhere.
+  if (plate && fleet && plate.toLowerCase() !== fleet.toLowerCase()) return `${fleet} - ${plate}`
+  return plate || fleet || clean(flespiName) || clean(v?.imei)
 }
 
 const LABEL_SELECT = { id: true, plateNo: true, fleetNo: true, imei: true, createdAt: true }

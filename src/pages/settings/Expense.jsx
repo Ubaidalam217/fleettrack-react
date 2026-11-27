@@ -133,7 +133,7 @@ export default function Expense(props) {
     const q = search.trim().toLowerCase()
     if (!rows) return []
     if (!q) return rows
-    return rows.filter(e => [e.vehicle?.plateNo, e.vehicleLabel, e.vehicle?.fleetNo, e.type, e.subType, e.vendor, e.referenceNo, e.description, e.createdByName]
+    return rows.filter(e => [e.vehicle?.plateNo, e.vehicle && vehicleLabel(e.vehicle), e.vehicleLabel, e.vehicle?.fleetNo, e.type, e.subType, e.vendor, e.referenceNo, e.description, e.createdByName]
       .some(s => String(s ?? '').toLowerCase().includes(q)))
   }, [rows, search])
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CloudDownload, PlugZap, RefreshCw, CircleCheck, AlertTriangle, CirclePause, Archive, Info, RotateCcw } from 'lucide-react'
 import { ApiError } from '../../data/http'
 import { fetchUffizioStatus, pollUffizio, testUffizio, restoreUffizioVehicle } from '../../data/fuel'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 
 /**
  * Settings › Master › Fuel — "Uffizio (fuel vehicles)" (client, 2026-11-24).
@@ -184,7 +185,7 @@ export default function UffizioCard({ push }) {
                 <ul className="uf-rows">
                   {status.removed.map(v => (
                     <li key={v.id}>
-                      <span className="uf-rname">{v.plateNo || v.uffizioName || v.imei}</span>
+                      <span className="uf-rname">{vehicleLabel(v) || v.uffizioName}</span>
                       <span className="uf-rmeta">
                         IMEI {v.imei}{v.uffizioName && v.uffizioName !== v.plateNo ? ` · Uffizio: ${v.uffizioName}` : ''} · removed {when(v.deletedAt)}{v.deletedBy ? ` by ${v.deletedBy}` : ''}
                       </span>

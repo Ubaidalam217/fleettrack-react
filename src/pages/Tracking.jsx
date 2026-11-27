@@ -969,6 +969,7 @@ export default function Tracking({ isDark, toggleTheme, themeMode, setTheme }) {
         String(v.id).includes(q) ||
         (v.name             || '').toLowerCase().includes(q) ||
         (v.ident            || '').toLowerCase().includes(q) ||
+        (v.label            || '').toLowerCase().includes(q) ||
         (v.master?.plateNo  || '').toLowerCase().includes(q) ||
         (v.master?.fleetNo  || '').toLowerCase().includes(q) ||
         (v.flespiName       || '').toLowerCase().includes(q) ||

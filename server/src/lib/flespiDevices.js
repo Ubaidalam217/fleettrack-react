@@ -183,7 +183,8 @@ export async function deviceById(deviceId) {
 }
 
 /** The Flespi name for a vehicle: what the live map shows when nothing else is set. */
-export const deviceName = v => vehicleLabel(v)
+// The device name stays plate-first (no fleet-no prefix): Flespi is not renamed by the display rule.
+export const deviceName = v => vehicleLabel({ plateNo: v?.plateNo, imei: v?.imei, fleetNo: v?.plateNo ? '' : v?.fleetNo })
 
 /** Test seam. */
 export function __resetFlespiDevices() {

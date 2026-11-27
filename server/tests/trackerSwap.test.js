@@ -93,8 +93,8 @@ describe('Change tracker', () => {
     expect(after).toMatchObject({ imei: '869166081129099', deviceType: 'iTriangle TS101', flespiDeviceId: 200, plateNo: 'PLATE-1' })
     const rows = await moves(v)
     expect(rows.map(r => [r.level, r.imei, r.fromName, r.toName])).toEqual([
-      ['device', v.imei, 'PLATE-1', null],
-      ['device', '869166081129099', null, 'PLATE-1'],
+      ['device', v.imei, 'FL-01 - PLATE-1', null],
+      ['device', '869166081129099', null, 'FL-01 - PLATE-1'],
     ])
     expect(rows[0].note).toBe('Replaced by 869166081129099 — old unit faulty')
     expect(rows[1].note).toBe(`Replaced ${v.imei} — old unit faulty`)
@@ -162,7 +162,7 @@ describe('Remove tracker', () => {
 
     // Its old tracker is an unregistered one now, "was in PLATE-1".
     const unreg = await request(app).get('/api/vehicles/unregistered').set(auth(fx.tokens.superAdmin))
-    expect(unreg.body.data).toEqual([expect.objectContaining({ deviceId: 100, imei: v.imei, lastVehicle: expect.objectContaining({ label: 'PLATE-1', installed: false }) })])
+    expect(unreg.body.data).toEqual([expect.objectContaining({ deviceId: 100, imei: v.imei, lastVehicle: expect.objectContaining({ label: 'FL-01 - PLATE-1', installed: false }) })])
 
     expect((await request(app).post(`/api/vehicles/${v.id}/tracker/remove`).set(auth(fx.tokens.bgUserA1a)).send({})).status).toBe(400)
 
@@ -204,7 +204,7 @@ describe('tracker status', () => {
     // Device 300 had PLATE-1's tracker; in the Flespi panel it was given v2's tracker.
     fl.devices.push({ id: 300, name: 'swapped by hand', device_type_id: 579, configuration: { ident: fx.vehicles.v2.imei } })
     const res = await request(app).get(`/api/vehicles/${v.id}/tracker-status`).set(auth(fx.tokens.bgUserA1a))
-    expect(res.body.data).toMatchObject({ state: 'missing', suggestion: { kind: 'merge', deviceId: 300, target: { id: fx.vehicles.v2.id, label: 'PLATE-2' } } })
+    expect(res.body.data).toMatchObject({ state: 'missing', suggestion: { kind: 'merge', deviceId: 300, target: { id: fx.vehicles.v2.id, label: 'FL-02 - PLATE-2' } } })
 
     // Given a tracker nobody registered instead, the suggestion is to link to it.
     fl.devices[0].configuration.ident = '869166081174012'

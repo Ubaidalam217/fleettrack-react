@@ -55,3 +55,10 @@ describe('expense report', () => {
     expect(aed(null)).toBe('—')
   })
 })
+
+describe('the fleet no. in front of the plate (client 2026-11-27)', () => {
+  it('names a vehicle fleet-no first in the expense rows', () => {
+    const rows = expenseRows([{ id: 'x', vehicle: { id: 'v9', plateNo: 'AD 9', fleetNo: 'FL-3', imei: '1' }, category: 'Variable', type: 'Fuel', expenseDate: '2026-11-05', amount: 10 }], '2026-11-01', '2026-11-30')
+    expect(groupByVehicle(rows).map(g => g.plate)).toEqual(['FL-3 - AD 9'])
+  })
+})

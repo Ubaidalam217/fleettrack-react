@@ -15,6 +15,7 @@ import { REMINDER_STATUS, REMINDER_TYPES, isRenewal, reminderStatus, markReminde
 import { formatExpiryDate } from '../../utils/licenceExpiry'
 import { exportGeoZonePdf, exportGeoZoneExcel } from '../../utils/geoZoneExport'
 import { formatPrintDate } from '../../utils/movementReport'
+import { vehicleLabel } from '../../utils/vehicleLabel'
 
 // Reports › Reminder › Reminder Status (client, 2026-11-10, after the reference
 // system): every vehicle on every reminder, worked out now — Overdue, Due,
@@ -62,7 +63,7 @@ function paperRow(r) {
   return {
     key: `${r.ruleId}|${r.vehicle.id}`,
     status: REMINDER_STATUS[r.status].label,
-    vehicle: r.vehicle.plateNo || r.vehicle.fleetNo || r.vehicle.imei,
+    vehicle: vehicleLabel(r.vehicle),
     branch: r.vehicle.branch?.name || r.bg?.name || '—',
     reminder: `${r.ruleName}${r.active ? '' : ' (paused)'}`,
     type: `${r.type} · ${r.recurring ? 'Recurring' : 'One Time'}`,
@@ -108,7 +109,7 @@ export default function ReminderStatusReport(props) {
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase()
     return (rows ?? []).filter(r => (!filters.status || r.status === filters.status)
-      && (!q || [r.ruleName, r.type, r.vehicle.plateNo, r.vehicle.fleetNo, r.vehicle.branch?.name].some(s => String(s ?? '').toLowerCase().includes(q))))
+      && (!q || [r.ruleName, r.type, r.vehicle.plateNo, r.vehicle.fleetNo, vehicleLabel(r.vehicle), r.vehicle.branch?.name].some(s => String(s ?? '').toLowerCase().includes(q))))
   }, [rows, filters.status, search])
 
   const bgName = companies.find(c => String(c.id) === String(filters.bgId))?.name
@@ -149,7 +150,7 @@ export default function ReminderStatusReport(props) {
         odometer: form.odometer === '' ? null : Number(form.odometer), note: form.note.trim() || null,
         newExpiry: form.newExpiry || null,
       })
-      push(`${done.ruleName} marked done for ${done.vehicle.plateNo || done.vehicle.fleetNo}`, { tone: 'success' })
+      push(`${done.ruleName} marked done for ${vehicleLabel(done.vehicle)}`, { tone: 'success' })
       setDone(null)
       setReloadKey(k => k + 1)
     } catch (err) {
@@ -243,7 +244,7 @@ export default function ReminderStatusReport(props) {
               <button type="button" onClick={() => setDone(null)} aria-label="Close" style={{ marginLeft: 'auto', background: 'none', border: 0, color: 'var(--c-text3)', cursor: 'pointer' }}><X size={18} /></button>
             </div>
             <p style={{ margin: '8px 0 0', fontSize: 12.5, color: 'var(--c-text2)' }}>
-              <strong>{done.ruleName}</strong> on <strong>{done.vehicle.plateNo || done.vehicle.fleetNo}</strong>.{' '}
+              <strong>{done.ruleName}</strong> on <strong>{vehicleLabel(done.vehicle)}</strong>.{' '}
               {done.recurring ? 'The next cycle starts from this date and odometer.' : 'This One Time reminder will be completed.'}
             </p>
             <label className="rs-lbl" htmlFor="rs-doneAt">Done on</label>

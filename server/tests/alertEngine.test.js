@@ -355,7 +355,7 @@ describe('runAlertPass + /api/alert-events', () => {
     telemetry = at(52, NOW + 100)
     const [alert] = await runAlertPass(NOW + 120)
     expect(alert).toMatchObject({ severity: 'High', title: 'Zone speed', readAt: null })
-    expect(alert.message).toBe('PLATE-1: Geo Zone speed violation in Port Zone: 52 km/h (limit 40 km/h, over for 60 s)')
+    expect(alert.message).toBe('FL-01 - PLATE-1: Geo Zone speed violation in Port Zone: 52 km/h (limit 40 km/h, over for 60 s)')
   })
 
   it('a temperature slot with no probe (0 °C, 0 % humidity) raises no "below minimum"', async () => {
@@ -387,7 +387,7 @@ describe('harsh braking and acceleration rules', () => {
     expect(events).toHaveLength(2)
     expect(events[0]).toMatchObject({ type: 'harsh_braking', deviceId: 101, value: 4.2, lat: 24.4 })
     expect(events[0].occurredAt.getTime()).toBe((NOW - 60) * 1000)
-    expect(events[0].message).toBe('PLATE-1: Harsh braking: 60 → 30 km/h in 2 s (4.2 m/s²)')
+    expect(events[0].message).toBe('FL-01 - PLATE-1: Harsh braking: 60 → 30 km/h in 2 s (4.2 m/s²)')
     expect(await runAlertPass(NOW + 30, { recent })).toHaveLength(0)
   })
 
