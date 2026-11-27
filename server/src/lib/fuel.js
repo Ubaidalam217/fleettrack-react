@@ -14,12 +14,12 @@
 import prisma from '../prisma.js'
 import { badRequest } from './http.js'
 import {
-  validateCalibration, readingLitres, rawToLitres, calibrationPort, METHOD_PORT,
+  validateCalibration, readingLitres, rawToLitres, calibrationPort, canonicalPort, samePort, METHOD_PORT,
 } from '../../../src/utils/fuelCalibration.js'
 import { cleanSeries, detectFuelEvents, fuelSummary, rawSummary, downsample } from '../../../src/utils/fuelEvents.js'
 import { vehicleLabel as vehicleLabelOf } from './vehicleLabel.js'
 
-export { readingLitres, rawToLitres, calibrationPort }
+export { readingLitres, rawToLitres, calibrationPort, canonicalPort, samePort }
 
 /** The calibration in use per vehicle. */
 export async function activeCalibrations(vehicleIds) {
@@ -78,7 +78,7 @@ export async function applyCalibration(vehicleId, cal, { by, fileName = null, no
     })
     return tx.fuelCalibration.create({
       data: {
-        vehicleId, method: cal.method, port: cal.port, tankCapacityL: cal.tankCapacityL, points: cal.points,
+        vehicleId, method: cal.method, port: canonicalPort(cal.port), tankCapacityL: cal.tankCapacityL, points: cal.points,
         fileName, note, createdById: by?.id ?? null, createdByName: by?.name ?? null,
       },
     })
@@ -134,7 +134,7 @@ export async function buildFuelReport(vehicles, { from, to, threshold, allowance
     const counts = new Map()
     for (const r of all) counts.set(r.port, (counts.get(r.port) ?? 0) + 1)
     const port = (cal && calibrationPort(cal)) || [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null
-    const mine = all.filter(r => r.port === port)
+    const mine = all.filter(r => samePort(r.port, port))
     const base = {
       vehicleId: v.id, label: vehicleLabelOf(v), company: v.bg?.name ?? null, port,
       ports: [...counts.keys()], calibration: calibrationView(cal),

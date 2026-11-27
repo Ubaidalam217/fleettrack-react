@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   validateCalibration, rawToLitres, readingLitres, parseCalibrationRows, toNumber, sampleCalibrationCsv, SAMPLE_POINTS,
+  canonicalPort, samePort,
 } from './fuelCalibration'
 import { parseCsv } from './journeyStopsImport'
 
@@ -130,5 +131,22 @@ describe('parseCalibrationRows', () => {
     const v = validateCalibration(p.points, { tankCapacityL: 200 })
     expect(v.errors).toEqual([])
     expect(v.points).toEqual(SAMPLE_POINTS)
+  })
+})
+
+describe('sensor port names (client 2026-11-27: the calibration of 8 of 11 vehicles never applied)', () => {
+  it('the same port written with or without the # is one port', () => {
+    expect(canonicalPort('BLE Fuel Level #1')).toBe('BLE Fuel Level 1')
+    expect(canonicalPort('  BLE  Fuel Level 1 ')).toBe('BLE Fuel Level 1')
+    expect(samePort('BLE Fuel Level #1', 'BLE Fuel Level 1')).toBe(true)
+    expect(samePort('ble fuel level 1', 'BLE Fuel Level #1')).toBe(true)
+    expect(samePort('BLE Fuel Level 1', 'BLE Fuel Level 2')).toBe(false)
+    expect(samePort('ain.1', 'ain.2')).toBe(false)
+  })
+
+  it('a calibration saved against #1 converts a reading of the port without the #', () => {
+    const cal = { method: 'PORT', port: 'BLE Fuel Level #1', tankCapacityL: 100, points: [{ litres: 0, mv: 0 }, { litres: 100, mv: 1000 }] }
+    expect(readingLitres({ port: 'BLE Fuel Level 1', raw: 500 }, cal)).toMatchObject({ litres: 50 })
+    expect(readingLitres({ port: 'BLE Fuel Level 2', raw: 500 }, cal)).toMatchObject({ litres: null, flag: 'other_port' })
   })
 })

@@ -16,7 +16,7 @@ import { auth, resetDb, seedFixture } from './factories.js'
 const app = createApp()
 let fx
 
-const PORT = 'BLE Fuel Level #1'
+const PORT = 'BLE Fuel Level 1'
 // 0 L at 500 mV … 100 L at 2500 mV: litres = (mv - 500) / 20.
 const mvOf = litres => 500 + litres * 20
 const NOW = Date.UTC(2026, 10, 20, 12, 0, 0)

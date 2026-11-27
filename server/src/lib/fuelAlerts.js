@@ -32,7 +32,7 @@ import { emailEvents, FUEL_ALERT_TYPES, TYPES } from './alertEngine.js'
 import { bgFleetWhere } from './scope.js'
 import { SHARED_BG_RULES_APPLY } from './sharePolicy.js'
 import { vehicleLabel } from './vehicleLabel.js'
-import { activeCalibrations, readingLitres, calibrationPort } from './fuel.js'
+import { activeCalibrations, readingLitres, calibrationPort, canonicalPort } from './fuel.js'
 import { cleanSeries, detectFuelEvents, isSettled, contextText } from '../../../src/utils/fuelEvents.js'
 
 /** How far back the first pass of a rule reads, and at most after a pause. */
@@ -125,7 +125,7 @@ export function evaluateLowFuel(series, state, { limit }) {
  */
 async function seriesOf(vehicleId, cal, fromMs, toMs, threshold) {
   const select = { ts: true, port: true, raw: true, ign: true, speed: true, lat: true, lng: true }
-  const port = calibrationPort(cal)
+  const port = canonicalPort(calibrationPort(cal))
   const [rows, before] = await Promise.all([
     prisma.fuelReading.findMany({
       where: { vehicleId, port, ts: { gte: new Date(fromMs), lte: new Date(toMs) } },

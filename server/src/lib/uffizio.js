@@ -47,7 +47,7 @@
 import prisma from '../prisma.js'
 import env from '../env.js'
 import { deviceRow } from './vehicleMoves.js'
-import { activeCalibrations, readingLitres } from './fuel.js'
+import { activeCalibrations, readingLitres, canonicalPort } from './fuel.js'
 import { runFuelAlertPass } from './fuelAlerts.js'
 
 export const SOURCE = 'UFFIZIO'
@@ -506,7 +506,7 @@ export async function storeReadings(rows, byImei) {
     if (r.ts > Date.now() + 10 * 60_000) continue // a clock far in the future
     for (const f of r.fuel) {
       data.push({
-        vehicleId: v.id, ts: new Date(r.ts), port: f.port, raw: f.raw,
+        vehicleId: v.id, ts: new Date(r.ts), port: canonicalPort(f.port), raw: f.raw,
         litres: readingLitres(f, calibrations.get(v.id) ?? null).litres,
         ign: r.ign, lat: r.lat, lng: r.lng, speed: r.speed,
       })

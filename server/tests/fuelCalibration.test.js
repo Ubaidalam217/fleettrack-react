@@ -16,7 +16,7 @@ const app = createApp()
 let fx
 
 const TABLE = [{ litres: 0, mv: 500 }, { litres: 100, mv: 2500 }, { litres: 50, mv: 1500 }]
-const PORT = 'BLE Fuel Level #1'
+const PORT = 'BLE Fuel Level 1'
 const apply = (token, body) => request(app).post('/api/fuel/calibrations').set(auth(token)).send(body)
 
 beforeEach(async () => {

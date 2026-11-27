@@ -20,7 +20,7 @@
 import prisma from '../prisma.js'
 import { findScopedOrThrow, scopedWhere } from './scope.js'
 import { badRequest, notFound } from './http.js'
-import { activeCalibrations, calibrationPort, readingLitres } from './fuel.js'
+import { activeCalibrations, calibrationPort, readingLitres, samePort } from './fuel.js'
 
 /** The web's id for an Uffizio vehicle in the live list (never a Flespi device id). */
 export const liveIdOf = vehicleId => `uffizio:${vehicleId}`
@@ -96,7 +96,7 @@ async function latestFuel(ids) {
   for (const id of ids) {
     const cal = cals.get(id) ?? null
     const mine = rows.filter(r => r.vehicleId === id)
-    const pick = (cal && mine.find(r => r.port === calibrationPort(cal))) || mine.sort((a, b) => b.ts - a.ts)[0]
+    const pick = (cal && mine.find(r => samePort(r.port, calibrationPort(cal)))) || mine.sort((a, b) => b.ts - a.ts)[0]
     if (!pick) continue
     const conv = cal ? readingLitres(pick, cal) : { litres: null, flag: 'uncalibrated' }
     out.set(id, {

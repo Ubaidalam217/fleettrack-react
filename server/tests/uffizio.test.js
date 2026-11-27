@@ -143,11 +143,11 @@ describe('parsing', () => {
   })
 
   it('normalises one row', () => {
-    const r = U.normaliseRow(row(3, { IGN: 'ON', Speed: '42.5', 'Ibutton/RFID': '01AB23CD', Fuel: [{ port_name: 'BLE Fuel Level #1', value: 788 }, { port_name: 'X', value: '--' }] }))
+    const r = U.normaliseRow(row(3, { IGN: 'ON', Speed: '42.5', 'Ibutton/RFID': '01AB23CD', Fuel: [{ port_name: 'BLE Fuel Level 1', value: 788 }, { port_name: 'X', value: '--' }] }))
     expect(r).toMatchObject({
       imei: '350000000000003', plate: 'ZZ 1003 Q1', fleetNo: '90 003 01', model: 'FMC130',
       ign: true, speed: 42.5, odometer: 12345, driverTag: '01AB23CD',
-      fuel: [{ port: 'BLE Fuel Level #1', raw: 788 }],
+      fuel: [{ port: 'BLE Fuel Level 1', raw: 788 }],
     })
     expect(r.lat).toBeCloseTo(24.43)
     expect(new Date(r.ts).toISOString()).toBe('2026-11-24T09:05:09.000Z')
@@ -174,8 +174,8 @@ describe('polling', () => {
     ])
     const readings = await prisma.fuelReading.findMany({ orderBy: { raw: 'asc' } })
     expect(readings.map(x => [x.port, x.raw, x.ign, x.ts.toISOString()])).toEqual([
-      ['BLE Fuel Level #1', 3001, false, '2026-11-24T09:05:09.000Z'],
-      ['BLE Fuel Level #1', 3002, false, '2026-11-24T09:05:09.000Z'],
+      ['BLE Fuel Level 1', 3001, false, '2026-11-24T09:05:09.000Z'],
+      ['BLE Fuel Level 1', 3002, false, '2026-11-24T09:05:09.000Z'],
     ])
     // The install is in the Reallocation History, and no Flespi device was touched.
     expect(await prisma.vehicleMove.count({ where: { level: 'device', vehicleId: vs[0].id } })).toBe(1)
@@ -190,7 +190,7 @@ describe('polling', () => {
     expect(await prisma.vehicle.count({ where: { dataSource: 'UFFIZIO' } })).toBe(2)
     expect(await prisma.fuelReading.count()).toBe(2)
 
-    up.rows = [row(1, { Datetime: '24-11-2026 13:07:10', Fuel: [{ port_name: 'BLE Fuel Level #1', value: 2950 }] }), row(2, { Vehicle_Name: 'ZZ 2002 Q9', DeviceModel: 'FMM130' })]
+    up.rows = [row(1, { Datetime: '24-11-2026 13:07:10', Fuel: [{ port_name: 'BLE Fuel Level 1', value: 2950 }] }), row(2, { Vehicle_Name: 'ZZ 2002 Q9', DeviceModel: 'FMM130' })]
     later(125)
     const third = await U.pollOnce({ now })
     expect(third).toMatchObject({ ok: true, created: 0, updated: 1, inserted: 1 })
@@ -366,8 +366,8 @@ describe('retention', () => {
   it('deletes readings older than 90 days', async () => {
     await U.pollOnce({ now })
     const v = await prisma.vehicle.findFirst({ where: { dataSource: 'UFFIZIO' } })
-    await prisma.fuelReading.create({ data: { vehicleId: v.id, ts: new Date(Date.now() - 91 * 86400_000), port: 'BLE Fuel Level #1', raw: 1000 } })
-    await prisma.fuelReading.create({ data: { vehicleId: v.id, ts: new Date(Date.now() - 89 * 86400_000), port: 'BLE Fuel Level #1', raw: 1001 } })
+    await prisma.fuelReading.create({ data: { vehicleId: v.id, ts: new Date(Date.now() - 91 * 86400_000), port: 'BLE Fuel Level 1', raw: 1000 } })
+    await prisma.fuelReading.create({ data: { vehicleId: v.id, ts: new Date(Date.now() - 89 * 86400_000), port: 'BLE Fuel Level 1', raw: 1001 } })
     expect(await U.cleanup()).toBe(1)
     expect(await prisma.fuelReading.count()).toBe(3)
   })
@@ -421,7 +421,7 @@ describe('Live Map data (state, trail, endpoints)', () => {
     expect(a).toMatchObject({
       id: `uffizio:${v1.id}`, imei: '350000000000001', source: 'UFFIZIO', speed: 0, heading: 90, ign: false, status: 'STOP',
       externalVolt: 27.1, location: 'Invented Road, Test City', ts: Date.parse('2026-11-24T09:05:09Z') / 1000,
-      fuel: { port: 'BLE Fuel Level #1', raw: 3001, calibrated: false, litres: null },
+      fuel: { port: 'BLE Fuel Level 1', raw: 3001, calibrated: false, litres: null },
     })
     expect(a.raw).toMatchObject({ Vehicle_Name: 'ZZ 1001 Q1' })
     // Another BG's user sees none of them; the fuel BG's own user sees both.

@@ -150,6 +150,14 @@ export function rawToLitres(raw, cal) {
 
 const round2 = v => Math.round(v * 100) / 100
 
+/**
+ * A sensor port as one name: Uffizio calls the same kind of port "BLE Fuel Level #1" on
+ * one tracker model and "BLE Fuel Level 1" on another. Both are the same port (the
+ * calibration of 8 of the 11 client vehicles did not apply because of the "#").
+ */
+export const canonicalPort = p => String(p ?? '').replace(/#/g, '').replace(/\s+/g, ' ').trim()
+export const samePort = (a, b) => canonicalPort(a).toLowerCase() === canonicalPort(b).toLowerCase()
+
 /** The port a calibration reads: the named Uffizio port, or ain.1 / ain.2 / can. */
 export const calibrationPort = cal => (cal?.method === 'PORT' ? cal.port : METHOD_PORT[cal?.method] ?? cal?.port ?? null)
 
@@ -160,7 +168,7 @@ export const calibrationPort = cal => (cal?.method === 'PORT' ? cal.port : METHO
 export function readingLitres(reading, cal) {
   if (!cal) return { litres: null, flag: 'no_calibration' }
   const port = calibrationPort(cal)
-  if (port && reading?.port && reading.port !== port) return { litres: null, flag: 'other_port' }
+  if (port && reading?.port && !samePort(reading.port, port)) return { litres: null, flag: 'other_port' }
   return rawToLitres(reading?.raw, cal)
 }
 
